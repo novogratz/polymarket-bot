@@ -262,6 +262,11 @@ def execute_live_trade(
     settings: Settings,
     candidate: Candidate,
     portfolio: Portfolio,
+    *,
+    min_trade_usd: float | None = None,
+    max_trade_usd: float | None = None,
+    strategy: str | None = None,
+    signal: dict[str, Any] | None = None,
 ) -> LiveTradeResult:
     if candidate.best_ask is None or candidate.best_ask <= 0:
         raise ValueError("candidate has no executable ask price")
@@ -272,21 +277,28 @@ def execute_live_trade(
     live_balance = client.live_available_balance()
     if live_balance <= 0:
         raise ValueError("no live balance available")
-    stake = min(live_balance * settings.trade_fraction, settings.btc_max_trade_usd)
-    if live_balance >= settings.btc_min_trade_usd:
-        stake = max(stake, settings.btc_min_trade_usd)
+    minimum = min_trade_usd if min_trade_usd is not None else settings.btc_min_trade_usd
+    maximum = max_trade_usd if max_trade_usd is not None else settings.btc_max_trade_usd
+    stake = min(live_balance * settings.trade_fraction, maximum)
+    if live_balance >= minimum:
+        stake = max(stake, minimum)
     stake = round(min(stake, live_balance), 2)
     if stake <= 0:
         raise ValueError("no cash available")
-    if stake < settings.btc_min_trade_usd:
+    if stake < minimum:
         raise ValueError("trade size is below Polymarket's $1 minimum")
     size = round(stake / entry_price, 6)
     order, response = client.place_live_order(candidate=candidate, price=entry_price, size=size)
-    portfolio.record_live_position(
+    position = portfolio.record_live_position(
         candidate,
         stake,
         entry_price=entry_price,
         order_id=response.get("orderID") if isinstance(response, dict) else None,
         order_response=response,
     )
+    if position is not None:
+        if strategy:
+            position["strategy"] = strategy
+        if signal is not None:
+            position["signal"] = signal
     return LiveTradeResult(order=order, response=response, candidate=candidate)

@@ -3,8 +3,9 @@ import unittest
 
 from polymarket_bot.bitcoin import BtcModel, btc_signal, btc_terminal_probability, parse_btc_threshold
 from polymarket_bot.config import Settings
-from polymarket_bot.models import utc_now
+from polymarket_bot.models import Candidate, utc_now
 from polymarket_bot.polymarket import ApiCreds, PolymarketClient
+from polymarket_bot.smart_money import SmartTrade, smart_money_signals
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
 
 
@@ -142,6 +143,74 @@ class StrategyTests(unittest.TestCase):
             BtcModel(spot=105000, annual_volatility=0.4, fetched_at=utc_now()),
         )
         self.assertIsNone(signal)
+
+    def test_smart_money_requires_consensus(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will the test market resolve Yes?",
+            slug="test-market",
+            end_date=utc_now() + timedelta(hours=12),
+            hours_to_close=12,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.75,
+            token_id="yes-token",
+            score=10,
+            url="https://polymarket.com/event/test-market",
+            best_bid=0.74,
+            best_ask=0.76,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "yes-token", "BUY", 0.75, 100, 75, 1, "Test market", "Yes", "test-market"),
+            SmartTrade("0x2", "yes-token", "BUY", 0.76, 80, 60.8, 1, "Test market", "Yes", "test-market"),
+        ]
+
+        signals = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(
+                smart_min_consensus=2,
+                smart_min_trade_usd=25,
+                smart_min_buy_price=0.05,
+                smart_max_buy_price=0.85,
+                smart_max_spread=0.05,
+            ),
+        )
+
+        self.assertEqual(len(signals), 1)
+        self.assertEqual(signals[0].consensus, 2)
+        self.assertEqual(signals[0].candidate.token_id, "yes-token")
+
+    def test_smart_money_rejects_single_wallet(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will the test market resolve Yes?",
+            slug="test-market",
+            end_date=utc_now() + timedelta(hours=12),
+            hours_to_close=12,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.75,
+            token_id="yes-token",
+            score=10,
+            url="https://polymarket.com/event/test-market",
+            best_bid=0.74,
+            best_ask=0.76,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "yes-token", "BUY", 0.75, 100, 75, 1, "Test market", "Yes", "test-market"),
+        ]
+
+        self.assertEqual(
+            smart_money_signals([candidate], trades, Settings(smart_min_consensus=2, smart_min_trade_usd=25)),
+            [],
+        )
 
 
 if __name__ == "__main__":
