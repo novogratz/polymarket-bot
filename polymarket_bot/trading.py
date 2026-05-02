@@ -274,22 +274,48 @@ def execute_live_trade(
         raise ValueError("candidate has no tick size")
 
     entry_price = round(min(candidate.best_ask + candidate.tick_size, 0.99), 3)
+
+    # ANTI-PUMP PROTECTION: Don't follow if price moved > 3% from smart money entry
+    if signal and "avg_copy_price" in signal:
+        avg_copy = float(signal["avg_copy_price"])
+        slippage = (entry_price - avg_copy) / avg_copy if avg_copy > 0 else 0
+        if slippage > 0.03:
+            raise ValueError(f"Anti-pump: Entry price {entry_price} is {slippage:.1%} above smart money avg {avg_copy}")
+
     live_balance = client.live_available_balance()
     if live_balance <= 0:
         raise ValueError("no live balance available")
+
+    # TARGET EXPOSURE SIZING: Aim for total exposure = 50% of equity
+    summary = portfolio.summary()
+    total_equity = live_balance + summary.get("total_stake", 0.0)
+    target_total_exposure = total_equity * settings.trade_fraction
+    current_exposure = summary.get("total_stake", 0.0)
+    
+    # How much more do we need to reach the target?
+    needed_usd = max(0.0, target_total_exposure - current_exposure)
+    
+    # Sizing logic
     minimum = min_trade_usd if min_trade_usd is not None else settings.btc_min_trade_usd
     maximum = max_trade_usd if max_trade_usd is not None else settings.btc_max_trade_usd
-    stake = min(live_balance * settings.trade_fraction, maximum)
-    if live_balance >= minimum:
-        stake = max(stake, minimum)
+    
+    # Use the needed amount, but capped by available balance and max per trade
+    stake = min(needed_usd, live_balance, maximum)
+    
+    # If we are below minimum but have room to grow to target, take minimum
+    if stake < minimum and needed_usd >= minimum and live_balance >= minimum:
+        stake = minimum
+
     min_share_stake = settings.min_order_shares * entry_price
     if live_balance >= min_share_stake:
         stake = max(stake, min_share_stake)
+    
     stake = round(min(stake, live_balance), 2)
     if stake <= 0:
-        raise ValueError("no cash available")
+        raise ValueError("target exposure already reached or no cash available")
     if stake < minimum:
-        raise ValueError("trade size is below Polymarket's $1 minimum")
+        raise ValueError(f"trade size {stake} is below Polymarket's $1 minimum")
+
     size = round(stake / entry_price, 6)
     if size < settings.min_order_shares:
         raise ValueError(

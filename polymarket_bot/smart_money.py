@@ -42,10 +42,13 @@ class SmartMoneySignal:
     avg_copy_price: float
     wallets: list[str]
     titles: list[str]
+    total_trader_pnl: float = 0.0
 
     @property
     def score(self) -> float:
-        return (self.consensus * 10.0) + min(self.copied_usdc / 10.0, 25.0) - (self.candidate.best_ask or 0.0)
+        # Score includes consensus, size, and now quality (weighted PnL)
+        pnl_bonus = min(self.total_trader_pnl / 1000.0, 15.0)  # Up to 15 points for high PnL wallets
+        return (self.consensus * 10.0) + min(self.copied_usdc / 10.0, 25.0) + pnl_bonus - (self.candidate.best_ask or 0.0)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -59,6 +62,7 @@ class SmartMoneySignal:
             "avg_copy_price": self.avg_copy_price,
             "wallets": self.wallets,
             "titles": self.titles,
+            "total_trader_pnl": self.total_trader_pnl,
             "url": self.candidate.url,
         }
 
@@ -182,6 +186,8 @@ def analyze_smart_money(
 ) -> SmartMoneyReport:
     client = client or DataApiClient(settings.data_api_base_url)
     traders = _top_traders(client, settings)
+    pnl_by_wallet = {t.wallet.lower(): t.pnl for t in traders}
+    
     start = int(time.time()) - (settings.smart_trade_lookback_minutes * 60)
     trades: list[SmartTrade] = []
     traders_used = 0
@@ -190,7 +196,7 @@ def analyze_smart_money(
             continue
         traders_used += 1
         trades.extend(client.trades(user=trader.wallet, start=start))
-    signals, details = smart_money_signals(candidates, trades, settings, include_details=True)
+    signals, details = smart_money_signals(candidates, trades, settings, pnl_by_wallet=pnl_by_wallet, include_details=True)
     opportunities = sorted(signals, key=lambda item: item.score, reverse=True)
     return SmartMoneyReport(
         selected=opportunities[0] if opportunities else None,
@@ -210,6 +216,7 @@ def smart_money_signals(
     trades: list[SmartTrade],
     settings: Settings,
     *,
+    pnl_by_wallet: dict[str, float] | None = None,
     include_details: bool = False,
 ) -> list[SmartMoneySignal] | tuple[list[SmartMoneySignal], dict[str, Any]]:
     by_token = {candidate.token_id: candidate for candidate in candidates if candidate.token_id}
@@ -247,6 +254,7 @@ def smart_money_signals(
             rejected["not_enough_wallet_consensus"] = rejected.get("not_enough_wallet_consensus", 0) + 1
             continue
 
+        total_trader_pnl = sum(pnl_by_wallet.get(w.lower(), 0.0) for w in wallets) if pnl_by_wallet else 0.0
         copied_usdc = round(sum(trade.usdc_size for trade in token_trades), 2)
         total_size = sum(trade.size for trade in token_trades)
         avg_price = round(sum(trade.price * trade.size for trade in token_trades) / total_size, 4) if total_size else 0.0
@@ -258,6 +266,7 @@ def smart_money_signals(
                 avg_copy_price=avg_price,
                 wallets=wallets,
                 titles=sorted({trade.title for trade in token_trades if trade.title})[:3],
+                total_trader_pnl=total_trader_pnl,
             )
         )
     if include_details:
