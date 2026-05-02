@@ -61,6 +61,22 @@ POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
 
 The loop wakes every `POLYMARKET_AUTO_INTERVAL_SECONDS` seconds. The default is 300 seconds.
 
+For faster scans, override the interval when starting the loop:
+
+```bash
+POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B -m polymarket_bot.main auto-loop
+```
+
+Each tick prints a `scan_report` with:
+
+- The selected opportunity, if one qualified.
+- The top opportunities considered.
+- Trader and trade counts.
+- Eligible trade and grouped token counts.
+- Rejection reasons when nothing qualified.
+
+The scan path is deterministic Python code calling Polymarket APIs. It does not use Codex, Claude, or any LLM.
+
 ## Dashboard
 
 Run:

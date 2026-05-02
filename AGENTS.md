@@ -21,6 +21,14 @@ POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
 
 `auto-loop` runs the smart-money autonomous strategy every `POLYMARKET_AUTO_INTERVAL_SECONDS` seconds.
 
+For faster scans:
+
+```bash
+POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B -m polymarket_bot.main auto-loop
+```
+
+Each smart-money tick emits a `scan_report` that explains selected opportunities, considered opportunities, counts, and rejection reasons. The scanner must remain deterministic API/rules code and must not call Codex, Claude, or any LLM.
+
 ## Trading Rules
 
 - Do not add random trade selection.

@@ -39,6 +39,14 @@ Run the autonomous smart-money loop:
 POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
 ```
 
+Run it faster:
+
+```bash
+POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B -m polymarket_bot.main auto-loop
+```
+
+Each smart-money tick prints a `scan_report` explaining selected opportunities, considered opportunities, counts, and rejection reasons. Scanning and trade selection are deterministic Python rules over Polymarket APIs; do not add Claude, Codex, or any LLM call to the scan path.
+
 The dashboard is served at `http://127.0.0.1:8765` by default.
 
 ## Strategy To Make Money

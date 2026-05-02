@@ -20,6 +20,14 @@ POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main smart-money-o
 POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
 ```
 
+For faster scans:
+
+```bash
+POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B -m polymarket_bot.main auto-loop
+```
+
+Smart-money ticks print a `scan_report` with selected and considered opportunities, trader/trade counts, grouped token counts, and rejection reasons. The scan and trade-selection path must stay deterministic and must not call Codex, Claude, or any LLM.
+
 ## Strategy Defaults
 
 The default autonomous strategy is smart-money copy trading:
