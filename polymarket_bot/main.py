@@ -65,6 +65,24 @@ def scan(settings: Settings) -> list[dict[str, object]]:
     return [candidate.to_dict() for candidate in load_candidates(settings)]
 
 
+def reset_ledger(settings: Settings) -> dict[str, object]:
+    cash = settings.paper_balance_usd
+    source = "paper_balance"
+    if settings.private_key and settings.api_key and settings.api_secret and settings.api_passphrase:
+        client = build_client(settings)
+        live_cash = client.live_available_balance()
+        if live_cash > 0:
+            cash = round(live_cash, 2)
+            source = "live_clob"
+    portfolio = Portfolio(cash=cash, positions=[])
+    portfolio.save(settings.state_path)
+    return {
+        "reset": True,
+        "balance_source": source,
+        "summary": portfolio.summary(),
+    }
+
+
 def bootstrap_creds(settings: Settings) -> dict[str, str]:
     client = build_client(settings)
     creds = client.derive_or_create_api_creds()
@@ -149,7 +167,12 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     eligible_candidates = [
         candidate
         for candidate in candidates
-        if not portfolio.has_open_position(candidate.market_id, candidate.outcome)
+        if candidate.token_id
+        and candidate.accepts_orders
+        and candidate.best_ask is not None
+        and candidate.best_bid is not None
+        and candidate.tick_size is not None
+        and not portfolio.has_open_position(candidate.market_id, candidate.outcome)
     ]
     report = analyze_smart_money(eligible_candidates, settings)
     signal = report.selected
@@ -283,6 +306,7 @@ def main() -> None:
             "smart-money-loop",
             "auto-loop",
             "bootstrap-creds",
+            "reset-ledger",
             "dashboard",
         ],
     )
@@ -298,6 +322,8 @@ def main() -> None:
         print(json.dumps({"opened": opened, "summary": portfolio.summary()}, indent=2))
     elif args.command == "bootstrap-creds":
         print(json.dumps(bootstrap_creds(settings), indent=2))
+    elif args.command == "reset-ledger":
+        print(json.dumps(reset_ledger(settings), indent=2))
     elif args.command == "trade-once":
         if not settings.live_trading_enabled:
             raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")

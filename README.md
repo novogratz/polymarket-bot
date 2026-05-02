@@ -27,6 +27,7 @@ python3 -m pip install -r requirements.txt
 python3 -m polymarket_bot.main scan
 python3 -m polymarket_bot.main paper-tick
 python3 -m polymarket_bot.main bootstrap-creds
+python3 -m polymarket_bot.main reset-ledger
 python3 -m polymarket_bot.main trade-once
 python3 -m polymarket_bot.main smart-money-once
 python3 -m polymarket_bot.main smart-money-loop
@@ -96,6 +97,8 @@ POLYMARKET_ENABLE_LIVE_TRADING=1
 `paper-tick` opens one simulated position in the highest-ranked soon market, capped by `POLYMARKET_MAX_POSITION_USD`, then marks existing simulated positions to market.
 
 `bootstrap-creds` derives or loads your Polymarket API credentials using the wallet key.
+
+`reset-ledger` clears local dashboard positions and resets local cash from the live CLOB balance when credentials are available. Use this after manual trades make the dashboard ledger stale. It does not cancel or sell positions on Polymarket.
 
 `trade-once` places one live marketable limit order against the highest-ranked eligible soon market. It refuses to run unless `POLYMARKET_ENABLE_LIVE_TRADING=1` is set.
 

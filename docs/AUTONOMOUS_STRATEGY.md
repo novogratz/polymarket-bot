@@ -111,3 +111,11 @@ Open `http://127.0.0.1:8765`. The dashboard auto-refreshes and shows:
 - Open positions.
 - Recent bot trades and order IDs when available.
 - Current soon-market scanner candidates.
+
+If the dashboard gets stale because positions were changed manually on Polymarket, reset the local ledger:
+
+```bash
+python3 -B -m polymarket_bot.main reset-ledger
+```
+
+This clears only local dashboard state. It does not cancel or sell live Polymarket positions. New bot-created positions are recorded automatically and show up on the next dashboard refresh.
