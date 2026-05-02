@@ -13,7 +13,7 @@ from .gamma import GammaClient
 from .portfolio import Portfolio
 from .models import utc_now
 from .portfolio import paper_tick
-from .smart_money import choose_smart_money_trade
+from .smart_money import analyze_smart_money
 from .trading import build_client, choose_trade, execute_live_trade
 from .strategy import rank_markets
 
@@ -113,12 +113,14 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         for candidate in candidates
         if not portfolio.has_open_position(candidate.market_id, candidate.outcome)
     ]
-    signal = choose_smart_money_trade(eligible_candidates, settings)
+    report = analyze_smart_money(eligible_candidates, settings)
+    signal = report.selected
     if signal is None:
         portfolio.save(settings.state_path)
         return {
             "trade": None,
             "strategy": "smart_money",
+            "scan_report": report.to_dict(),
             "summary": portfolio.summary(),
         }
 
@@ -143,6 +145,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             "order": result.order,
             "response": result.response,
         },
+        "scan_report": report.to_dict(),
         "summary": portfolio.summary(),
     }
 

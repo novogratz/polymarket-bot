@@ -98,6 +98,14 @@ POLYMARKET_ENABLE_LIVE_TRADING=1
 
 `smart-money-loop` runs the smart-money strategy every `POLYMARKET_AUTO_INTERVAL_SECONDS` seconds. `auto-loop` is an alias for this default autonomous mode.
 
+For faster scans, override the interval at runtime:
+
+```bash
+POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B -m polymarket_bot.main auto-loop
+```
+
+Each smart-money tick prints a `scan_report` with the top opportunities considered, selected signal if any, trader/trade counts, and rejection reasons when nothing qualifies. The scanner does not use Codex, Claude, or any LLM.
+
 `btc-edge-once` only trades parsable BTC above/below threshold markets when a Coinbase BTC spot/volatility model finds enough edge. It skips generic markets.
 
 `btc-edge-loop` runs the BTC edge strategy every `POLYMARKET_AUTO_INTERVAL_SECONDS` seconds. Set `POLYMARKET_AUTO_MAX_TICKS=0` for an unlimited loop.
