@@ -201,6 +201,20 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             }
             require_saved_api_creds(settings)
             client = build_client(settings)
+
+            # Gracefully wait if out of funds
+            live_cash = client.live_available_balance()
+            if live_cash < 1.0:
+                portfolio.save(settings.state_path)
+                return {
+                    "trade": None,
+                    "strategy": "liquidity_starter",
+                    "status": "waiting_for_funds",
+                    "available_cash": live_cash,
+                    "scan_report": report.to_dict(),
+                    "summary": portfolio.summary(),
+                }
+
             result = execute_live_trade(
                 client,
                 settings,
@@ -233,6 +247,20 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     signal_payload = signal.to_dict()
     require_saved_api_creds(settings)
     client = build_client(settings)
+
+    # Gracefully wait if out of funds
+    live_cash = client.live_available_balance()
+    if live_cash < 1.0:
+        portfolio.save(settings.state_path)
+        return {
+            "trade": None,
+            "strategy": strategy,
+            "status": "waiting_for_funds",
+            "available_cash": live_cash,
+            "scan_report": report.to_dict(),
+            "summary": portfolio.summary(),
+        }
+
     result = execute_live_trade(
         client,
         settings,
