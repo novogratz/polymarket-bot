@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 
 from datetime import timedelta
 
@@ -46,7 +47,12 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
     if client.api_creds is None:
         client.derive_or_create_api_creds()
 
-    signal = choose_btc_edge_trade(candidates, settings, btc_model)
+    eligible_candidates = [
+        candidate
+        for candidate in candidates
+        if not portfolio.has_open_position(candidate.market_id, candidate.outcome)
+    ]
+    signal = choose_btc_edge_trade(eligible_candidates, settings, btc_model)
     if signal is None:
         return {
             "trade": None,
@@ -70,9 +76,46 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
     }
 
 
+def btc_edge_loop(settings: Settings) -> None:
+    tick = 0
+    while settings.auto_max_ticks <= 0 or tick < settings.auto_max_ticks:
+        tick += 1
+        started_at = utc_now()
+        try:
+            result: dict[str, object] = {
+                "tick": tick,
+                "started_at": started_at.isoformat(),
+                "result": btc_edge_once(settings),
+            }
+        except Exception as exc:
+            result = {
+                "tick": tick,
+                "started_at": started_at.isoformat(),
+                "error": {
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                },
+            }
+        print(json.dumps(result, indent=2), flush=True)
+        if settings.auto_max_ticks > 0 and tick >= settings.auto_max_ticks:
+            break
+        time.sleep(settings.auto_interval_seconds)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Polymarket scanner, paper dashboard, and live trader")
-    parser.add_argument("command", choices=["scan", "paper-tick", "trade-once", "btc-edge-once", "bootstrap-creds", "dashboard"])
+    parser.add_argument(
+        "command",
+        choices=[
+            "scan",
+            "paper-tick",
+            "trade-once",
+            "btc-edge-once",
+            "btc-edge-loop",
+            "bootstrap-creds",
+            "dashboard",
+        ],
+    )
     parser.add_argument("--limit", type=int, default=20, help="Rows to print for scan/paper-tick")
     args = parser.parse_args()
 
@@ -114,6 +157,10 @@ def main() -> None:
         if not settings.live_trading_enabled:
             raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
         print(json.dumps(btc_edge_once(settings), indent=2))
+    elif args.command == "btc-edge-loop":
+        if not settings.live_trading_enabled:
+            raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
+        btc_edge_loop(settings)
     else:
         serve(settings)
 

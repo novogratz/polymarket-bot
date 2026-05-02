@@ -11,6 +11,7 @@ python3 -m polymarket_bot.main paper-tick
 python3 -m polymarket_bot.main bootstrap-creds
 python3 -m polymarket_bot.main trade-once
 python3 -m polymarket_bot.main btc-edge-once
+python3 -m polymarket_bot.main btc-edge-loop
 python3 -m polymarket_bot.main dashboard
 ```
 
@@ -40,6 +41,8 @@ POLYMARKET_BTC_MAX_SPREAD=0.03
 POLYMARKET_BTC_MIN_TRADE_USD=1
 POLYMARKET_BTC_MAX_TRADE_USD=25
 POLYMARKET_BTC_VOLATILITY_DAYS=7
+POLYMARKET_AUTO_INTERVAL_SECONDS=300
+POLYMARKET_AUTO_MAX_TICKS=0
 POLYMARKET_MIN_LIQUIDITY_USD=500
 POLYMARKET_MIN_VOLUME_USD=1000
 POLYMARKET_DASHBOARD_PORT=8765
@@ -56,6 +59,8 @@ POLYMARKET_ENABLE_LIVE_TRADING=1
 `trade-once` places one live marketable limit order against the highest-ranked eligible soon market. It refuses to run unless `POLYMARKET_ENABLE_LIVE_TRADING=1` is set.
 
 `btc-edge-once` only trades parsable BTC above/below threshold markets when a Coinbase BTC spot/volatility model finds enough edge. It skips generic markets.
+
+`btc-edge-loop` runs the BTC edge strategy every `POLYMARKET_AUTO_INTERVAL_SECONDS` seconds. Set `POLYMARKET_AUTO_MAX_TICKS=0` for an unlimited loop.
 
 ## Notes
 

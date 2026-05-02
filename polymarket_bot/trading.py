@@ -224,19 +224,24 @@ class TradingSession:
 def build_client(settings: Settings) -> TradingSession:
     if not settings.private_key:
         raise ValueError("POLYMARKET_PRIVATE_KEY is required for live trading")
+    api_creds = (
+        ApiCreds(settings.api_key, settings.api_secret, settings.api_passphrase)
+        if settings.api_key and settings.api_secret and settings.api_passphrase
+        else None
+    )
     legacy_client = PolymarketClient(
         settings.clob_base_url,
         settings.chain_id,
         settings.private_key,
         signature_type=settings.signature_type,
         funder=settings.funder_address,
-        api_creds=(ApiCreds(settings.api_key, settings.api_secret, settings.api_passphrase) if settings.api_key and settings.api_secret and settings.api_passphrase else None),
+        api_creds=api_creds,
     )
     sdk_client = _build_sdk_client(
         settings,
-        api_creds=ApiCreds(settings.api_key, settings.api_secret, settings.api_passphrase) if settings.api_key and settings.api_secret and settings.api_passphrase else None,
+        api_creds=api_creds,
     )
-    return TradingSession(settings=settings, legacy_client=legacy_client, sdk_client=sdk_client)
+    return TradingSession(settings=settings, legacy_client=legacy_client, sdk_client=sdk_client, api_creds=api_creds)
 
 
 def choose_trade(candidates: list[Candidate], portfolio: Portfolio) -> Candidate | None:

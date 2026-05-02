@@ -42,6 +42,8 @@ class Settings:
     btc_min_trade_usd: float = _float_env("POLYMARKET_BTC_MIN_TRADE_USD", 1.0)
     btc_max_trade_usd: float = _float_env("POLYMARKET_BTC_MAX_TRADE_USD", 25.0)
     btc_volatility_days: int = _int_env("POLYMARKET_BTC_VOLATILITY_DAYS", 7)
+    auto_interval_seconds: int = _int_env("POLYMARKET_AUTO_INTERVAL_SECONDS", 300)
+    auto_max_ticks: int = _int_env("POLYMARKET_AUTO_MAX_TICKS", 0)
     min_liquidity_usd: float = _float_env("POLYMARKET_MIN_LIQUIDITY_USD", 500.0)
     min_volume_usd: float = _float_env("POLYMARKET_MIN_VOLUME_USD", 1000.0)
     dashboard_host: str = os.getenv("POLYMARKET_DASHBOARD_HOST", "127.0.0.1")
