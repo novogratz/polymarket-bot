@@ -4,6 +4,22 @@ Polymarket market scanner with a local dashboard, paper portfolio, and an authen
 
 The default autonomous strategy is smart-money copy trading: it watches recent BUY trades from profitable leaderboard wallets, requires consensus across multiple wallets, filters for tight spreads and sane prices, and avoids duplicate open positions. BTC edge trading is still available as a separate optional strategy.
 
+## Strategy To Make Money
+
+The bot tries to make money by following informed flow instead of guessing outcomes. It assumes the best available public signal is not a single market headline, but repeated buying from wallets that have recently ranked well by PnL.
+
+The autonomous strategy works like this:
+
+1. Scan active Polymarket markets that are liquid, tradable, and closing soon enough to keep capital moving.
+2. Pull leaderboard wallets by category and keep only traders with non-negative configured PnL.
+3. Read their recent BUY trades from the public Polymarket Data API.
+4. Look for consensus: at least `POLYMARKET_SMART_MIN_CONSENSUS` different profitable wallets must have bought the same token recently.
+5. Enter only if the market has an open order book, a tight enough spread, enough copied trade size, and an ask price inside the configured price band.
+6. Skip the trade if the local ledger already has that market/outcome open.
+7. Size from live USDC balance with `POLYMARKET_TRADE_FRACTION`, capped by `POLYMARKET_SMART_MAX_TRADE_USD`.
+
+This is not guaranteed profit. It is an edge-seeking system: copy strong public flow, avoid bad fills, keep positions sized, and refuse trades when the signal is weak.
+
 ## Run
 
 ```bash

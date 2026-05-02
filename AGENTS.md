@@ -29,6 +29,21 @@ POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
 - The smart-money strategy copies only recent BUY trades from profitable leaderboard wallets when multiple wallets bought the same token.
 - BTC edge trading is separate and should not be the default autonomous strategy.
 
+## Strategy To Make Money
+
+The bot's default money-making thesis is smart-money consensus. It tries to capture edge by copying repeated BUY flow from profitable Polymarket wallets, then avoiding trades where execution quality is poor.
+
+Required properties for autonomous live entries:
+
+- Multiple distinct profitable wallets bought the same token recently.
+- The copied trades clear the configured minimum USDC size.
+- The market is liquid, accepting orders, and has a spread under the configured max.
+- The ask price is inside the configured price band.
+- The local ledger has no duplicate open position for that market/outcome.
+- Sizing is capped so one trade cannot dominate the account.
+
+If those conditions are not present, the correct behavior is to skip. Do not weaken this into forced trading.
+
 ## Code Style
 
 - Keep edits small and aligned with the current standard-library-first code style.

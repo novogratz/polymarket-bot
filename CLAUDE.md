@@ -40,3 +40,18 @@ POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
 ```
 
 The dashboard is served at `http://127.0.0.1:8765` by default.
+
+## Strategy To Make Money
+
+The default strategy is smart-money copy trading. The bot does not try to invent an opinion on every market. It waits for public order-flow evidence that profitable wallets are buying the same token.
+
+The live entry should require:
+
+- Recent BUY trades from profitable leaderboard wallets.
+- Consensus from multiple distinct wallets on the same token.
+- Enough copied USDC size to matter.
+- A tradable market with acceptable spread and ask price.
+- No existing open position for the same market and outcome.
+- Explicit live-trading enablement.
+
+The expected edge comes from copying strong public flow while avoiding bad execution. This is not guaranteed profit; no-signal/no-trade is part of the strategy.

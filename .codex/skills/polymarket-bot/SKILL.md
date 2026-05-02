@@ -33,3 +33,15 @@ The default autonomous strategy is smart-money copy trading:
 7. Size by live balance fraction capped by `POLYMARKET_SMART_MAX_TRADE_USD`.
 
 BTC edge trading is optional and remains available through `btc-edge-once` and `btc-edge-loop`.
+
+## Money-Making Logic
+
+The expected edge is public order-flow following:
+
+- One wallet buying can be noise.
+- Multiple profitable wallets buying the same token in a short window is a stronger signal.
+- A good signal can still be a bad trade if the spread is wide or the ask is outside the configured band.
+- Risk control matters: size by balance fraction and cap max trade dollars.
+- Skipping is a valid action when the setup is not clean.
+
+When editing strategy code, preserve this hierarchy: consensus first, execution quality second, sizing discipline third. Never replace it with random market selection.
