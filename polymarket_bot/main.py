@@ -5,6 +5,7 @@ import json
 
 from datetime import timedelta
 
+from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
 from .config import Settings
 from .dashboard import serve
 from .gamma import GammaClient
@@ -36,9 +37,42 @@ def bootstrap_creds(settings: Settings) -> dict[str, str]:
     return creds.to_dict()
 
 
+def btc_edge_once(settings: Settings) -> dict[str, object]:
+    candidates = load_candidates(settings)
+    btc_model = CoinbaseBtcClient().model(settings)
+    portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+    portfolio.mark_to_market(candidates)
+    client = build_client(settings)
+    if client.api_creds is None:
+        client.derive_or_create_api_creds()
+
+    signal = choose_btc_edge_trade(candidates, settings, btc_model)
+    if signal is None:
+        return {
+            "trade": None,
+            "model": {
+                "spot": btc_model.spot,
+                "annual_volatility": btc_model.annual_volatility,
+                "fetched_at": btc_model.fetched_at.isoformat(),
+            },
+            "summary": portfolio.summary(),
+        }
+
+    result = execute_live_trade(client, settings, signal.candidate, portfolio)
+    portfolio.save(settings.state_path)
+    return {
+        "trade": {
+            "signal": signal.to_dict(),
+            "order": result.order,
+            "response": result.response,
+        },
+        "summary": portfolio.summary(),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Polymarket scanner, paper dashboard, and live trader")
-    parser.add_argument("command", choices=["scan", "paper-tick", "trade-once", "bootstrap-creds", "dashboard"])
+    parser.add_argument("command", choices=["scan", "paper-tick", "trade-once", "btc-edge-once", "bootstrap-creds", "dashboard"])
     parser.add_argument("--limit", type=int, default=20, help="Rows to print for scan/paper-tick")
     args = parser.parse_args()
 
@@ -76,6 +110,10 @@ def main() -> None:
                 },
                 "summary": portfolio.summary(),
             }, indent=2))
+    elif args.command == "btc-edge-once":
+        if not settings.live_trading_enabled:
+            raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
+        print(json.dumps(btc_edge_once(settings), indent=2))
     else:
         serve(settings)
 

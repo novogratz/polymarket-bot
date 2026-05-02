@@ -4,6 +4,11 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 
 def _float_env(name: str, default: float) -> float:
     value = os.getenv(name)
@@ -28,6 +33,14 @@ class Settings:
     soon_hours: int = _int_env("POLYMARKET_SOON_HOURS", 72)
     paper_balance_usd: float = _float_env("POLYMARKET_PAPER_BALANCE_USD", 20.0)
     max_position_usd: float = _float_env("POLYMARKET_MAX_POSITION_USD", 5.0)
+    trade_fraction: float = _float_env("POLYMARKET_TRADE_FRACTION", 0.10)
+    btc_min_model_probability: float = _float_env("POLYMARKET_BTC_MIN_MODEL_PROBABILITY", 0.90)
+    btc_max_buy_price: float = _float_env("POLYMARKET_BTC_MAX_BUY_PRICE", 0.82)
+    btc_min_edge: float = _float_env("POLYMARKET_BTC_MIN_EDGE", 0.08)
+    btc_max_spread: float = _float_env("POLYMARKET_BTC_MAX_SPREAD", 0.03)
+    btc_min_trade_usd: float = _float_env("POLYMARKET_BTC_MIN_TRADE_USD", 1.0)
+    btc_max_trade_usd: float = _float_env("POLYMARKET_BTC_MAX_TRADE_USD", 25.0)
+    btc_volatility_days: int = _int_env("POLYMARKET_BTC_VOLATILITY_DAYS", 7)
     min_liquidity_usd: float = _float_env("POLYMARKET_MIN_LIQUIDITY_USD", 500.0)
     min_volume_usd: float = _float_env("POLYMARKET_MIN_VOLUME_USD", 1000.0)
     dashboard_host: str = os.getenv("POLYMARKET_DASHBOARD_HOST", "127.0.0.1")

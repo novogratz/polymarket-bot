@@ -8,6 +8,7 @@ import secrets
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 from dataclasses import dataclass
 from typing import Any
 
@@ -287,8 +288,14 @@ class PolymarketClient:
         request = urllib.request.Request(url, data=request_body, method=method.upper(), headers=headers)
         if method.upper() in {"GET", "DELETE"} and request_body is not None:
             request.method = method.upper()
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            payload = response.read().decode("utf-8")
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                payload = response.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(
+                f"Polymarket {method.upper()} {path} failed with HTTP {exc.code}: {body or exc.reason}"
+            ) from exc
         return json.loads(payload) if payload else None
 
     def _get_json(self, path: str, *, params: dict[str, Any] | None = None) -> Any:

@@ -36,10 +36,39 @@ class Portfolio:
     def open_paper_position(self, candidate: Candidate, stake: float, *, entry_price: float | None = None) -> dict[str, Any] | None:
         if stake <= 0.0 or stake > self.cash or self.has_open_position(candidate.market_id, candidate.outcome):
             return None
+        position = self._build_position(candidate, stake, entry_price=entry_price)
+        self.cash = round(self.cash - stake, 2)
+        self.positions.append(position)
+        return position
+
+    def record_live_position(
+        self,
+        candidate: Candidate,
+        stake: float,
+        *,
+        entry_price: float | None = None,
+        order_id: str | None = None,
+        order_response: Any = None,
+    ) -> dict[str, Any] | None:
+        if stake <= 0.0 or self.has_open_position(candidate.market_id, candidate.outcome):
+            return None
+        position = self._build_position(candidate, stake, entry_price=entry_price)
+        position["live"] = True
+        position["order_id"] = order_id
+        position["order_response"] = order_response
+        self.positions.append(position)
+        return position
+
+    def _build_position(
+        self,
+        candidate: Candidate,
+        stake: float,
+        *,
+        entry_price: float | None = None,
+    ) -> dict[str, Any]:
         trade_price = entry_price if entry_price is not None else candidate.price
         shares = stake / trade_price
-        self.cash = round(self.cash - stake, 2)
-        position = {
+        return {
             "status": "open",
             "opened_at": utc_now().isoformat(),
             "market_id": candidate.market_id,
@@ -54,8 +83,6 @@ class Portfolio:
             "shares": shares,
             "unrealized_pnl": 0.0,
         }
-        self.positions.append(position)
-        return position
 
     def mark_to_market(self, candidates: list[Candidate]) -> None:
         by_token = {candidate.token_id: candidate for candidate in candidates if candidate.token_id}
@@ -94,7 +121,7 @@ def paper_tick(candidates: list[Candidate], settings: Settings) -> tuple[Portfol
     opened = None
     if candidates:
         top = candidates[0]
-        stake = min(portfolio.cash, settings.max_position_usd)
+        stake = round(portfolio.cash * settings.trade_fraction, 2)
         opened = portfolio.open_paper_position(top, stake)
     portfolio.save(settings.state_path)
     return portfolio, opened

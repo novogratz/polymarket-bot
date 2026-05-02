@@ -1,6 +1,7 @@
 from datetime import timedelta
 import unittest
 
+from polymarket_bot.bitcoin import BtcModel, btc_signal, btc_terminal_probability, parse_btc_threshold
 from polymarket_bot.config import Settings
 from polymarket_bot.models import utc_now
 from polymarket_bot.polymarket import ApiCreds, PolymarketClient
@@ -73,6 +74,45 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(order["makerAmount"], "5000000")
         self.assertEqual(order["takerAmount"], "10000000")
         self.assertIn("signature", order)
+
+    def test_parse_btc_threshold(self):
+        self.assertEqual(parse_btc_threshold("Will Bitcoin be above $100,000 on Friday?"), ("above", 100000.0))
+        self.assertEqual(parse_btc_threshold("Will BTC be under 95k today?"), ("below", 95000.0))
+        self.assertIsNone(parse_btc_threshold("Will Bitcoin hit $100,000 today?"))
+
+    def test_btc_probability_moves_with_distance_to_strike(self):
+        near = btc_terminal_probability(spot=100000, strike=99000, hours=6, annual_volatility=0.6, direction="above")
+        far = btc_terminal_probability(spot=100000, strike=110000, hours=6, annual_volatility=0.6, direction="above")
+        self.assertGreater(near, far)
+
+    def test_btc_signal_requires_edge(self):
+        end_date = (utc_now() + timedelta(hours=3)).isoformat()
+        candidate = rank_markets(
+            [
+                {
+                    "id": "1",
+                    "question": "Will Bitcoin be above $100,000 today?",
+                    "slug": "will-bitcoin-be-above-100000-today",
+                    "endDate": end_date,
+                    "liquidity": "10000",
+                    "volume": "20000",
+                    "bestBid": "0.79",
+                    "bestAsk": "0.80",
+                    "orderPriceMinTickSize": "0.01",
+                    "acceptingOrders": True,
+                    "outcomes": '["Yes","No"]',
+                    "outcomePrices": '["0.80","0.20"]',
+                    "clobTokenIds": '["yes-token","no-token"]',
+                }
+            ],
+            Settings(min_liquidity_usd=0, min_volume_usd=0, soon_hours=24),
+        )[0]
+        signal = btc_signal(
+            candidate,
+            Settings(min_liquidity_usd=0, min_volume_usd=0, btc_min_model_probability=0.90),
+            BtcModel(spot=105000, annual_volatility=0.4, fetched_at=utc_now()),
+        )
+        self.assertIsNotNone(signal)
 
 
 if __name__ == "__main__":
