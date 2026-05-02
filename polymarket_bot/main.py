@@ -14,7 +14,7 @@ from .gamma import GammaClient
 from .portfolio import Portfolio
 from .models import utc_now
 from .portfolio import paper_tick
-from .smart_money import analyze_smart_money
+from .smart_money import DataApiClient, analyze_smart_money, _top_traders
 from .trading import build_client, choose_trade, execute_live_trade
 from .strategy import rank_markets
 
