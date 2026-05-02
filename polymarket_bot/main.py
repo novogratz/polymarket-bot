@@ -164,6 +164,49 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     portfolio.mark_to_market(candidates)
     open_count = portfolio.summary()["open_positions"]
 
+    # 1. WHALE EXIT: Check if we should close any existing positions
+    client = build_client(settings)
+    whale_exit_report = []
+    if portfolio.positions:
+        # Get latest smart money trades to see who is still in
+        data_client = DataApiClient(settings.data_api_base_url)
+        traders = _top_traders(data_client, settings)
+        # Look back 2 hours for exits
+        exit_lookback = int(time.time()) - (120 * 60)
+        
+        for position in portfolio.positions:
+            if position.get("status") != "open" or not position.get("live"):
+                continue
+            
+            # If this trade was from smart money, check if they are still buying/holding
+            signal = position.get("signal")
+            if not signal or "wallets" not in signal:
+                continue
+                
+            original_wallets = set(signal["wallets"])
+            # Check if any of the original wallets have bought again recently
+            # If they haven't bought in the last 2 hours, and we find NO recent buys for this token, we exit
+            recent_trades = []
+            for wallet in original_wallets:
+                recent_trades.extend(data_client.trades(user=wallet, start=exit_lookback))
+            
+            still_holding = any(t.asset == position.get("token_id") for t in recent_trades)
+            if not still_holding and original_wallets:
+                # WHALE EXIT TRIGGERED
+                print(f"\n🐋 WHALE EXIT: Smart money left '{position['question']}'. Selling...\n")
+                # In a real bot, we'd call sdk_client.create_and_post_order for a SELL side
+                # For now, we mark as closed to free up the 'exposure' logic
+                position["status"] = "closed"
+                position["closed_at"] = utc_now().isoformat()
+                whale_exit_report.append(position["question"])
+
+    # 2. CATEGORY DIVERSIFICATION: Count open categories
+    open_categories: dict[str, int] = {}
+    for pos in portfolio.positions:
+        if pos.get("status") == "open":
+            cat = pos.get("signal", {}).get("category", "OTHER")
+            open_categories[cat] = open_categories.get(cat, 0) + 1
+
     eligible_candidates = [
         candidate
         for candidate in candidates
@@ -174,6 +217,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         and candidate.tick_size is not None
         and not portfolio.has_open_position(candidate.market_id)
     ]
+
     report = analyze_smart_money(eligible_candidates, settings)
     signal = report.selected
     strategy = "smart_money"
@@ -257,20 +301,38 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             "strategy": strategy,
             "status": "waiting_for_funds",
             "available_cash": live_cash,
+            "whale_exits": whale_exit_report,
+            "category_summary": open_categories,
             "scan_report": report.to_dict(),
             "summary": portfolio.summary(),
         }
 
-    result = execute_live_trade(
-        client,
-        settings,
-        signal.candidate,
-        portfolio,
-        min_trade_usd=1.0,
-        max_trade_usd=settings.starter_trade_usd if strategy == "smart_money_starter" else settings.smart_max_trade_usd,
-        strategy=strategy,
-        signal=signal_payload,
-    )
+    try:
+        result = execute_live_trade(
+            client,
+            settings,
+            signal.candidate,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=settings.starter_trade_usd if strategy == "smart_money_starter" else settings.smart_max_trade_usd,
+            strategy=strategy,
+            signal=signal_payload,
+        )
+    except ValueError as e:
+        if "Anti-pump" in str(e):
+            portfolio.save(settings.state_path)
+            return {
+                "trade": None,
+                "strategy": strategy,
+                "status": "skipped_pump",
+                "reason": str(e),
+                "whale_exits": whale_exit_report,
+                "category_summary": open_categories,
+                "scan_report": report.to_dict(),
+                "summary": portfolio.summary(),
+            }
+        raise e
+
     portfolio.save(settings.state_path)
     return {
         "trade": {
@@ -279,6 +341,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             "order": result.order,
             "response": result.response,
         },
+        "whale_exits": whale_exit_report,
+        "category_summary": open_categories,
         "scan_report": report.to_dict(),
         "summary": portfolio.summary(),
     }

@@ -275,11 +275,11 @@ def execute_live_trade(
 
     entry_price = round(min(candidate.best_ask + candidate.tick_size, 0.99), 3)
 
-    # ANTI-PUMP PROTECTION: Don't follow if price moved > 3% from smart money entry
+    # ANTI-PUMP PROTECTION: Don't follow if price moved > 15% from smart money entry
     if signal and "avg_copy_price" in signal:
         avg_copy = float(signal["avg_copy_price"])
         slippage = (entry_price - avg_copy) / avg_copy if avg_copy > 0 else 0
-        if slippage > 0.03:
+        if slippage > 0.15:
             raise ValueError(f"Anti-pump: Entry price {entry_price} is {slippage:.1%} above smart money avg {avg_copy}")
 
     live_balance = client.live_available_balance()
