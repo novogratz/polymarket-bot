@@ -295,6 +295,9 @@ def execute_live_trade(
         raise ValueError(
             f"order size {size} shares is below Polymarket minimum of {settings.min_order_shares} shares"
         )
+
+    print(f"\n🚀 EXECUTING TRADE: BUY {size} shares of '{candidate.outcome}' at {entry_price} on '{candidate.question}' (${stake} USDC)\n")
+
     order, response = client.place_live_order(candidate=candidate, price=entry_price, size=size)
     position = portfolio.record_live_position(
         candidate,
