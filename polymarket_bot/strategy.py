@@ -1,0 +1,65 @@
+from __future__ import annotations
+
+from datetime import timedelta
+from typing import Any
+
+from .config import Settings
+from .models import Candidate, as_float, parse_dt, parse_json_list, utc_now
+
+
+def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Candidate]:
+    now = utc_now()
+    horizon = now + timedelta(hours=settings.soon_hours)
+    candidates: list[Candidate] = []
+
+    for market in markets:
+        end_date = parse_dt(market.get("endDate"))
+        if end_date is None or end_date < now or end_date > horizon:
+            continue
+
+        liquidity = as_float(market.get("liquidity") or market.get("liquidityNum"))
+        volume = as_float(market.get("volume") or market.get("volumeNum"))
+        if liquidity < settings.min_liquidity_usd or volume < settings.min_volume_usd:
+            continue
+
+        outcomes = [str(item) for item in parse_json_list(market.get("outcomes"))]
+        prices = [as_float(item, -1.0) for item in parse_json_list(market.get("outcomePrices"))]
+        token_ids = [str(item) for item in parse_json_list(market.get("clobTokenIds"))]
+        if not outcomes or len(outcomes) != len(prices):
+            continue
+
+        hours = max((end_date - now).total_seconds() / 3600.0, 0.0)
+        for index, outcome in enumerate(outcomes):
+            price = prices[index]
+            if price <= 0.0 or price >= 1.0:
+                continue
+
+            # This is a liquidity/urgency watchlist score, not an expected-value claim.
+            urgency = 1.0 / max(hours, 1.0)
+            tradability = min(liquidity / 10_000.0, 3.0) + min(volume / 100_000.0, 2.0)
+            fair_price_bias = 1.0 - abs(price - 0.5)
+            score = (tradability * 2.0) + (urgency * 5.0) + fair_price_bias
+            slug = str(market.get("slug") or market.get("id") or "")
+            candidates.append(
+                Candidate(
+                    market_id=str(market.get("id") or ""),
+                    question=str(market.get("question") or ""),
+                    slug=slug,
+                    end_date=end_date,
+                    hours_to_close=hours,
+                    liquidity=liquidity,
+                    volume=volume,
+                    outcome=outcome,
+                    price=price,
+                    token_id=token_ids[index] if index < len(token_ids) else None,
+                    score=score,
+                    url=f"https://polymarket.com/event/{slug}" if slug else "https://polymarket.com",
+                )
+            )
+
+    return sorted(candidates, key=lambda item: item.score, reverse=True)
+
+
+def stake_for_candidate(candidate: Candidate, cash: float, settings: Settings) -> float:
+    del candidate
+    return round(max(0.0, min(cash, settings.max_position_usd)), 2)
