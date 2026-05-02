@@ -251,7 +251,7 @@ def choose_trade(candidates: list[Candidate], portfolio: Portfolio) -> Candidate
             and candidate.accepts_orders
             and candidate.best_ask is not None
             and candidate.tick_size is not None
-            and not portfolio.has_open_position(candidate.market_id, candidate.outcome)
+            and not portfolio.has_open_position(candidate.market_id)
         ):
             return candidate
     return None

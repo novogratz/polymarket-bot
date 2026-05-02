@@ -25,13 +25,20 @@ class Portfolio:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"cash": self.cash, "positions": self.positions}, indent=2, sort_keys=True))
 
-    def has_open_position(self, market_id: str, outcome: str) -> bool:
+    def has_open_position(self, market_id: str, outcome: str | None = None) -> bool:
+        """
+        Returns True if any outcome for this market is open.
+        If outcome is provided, it specifically checks for that outcome (used internally).
+        """
         return any(
             position.get("market_id") == market_id
-            and position.get("outcome") == outcome
+            and (outcome is None or position.get("outcome") == outcome)
             and position.get("status") == "open"
             for position in self.positions
         )
+
+    def has_exact_position(self, market_id: str, outcome: str) -> bool:
+        return self.has_open_position(market_id, outcome=outcome)
 
     def open_paper_position(self, candidate: Candidate, stake: float, *, entry_price: float | None = None) -> dict[str, Any] | None:
         if stake <= 0.0 or stake > self.cash or self.has_open_position(candidate.market_id, candidate.outcome):

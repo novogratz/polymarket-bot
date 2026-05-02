@@ -119,7 +119,7 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
         and candidate.best_ask is not None
         and candidate.best_bid is not None
         and candidate.tick_size is not None
-        and not portfolio.has_open_position(candidate.market_id, candidate.outcome)
+        and not portfolio.has_open_position(candidate.market_id)
     ]
     signal = choose_btc_edge_trade(eligible_candidates, settings, btc_model)
     if signal is None:
@@ -172,7 +172,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         and candidate.best_ask is not None
         and candidate.best_bid is not None
         and candidate.tick_size is not None
-        and not portfolio.has_open_position(candidate.market_id, candidate.outcome)
+        and not portfolio.has_open_position(candidate.market_id)
     ]
     report = analyze_smart_money(eligible_candidates, settings)
     signal = report.selected
