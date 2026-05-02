@@ -55,7 +55,9 @@ This refusal logic is intentional. Forced trades are how the bot ends up in weak
 
 The bot is configured to maintain at least `POLYMARKET_MIN_OPEN_POSITIONS` open position. If the account has zero open positions and no normal consensus trade qualifies, it can take a `smart_money_starter` trade.
 
-The starter fallback is not random. It still requires:
+The smart-money/starter universe defaults to `POLYMARKET_SMART_SOON_HOURS=72`, which means today, tomorrow, and the next few days. It should not reach into far-out monthly contracts by default.
+
+The smart-money starter fallback is not random. It still requires:
 
 - Recent BUY flow from a profitable leaderboard wallet.
 - A matching active Polymarket token in the widened smart-money scan universe.
@@ -65,6 +67,8 @@ The starter fallback is not random. It still requires:
 - No duplicate open position.
 
 The fallback uses `POLYMARKET_SMART_FALLBACK_CONSENSUS`, default `1`, instead of the normal `POLYMARKET_SMART_MIN_CONSENSUS`, default `2`.
+
+If even that does not qualify and there are zero open positions, the bot can use `liquidity_starter`: the highest-ranked executable near-term candidate from the scanner. This is the final fallback for the user's requirement to keep at least one position open. Starter trades use `POLYMARKET_STARTER_TRADE_USD=1` by default.
 
 ## Automation
 

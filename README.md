@@ -69,11 +69,12 @@ POLYMARKET_SMART_CATEGORIES=OVERALL,CRYPTO,FINANCE,ECONOMICS,TECH,POLITICS
 POLYMARKET_SMART_TIME_PERIOD=WEEK
 POLYMARKET_SMART_LEADERBOARD_LIMIT=15
 POLYMARKET_SMART_SCAN_LIMIT=1000
-POLYMARKET_SMART_SOON_HOURS=720
+POLYMARKET_SMART_SOON_HOURS=72
 POLYMARKET_SMART_TRADE_LOOKBACK_MINUTES=20
 POLYMARKET_SMART_MIN_CONSENSUS=2
 POLYMARKET_SMART_FALLBACK_CONSENSUS=1
 POLYMARKET_MIN_OPEN_POSITIONS=1
+POLYMARKET_STARTER_TRADE_USD=1
 POLYMARKET_SMART_MIN_TRADER_PNL=0
 POLYMARKET_SMART_MIN_TRADE_USD=25
 POLYMARKET_SMART_MIN_BUY_PRICE=0.08
@@ -110,7 +111,7 @@ POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B 
 
 Each smart-money tick prints a `scan_report` with the top opportunities considered, selected signal if any, trader/trade counts, and rejection reasons when nothing qualifies. The scanner does not use Codex, Claude, or any LLM.
 
-If there are zero open positions and no normal consensus trade qualifies, the bot can use a `smart_money_starter` fallback to maintain at least `POLYMARKET_MIN_OPEN_POSITIONS`. The fallback still requires recent profitable-wallet flow, an executable order book, spread limits, price-band limits, and duplicate-position checks, but it can use `POLYMARKET_SMART_FALLBACK_CONSENSUS=1` instead of the normal consensus threshold.
+The smart-money universe defaults to `POLYMARKET_SMART_SOON_HOURS=72`, so it targets today, tomorrow, and the next few days instead of far-out contracts. If there are zero open positions and no normal consensus trade qualifies, the bot can use a `smart_money_starter` or `liquidity_starter` fallback to maintain at least `POLYMARKET_MIN_OPEN_POSITIONS`. Starter trades use `POLYMARKET_STARTER_TRADE_USD=1` by default and still require executable markets, spread/price filters where applicable, and duplicate-position checks.
 
 `btc-edge-once` only trades parsable BTC above/below threshold markets when a Coinbase BTC spot/volatility model finds enough edge. It skips generic markets.
 

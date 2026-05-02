@@ -96,7 +96,12 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
     eligible_candidates = [
         candidate
         for candidate in candidates
-        if not portfolio.has_open_position(candidate.market_id, candidate.outcome)
+        if candidate.token_id
+        and candidate.accepts_orders
+        and candidate.best_ask is not None
+        and candidate.best_bid is not None
+        and candidate.tick_size is not None
+        and not portfolio.has_open_position(candidate.market_id, candidate.outcome)
     ]
     signal = choose_btc_edge_trade(eligible_candidates, settings, btc_model)
     if signal is None:
@@ -160,6 +165,40 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             signal = fallback_report.selected
             strategy = "smart_money_starter"
     if signal is None:
+        if open_count < settings.min_open_positions and eligible_candidates:
+            starter = eligible_candidates[0]
+            signal_payload = {
+                "market_id": starter.market_id,
+                "question": starter.question,
+                "outcome": starter.outcome,
+                "best_ask": starter.best_ask,
+                "best_bid": starter.best_bid,
+                "url": starter.url,
+                "reason": "minimum_open_position_liquidity_starter",
+            }
+            require_saved_api_creds(settings)
+            client = build_client(settings)
+            result = execute_live_trade(
+                client,
+                settings,
+                starter,
+                portfolio,
+                min_trade_usd=1.0,
+                max_trade_usd=settings.starter_trade_usd,
+                strategy="liquidity_starter",
+                signal=signal_payload,
+            )
+            portfolio.save(settings.state_path)
+            return {
+                "trade": {
+                    "strategy": "liquidity_starter",
+                    "signal": signal_payload,
+                    "order": result.order,
+                    "response": result.response,
+                },
+                "scan_report": report.to_dict(),
+                "summary": portfolio.summary(),
+            }
         portfolio.save(settings.state_path)
         return {
             "trade": None,
@@ -177,7 +216,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         signal.candidate,
         portfolio,
         min_trade_usd=1.0,
-        max_trade_usd=settings.smart_max_trade_usd,
+        max_trade_usd=settings.starter_trade_usd if strategy == "smart_money_starter" else settings.smart_max_trade_usd,
         strategy=strategy,
         signal=signal_payload,
     )
