@@ -231,116 +231,118 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             report = fallback_report
             signal = fallback_report.selected
             strategy = "smart_money_starter"
-    if signal is None:
-        if open_count < settings.min_open_positions and eligible_candidates:
-            starter = eligible_candidates[0]
-            signal_payload = {
-                "market_id": starter.market_id,
-                "question": starter.question,
-                "outcome": starter.outcome,
-                "best_ask": starter.best_ask,
-                "best_bid": starter.best_bid,
-                "url": starter.url,
-                "reason": "minimum_open_position_liquidity_starter",
-            }
-            require_saved_api_creds(settings)
-            client = build_client(settings)
 
-            # Gracefully wait if out of funds
-            live_cash = client.live_available_balance()
-            if live_cash < 1.0:
-                portfolio.save(settings.state_path)
-                return {
-                    "trade": None,
-                    "strategy": "liquidity_starter",
-                    "status": "waiting_for_funds",
-                    "available_cash": live_cash,
-                    "scan_report": report.to_dict(),
-                    "summary": portfolio.summary(),
-                }
-
-            result = execute_live_trade(
-                client,
-                settings,
-                starter,
-                portfolio,
-                min_trade_usd=1.0,
-                max_trade_usd=settings.starter_trade_usd,
-                strategy="liquidity_starter",
-                signal=signal_payload,
-            )
-            portfolio.save(settings.state_path)
-            return {
-                "trade": {
-                    "strategy": "liquidity_starter",
-                    "signal": signal_payload,
-                    "order": result.order,
-                    "response": result.response,
-                },
-                "scan_report": report.to_dict(),
-                "summary": portfolio.summary(),
-            }
-        portfolio.save(settings.state_path)
-        return {
-            "trade": None,
-            "strategy": "smart_money",
-            "scan_report": report.to_dict(),
-            "summary": portfolio.summary(),
-        }
-
-    signal_payload = signal.to_dict()
+    signal_payload = signal.to_dict() if signal else None
     require_saved_api_creds(settings)
     client = build_client(settings)
 
-    # Gracefully wait if out of funds
-    live_cash = client.live_available_balance()
-    if live_cash < 1.0:
+    # Try to take the smart money trade
+    trade_executed = False
+    if signal:
+        # Gracefully wait if out of funds
+        live_cash = client.live_available_balance()
+        if live_cash < 1.0:
+            portfolio.save(settings.state_path)
+            return {
+                "trade": None,
+                "strategy": strategy,
+                "status": "waiting_for_funds",
+                "available_cash": live_cash,
+                "whale_exits": whale_exit_report,
+                "category_summary": open_categories,
+                "scan_report": report.to_dict(),
+                "summary": portfolio.summary(),
+            }
+
+        try:
+            result = execute_live_trade(
+                client,
+                settings,
+                signal.candidate,
+                portfolio,
+                min_trade_usd=1.0,
+                max_trade_usd=settings.starter_trade_usd if strategy == "smart_money_starter" else settings.smart_max_trade_usd,
+                strategy=strategy,
+                signal=signal_payload,
+            )
+            trade_executed = True
+        except ValueError as e:
+            if "Anti-pump" in str(e):
+                print(f"⚠️  Skipping pumped signal: {str(e)}")
+            else:
+                raise e
+
+    if trade_executed:
         portfolio.save(settings.state_path)
         return {
-            "trade": None,
-            "strategy": strategy,
-            "status": "waiting_for_funds",
-            "available_cash": live_cash,
+            "trade": {
+                "strategy": strategy,
+                "signal": signal_payload,
+                "order": result.order,
+                "response": result.response,
+            },
             "whale_exits": whale_exit_report,
             "category_summary": open_categories,
             "scan_report": report.to_dict(),
             "summary": portfolio.summary(),
         }
 
-    try:
-        result = execute_live_trade(
-            client,
-            settings,
-            signal.candidate,
-            portfolio,
-            min_trade_usd=1.0,
-            max_trade_usd=settings.starter_trade_usd if strategy == "smart_money_starter" else settings.smart_max_trade_usd,
-            strategy=strategy,
-            signal=signal_payload,
-        )
-    except ValueError as e:
-        if "Anti-pump" in str(e):
+    # FALLBACK: If no signal OR signal was rejected (e.g. anti-pump), and we still have no trades
+    if open_count < settings.min_open_positions and eligible_candidates:
+        starter = eligible_candidates[0]
+        signal_payload = {
+            "market_id": starter.market_id,
+            "question": starter.question,
+            "outcome": starter.outcome,
+            "best_ask": starter.best_ask,
+            "best_bid": starter.best_bid,
+            "url": starter.url,
+            "reason": "fallback_liquidity_starter_active_goal",
+        }
+        
+        # Gracefully wait if out of funds
+        live_cash = client.live_available_balance()
+        if live_cash < 1.0:
             portfolio.save(settings.state_path)
             return {
                 "trade": None,
-                "strategy": strategy,
-                "status": "skipped_pump",
-                "reason": str(e),
+                "strategy": "liquidity_starter",
+                "status": "waiting_for_funds",
+                "available_cash": live_cash,
                 "whale_exits": whale_exit_report,
                 "category_summary": open_categories,
                 "scan_report": report.to_dict(),
                 "summary": portfolio.summary(),
             }
-        raise e
+
+        result = execute_live_trade(
+            client,
+            settings,
+            starter,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=settings.starter_trade_usd,
+            strategy="liquidity_starter",
+            signal=signal_payload,
+        )
+        portfolio.save(settings.state_path)
+        return {
+            "trade": {
+                "strategy": "liquidity_starter",
+                "signal": signal_payload,
+                "order": result.order,
+                "response": result.response,
+            },
+            "whale_exits": whale_exit_report,
+            "category_summary": open_categories,
+            "scan_report": report.to_dict(),
+            "summary": portfolio.summary(),
+        }
 
     portfolio.save(settings.state_path)
     return {
-        "trade": {
-            "strategy": strategy,
-            "signal": signal_payload,
-            "order": result.order,
-            "response": result.response,
-        },
+        "trade": None,
+        "strategy": "smart_money",
         "whale_exits": whale_exit_report,
         "category_summary": open_categories,
         "scan_report": report.to_dict(),
