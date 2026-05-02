@@ -1,26 +1,26 @@
 # polymarket-bot
 
-Polymarket market scanner with a local dashboard, paper portfolio, and an authenticated live-trading path.
+Scanner de marches Polymarket avec dashboard local, portefeuille papier et chemin de trading live authentifie.
 
-The default autonomous strategy is smart-money copy trading: it watches recent BUY trades from profitable leaderboard wallets, requires consensus across multiple wallets, filters for tight spreads and sane prices, and avoids duplicate open positions. BTC edge trading is still available as a separate optional strategy.
+La strategie autonome par defaut est du copy trading smart-money : le bot surveille les achats recents de wallets profitables dans les leaderboards, exige un consensus entre plusieurs wallets, filtre les spreads trop larges et les prix incoherents, puis evite les positions deja ouvertes. La strategie BTC edge reste disponible comme strategie optionnelle separee.
 
-## Strategy To Make Money
+## Strategie Pour Gagner De L'argent
 
-The bot tries to make money by following informed flow instead of guessing outcomes. It assumes the best available public signal is not a single market headline, but repeated buying from wallets that have recently ranked well by PnL.
+Le bot essaie de gagner de l'argent en suivant le flux informe au lieu de deviner les resultats. L'hypothese est que le meilleur signal public n'est pas un titre de marche isole, mais des achats repetes de wallets qui ont recemment bien performe en PnL.
 
-The autonomous strategy works like this:
+La strategie autonome fonctionne comme suit :
 
-1. Scan active Polymarket markets that are liquid, tradable, and closing soon enough to keep capital moving.
-2. Pull leaderboard wallets by category and keep only traders with non-negative configured PnL.
-3. Read their recent BUY trades from the public Polymarket Data API.
-4. Look for consensus: at least `POLYMARKET_SMART_MIN_CONSENSUS` different profitable wallets must have bought the same token recently.
-5. Enter only if the market has an open order book, a tight enough spread, enough copied trade size, and an ask price inside the configured price band.
-6. Skip the trade if the local ledger already has that market/outcome open.
-7. Size from live USDC balance with `POLYMARKET_TRADE_FRACTION`, capped by `POLYMARKET_SMART_MAX_TRADE_USD`.
+1. Scanner les marches Polymarket actifs, liquides, tradables et qui ferment assez vite pour garder le capital en mouvement.
+2. Recuperer les wallets des leaderboards par categorie et garder seulement les traders avec un PnL configure non negatif.
+3. Lire leurs achats recents via la Data API publique de Polymarket.
+4. Chercher un consensus : au moins `POLYMARKET_SMART_MIN_CONSENSUS` wallets profitables differents doivent avoir achete le meme token recemment.
+5. Entrer seulement si le marche a un carnet executable, un spread assez serre, une taille de trades copies suffisante, et un ask dans la bande de prix configuree.
+6. Ignorer le trade si le ledger local a deja ce marche/outcome ouvert.
+7. Dimensionner depuis le solde USDC live avec `POLYMARKET_TRADE_FRACTION`, plafonne par `POLYMARKET_SMART_MAX_TRADE_USD`.
 
-This is not guaranteed profit. It is an edge-seeking system: copy strong public flow, avoid bad fills, keep positions sized, and refuse trades when the signal is weak.
+Ce n'est pas un profit garanti. C'est un systeme qui cherche un edge : copier un flux public fort, eviter les mauvais fills, garder les tailles sous controle, et refuser les trades quand le signal est faible.
 
-## Run
+## Lancer
 
 ```bash
 python3 -m pip install -r requirements.txt
@@ -37,7 +37,7 @@ python3 -m polymarket_bot.main btc-edge-loop
 python3 -m polymarket_bot.main dashboard
 ```
 
-Dashboard URL:
+URL du dashboard :
 
 ```text
 http://127.0.0.1:8765
@@ -45,9 +45,9 @@ http://127.0.0.1:8765
 
 ## Configuration
 
-Create a local `.env` file in the project root with your wallet and trading settings.
+Cree un fichier local `.env` a la racine du projet avec ton wallet et tes parametres de trading.
 
-Environment variables:
+Variables d'environnement :
 
 ```bash
 POLYMARKET_SCAN_LIMIT=200
@@ -94,35 +94,35 @@ POLYMARKET_API_PASSPHRASE=...
 POLYMARKET_ENABLE_LIVE_TRADING=1
 ```
 
-`paper-tick` opens one simulated position in the highest-ranked soon market, capped by `POLYMARKET_MAX_POSITION_USD`, then marks existing simulated positions to market.
+`paper-tick` ouvre une position simulee sur le meilleur marche proche, plafonnee par `POLYMARKET_MAX_POSITION_USD`, puis marque les positions simulees au marche.
 
-`bootstrap-creds` derives or loads your Polymarket API credentials using the wallet key.
+`bootstrap-creds` derive ou charge les identifiants API Polymarket depuis la cle du wallet.
 
-`reset-ledger` clears local dashboard positions and resets local cash from the live CLOB balance when credentials are available. Use this after manual trades make the dashboard ledger stale. It does not cancel or sell positions on Polymarket.
+`reset-ledger` efface les positions locales du dashboard et remet le cash local depuis le solde CLOB live quand les identifiants sont disponibles. Utilise-le apres des trades manuels qui rendent le ledger du dashboard stale. Cette commande ne cancel pas et ne vend pas les positions sur Polymarket.
 
-`trade-once` places one live marketable limit order against the highest-ranked eligible soon market. It refuses to run unless `POLYMARKET_ENABLE_LIVE_TRADING=1` is set.
+`trade-once` place un ordre live marketable limit sur le meilleur marche eligible. Il refuse de tourner si `POLYMARKET_ENABLE_LIVE_TRADING=1` n'est pas defini.
 
-`smart-money-once` places one live trade only when profitable leaderboard wallets recently bought the same token with enough consensus, size, and order-book quality.
+`smart-money-once` place un trade live seulement si des wallets profitables ont recemment achete le meme token avec assez de consensus, de taille et de qualite de carnet.
 
-`smart-money-loop` runs the smart-money strategy every `POLYMARKET_AUTO_INTERVAL_SECONDS` seconds. `auto-loop` is an alias for this default autonomous mode.
+`smart-money-loop` lance la strategie smart-money toutes les `POLYMARKET_AUTO_INTERVAL_SECONDS` secondes. `auto-loop` est un alias pour ce mode autonome par defaut.
 
-For faster scans, override the interval at runtime:
+Pour scanner plus vite, surcharge l'intervalle au lancement :
 
 ```bash
 POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B -m polymarket_bot.main auto-loop
 ```
 
-Each smart-money tick prints a `scan_report` with the top opportunities considered, selected signal if any, trader/trade counts, and rejection reasons when nothing qualifies. The scanner does not use Codex, Claude, or any LLM.
+Chaque tick smart-money imprime un `scan_report` avec les meilleures opportunites considerees, le signal selectionne s'il existe, les compteurs traders/trades, et les raisons de rejet quand rien ne qualifie. Le scanner n'utilise pas Codex, Claude ou un LLM.
 
-The smart-money universe defaults to `POLYMARKET_SMART_SOON_HOURS=72`, so it targets today, tomorrow, and the next few days instead of far-out contracts. If there are zero open positions and no normal consensus trade qualifies, the bot can use a `smart_money_starter` or `liquidity_starter` fallback to maintain at least `POLYMARKET_MIN_OPEN_POSITIONS`. Starter trades use `POLYMARKET_STARTER_TRADE_USD=1` by default and still require executable markets, spread/price filters where applicable, and duplicate-position checks.
+L'univers smart-money utilise `POLYMARKET_SMART_SOON_HOURS=72` par defaut, donc il cible aujourd'hui, demain et les prochains jours au lieu des contrats trop lointains. S'il n'y a aucune position ouverte et qu'aucun trade normal avec consensus ne qualifie, le bot peut utiliser un fallback `smart_money_starter` ou `liquidity_starter` pour maintenir au moins `POLYMARKET_MIN_OPEN_POSITIONS`. Les starter trades utilisent `POLYMARKET_STARTER_TRADE_USD=1` par defaut et exigent quand meme des marches executables, les filtres de spread/prix quand applicables, et les checks anti-duplicate.
 
-`btc-edge-once` only trades parsable BTC above/below threshold markets when a Coinbase BTC spot/volatility model finds enough edge. It skips generic markets.
+`btc-edge-once` trade seulement les marches BTC above/below parsables quand le modele Coinbase spot/volatilite trouve assez d'edge. Il ignore les marches generiques.
 
-`btc-edge-loop` runs the BTC edge strategy every `POLYMARKET_AUTO_INTERVAL_SECONDS` seconds. Set `POLYMARKET_AUTO_MAX_TICKS=0` for an unlimited loop.
+`btc-edge-loop` lance la strategie BTC edge toutes les `POLYMARKET_AUTO_INTERVAL_SECONDS` secondes. Mets `POLYMARKET_AUTO_MAX_TICKS=0` pour une boucle illimitee.
 
-## API Credentials
+## Identifiants API
 
-Live CLOB order placement needs the three-part CLOB credential set:
+Le placement d'ordres live CLOB a besoin du set CLOB en trois parties :
 
 ```bash
 POLYMARKET_API_KEY=...
@@ -130,35 +130,35 @@ POLYMARKET_API_SECRET=...
 POLYMARKET_API_PASSPHRASE=...
 ```
 
-A relayer key is different:
+Une cle relayer est differente :
 
 ```bash
 RELAYER_API_KEY=...
 RELAYER_API_KEY_ADDRESS=0x...
 ```
 
-Relayer credentials alone are not enough for this bot's current CLOB order-placement path. If only relayer credentials are configured, `auto-loop` will scan markets but will refuse to place a live order with a clear local error instead of retrying the Cloudflare-blocked `/auth/api-key` bootstrap endpoint.
+Les identifiants relayer seuls ne suffisent pas pour le chemin actuel de placement d'ordres CLOB. Si seulement des identifiants relayer sont configures, `auto-loop` scannera les marches mais refusera de placer un ordre live avec une erreur locale claire, au lieu de reessayer le bootstrap `/auth/api-key` bloque par Cloudflare.
 
 ## Dashboard
 
-Start the real-time dashboard:
+Demarre le dashboard temps reel :
 
 ```bash
 python3 -B -m polymarket_bot.main dashboard
 ```
 
-Open `http://127.0.0.1:8765`. It auto-refreshes every 5 seconds and shows bot mode, equity, open positions, recent bot trades, order IDs when available, and current scanner candidates.
+Ouvre `http://127.0.0.1:8765`. Il se rafraichit toutes les 5 secondes et montre le mode du bot, l'equity, les positions ouvertes, les trades recents du bot, les order IDs si disponibles, et les candidats du scanner.
 
-## Agent Docs
+## Docs Agent
 
-This repo includes agent-compatible markdown:
+Ce repo contient des fichiers markdown compatibles avec les agents :
 
-- `AGENTS.md` for Codex-style coding agents.
-- `CLAUDE.md` for Claude Code.
-- `.codex/skills/polymarket-bot/SKILL.md` as a repository-local Codex skill.
-- `docs/AUTONOMOUS_STRATEGY.md` for the trading rules and dashboard behavior.
+- `AGENTS.md` pour les agents type Codex.
+- `CLAUDE.md` pour Claude Code.
+- `.codex/skills/polymarket-bot/SKILL.md` comme skill Codex locale au repo.
+- `docs/AUTONOMOUS_STRATEGY.md` pour les regles de trading et le comportement du dashboard.
 
 ## Notes
 
-The scanner score is based on urgency, liquidity, volume, and tradability. It is not an expected-value model.
-The bot uses Polymarket’s documented wallet-based auth flow. A Safari login alone is not sufficient for trading.
+Le score du scanner est base sur l'urgence, la liquidite, le volume et la tradabilite. Ce n'est pas un modele d'expected value.
+Le bot utilise le flow d'authentification wallet documente par Polymarket. Un login Safari seul ne suffit pas pour trader.
