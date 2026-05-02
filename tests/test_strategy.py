@@ -7,6 +7,7 @@ from polymarket_bot.models import Candidate, utc_now
 from polymarket_bot.polymarket import ApiCreds, PolymarketClient
 from polymarket_bot.smart_money import SmartTrade, smart_money_signals
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
+from polymarket_bot.trading import execute_live_trade
 
 
 class StrategyTests(unittest.TestCase):
@@ -52,6 +53,44 @@ class StrategyTests(unittest.TestCase):
         )[0]
 
         self.assertEqual(stake_for_candidate(candidate, 20.0, Settings(max_position_usd=5.0)), 5.0)
+
+    def test_live_trade_respects_minimum_share_size(self):
+        class FakeClient:
+            def live_available_balance(self):
+                return 20.0
+
+            def place_live_order(self, *, candidate, price, size):
+                return {"price": price, "size": size}, {"success": True, "orderID": "order-1"}
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.39,
+            best_ask=0.4,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = __import__("polymarket_bot.portfolio", fromlist=["Portfolio"]).Portfolio(cash=20.0, positions=[])
+        result = execute_live_trade(
+            FakeClient(),
+            Settings(trade_fraction=0.10, min_order_shares=5.0),
+            candidate,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=1.0,
+        )
+
+        self.assertGreaterEqual(result.order["size"], 5.0)
 
     def test_build_limit_order_uses_expected_fields(self):
         client = PolymarketClient(

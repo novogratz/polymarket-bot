@@ -55,6 +55,7 @@ class Settings:
     smart_fallback_consensus: int = _int_env("POLYMARKET_SMART_FALLBACK_CONSENSUS", 1)
     min_open_positions: int = _int_env("POLYMARKET_MIN_OPEN_POSITIONS", 1)
     starter_trade_usd: float = _float_env("POLYMARKET_STARTER_TRADE_USD", 1.0)
+    min_order_shares: float = _float_env("POLYMARKET_MIN_ORDER_SHARES", 5.0)
     smart_min_trader_pnl: float = _float_env("POLYMARKET_SMART_MIN_TRADER_PNL", 0.0)
     smart_min_trade_usd: float = _float_env("POLYMARKET_SMART_MIN_TRADE_USD", 25.0)
     smart_min_buy_price: float = _float_env("POLYMARKET_SMART_MIN_BUY_PRICE", 0.08)

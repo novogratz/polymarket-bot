@@ -282,12 +282,19 @@ def execute_live_trade(
     stake = min(live_balance * settings.trade_fraction, maximum)
     if live_balance >= minimum:
         stake = max(stake, minimum)
+    min_share_stake = settings.min_order_shares * entry_price
+    if live_balance >= min_share_stake:
+        stake = max(stake, min_share_stake)
     stake = round(min(stake, live_balance), 2)
     if stake <= 0:
         raise ValueError("no cash available")
     if stake < minimum:
         raise ValueError("trade size is below Polymarket's $1 minimum")
     size = round(stake / entry_price, 6)
+    if size < settings.min_order_shares:
+        raise ValueError(
+            f"order size {size} shares is below Polymarket minimum of {settings.min_order_shares} shares"
+        )
     order, response = client.place_live_order(candidate=candidate, price=entry_price, size=size)
     position = portfolio.record_live_position(
         candidate,
