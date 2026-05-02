@@ -178,7 +178,12 @@ class StrategyTests(unittest.TestCase):
         )[0]
         signal = btc_signal(
             candidate,
-            Settings(min_liquidity_usd=0, min_volume_usd=0),
+            Settings(
+                min_liquidity_usd=0,
+                min_volume_usd=0,
+                btc_min_buy_price=0.70,
+                btc_max_buy_price=0.82,
+            ),
             BtcModel(spot=105000, annual_volatility=0.4, fetched_at=utc_now()),
         )
         self.assertIsNone(signal)
