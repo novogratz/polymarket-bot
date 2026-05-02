@@ -121,23 +121,34 @@ class TradingSession:
 
     @property
     def wallet_address(self) -> str:
-        return self.legacy_client.wallet_address
+        # Use the proxy (funder) address if available, otherwise EOA
+        return self.settings.funder_address or self.legacy_client.wallet_address
 
     def live_available_balance(self) -> float:
         if self.sdk_client is None:
             return 0.0
+        
+        target_wallet = self.wallet_address
+        print(f"🔍 Checking balance for wallet: {target_wallet}")
+        
         try:
+            # The SDK client is already initialized with the funder/proxy address
             balance_info = self.sdk_client.get_balance_allowance(
                 BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
             )
-        except Exception:
+        except Exception as e:
+            print(f"❌ Balance check failed: {str(e)}")
             return 0.0
 
         if not isinstance(balance_info, dict):
+            print(f"❌ Balance check returned unexpected type: {type(balance_info)}")
             return 0.0
 
         balance = self._normalize_amount(balance_info.get("balance"))
         allowance = self._normalize_amount(balance_info.get("allowance"))
+        
+        print(f"💰 Live Balance: {balance} USDC | Allowance: {allowance} USDC")
+        
         values = [value for value in (balance, allowance) if value is not None]
         return min(values) if values else 0.0
 
