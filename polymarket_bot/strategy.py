@@ -22,6 +22,11 @@ def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Cand
         if liquidity < settings.min_liquidity_usd or volume < settings.min_volume_usd:
             continue
 
+        best_bid = as_float(market.get("bestBid"), default=None) if market.get("bestBid") is not None else None
+        best_ask = as_float(market.get("bestAsk"), default=None) if market.get("bestAsk") is not None else None
+        tick_size = as_float(market.get("orderPriceMinTickSize"), default=None) if market.get("orderPriceMinTickSize") is not None else None
+        neg_risk = bool(market.get("negRisk"))
+        accepts_orders = bool(market.get("acceptingOrders"))
         outcomes = [str(item) for item in parse_json_list(market.get("outcomes"))]
         prices = [as_float(item, -1.0) for item in parse_json_list(market.get("outcomePrices"))]
         token_ids = [str(item) for item in parse_json_list(market.get("clobTokenIds"))]
@@ -54,6 +59,11 @@ def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Cand
                     token_id=token_ids[index] if index < len(token_ids) else None,
                     score=score,
                     url=f"https://polymarket.com/event/{slug}" if slug else "https://polymarket.com",
+                    best_bid=best_bid,
+                    best_ask=best_ask,
+                    tick_size=tick_size,
+                    neg_risk=neg_risk,
+                    accepts_orders=accepts_orders,
                 )
             )
 

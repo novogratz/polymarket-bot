@@ -53,6 +53,11 @@ class Candidate:
     token_id: str | None
     score: float
     url: str
+    best_bid: float | None = None
+    best_ask: float | None = None
+    tick_size: float | None = None
+    neg_risk: bool = False
+    accepts_orders: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -68,4 +73,9 @@ class Candidate:
             "token_id": self.token_id,
             "score": self.score,
             "url": self.url,
+            "best_bid": self.best_bid,
+            "best_ask": self.best_ask,
+            "tick_size": self.tick_size,
+            "neg_risk": self.neg_risk,
+            "accepts_orders": self.accepts_orders,
         }

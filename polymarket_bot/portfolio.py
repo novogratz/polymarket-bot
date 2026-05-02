@@ -33,10 +33,11 @@ class Portfolio:
             for position in self.positions
         )
 
-    def open_paper_position(self, candidate: Candidate, stake: float) -> dict[str, Any] | None:
+    def open_paper_position(self, candidate: Candidate, stake: float, *, entry_price: float | None = None) -> dict[str, Any] | None:
         if stake <= 0.0 or stake > self.cash or self.has_open_position(candidate.market_id, candidate.outcome):
             return None
-        shares = stake / candidate.price
+        trade_price = entry_price if entry_price is not None else candidate.price
+        shares = stake / trade_price
         self.cash = round(self.cash - stake, 2)
         position = {
             "status": "open",
@@ -47,8 +48,8 @@ class Portfolio:
             "url": candidate.url,
             "outcome": candidate.outcome,
             "token_id": candidate.token_id,
-            "entry_price": candidate.price,
-            "current_price": candidate.price,
+            "entry_price": trade_price,
+            "current_price": trade_price,
             "stake": round(stake, 2),
             "shares": shares,
             "unrealized_pnl": 0.0,

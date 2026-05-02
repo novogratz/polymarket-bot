@@ -3,6 +3,7 @@ import unittest
 
 from polymarket_bot.config import Settings
 from polymarket_bot.models import utc_now
+from polymarket_bot.polymarket import ApiCreds, PolymarketClient
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
 
 
@@ -49,6 +50,29 @@ class StrategyTests(unittest.TestCase):
         )[0]
 
         self.assertEqual(stake_for_candidate(candidate, 20.0, Settings(max_position_usd=5.0)), 5.0)
+
+    def test_build_limit_order_uses_expected_fields(self):
+        client = PolymarketClient(
+            "https://clob.polymarket.com",
+            137,
+            "0x" + "11" * 32,
+            api_creds=ApiCreds("api", "c2VjcmV0", "pass"),
+        )
+        order = client.build_limit_order(
+            token_id="123",
+            price=0.5,
+            size=10,
+            side="BUY",
+            maker="0x0000000000000000000000000000000000000001",
+            signer="0x0000000000000000000000000000000000000001",
+            neg_risk=False,
+        )
+
+        self.assertEqual(order["side"], "BUY")
+        self.assertEqual(order["tokenId"], "123")
+        self.assertEqual(order["makerAmount"], "5000000")
+        self.assertEqual(order["takerAmount"], "10000000")
+        self.assertIn("signature", order)
 
 
 if __name__ == "__main__":

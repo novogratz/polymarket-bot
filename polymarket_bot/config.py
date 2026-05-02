@@ -22,6 +22,7 @@ def _int_env(name: str, default: int) -> int:
 @dataclass(frozen=True)
 class Settings:
     gamma_base_url: str = os.getenv("POLYMARKET_GAMMA_URL", "https://gamma-api.polymarket.com")
+    clob_base_url: str = os.getenv("POLYMARKET_CLOB_URL", "https://clob.polymarket.com")
     state_path: Path = Path(os.getenv("POLYMARKET_STATE_PATH", "data/paper_state.json"))
     scan_limit: int = _int_env("POLYMARKET_SCAN_LIMIT", 200)
     soon_hours: int = _int_env("POLYMARKET_SOON_HOURS", 72)
@@ -31,3 +32,11 @@ class Settings:
     min_volume_usd: float = _float_env("POLYMARKET_MIN_VOLUME_USD", 1000.0)
     dashboard_host: str = os.getenv("POLYMARKET_DASHBOARD_HOST", "127.0.0.1")
     dashboard_port: int = _int_env("POLYMARKET_DASHBOARD_PORT", 8765)
+    chain_id: int = _int_env("POLYMARKET_CHAIN_ID", 137)
+    signature_type: int = _int_env("POLYMARKET_SIGNATURE_TYPE", 0)
+    funder_address: str | None = os.getenv("POLYMARKET_FUNDER_ADDRESS") or None
+    private_key: str | None = os.getenv("POLYMARKET_PRIVATE_KEY") or None
+    api_key: str | None = os.getenv("POLYMARKET_API_KEY") or None
+    api_secret: str | None = os.getenv("POLYMARKET_API_SECRET") or None
+    api_passphrase: str | None = os.getenv("POLYMARKET_API_PASSPHRASE") or None
+    live_trading_enabled: bool = os.getenv("POLYMARKET_ENABLE_LIVE_TRADING", "").lower() in {"1", "true", "yes"}
