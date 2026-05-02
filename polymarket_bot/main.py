@@ -4,6 +4,7 @@ import argparse
 import json
 import time
 
+from dataclasses import replace
 from datetime import timedelta
 
 from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
@@ -27,6 +28,37 @@ def load_candidates(settings: Settings):
         end_date_max=now + timedelta(hours=settings.soon_hours),
     )
     return rank_markets(markets, settings)
+
+
+def load_smart_candidates(settings: Settings):
+    client = GammaClient(settings.gamma_base_url)
+    now = utc_now()
+    horizon = now + timedelta(hours=settings.smart_soon_hours)
+    batches = [
+        client.get_markets(
+            limit=settings.smart_scan_limit,
+            end_date_min=now,
+            end_date_max=horizon,
+        ),
+        client.get_markets(
+            limit=settings.smart_scan_limit,
+            order="volume",
+            ascending=False,
+            end_date_min=now,
+            end_date_max=horizon,
+        ),
+    ]
+    markets_by_id = {
+        str(market.get("id") or market.get("conditionId") or index): market
+        for index, batch in enumerate(batches)
+        for market in batch
+    }
+    smart_settings = replace(
+        settings,
+        scan_limit=settings.smart_scan_limit,
+        soon_hours=settings.smart_soon_hours,
+    )
+    return rank_markets(list(markets_by_id.values()), smart_settings)
 
 
 def scan(settings: Settings) -> list[dict[str, object]]:
@@ -104,9 +136,10 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
 
 
 def smart_money_once(settings: Settings) -> dict[str, object]:
-    candidates = load_candidates(settings)
+    candidates = load_smart_candidates(settings)
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
     portfolio.mark_to_market(candidates)
+    open_count = portfolio.summary()["open_positions"]
 
     eligible_candidates = [
         candidate
@@ -115,6 +148,17 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     ]
     report = analyze_smart_money(eligible_candidates, settings)
     signal = report.selected
+    strategy = "smart_money"
+    if signal is None and open_count < settings.min_open_positions:
+        fallback_settings = replace(
+            settings,
+            smart_min_consensus=max(1, settings.smart_fallback_consensus),
+        )
+        fallback_report = analyze_smart_money(eligible_candidates, fallback_settings)
+        if fallback_report.selected is not None:
+            report = fallback_report
+            signal = fallback_report.selected
+            strategy = "smart_money_starter"
     if signal is None:
         portfolio.save(settings.state_path)
         return {
@@ -134,13 +178,13 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         portfolio,
         min_trade_usd=1.0,
         max_trade_usd=settings.smart_max_trade_usd,
-        strategy="smart_money",
+        strategy=strategy,
         signal=signal_payload,
     )
     portfolio.save(settings.state_path)
     return {
         "trade": {
-            "strategy": "smart_money",
+            "strategy": strategy,
             "signal": signal_payload,
             "order": result.order,
             "response": result.response,
