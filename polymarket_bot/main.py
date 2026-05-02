@@ -39,14 +39,21 @@ def bootstrap_creds(settings: Settings) -> dict[str, str]:
     return creds.to_dict()
 
 
+def require_saved_api_creds(settings: Settings) -> None:
+    if settings.api_key and settings.api_secret and settings.api_passphrase:
+        return
+    raise RuntimeError(
+        "Missing POLYMARKET_API_KEY, POLYMARKET_API_SECRET, and POLYMARKET_API_PASSPHRASE in .env. "
+        "The bot will not call /auth/api-key during autonomous trading because Cloudflare is blocking "
+        "credential bootstrap from this IP. Add saved CLOB API credentials, then run auto-loop again."
+    )
+
+
 def btc_edge_once(settings: Settings) -> dict[str, object]:
     candidates = load_candidates(settings)
     btc_model = CoinbaseBtcClient().model(settings)
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
     portfolio.mark_to_market(candidates)
-    client = build_client(settings)
-    if client.api_creds is None:
-        client.derive_or_create_api_creds()
 
     eligible_candidates = [
         candidate
@@ -66,6 +73,8 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
         }
 
     signal_payload = signal.to_dict()
+    require_saved_api_creds(settings)
+    client = build_client(settings)
     result = execute_live_trade(
         client,
         settings,
@@ -92,9 +101,6 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     candidates = load_candidates(settings)
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
     portfolio.mark_to_market(candidates)
-    client = build_client(settings)
-    if client.api_creds is None:
-        client.derive_or_create_api_creds()
 
     eligible_candidates = [
         candidate
@@ -111,6 +117,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         }
 
     signal_payload = signal.to_dict()
+    require_saved_api_creds(settings)
+    client = build_client(settings)
     result = execute_live_trade(
         client,
         settings,
