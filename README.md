@@ -82,6 +82,9 @@ POLYMARKET_DASHBOARD_PORT=8765
 POLYMARKET_PRIVATE_KEY=0x...
 POLYMARKET_FUNDER_ADDRESS=0x...
 POLYMARKET_SIGNATURE_TYPE=0
+POLYMARKET_API_KEY=...
+POLYMARKET_API_SECRET=...
+POLYMARKET_API_PASSPHRASE=...
 POLYMARKET_ENABLE_LIVE_TRADING=1
 ```
 
@@ -98,6 +101,25 @@ POLYMARKET_ENABLE_LIVE_TRADING=1
 `btc-edge-once` only trades parsable BTC above/below threshold markets when a Coinbase BTC spot/volatility model finds enough edge. It skips generic markets.
 
 `btc-edge-loop` runs the BTC edge strategy every `POLYMARKET_AUTO_INTERVAL_SECONDS` seconds. Set `POLYMARKET_AUTO_MAX_TICKS=0` for an unlimited loop.
+
+## API Credentials
+
+Live CLOB order placement needs the three-part CLOB credential set:
+
+```bash
+POLYMARKET_API_KEY=...
+POLYMARKET_API_SECRET=...
+POLYMARKET_API_PASSPHRASE=...
+```
+
+A relayer key is different:
+
+```bash
+RELAYER_API_KEY=...
+RELAYER_API_KEY_ADDRESS=0x...
+```
+
+Relayer credentials alone are not enough for this bot's current CLOB order-placement path. If only relayer credentials are configured, `auto-loop` will scan markets but will refuse to place a live order with a clear local error instead of retrying the Cloudflare-blocked `/auth/api-key` bootstrap endpoint.
 
 ## Dashboard
 

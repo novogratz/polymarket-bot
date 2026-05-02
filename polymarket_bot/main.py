@@ -42,6 +42,12 @@ def bootstrap_creds(settings: Settings) -> dict[str, str]:
 def require_saved_api_creds(settings: Settings) -> None:
     if settings.api_key and settings.api_secret and settings.api_passphrase:
         return
+    if settings.relayer_api_key or settings.relayer_api_key_address:
+        raise RuntimeError(
+            "Relayer credentials are configured, but this bot's live order path needs CLOB credentials: "
+            "POLYMARKET_API_KEY, POLYMARKET_API_SECRET, and POLYMARKET_API_PASSPHRASE. "
+            "RELAYER_API_KEY and RELAYER_API_KEY_ADDRESS are not enough for this CLOB order flow."
+        )
     raise RuntimeError(
         "Missing POLYMARKET_API_KEY, POLYMARKET_API_SECRET, and POLYMARKET_API_PASSPHRASE in .env. "
         "The bot will not call /auth/api-key during autonomous trading because Cloudflare is blocking "

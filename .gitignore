@@ -1,4 +1,10 @@
 __pycache__/
 *.pyc
 .env
+.env.*
+!.env.example
+*.key
+*.pem
+*secret*
+*credentials*
 data/

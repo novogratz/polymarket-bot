@@ -67,4 +67,8 @@ class Settings:
     api_key: str | None = os.getenv("POLYMARKET_API_KEY") or None
     api_secret: str | None = os.getenv("POLYMARKET_API_SECRET") or None
     api_passphrase: str | None = os.getenv("POLYMARKET_API_PASSPHRASE") or None
+    relayer_api_key: str | None = os.getenv("RELAYER_API_KEY") or os.getenv("POLYMARKET_RELAYER_API_KEY") or None
+    relayer_api_key_address: str | None = (
+        os.getenv("RELAYER_API_KEY_ADDRESS") or os.getenv("POLYMARKET_RELAYER_API_KEY_ADDRESS") or None
+    )
     live_trading_enabled: bool = os.getenv("POLYMARKET_ENABLE_LIVE_TRADING", "").lower() in {"1", "true", "yes"}
