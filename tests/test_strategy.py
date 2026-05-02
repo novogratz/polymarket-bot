@@ -114,6 +114,35 @@ class StrategyTests(unittest.TestCase):
         )
         self.assertIsNotNone(signal)
 
+    def test_btc_signal_requires_user_odds_band(self):
+        end_date = (utc_now() + timedelta(hours=3)).isoformat()
+        candidate = rank_markets(
+            [
+                {
+                    "id": "1",
+                    "question": "Will Bitcoin be above $100,000 today?",
+                    "slug": "will-bitcoin-be-above-100000-today",
+                    "endDate": end_date,
+                    "liquidity": "10000",
+                    "volume": "20000",
+                    "bestBid": "0.59",
+                    "bestAsk": "0.60",
+                    "orderPriceMinTickSize": "0.01",
+                    "acceptingOrders": True,
+                    "outcomes": '["Yes","No"]',
+                    "outcomePrices": '["0.60","0.40"]',
+                    "clobTokenIds": '["yes-token","no-token"]',
+                }
+            ],
+            Settings(min_liquidity_usd=0, min_volume_usd=0, soon_hours=24),
+        )[0]
+        signal = btc_signal(
+            candidate,
+            Settings(min_liquidity_usd=0, min_volume_usd=0),
+            BtcModel(spot=105000, annual_volatility=0.4, fetched_at=utc_now()),
+        )
+        self.assertIsNone(signal)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -122,7 +122,7 @@ def btc_signal(candidate: Candidate, settings: Settings, model: BtcModel) -> Btc
     spread = candidate.best_ask - candidate.best_bid
     if spread < 0 or spread > settings.btc_max_spread:
         return None
-    if candidate.best_ask > settings.btc_max_buy_price:
+    if candidate.best_ask < settings.btc_min_buy_price or candidate.best_ask > settings.btc_max_buy_price:
         return None
     if not _is_yes(candidate):
         return None

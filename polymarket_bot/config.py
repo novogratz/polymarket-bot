@@ -35,6 +35,7 @@ class Settings:
     max_position_usd: float = _float_env("POLYMARKET_MAX_POSITION_USD", 5.0)
     trade_fraction: float = _float_env("POLYMARKET_TRADE_FRACTION", 0.10)
     btc_min_model_probability: float = _float_env("POLYMARKET_BTC_MIN_MODEL_PROBABILITY", 0.90)
+    btc_min_buy_price: float = _float_env("POLYMARKET_BTC_MIN_BUY_PRICE", 0.70)
     btc_max_buy_price: float = _float_env("POLYMARKET_BTC_MAX_BUY_PRICE", 0.82)
     btc_min_edge: float = _float_env("POLYMARKET_BTC_MIN_EDGE", 0.08)
     btc_max_spread: float = _float_env("POLYMARKET_BTC_MAX_SPREAD", 0.03)
