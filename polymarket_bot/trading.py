@@ -322,9 +322,10 @@ def execute_live_trade(
             f"order size {size} shares is below Polymarket minimum of {settings.min_order_shares} shares"
         )
 
-    print(f"\n🚀 EXECUTING TRADE: BUY {size} shares of '{candidate.outcome}' at {entry_price} on '{candidate.question}' (${stake} USDC)\n")
-
+    print(f"\n🚀 EXECUTING TRADE: BUY {size} shares of '{candidate.outcome}' at {entry_price} on '{candidate.question}' (${stake} USDC)")
     order, response = client.place_live_order(candidate=candidate, price=entry_price, size=size)
+    print(f"📡 API RESPONSE: {json.dumps(response, indent=2)}\n")
+
     position = portfolio.record_live_position(
         candidate,
         stake,
