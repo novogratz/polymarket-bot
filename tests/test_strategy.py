@@ -736,8 +736,8 @@ class StrategyTests(unittest.TestCase):
     def test_smart_money_rejects_low_total_copied_flow(self):
         candidate = Candidate(
             market_id="1",
-            question="Will Bitcoin reach $81,000 on May 3?",
-            slug="will-bitcoin-reach-81k-on-may-3",
+            question="Will Team A win today?",
+            slug="will-team-a-win-today",
             end_date=utc_now() + timedelta(hours=14),
             hours_to_close=14,
             liquidity=10000,
@@ -746,15 +746,15 @@ class StrategyTests(unittest.TestCase):
             price=0.03,
             token_id="low-flow-token",
             score=10,
-            url="https://polymarket.com/event/will-bitcoin-reach-81k-on-may-3",
+            url="https://polymarket.com/event/will-team-a-win-today",
             best_bid=0.021,
             best_ask=0.03,
             tick_size=0.001,
             accepts_orders=True,
         )
         trades = [
-            SmartTrade("0x1", "low-flow-token", "BUY", 0.025, 400, 10, 1, "BTC 81k", "Yes", "btc-81k"),
-            SmartTrade("0x2", "low-flow-token", "BUY", 0.026, 475.38, 12.36, 1, "BTC 81k", "Yes", "btc-81k"),
+            SmartTrade("0x1", "low-flow-token", "BUY", 0.025, 400, 10, 1, "Team A", "Yes", "team-a"),
+            SmartTrade("0x2", "low-flow-token", "BUY", 0.026, 475.38, 12.36, 1, "Team A", "Yes", "team-a"),
         ]
 
         signals, details = smart_money_signals(
@@ -770,8 +770,8 @@ class StrategyTests(unittest.TestCase):
     def test_smart_money_rejects_high_chase_premium(self):
         candidate = Candidate(
             market_id="1",
-            question="Will Bitcoin reach $81,000 on May 3?",
-            slug="will-bitcoin-reach-81k-on-may-3",
+            question="Will Team A win today?",
+            slug="will-team-a-win-today",
             end_date=utc_now() + timedelta(hours=14),
             hours_to_close=14,
             liquidity=10000,
@@ -780,15 +780,15 @@ class StrategyTests(unittest.TestCase):
             price=0.03,
             token_id="chase-premium-token",
             score=10,
-            url="https://polymarket.com/event/will-bitcoin-reach-81k-on-may-3",
+            url="https://polymarket.com/event/will-team-a-win-today",
             best_bid=0.021,
             best_ask=0.03,
             tick_size=0.001,
             accepts_orders=True,
         )
         trades = [
-            SmartTrade("0x1", "chase-premium-token", "BUY", 0.025, 2000, 50, 1, "BTC 81k", "Yes", "btc-81k"),
-            SmartTrade("0x2", "chase-premium-token", "BUY", 0.026, 2000, 52, 1, "BTC 81k", "Yes", "btc-81k"),
+            SmartTrade("0x1", "chase-premium-token", "BUY", 0.025, 2000, 50, 1, "Team A", "Yes", "team-a"),
+            SmartTrade("0x2", "chase-premium-token", "BUY", 0.026, 2000, 52, 1, "Team A", "Yes", "team-a"),
         ]
 
         signals, details = smart_money_signals(
@@ -833,6 +833,83 @@ class StrategyTests(unittest.TestCase):
             ),
             [],
         )
+
+    def test_crypto_markets_are_blocked_by_default(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will Bitcoin reach $81,000 on May 3?",
+            slug="will-bitcoin-reach-81k-on-may-3",
+            end_date=utc_now() + timedelta(hours=14),
+            hours_to_close=14,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.03,
+            token_id="btc-token",
+            score=10,
+            url="https://polymarket.com/event/will-bitcoin-reach-81k-on-may-3",
+            best_bid=0.029,
+            best_ask=0.03,
+            tick_size=0.001,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "btc-token", "BUY", 0.03, 10000, 300, 1, "BTC", "Yes", "btc"),
+            SmartTrade("0x2", "btc-token", "BUY", 0.03, 10000, 300, 1, "BTC", "Yes", "btc"),
+            SmartTrade("0x3", "btc-token", "BUY", 0.03, 10000, 300, 1, "BTC", "Yes", "btc"),
+        ]
+
+        signals, details = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(smart_min_copied_usdc=50, smart_min_trade_usd=1),
+            include_details=True,
+        )
+
+        self.assertEqual(signals, [])
+        self.assertEqual(details["rejected"]["crypto_signal_blocked"], 1)
+
+    def test_crypto_can_be_explicitly_allowed_for_obvious_longer_signal(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will Bitcoin be above $80,000 tomorrow?",
+            slug="will-bitcoin-be-above-80000-tomorrow",
+            end_date=utc_now() + timedelta(hours=24),
+            hours_to_close=24,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.55,
+            token_id="btc-token",
+            score=10,
+            url="https://polymarket.com/event/will-bitcoin-be-above-80000-tomorrow",
+            best_bid=0.54,
+            best_ask=0.55,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "btc-token", "BUY", 0.55, 1000, 550, 1, "BTC", "Yes", "btc"),
+            SmartTrade("0x2", "btc-token", "BUY", 0.55, 1000, 550, 1, "BTC", "Yes", "btc"),
+            SmartTrade("0x3", "btc-token", "BUY", 0.55, 1000, 550, 1, "BTC", "Yes", "btc"),
+        ]
+
+        signals = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(
+                smart_allow_crypto=True,
+                smart_crypto_min_hours_to_close=6,
+                smart_crypto_max_hours_to_close=48,
+                smart_crypto_min_consensus=3,
+                smart_crypto_min_copied_usdc=1000,
+                smart_min_copied_usdc=50,
+                smart_min_trade_usd=1,
+            ),
+        )
+
+        self.assertEqual(len(signals), 1)
+        self.assertEqual(signals[0].candidate.token_id, "btc-token")
 
     def test_max_trade_scales_with_signal_quality(self):
         settings = Settings(max_position_usd=20, smart_max_trade_usd=20)

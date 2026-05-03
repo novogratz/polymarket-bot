@@ -24,6 +24,13 @@ def _int_env(name: str, default: int) -> int:
     return int(value)
 
 
+def _bool_env(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return value.lower() in {"1", "true", "yes"}
+
+
 @dataclass(frozen=True)
 class Settings:
     gamma_base_url: str = os.getenv("POLYMARKET_GAMMA_URL", "https://gamma-api.polymarket.com")
@@ -70,6 +77,11 @@ class Settings:
     smart_crypto_micro_min_consensus: int = _int_env("POLYMARKET_SMART_CRYPTO_MICRO_MIN_CONSENSUS", 3)
     smart_crypto_micro_max_entry_slippage: float = _float_env("POLYMARKET_SMART_CRYPTO_MICRO_MAX_ENTRY_SLIPPAGE", 0.05)
     smart_crypto_micro_max_trade_usd: float = _float_env("POLYMARKET_SMART_CRYPTO_MICRO_MAX_TRADE_USD", 5.0)
+    smart_allow_crypto: bool = _bool_env("POLYMARKET_SMART_ALLOW_CRYPTO", False)
+    smart_crypto_min_hours_to_close: float = _float_env("POLYMARKET_SMART_CRYPTO_MIN_HOURS_TO_CLOSE", 6.0)
+    smart_crypto_max_hours_to_close: float = _float_env("POLYMARKET_SMART_CRYPTO_MAX_HOURS_TO_CLOSE", 48.0)
+    smart_crypto_min_copied_usdc: float = _float_env("POLYMARKET_SMART_CRYPTO_MIN_COPIED_USDC", 1000.0)
+    smart_crypto_min_consensus: int = _int_env("POLYMARKET_SMART_CRYPTO_MIN_CONSENSUS", 3)
     smart_max_trade_usd: float = _float_env("POLYMARKET_SMART_MAX_TRADE_USD", 5.0)
     smart_high_conviction_balance_fraction: float = _float_env(
         "POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION",

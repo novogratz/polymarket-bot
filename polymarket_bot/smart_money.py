@@ -334,8 +334,11 @@ def smart_money_signals(
             continue
 
         wallets = sorted({trade.wallet for trade in token_trades})
+        is_crypto = _is_crypto_market(candidate)
         is_crypto_micro = _is_crypto_micro(candidate)
         min_consensus = max(2, settings.smart_min_consensus)
+        if is_crypto:
+            min_consensus = max(min_consensus, settings.smart_crypto_min_consensus)
         if is_crypto_micro:
             min_consensus = max(min_consensus, settings.smart_crypto_micro_min_consensus)
         if len(wallets) < min_consensus:
@@ -351,6 +354,9 @@ def smart_money_signals(
         avg_price = round(sum(trade.price * trade.size for trade in token_trades) / total_size, 4) if total_size else 0.0
         if _value_pct(avg_price, candidate.best_ask) < -settings.smart_max_chase_premium:
             rejected["chase_premium_too_high"] = rejected.get("chase_premium_too_high", 0) + 1
+            continue
+        if is_crypto and not _crypto_signal_allowed(candidate, settings, len(wallets), copied_usdc):
+            rejected["crypto_signal_blocked"] = rejected.get("crypto_signal_blocked", 0) + 1
             continue
         signals.append(
             SmartMoneySignal(
@@ -404,6 +410,38 @@ def _categories(settings: Settings) -> list[str]:
 def _is_crypto_micro(candidate: Candidate) -> bool:
     text = f"{candidate.question} {candidate.slug}".lower()
     return ("bitcoin up or down" in text or "ethereum up or down" in text or "btc-updown" in text or "eth-updown" in text)
+
+
+def _is_crypto_market(candidate: Candidate) -> bool:
+    text = f"{candidate.question} {candidate.slug}".lower()
+    markers = (
+        "bitcoin",
+        "btc",
+        "ethereum",
+        "ether",
+        " eth ",
+        "eth-",
+        "solana",
+        " sol ",
+        "xrp",
+        "dogecoin",
+        "doge",
+        "crypto",
+    )
+    return any(marker in text for marker in markers)
+
+
+def _crypto_signal_allowed(candidate: Candidate, settings: Settings, consensus: int, copied_usdc: float) -> bool:
+    if not settings.smart_allow_crypto:
+        return False
+    hours = candidate.hours_to_close
+    if hours is None:
+        return False
+    return (
+        settings.smart_crypto_min_hours_to_close <= hours <= settings.smart_crypto_max_hours_to_close
+        and consensus >= settings.smart_crypto_min_consensus
+        and copied_usdc >= settings.smart_crypto_min_copied_usdc
+    )
 
 
 def _short_horizon_bonus(hours_to_close: float | None) -> float:
