@@ -59,6 +59,8 @@ class Settings:
     smart_scan_limit: int = _int_env("POLYMARKET_SMART_SCAN_LIMIT", 1000)
     smart_soon_hours: int = _int_env("POLYMARKET_SMART_SOON_HOURS", 72)
     smart_trade_lookback_minutes: int = _int_env("POLYMARKET_SMART_TRADE_LOOKBACK_MINUTES", 240)
+    smart_max_signal_age_minutes: int = _int_env("POLYMARKET_SMART_MAX_SIGNAL_AGE_MINUTES", 0)
+    smart_fresh_signal_bonus: float = _float_env("POLYMARKET_SMART_FRESH_SIGNAL_BONUS", 8.0)
     smart_min_consensus: int = _int_env("POLYMARKET_SMART_MIN_CONSENSUS", 2)
     smart_fallback_consensus: int = _int_env("POLYMARKET_SMART_FALLBACK_CONSENSUS", 2)
     min_open_positions: int = _int_env("POLYMARKET_MIN_OPEN_POSITIONS", 3)
@@ -85,6 +87,7 @@ class Settings:
     smart_crypto_max_hours_to_close: float = _float_env("POLYMARKET_SMART_CRYPTO_MAX_HOURS_TO_CLOSE", 48.0)
     smart_crypto_min_copied_usdc: float = _float_env("POLYMARKET_SMART_CRYPTO_MIN_COPIED_USDC", 1000.0)
     smart_crypto_min_consensus: int = _int_env("POLYMARKET_SMART_CRYPTO_MIN_CONSENSUS", 3)
+    smart_crypto_min_buy_price: float = _float_env("POLYMARKET_SMART_CRYPTO_MIN_BUY_PRICE", 0.70)
     smart_max_trade_usd: float = _float_env("POLYMARKET_SMART_MAX_TRADE_USD", 5.0)
     smart_high_conviction_balance_fraction: float = _float_env(
         "POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION",

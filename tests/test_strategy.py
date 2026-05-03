@@ -997,19 +997,19 @@ class StrategyTests(unittest.TestCase):
             liquidity=10000,
             volume=50000,
             outcome="Yes",
-            price=0.55,
+            price=0.75,
             token_id="btc-token",
             score=10,
             url="https://polymarket.com/event/will-bitcoin-be-above-80000-tomorrow",
-            best_bid=0.54,
-            best_ask=0.55,
+            best_bid=0.74,
+            best_ask=0.75,
             tick_size=0.01,
             accepts_orders=True,
         )
         trades = [
-            SmartTrade("0x1", "btc-token", "BUY", 0.55, 1000, 550, 1, "BTC", "Yes", "btc"),
-            SmartTrade("0x2", "btc-token", "BUY", 0.55, 1000, 550, 1, "BTC", "Yes", "btc"),
-            SmartTrade("0x3", "btc-token", "BUY", 0.55, 1000, 550, 1, "BTC", "Yes", "btc"),
+            SmartTrade("0x1", "btc-token", "BUY", 0.75, 1000, 750, 1, "BTC", "Yes", "btc"),
+            SmartTrade("0x2", "btc-token", "BUY", 0.75, 1000, 750, 1, "BTC", "Yes", "btc"),
+            SmartTrade("0x3", "btc-token", "BUY", 0.75, 1000, 750, 1, "BTC", "Yes", "btc"),
         ]
 
         signals = smart_money_signals(
@@ -1028,6 +1028,50 @@ class StrategyTests(unittest.TestCase):
 
         self.assertEqual(len(signals), 1)
         self.assertEqual(signals[0].candidate.token_id, "btc-token")
+
+    def test_crypto_allowed_requires_high_buy_price(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Bitcoin Up or Down - May 3, 9:00PM-9:15PM ET",
+            slug="btc-updown-15m",
+            end_date=utc_now() + timedelta(minutes=15),
+            hours_to_close=0.25,
+            liquidity=10000,
+            volume=50000,
+            outcome="Down",
+            price=0.55,
+            token_id="btc-token",
+            score=10,
+            url="https://polymarket.com/event/btc-updown-15m",
+            best_bid=0.54,
+            best_ask=0.55,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "btc-token", "BUY", 0.55, 1000, 550, 1, "BTC", "Down", "btc"),
+            SmartTrade("0x2", "btc-token", "BUY", 0.55, 1000, 550, 1, "BTC", "Down", "btc"),
+            SmartTrade("0x3", "btc-token", "BUY", 0.55, 1000, 550, 1, "BTC", "Down", "btc"),
+        ]
+
+        signals, details = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(
+                smart_allow_crypto=True,
+                smart_crypto_min_hours_to_close=0,
+                smart_crypto_max_hours_to_close=48,
+                smart_crypto_min_consensus=3,
+                smart_crypto_min_copied_usdc=1000,
+                smart_crypto_min_buy_price=0.70,
+                smart_min_copied_usdc=50,
+                smart_min_trade_usd=1,
+            ),
+            include_details=True,
+        )
+
+        self.assertEqual(signals, [])
+        self.assertEqual(details["rejected"]["crypto_signal_blocked"], 1)
 
     def test_max_trade_scales_with_signal_quality(self):
         settings = Settings(max_position_usd=20, smart_max_trade_usd=20)

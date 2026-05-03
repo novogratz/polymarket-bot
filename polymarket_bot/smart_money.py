@@ -48,6 +48,8 @@ class SmartMoneySignal:
     is_crypto_micro: bool = False
     category: str = "OTHER"
     category_bonus: float = 0.0
+    latest_trade_age_minutes: float | None = None
+    fresh_bonus: float = 0.0
 
     @property
     def score(self) -> float:
@@ -60,6 +62,7 @@ class SmartMoneySignal:
             + _short_horizon_bonus(self.candidate.hours_to_close)
             + value
             + self.category_bonus
+            + self.fresh_bonus
             - (self.candidate.best_ask or 0.0)
         )
 
@@ -81,7 +84,8 @@ class SmartMoneySignal:
             f"{self.consensus} profitable wallets bought this same token recently, "
             f"copying ${self.copied_usdc:.2f} total at avg {self.avg_copy_price:.4f}; "
             f"current ask {self.candidate.best_ask} has spread {self.spread:.4f}, "
-            f"closes in {_format_hours(self.candidate.hours_to_close)}{value_text}, "
+            f"closes in {_format_hours(self.candidate.hours_to_close)}, "
+            f"latest copied buy {_format_minutes(self.latest_trade_age_minutes)} ago{value_text}, "
             f"and passed min consensus {self.min_consensus}, price band, spread, and duplicate checks."
         )
         return {
@@ -115,6 +119,10 @@ class SmartMoneySignal:
                 "is_crypto_micro": self.is_crypto_micro,
                 "category": self.category,
                 "category_bonus": round(self.category_bonus, 4),
+                "latest_trade_age_minutes": (
+                    round(self.latest_trade_age_minutes, 2) if self.latest_trade_age_minutes is not None else None
+                ),
+                "fresh_bonus": round(self.fresh_bonus, 4),
             },
             "url": self.candidate.url,
         }
@@ -303,6 +311,7 @@ def smart_money_signals(
     grouped: dict[str, list[SmartTrade]] = {}
     rejected: dict[str, int] = {}
     eligible_trade_count = 0
+    now_ts = int(time.time())
     for trade in trades:
         if trade.side.upper() != "BUY" or trade.usdc_size < settings.smart_min_trade_usd:
             rejected["trade_too_small_or_not_buy"] = rejected.get("trade_too_small_or_not_buy", 0) + 1
@@ -351,6 +360,15 @@ def smart_money_signals(
         if len(wallets) < min_consensus:
             rejected["not_enough_wallet_consensus"] = rejected.get("not_enough_wallet_consensus", 0) + 1
             continue
+        latest_trade_ts = max((trade.timestamp for trade in token_trades), default=0)
+        latest_trade_age_minutes = max((now_ts - latest_trade_ts) / 60.0, 0.0) if latest_trade_ts else None
+        if (
+            settings.smart_max_signal_age_minutes > 0
+            and latest_trade_age_minutes is not None
+            and latest_trade_age_minutes > settings.smart_max_signal_age_minutes
+        ):
+            rejected["signal_too_stale"] = rejected.get("signal_too_stale", 0) + 1
+            continue
 
         total_trader_pnl = sum(pnl_by_wallet.get(w.lower(), 0.0) for w in wallets) if pnl_by_wallet else 0.0
         copied_usdc = round(sum(trade.usdc_size for trade in token_trades), 2)
@@ -379,6 +397,8 @@ def smart_money_signals(
                 is_crypto_micro=is_crypto_micro,
                 category=category,
                 category_bonus=_category_bonus(category, settings),
+                latest_trade_age_minutes=latest_trade_age_minutes,
+                fresh_bonus=_fresh_signal_bonus(latest_trade_age_minutes, settings),
             )
         )
     if include_details:
@@ -459,6 +479,18 @@ def _category_bonus(category: str, settings: Settings) -> float:
     return 0.0
 
 
+def _fresh_signal_bonus(age_minutes: float | None, settings: Settings) -> float:
+    if age_minutes is None or settings.smart_fresh_signal_bonus <= 0:
+        return 0.0
+    if age_minutes <= 2:
+        return settings.smart_fresh_signal_bonus
+    if age_minutes <= 10:
+        return settings.smart_fresh_signal_bonus * 0.6
+    if age_minutes <= 30:
+        return settings.smart_fresh_signal_bonus * 0.25
+    return 0.0
+
+
 def _is_crypto_micro(candidate: Candidate) -> bool:
     text = f"{candidate.question} {candidate.slug}".lower()
     return ("bitcoin up or down" in text or "ethereum up or down" in text or "btc-updown" in text or "eth-updown" in text)
@@ -488,6 +520,8 @@ def _crypto_signal_allowed(candidate: Candidate, settings: Settings, consensus: 
         return False
     hours = candidate.hours_to_close
     if hours is None:
+        return False
+    if candidate.best_ask is None or candidate.best_ask < settings.smart_crypto_min_buy_price:
         return False
     return (
         settings.smart_crypto_min_hours_to_close <= hours <= settings.smart_crypto_max_hours_to_close
@@ -531,6 +565,14 @@ def _format_hours(hours_to_close: float | None) -> str:
     if hours_to_close < 1:
         return f"{round(hours_to_close * 60)}m"
     return f"{hours_to_close:.1f}h"
+
+
+def _format_minutes(minutes: float | None) -> str:
+    if minutes is None:
+        return "unknown"
+    if minutes < 1:
+        return "<1m"
+    return f"{minutes:.0f}m"
 
 
 def _float(value: Any, default: float = 0.0) -> float:
