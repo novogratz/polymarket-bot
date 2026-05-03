@@ -9,7 +9,7 @@ from polymarket_bot.portfolio import Portfolio
 from polymarket_bot.smart_money import SmartTrade, smart_money_signals
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
 from polymarket_bot.trading import execute_live_sell, execute_live_trade
-from polymarket_bot.main import _sell_plan
+from polymarket_bot.main import _max_trade_for_signal, _sell_plan
 
 
 class StrategyTests(unittest.TestCase):
@@ -387,6 +387,87 @@ class StrategyTests(unittest.TestCase):
             smart_money_signals([candidate], trades, Settings(smart_min_consensus=1, smart_min_trade_usd=25)),
             [],
         )
+
+    def test_smart_money_rejects_too_close_to_expiry(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Bitcoin Up or Down - soon",
+            slug="btc-updown-soon",
+            end_date=utc_now() + timedelta(minutes=3),
+            hours_to_close=0.05,
+            liquidity=10000,
+            volume=50000,
+            outcome="Up",
+            price=0.5,
+            token_id="yes-token",
+            score=10,
+            url="https://polymarket.com/event/test-market",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "yes-token", "BUY", 0.49, 100, 49, 1, "Test market", "Up", "test-market"),
+            SmartTrade("0x2", "yes-token", "BUY", 0.50, 100, 50, 1, "Test market", "Up", "test-market"),
+            SmartTrade("0x3", "yes-token", "BUY", 0.50, 100, 50, 1, "Test market", "Up", "test-market"),
+        ]
+
+        signals, details = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(smart_min_hours_to_close=0.25, smart_min_trade_usd=1),
+            include_details=True,
+        )
+
+        self.assertEqual(signals, [])
+        self.assertEqual(details["rejected"]["too_close_to_expiry"], 1)
+
+    def test_crypto_micro_requires_higher_consensus(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Bitcoin Up or Down - May 3, 9:00PM-9:15PM ET",
+            slug="btc-updown-15m",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=10000,
+            volume=50000,
+            outcome="Up",
+            price=0.5,
+            token_id="yes-token",
+            score=10,
+            url="https://polymarket.com/event/test-market",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "yes-token", "BUY", 0.49, 100, 49, 1, "Test market", "Up", "test-market"),
+            SmartTrade("0x2", "yes-token", "BUY", 0.50, 100, 50, 1, "Test market", "Up", "test-market"),
+        ]
+
+        self.assertEqual(
+            smart_money_signals(
+                [candidate],
+                trades,
+                Settings(smart_min_consensus=2, smart_crypto_micro_min_consensus=3, smart_min_trade_usd=1),
+            ),
+            [],
+        )
+
+    def test_max_trade_scales_with_signal_quality(self):
+        settings = Settings(max_position_usd=20, smart_max_trade_usd=20)
+        weak = {"consensus": 2, "selection_metrics": {"profitable_wallet_count": 2, "copied_usdc": 100}}
+        strong = {"consensus": 4, "selection_metrics": {"profitable_wallet_count": 4, "copied_usdc": 2000}}
+        micro = {
+            "consensus": 4,
+            "selection_metrics": {"profitable_wallet_count": 4, "copied_usdc": 2000, "is_crypto_micro": True},
+        }
+
+        self.assertEqual(_max_trade_for_signal(settings, weak, "smart_money"), 5.0)
+        self.assertEqual(_max_trade_for_signal(settings, strong, "smart_money"), 20.0)
+        self.assertEqual(_max_trade_for_signal(settings, micro, "smart_money"), 5.0)
 
 
 if __name__ == "__main__":

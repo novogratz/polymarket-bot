@@ -63,5 +63,7 @@ The live entry should require:
 - Explicit live-trading enablement.
 - $5-capped order sizing by default, repeated across qualified opportunities until funds, per-tick cap, or signal exhaustion stops the tick.
 - Profit-taking exits before new buys: default +100%/+200%/+300% partial sells, plus peak giveback protection.
+- Live position sync from Polymarket before decisions so stale local ledger state does not block fresh entries.
+- Stricter handling for crypto up/down micro markets and near-expiry markets.
 
 The expected edge comes from copying strong public flow while avoiding bad execution. This is not guaranteed profit; no-signal/no-trade is part of the strategy.

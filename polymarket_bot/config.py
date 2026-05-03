@@ -62,6 +62,11 @@ class Settings:
     smart_min_buy_price: float = _float_env("POLYMARKET_SMART_MIN_BUY_PRICE", 0.02)
     smart_max_buy_price: float = _float_env("POLYMARKET_SMART_MAX_BUY_PRICE", 0.98)
     smart_max_spread: float = _float_env("POLYMARKET_SMART_MAX_SPREAD", 0.10)
+    smart_min_hours_to_close: float = _float_env("POLYMARKET_SMART_MIN_HOURS_TO_CLOSE", 0.25)
+    smart_max_entry_slippage: float = _float_env("POLYMARKET_SMART_MAX_ENTRY_SLIPPAGE", 0.10)
+    smart_crypto_micro_min_consensus: int = _int_env("POLYMARKET_SMART_CRYPTO_MICRO_MIN_CONSENSUS", 3)
+    smart_crypto_micro_max_entry_slippage: float = _float_env("POLYMARKET_SMART_CRYPTO_MICRO_MAX_ENTRY_SLIPPAGE", 0.05)
+    smart_crypto_micro_max_trade_usd: float = _float_env("POLYMARKET_SMART_CRYPTO_MICRO_MAX_TRADE_USD", 5.0)
     smart_max_trade_usd: float = _float_env("POLYMARKET_SMART_MAX_TRADE_USD", 5.0)
     smart_max_orders_per_tick: int = _int_env("POLYMARKET_SMART_MAX_ORDERS_PER_TICK", 0)
     smart_take_profit_tiers: str = os.getenv(
@@ -71,6 +76,10 @@ class Settings:
     smart_peak_protect_trigger: float = _float_env("POLYMARKET_SMART_PEAK_PROTECT_TRIGGER", 1.0)
     smart_peak_protect_floor: float = _float_env("POLYMARKET_SMART_PEAK_PROTECT_FLOOR", 0.40)
     smart_min_sell_usd: float = _float_env("POLYMARKET_SMART_MIN_SELL_USD", 1.0)
+    smart_exit_minutes_to_close: int = _int_env("POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE", 20)
+    smart_exit_min_profit: float = _float_env("POLYMARKET_SMART_EXIT_MIN_PROFIT", 0.05)
+    live_position_min_value_usd: float = _float_env("POLYMARKET_LIVE_POSITION_MIN_VALUE_USD", 1.0)
+    sync_live_positions: bool = os.getenv("POLYMARKET_SYNC_LIVE_POSITIONS", "1").lower() in {"1", "true", "yes"}
     min_liquidity_usd: float = _float_env("POLYMARKET_MIN_LIQUIDITY_USD", 500.0)
     min_volume_usd: float = _float_env("POLYMARKET_MIN_VOLUME_USD", 1000.0)
     dashboard_host: str = os.getenv("POLYMARKET_DASHBOARD_HOST", "127.0.0.1")

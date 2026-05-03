@@ -39,6 +39,8 @@ Each selected opportunity should include `selection_reason` and `selection_metri
 - The smart-money strategy copies only recent BUY trades from profitable leaderboard wallets when multiple wallets bought the same token.
 - The live strategy may use all available balance only across qualified smart-money opportunities; do not add forced liquidity-only or random buys to zero out cash.
 - The sell strategy should run before new entries: partial profit-taking at configured tiers and peak giveback protection via SELL orders.
+- Sync live Polymarket positions into the local ledger before entry/exit decisions when available.
+- Treat crypto up/down micro markets more strictly than sports or longer-duration markets.
 - BTC edge trading is separate and should not be the default autonomous strategy.
 
 ## Strategy To Make Money
@@ -54,6 +56,7 @@ Required properties for autonomous live entries:
 - The local ledger has no duplicate open position for that market/outcome.
 - Sizing is capped at the per-trade limit so one trade cannot dominate the account.
 - Open live positions are checked for configured take-profit and peak-protection exits before new buys.
+- Markets too close to expiry are skipped unless settings explicitly allow them.
 
 If those conditions are not present, the correct behavior is to skip. Do not weaken this into forced trading.
 

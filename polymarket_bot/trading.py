@@ -306,11 +306,17 @@ def execute_live_trade(
 
     entry_price = round(min(candidate.best_ask + candidate.tick_size, 0.99), 3)
 
-    # ANTI-PUMP PROTECTION: Don't follow if price moved > 15% from smart money entry
+    # ANTI-PUMP PROTECTION: Don't follow if price moved too far from smart money entry.
     if signal and "avg_copy_price" in signal:
         avg_copy = float(signal["avg_copy_price"])
         slippage = (entry_price - avg_copy) / avg_copy if avg_copy > 0 else 0
-        if slippage > 0.15:
+        metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
+        max_slippage = (
+            settings.smart_crypto_micro_max_entry_slippage
+            if metrics.get("is_crypto_micro")
+            else settings.smart_max_entry_slippage
+        )
+        if slippage > max_slippage:
             raise ValueError(f"Anti-pump: Entry price {entry_price} is {slippage:.1%} above smart money avg {avg_copy}")
 
     live_balance = client.live_available_balance()
@@ -329,6 +335,18 @@ def execute_live_trade(
     # Sizing logic
     minimum = min_trade_usd if min_trade_usd is not None else settings.btc_min_trade_usd
     maximum = max_trade_usd if max_trade_usd is not None else settings.btc_max_trade_usd
+    if signal:
+        metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
+        if metrics.get("is_crypto_micro"):
+            maximum = min(maximum, settings.smart_crypto_micro_max_trade_usd)
+        consensus = float(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0.0)
+        copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
+        quality_multiplier = 1.0
+        if consensus >= 4 and copied_usdc >= 1000:
+            quality_multiplier = 2.0
+        elif consensus >= 3 and copied_usdc >= 250:
+            quality_multiplier = 1.5
+        maximum = min(maximum, settings.max_position_usd * quality_multiplier)
     
     # Use the needed amount, but capped by available balance and max per trade
     stake = min(needed_usd, live_balance, maximum)

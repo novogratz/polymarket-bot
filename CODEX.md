@@ -51,7 +51,7 @@ Each smart-money loop tick prints a `scan_report` with the selected opportunity,
 
 The default autonomous strategy is smart-money copy trading. It requires profitable leaderboard wallets, recent BUY consensus on the same token, size filters, spread filters, price-band filters, and duplicate-position checks before live entry. A tick may place multiple $5-capped orders across qualified signals until funds, per-tick cap, or signal exhaustion stops it.
 
-Before buying, the bot checks live open positions for deterministic exits: default +100%/+200%/+300% partial profit-taking and peak giveback protection. Exits use SELL orders and are recorded in the local ledger.
+Before buying, the bot syncs live Polymarket positions into the ledger and checks live open positions for deterministic exits: default +100%/+200%/+300% partial profit-taking, positive-PnL near-expiry exits, and peak giveback protection. Exits use SELL orders and are recorded in the local ledger.
 
 BTC edge trading is optional and separate.
 
@@ -66,6 +66,8 @@ Keep these requirements intact:
 - Size caps protect the account from one bad thesis.
 - Duplicate-position checks prevent accidental overexposure.
 - Profit ladders protect large unrealized gains from round-tripping to zero.
+- Live position sync beats stale local dashboard state.
+- Near-expiry and crypto micro-market filters reduce noisy forced trades.
 - Refusing to trade is correct when the signal is weak.
 
 Never describe this as guaranteed profit. Describe it as an edge-seeking copy-trading system with execution and risk filters.

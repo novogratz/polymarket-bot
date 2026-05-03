@@ -14,6 +14,7 @@ The bot is built to monetize that signal by:
 - Spending available live balance across qualified opportunities in $5-capped chunks.
 - Refusing duplicate positions so it does not accidentally pyramid into the same outcome.
 - Taking profits with partial SELL orders instead of only waiting for resolution.
+- Reconciling local ledger state from live Polymarket positions.
 
 The strategy does not predict every market from scratch. It follows public smart-money activity only when execution quality is acceptable.
 
@@ -26,7 +27,14 @@ The smart-money strategy scans recent BUY trades from profitable Polymarket lead
 - Each copied trade is at least `POLYMARKET_SMART_MIN_TRADE_USD`.
 - The candidate's ask price is inside `POLYMARKET_SMART_MIN_BUY_PRICE` and `POLYMARKET_SMART_MAX_BUY_PRICE`.
 - The order-book spread is no wider than `POLYMARKET_SMART_MAX_SPREAD`.
+- The market is not too close to expiry: `POLYMARKET_SMART_MIN_HOURS_TO_CLOSE`, default `0.25`.
 - The local ledger does not already have an open position for the same market and outcome.
+
+Crypto up/down micro markets are treated more strictly:
+
+- `POLYMARKET_SMART_CRYPTO_MICRO_MIN_CONSENSUS=3`
+- `POLYMARKET_SMART_CRYPTO_MICRO_MAX_ENTRY_SLIPPAGE=0.05`
+- `POLYMARKET_SMART_CRYPTO_MICRO_MAX_TRADE_USD=5`
 
 ## Sizing
 
@@ -35,6 +43,7 @@ Live order size is based on available USDC balance:
 - Base size: `POLYMARKET_TRADE_FRACTION`, default `1.0`, of available balance.
 - Cap: `POLYMARKET_SMART_MAX_TRADE_USD`, default `$5`, and `POLYMARKET_MAX_POSITION_USD`, default `$5`.
 - Minimum: Polymarket's $1 practical minimum.
+- Quality scaling: if env caps are raised, 2-wallet signals stay small, 3-wallet signals can size up moderately, and 4+ wallet high-flow signals can use the configured cap.
 
 This is risk control, not a profit guarantee.
 
@@ -80,7 +89,7 @@ If that does not qualify, the bot skips. It does not force a liquidity-only trad
 
 ## Exit Strategy
 
-Before looking for new entries, each smart-money tick reviews open live positions and may place SELL orders.
+Before looking for new entries, each smart-money tick syncs live positions from the Polymarket Data API, then reviews open live positions and may place SELL orders.
 
 Default take-profit ladder:
 
@@ -101,9 +110,14 @@ POLYMARKET_SMART_TAKE_PROFIT_TIERS=1.0:0.50,2.0:0.25,3.0:0.15
 POLYMARKET_SMART_PEAK_PROTECT_TRIGGER=1.0
 POLYMARKET_SMART_PEAK_PROTECT_FLOOR=0.40
 POLYMARKET_SMART_MIN_SELL_USD=1
+POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE=20
+POLYMARKET_SMART_EXIT_MIN_PROFIT=0.05
+POLYMARKET_SYNC_LIVE_POSITIONS=1
+POLYMARKET_LIVE_POSITION_MIN_VALUE_USD=1
 ```
 
 SELL orders use the executable bid. The ledger records `exits`, remaining `shares`, remaining `stake`, and `realized_pnl`.
+If a profitable position is within `POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE`, the bot can sell the remaining shares instead of letting it run into expiry.
 
 ## Automation
 
@@ -130,6 +144,7 @@ Each tick prints a `scan_report` with:
 - Eligible trade and grouped token counts.
 - Rejection reasons when nothing qualified.
 - Exit actions under `exits`, including sell reason and order response.
+- Live reconciliation actions under `sync`.
 
 The scan path is deterministic Python code calling Polymarket APIs. It does not use Codex, Claude, or any LLM.
 

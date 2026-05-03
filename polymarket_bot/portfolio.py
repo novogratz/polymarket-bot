@@ -40,6 +40,15 @@ class Portfolio:
     def has_exact_position(self, market_id: str, outcome: str) -> bool:
         return self.has_open_position(market_id, outcome=outcome)
 
+    def has_open_token(self, token_id: str | None) -> bool:
+        if not token_id:
+            return False
+        return any(
+            position.get("token_id") == token_id
+            and position.get("status") == "open"
+            for position in self.positions
+        )
+
     def open_paper_position(self, candidate: Candidate, stake: float, *, entry_price: float | None = None) -> dict[str, Any] | None:
         if stake <= 0.0 or stake > self.cash or self.has_open_position(candidate.market_id, candidate.outcome):
             return None

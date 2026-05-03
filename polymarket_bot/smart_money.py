@@ -45,6 +45,7 @@ class SmartMoneySignal:
     total_trader_pnl: float = 0.0
     spread: float = 0.0
     min_consensus: int = 2
+    is_crypto_micro: bool = False
 
     @property
     def score(self) -> float:
@@ -88,6 +89,7 @@ class SmartMoneySignal:
                 "spread": round(self.spread, 4),
                 "ask_minus_avg_copy_price": price_distance,
                 "total_trader_pnl": round(self.total_trader_pnl, 2),
+                "is_crypto_micro": self.is_crypto_micro,
             },
             "url": self.candidate.url,
         }
@@ -182,6 +184,17 @@ class DataApiClient:
             )
         return trades
 
+    def positions(self, *, user: str, limit: int = 500) -> list[dict[str, Any]]:
+        payload = self._get_json(
+            "/positions",
+            {
+                "user": user,
+                "limit": str(limit),
+                "sizeThreshold": "0",
+            },
+        )
+        return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
+
     def _get_json(self, path: str, params: dict[str, str]) -> Any:
         query = urllib.parse.urlencode(params)
         request = urllib.request.Request(
@@ -211,7 +224,20 @@ def analyze_smart_money(
     client: DataApiClient | None = None,
 ) -> SmartMoneyReport:
     client = client or DataApiClient(settings.data_api_base_url)
-    traders = _top_traders(client, settings)
+    try:
+        traders = _top_traders(client, settings)
+    except Exception as exc:
+        return SmartMoneyReport(
+            selected=None,
+            opportunities=[],
+            traders_checked=0,
+            traders_used=0,
+            trades_checked=0,
+            eligible_trade_count=0,
+            grouped_tokens=0,
+            matched_tokens=0,
+            rejected={f"leaderboard_api_error_{type(exc).__name__}": 1},
+        )
     pnl_by_wallet = {t.wallet.lower(): t.pnl for t in traders}
     
     start = int(time.time()) - (settings.smart_trade_lookback_minutes * 60)
@@ -221,7 +247,10 @@ def analyze_smart_money(
         if trader.pnl < settings.smart_min_trader_pnl:
             continue
         traders_used += 1
-        trades.extend(client.trades(user=trader.wallet, start=start))
+        try:
+            trades.extend(client.trades(user=trader.wallet, start=start))
+        except Exception:
+            continue
     signals, details = smart_money_signals(candidates, trades, settings, pnl_by_wallet=pnl_by_wallet, include_details=True)
     opportunities = sorted(signals, key=lambda item: item.score, reverse=True)
     return SmartMoneyReport(
@@ -264,6 +293,9 @@ def smart_money_signals(
             rejected["no_matching_candidate_or_quote"] = rejected.get("no_matching_candidate_or_quote", 0) + 1
             continue
         matched_tokens += 1
+        if candidate.hours_to_close is not None and candidate.hours_to_close < settings.smart_min_hours_to_close:
+            rejected["too_close_to_expiry"] = rejected.get("too_close_to_expiry", 0) + 1
+            continue
         if not candidate.accepts_orders or candidate.tick_size is None:
             rejected["not_accepting_orders"] = rejected.get("not_accepting_orders", 0) + 1
             continue
@@ -276,7 +308,10 @@ def smart_money_signals(
             continue
 
         wallets = sorted({trade.wallet for trade in token_trades})
+        is_crypto_micro = _is_crypto_micro(candidate)
         min_consensus = max(2, settings.smart_min_consensus)
+        if is_crypto_micro:
+            min_consensus = max(min_consensus, settings.smart_crypto_micro_min_consensus)
         if len(wallets) < min_consensus:
             rejected["not_enough_wallet_consensus"] = rejected.get("not_enough_wallet_consensus", 0) + 1
             continue
@@ -296,6 +331,7 @@ def smart_money_signals(
                 total_trader_pnl=total_trader_pnl,
                 spread=spread,
                 min_consensus=min_consensus,
+                is_crypto_micro=is_crypto_micro,
             )
         )
     if include_details:
@@ -312,11 +348,16 @@ def _top_traders(client: DataApiClient, settings: Settings) -> list[SmartTrader]
     seen: set[str] = set()
     traders: list[SmartTrader] = []
     for category in _categories(settings):
-        for trader in client.leaderboard(
-            category=category,
-            time_period=settings.smart_time_period,
-            limit=settings.smart_leaderboard_limit,
-        ):
+        try:
+            category_traders = client.leaderboard(
+                category=category,
+                time_period=settings.smart_time_period,
+                limit=settings.smart_leaderboard_limit,
+            )
+        except Exception as exc:
+            print(f"⚠️  Smart-money leaderboard category skipped: {category} {type(exc).__name__}: {exc}")
+            continue
+        for trader in category_traders:
             if trader.wallet.lower() in seen:
                 continue
             seen.add(trader.wallet.lower())
@@ -326,6 +367,11 @@ def _top_traders(client: DataApiClient, settings: Settings) -> list[SmartTrader]
 
 def _categories(settings: Settings) -> list[str]:
     return [item.strip().upper() for item in settings.smart_categories.split(",") if item.strip()]
+
+
+def _is_crypto_micro(candidate: Candidate) -> bool:
+    text = f"{candidate.question} {candidate.slug}".lower()
+    return ("bitcoin up or down" in text or "ethereum up or down" in text or "btc-updown" in text or "eth-updown" in text)
 
 
 def _float(value: Any, default: float = 0.0) -> float:

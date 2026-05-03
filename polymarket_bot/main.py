@@ -34,20 +34,25 @@ def load_smart_candidates(settings: Settings):
     client = GammaClient(settings.gamma_base_url)
     now = utc_now()
     horizon = now + timedelta(hours=settings.smart_soon_hours)
-    batches = [
-        client.get_markets(
-            limit=settings.smart_scan_limit,
-            end_date_min=now,
-            end_date_max=horizon,
-        ),
-        client.get_markets(
-            limit=settings.smart_scan_limit,
-            order="volume",
-            ascending=False,
-            end_date_min=now,
-            end_date_max=horizon,
-        ),
-    ]
+    batches = []
+    for kwargs in (
+        {
+            "limit": settings.smart_scan_limit,
+            "end_date_min": now,
+            "end_date_max": horizon,
+        },
+        {
+            "limit": settings.smart_scan_limit,
+            "order": "volume",
+            "ascending": False,
+            "end_date_min": now,
+            "end_date_max": horizon,
+        },
+    ):
+        try:
+            batches.append(client.get_markets(**kwargs))
+        except Exception as exc:
+            print(f"⚠️  Gamma smart market batch skipped: {type(exc).__name__}: {exc}")
     markets_by_id = {
         str(market.get("id") or market.get("conditionId") or index): market
         for index, batch in enumerate(batches)
@@ -68,13 +73,16 @@ def scan(settings: Settings) -> list[dict[str, object]]:
 def reset_ledger(settings: Settings) -> dict[str, object]:
     cash = settings.paper_balance_usd
     source = "paper_balance"
+    portfolio = Portfolio(cash=cash, positions=[])
     if settings.private_key and settings.api_key and settings.api_secret and settings.api_passphrase:
         client = build_client(settings)
         live_cash = client.live_available_balance()
         if live_cash > 0:
             cash = round(live_cash, 2)
             source = "live_clob"
-    portfolio = Portfolio(cash=cash, positions=[])
+        portfolio.cash = cash
+        if settings.sync_live_positions and settings.funder_address:
+            _sync_live_positions(settings, portfolio)
     portfolio.save(settings.state_path)
     return {
         "reset": True,
@@ -120,6 +128,7 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
         and candidate.best_bid is not None
         and candidate.tick_size is not None
         and not portfolio.has_open_position(candidate.market_id)
+        and not portfolio.has_open_token(candidate.token_id)
     ]
     signal = choose_btc_edge_trade(eligible_candidates, settings, btc_model)
     if signal is None:
@@ -161,6 +170,7 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
 def smart_money_once(settings: Settings) -> dict[str, object]:
     candidates = load_smart_candidates(settings)
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+    sync_report = _sync_live_positions(settings, portfolio) if settings.sync_live_positions else []
     portfolio.mark_to_market(candidates)
     open_count = portfolio.summary()["open_positions"]
 
@@ -263,6 +273,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 "available_cash": live_cash,
                 "whale_exits": whale_exit_report,
                 "exits": exit_report,
+                "sync": sync_report,
                 "category_summary": open_categories,
                 "scan_report": report.to_dict(),
                 "summary": portfolio.summary(),
@@ -284,6 +295,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 continue
             opportunity_payload = opportunity.to_dict()
             print(f"🧠 SELECTED: {opportunity_payload['selection_reason']}")
+            max_trade_usd = _max_trade_for_signal(settings, opportunity_payload, strategy)
             try:
                 result = execute_live_trade(
                     client,
@@ -291,11 +303,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     opportunity.candidate,
                     portfolio,
                     min_trade_usd=1.0,
-                    max_trade_usd=(
-                        min(settings.starter_trade_usd, settings.max_position_usd)
-                        if strategy == "smart_money_starter"
-                        else min(settings.smart_max_trade_usd, settings.max_position_usd)
-                    ),
+                    max_trade_usd=max_trade_usd,
                     strategy=strategy,
                     signal=opportunity_payload,
                 )
@@ -340,6 +348,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             "stop_reason": stop_reason,
             "whale_exits": whale_exit_report,
             "exits": exit_report,
+            "sync": sync_report,
             "category_summary": open_categories,
             "rejected_signals": rejected_signals,
             "scan_report": report.to_dict(),
@@ -352,6 +361,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "strategy": "smart_money",
         "whale_exits": whale_exit_report,
         "exits": exit_report,
+        "sync": sync_report,
         "category_summary": open_categories,
         "rejected_signals": rejected_signals,
         "scan_report": report.to_dict(),
@@ -381,6 +391,11 @@ def _execute_sell_strategy(
         current_pnl_pct = (candidate.best_bid - entry_price) / entry_price
         position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", current_pnl_pct)), current_pnl_pct)
         plan = _sell_plan(position, current_pnl_pct, settings)
+        if plan is None and _should_exit_before_expiry(candidate, current_pnl_pct, settings):
+            plan = {
+                "reason": "positive_pnl_before_expiry",
+                "shares": float(position.get("shares", 0.0)),
+            }
         if plan is None:
             continue
 
@@ -425,6 +440,26 @@ def _execute_sell_strategy(
     return exit_report
 
 
+def _max_trade_for_signal(settings: Settings, signal: dict[str, object], strategy: str) -> float:
+    base_cap = (
+        min(settings.starter_trade_usd, settings.max_position_usd)
+        if strategy == "smart_money_starter"
+        else min(settings.smart_max_trade_usd, settings.max_position_usd)
+    )
+    metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
+    consensus = int(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0)
+    copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
+    if metrics.get("is_crypto_micro"):
+        base_cap = min(base_cap, settings.smart_crypto_micro_max_trade_usd)
+    if consensus >= 4 and copied_usdc >= 1000:
+        quality_cap = settings.max_position_usd
+    elif consensus >= 3 and copied_usdc >= 250:
+        quality_cap = min(settings.max_position_usd, 10.0)
+    else:
+        quality_cap = min(settings.max_position_usd, 5.0)
+    return min(base_cap, quality_cap)
+
+
 def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Settings) -> dict[str, object] | None:
     current_shares = float(position.get("shares", 0.0))
     if current_shares <= 0:
@@ -451,6 +486,17 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
     return None
 
 
+def _should_exit_before_expiry(candidate, current_pnl_pct: float, settings: Settings) -> bool:
+    if settings.smart_exit_minutes_to_close <= 0:
+        return False
+    if candidate.hours_to_close is None:
+        return False
+    return (
+        candidate.hours_to_close * 60 <= settings.smart_exit_minutes_to_close
+        and current_pnl_pct >= settings.smart_exit_min_profit
+    )
+
+
 def _take_profit_tiers(settings: Settings) -> list[tuple[float, float]]:
     tiers: list[tuple[float, float]] = []
     for item in settings.smart_take_profit_tiers.split(","):
@@ -462,6 +508,100 @@ def _take_profit_tiers(settings: Settings) -> list[tuple[float, float]]:
         except ValueError:
             continue
     return sorted(tiers)
+
+
+def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[str, object]]:
+    if not settings.funder_address:
+        return []
+    report: list[dict[str, object]] = []
+    try:
+        live_positions = DataApiClient(settings.data_api_base_url).positions(user=settings.funder_address)
+    except Exception as exc:
+        return [{"action": "sync_skipped", "reason": f"{type(exc).__name__}: {exc}"}]
+
+    active_by_token: dict[str, dict[str, object]] = {}
+    for item in live_positions:
+        token_id = str(item.get("asset") or "")
+        if not token_id:
+            continue
+        size = _float(item.get("size"))
+        current_value = _float(item.get("currentValue"))
+        if size <= 0 or current_value < settings.live_position_min_value_usd:
+            continue
+        active_by_token[token_id] = item
+
+    local_by_token = {
+        str(position.get("token_id")): position
+        for position in portfolio.positions
+        if position.get("live") and position.get("token_id")
+    }
+    for token_id, position in local_by_token.items():
+        if position.get("status") == "open" and token_id not in active_by_token:
+            position["status"] = "closed"
+            position["closed_at"] = utc_now().isoformat()
+            position["sync_closed"] = True
+            report.append({"action": "closed_stale_local_position", "token_id": token_id})
+
+    for token_id, item in active_by_token.items():
+        position = local_by_token.get(token_id)
+        if position is None:
+            position = _position_from_live_api(item)
+            portfolio.positions.append(position)
+            report.append({"action": "imported_live_position", "token_id": token_id, "question": position.get("question")})
+        else:
+            _update_position_from_live_api(position, item)
+            report.append({"action": "updated_live_position", "token_id": token_id, "question": position.get("question")})
+    return report
+
+
+def _position_from_live_api(item: dict[str, object]) -> dict[str, object]:
+    size = _float(item.get("size"))
+    avg_price = _float(item.get("avgPrice"))
+    current_price = _float(item.get("curPrice"), avg_price)
+    stake = round(_float(item.get("initialValue"), size * avg_price), 2)
+    return {
+        "status": "open",
+        "opened_at": utc_now().isoformat(),
+        "market_id": str(item.get("conditionId") or item.get("eventId") or ""),
+        "question": str(item.get("title") or ""),
+        "slug": str(item.get("slug") or item.get("eventSlug") or ""),
+        "url": f"https://polymarket.com/event/{item.get('eventSlug') or item.get('slug') or ''}",
+        "outcome": str(item.get("outcome") or ""),
+        "token_id": str(item.get("asset") or ""),
+        "entry_price": avg_price,
+        "current_price": current_price,
+        "stake": stake,
+        "shares": size,
+        "initial_shares": _float(item.get("totalBought"), size),
+        "unrealized_pnl": round(_float(item.get("currentValue"), size * current_price) - stake, 2),
+        "realized_pnl": round(_float(item.get("realizedPnl")), 2),
+        "live": True,
+        "strategy": "live_sync",
+        "synced_from_polymarket": True,
+    }
+
+
+def _update_position_from_live_api(position: dict[str, object], item: dict[str, object]) -> None:
+    size = _float(item.get("size"))
+    avg_price = _float(item.get("avgPrice"), _float(position.get("entry_price")))
+    current_price = _float(item.get("curPrice"), avg_price)
+    stake = round(_float(item.get("initialValue"), size * avg_price), 2)
+    position["shares"] = size
+    position["entry_price"] = avg_price
+    position["current_price"] = current_price
+    position["stake"] = stake
+    position["initial_shares"] = max(_float(position.get("initial_shares")), _float(item.get("totalBought"), size), size)
+    position["unrealized_pnl"] = round(_float(item.get("currentValue"), size * current_price) - stake, 2)
+    position["realized_pnl"] = round(_float(item.get("realizedPnl"), _float(position.get("realized_pnl"))), 2)
+    position["status"] = "open"
+    position["synced_from_polymarket"] = True
+
+
+def _float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _is_funds_error(message: str) -> bool:
