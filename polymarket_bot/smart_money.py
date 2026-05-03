@@ -344,8 +344,14 @@ def smart_money_signals(
 
         total_trader_pnl = sum(pnl_by_wallet.get(w.lower(), 0.0) for w in wallets) if pnl_by_wallet else 0.0
         copied_usdc = round(sum(trade.usdc_size for trade in token_trades), 2)
+        if copied_usdc < settings.smart_min_copied_usdc:
+            rejected["copied_usdc_too_small"] = rejected.get("copied_usdc_too_small", 0) + 1
+            continue
         total_size = sum(trade.size for trade in token_trades)
         avg_price = round(sum(trade.price * trade.size for trade in token_trades) / total_size, 4) if total_size else 0.0
+        if _value_pct(avg_price, candidate.best_ask) < -settings.smart_max_chase_premium:
+            rejected["chase_premium_too_high"] = rejected.get("chase_premium_too_high", 0) + 1
+            continue
         signals.append(
             SmartMoneySignal(
                 candidate=candidate,

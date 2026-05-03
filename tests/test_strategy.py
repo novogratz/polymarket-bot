@@ -672,6 +672,74 @@ class StrategyTests(unittest.TestCase):
         self.assertGreater(payload["selection_metrics"]["value_discount_pct"], 0)
         self.assertGreater(payload["selection_metrics"]["value_score"], 0)
 
+    def test_smart_money_rejects_low_total_copied_flow(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will Bitcoin reach $81,000 on May 3?",
+            slug="will-bitcoin-reach-81k-on-may-3",
+            end_date=utc_now() + timedelta(hours=14),
+            hours_to_close=14,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.03,
+            token_id="low-flow-token",
+            score=10,
+            url="https://polymarket.com/event/will-bitcoin-reach-81k-on-may-3",
+            best_bid=0.021,
+            best_ask=0.03,
+            tick_size=0.001,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "low-flow-token", "BUY", 0.025, 400, 10, 1, "BTC 81k", "Yes", "btc-81k"),
+            SmartTrade("0x2", "low-flow-token", "BUY", 0.026, 475.38, 12.36, 1, "BTC 81k", "Yes", "btc-81k"),
+        ]
+
+        signals, details = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(smart_min_copied_usdc=50, smart_min_trade_usd=1),
+            include_details=True,
+        )
+
+        self.assertEqual(signals, [])
+        self.assertEqual(details["rejected"]["copied_usdc_too_small"], 1)
+
+    def test_smart_money_rejects_high_chase_premium(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will Bitcoin reach $81,000 on May 3?",
+            slug="will-bitcoin-reach-81k-on-may-3",
+            end_date=utc_now() + timedelta(hours=14),
+            hours_to_close=14,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.03,
+            token_id="chase-premium-token",
+            score=10,
+            url="https://polymarket.com/event/will-bitcoin-reach-81k-on-may-3",
+            best_bid=0.021,
+            best_ask=0.03,
+            tick_size=0.001,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "chase-premium-token", "BUY", 0.025, 2000, 50, 1, "BTC 81k", "Yes", "btc-81k"),
+            SmartTrade("0x2", "chase-premium-token", "BUY", 0.026, 2000, 52, 1, "BTC 81k", "Yes", "btc-81k"),
+        ]
+
+        signals, details = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(smart_max_chase_premium=0.10, smart_min_copied_usdc=50, smart_min_trade_usd=1),
+            include_details=True,
+        )
+
+        self.assertEqual(signals, [])
+        self.assertEqual(details["rejected"]["chase_premium_too_high"], 1)
+
     def test_crypto_micro_requires_higher_consensus(self):
         candidate = Candidate(
             market_id="1",
