@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -60,6 +61,15 @@ class Portfolio:
             for position in self.positions
         )
 
+    def has_open_event_position(self, candidate: Candidate) -> bool:
+        event_key = _sports_event_key(candidate)
+        if not event_key:
+            return False
+        return any(
+            position.get("status") == "open" and _sports_event_key(position) == event_key
+            for position in self.positions
+        )
+
     def has_pending_token(self, token_id: str | None) -> bool:
         if not token_id:
             return False
@@ -70,7 +80,12 @@ class Portfolio:
         )
 
     def open_paper_position(self, candidate: Candidate, stake: float, *, entry_price: float | None = None) -> dict[str, Any] | None:
-        if stake <= 0.0 or stake > self.cash or self.has_open_position(candidate.market_id, candidate.outcome):
+        if (
+            stake <= 0.0
+            or stake > self.cash
+            or self.has_open_position(candidate.market_id, candidate.outcome)
+            or self.has_open_event_position(candidate)
+        ):
             return None
         position = self._build_position(candidate, stake, entry_price=entry_price)
         self.cash = round(self.cash - stake, 2)
@@ -97,6 +112,7 @@ class Portfolio:
             "market_id": candidate.market_id,
             "question": candidate.question,
             "slug": candidate.slug,
+            "event_slug": candidate.event_slug,
             "url": candidate.url,
             "outcome": candidate.outcome,
             "token_id": candidate.token_id,
@@ -122,7 +138,7 @@ class Portfolio:
         order_id: str | None = None,
         order_response: Any = None,
     ) -> dict[str, Any] | None:
-        if stake <= 0.0 or self.has_open_position(candidate.market_id, candidate.outcome):
+        if stake <= 0.0 or self.has_open_position(candidate.market_id, candidate.outcome) or self.has_open_event_position(candidate):
             return None
         position = self._build_position(candidate, stake, entry_price=entry_price)
         position["live"] = True
@@ -192,6 +208,7 @@ class Portfolio:
             "market_id": candidate.market_id,
             "question": candidate.question,
             "slug": candidate.slug,
+            "event_slug": candidate.event_slug,
             "url": candidate.url,
             "outcome": candidate.outcome,
             "token_id": candidate.token_id,
@@ -248,3 +265,57 @@ def paper_tick(candidates: list[Candidate], settings: Settings) -> tuple[Portfol
         opened = portfolio.open_paper_position(top, stake)
     portfolio.save(settings.state_path)
     return portfolio, opened
+
+
+def _sports_event_key(item: Candidate | dict[str, Any]) -> str | None:
+    if isinstance(item, Candidate):
+        question = item.question
+        slug = item.slug
+        event_slug = item.event_slug
+        url = item.url
+    else:
+        question = str(item.get("question") or "")
+        slug = str(item.get("slug") or "")
+        event_slug = str(item.get("event_slug") or "")
+        url = str(item.get("url") or "")
+
+    text = f"{question} {slug} {event_slug} {url}".lower()
+    if not _looks_sports_like(text):
+        return None
+    key = event_slug.strip().lower() or _event_slug_from_url(url)
+    if not key:
+        return None
+    return _normalize_key(key)
+
+
+def _looks_sports_like(text: str) -> bool:
+    markers = (
+        " fc ",
+        " cf ",
+        " sc ",
+        " vfl ",
+        " vs.",
+        " vs ",
+        "-vs-",
+        "nba",
+        "nfl",
+        "nhl",
+        "mlb",
+        "epl",
+        "laliga",
+        "serie",
+        "champions league",
+        "playoffs",
+        "o/u",
+    )
+    padded = f" {text} "
+    return any(marker in padded for marker in markers)
+
+
+def _event_slug_from_url(url: str) -> str:
+    match = re.search(r"/event/([^/?#]+)", url)
+    return match.group(1) if match else ""
+
+
+def _normalize_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")

@@ -58,6 +58,7 @@ class Candidate:
     tick_size: float | None = None
     neg_risk: bool = False
     accepts_orders: bool = False
+    event_slug: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -78,4 +79,5 @@ class Candidate:
             "tick_size": self.tick_size,
             "neg_risk": self.neg_risk,
             "accepts_orders": self.accepts_orders,
+            "event_slug": self.event_slug,
         }

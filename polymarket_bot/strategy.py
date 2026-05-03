@@ -45,6 +45,7 @@ def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Cand
             fair_price_bias = 1.0 - abs(price - 0.5)
             score = (tradability * 2.0) + (urgency * 5.0) + fair_price_bias
             slug = str(market.get("slug") or market.get("id") or "")
+            event_slug = _event_slug(market)
             best_bid, best_ask = _quote_for_outcome(index, len(outcomes), market_best_bid, market_best_ask)
             candidates.append(
                 Candidate(
@@ -65,10 +66,26 @@ def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Cand
                     tick_size=tick_size,
                     neg_risk=neg_risk,
                     accepts_orders=accepts_orders,
+                    event_slug=event_slug,
                 )
             )
 
     return sorted(candidates, key=lambda item: item.score, reverse=True)
+
+
+def _event_slug(market: dict[str, Any]) -> str:
+    event_slug = market.get("eventSlug")
+    if event_slug:
+        return str(event_slug)
+    events = market.get("events")
+    if isinstance(events, list) and events:
+        first = events[0]
+        if isinstance(first, dict) and first.get("slug"):
+            return str(first.get("slug"))
+    event = market.get("event")
+    if isinstance(event, dict) and event.get("slug"):
+        return str(event.get("slug"))
+    return ""
 
 
 def stake_for_candidate(candidate: Candidate, cash: float, settings: Settings) -> float:

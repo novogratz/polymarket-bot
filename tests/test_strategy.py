@@ -65,6 +65,27 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(by_outcome["Team B"].best_bid, 0.88)
         self.assertEqual(by_outcome["Team B"].best_ask, 0.89)
 
+    def test_rank_markets_preserves_event_slug(self):
+        end_date = (utc_now() + timedelta(hours=12)).isoformat().replace("+00:00", "Z")
+        candidates = rank_markets(
+            [
+                {
+                    "id": "1",
+                    "question": "Will Team A FC win?",
+                    "slug": "will-team-a-fc-win",
+                    "eventSlug": "team-a-fc-vs-team-b-fc",
+                    "endDate": end_date,
+                    "liquidity": "1000",
+                    "volume": "2000",
+                    "outcomes": '["Yes","No"]',
+                    "outcomePrices": '["0.55","0.45"]',
+                }
+            ],
+            Settings(min_liquidity_usd=100, min_volume_usd=100, soon_hours=24),
+        )
+
+        self.assertEqual(candidates[0].event_slug, "team-a-fc-vs-team-b-fc")
+
     def test_stake_is_capped(self):
         end_date = (utc_now() + timedelta(hours=1)).isoformat()
         candidate = rank_markets(
@@ -194,6 +215,65 @@ class StrategyTests(unittest.TestCase):
 
         self.assertEqual(result.order["amount"], 50.0)
         self.assertEqual(portfolio.positions[0]["stake"], 50.0)
+
+    def test_live_trade_rejects_second_position_in_same_sports_event(self):
+        class FakeClient:
+            def live_available_balance(self):
+                return 100.0
+
+            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
+                raise AssertionError("order should be blocked before submission")
+
+        open_candidate = Candidate(
+            market_id="gil-yes-no",
+            question="Will Gil Vicente FC win on 2026-05-03?",
+            slug="will-gil-vicente-fc-win-on-2026-05-03",
+            event_slug="gil-vicente-fc-vs-sc-freiburg-2026-05-03",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="No",
+            price=0.45,
+            token_id="gil-no",
+            score=1,
+            url="https://polymarket.com/event/gil-vicente-fc-vs-sc-freiburg-2026-05-03",
+            best_bid=0.44,
+            best_ask=0.45,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        opposite_candidate = Candidate(
+            market_id="freiburg-yes-no",
+            question="Will SC Freiburg win on 2026-05-03?",
+            slug="will-sc-freiburg-win-on-2026-05-03",
+            event_slug="gil-vicente-fc-vs-sc-freiburg-2026-05-03",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.45,
+            token_id="freiburg-yes",
+            score=1,
+            url="https://polymarket.com/event/gil-vicente-fc-vs-sc-freiburg-2026-05-03",
+            best_bid=0.44,
+            best_ask=0.45,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=100.0, positions=[])
+        self.assertIsNotNone(portfolio.record_live_position(open_candidate, 10.0, entry_price=0.45))
+
+        with self.assertRaisesRegex(ValueError, "duplicate_open_sports_event"):
+            execute_live_trade(
+                FakeClient(),
+                Settings(trade_fraction=1.0, max_position_usd=10),
+                opposite_candidate,
+                portfolio,
+                min_trade_usd=1.0,
+                max_trade_usd=10.0,
+            )
 
     def test_high_flow_two_wallet_trade_can_use_balance_fraction(self):
         class FakeClient:

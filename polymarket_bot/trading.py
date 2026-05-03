@@ -340,6 +340,7 @@ def choose_trade(candidates: list[Candidate], portfolio: Portfolio) -> Candidate
             and candidate.best_ask is not None
             and candidate.tick_size is not None
             and not portfolio.has_open_position(candidate.market_id)
+            and not portfolio.has_open_event_position(candidate)
         ):
             return candidate
     return None
@@ -360,6 +361,8 @@ def execute_live_trade(
         raise ValueError("candidate has no executable ask price")
     if candidate.tick_size is None or candidate.tick_size <= 0:
         raise ValueError("candidate has no tick size")
+    if portfolio.has_open_event_position(candidate):
+        raise ValueError("duplicate_open_sports_event")
 
     entry_price = round(min(candidate.best_ask + candidate.tick_size, 0.99), 3)
 

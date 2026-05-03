@@ -264,6 +264,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         and not portfolio.has_open_position(candidate.market_id)
         and not portfolio.has_open_token(candidate.token_id)
         and not portfolio.has_pending_token(candidate.token_id)
+        and not portfolio.has_open_event_position(candidate)
     ]
 
     report = analyze_smart_money(eligible_candidates, settings)
@@ -315,6 +316,17 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                         "market_id": opportunity.candidate.market_id,
                         "outcome": opportunity.candidate.outcome,
                         "reason": "duplicate_open_market",
+                        "selection_reason": opportunity.to_dict()["selection_reason"],
+                    }
+                )
+                continue
+            if portfolio.has_open_event_position(opportunity.candidate):
+                rejected_signals.append(
+                    {
+                        "market_id": opportunity.candidate.market_id,
+                        "outcome": opportunity.candidate.outcome,
+                        "event_slug": opportunity.candidate.event_slug,
+                        "reason": "duplicate_open_sports_event",
                         "selection_reason": opportunity.to_dict()["selection_reason"],
                     }
                 )
@@ -699,6 +711,7 @@ def _position_from_live_api(item: dict[str, object]) -> dict[str, object]:
         "market_id": str(item.get("conditionId") or item.get("eventId") or ""),
         "question": str(item.get("title") or ""),
         "slug": str(item.get("slug") or item.get("eventSlug") or ""),
+        "event_slug": str(item.get("eventSlug") or ""),
         "url": f"https://polymarket.com/event/{item.get('eventSlug') or item.get('slug') or ''}",
         "outcome": str(item.get("outcome") or ""),
         "token_id": str(item.get("asset") or ""),
@@ -729,6 +742,8 @@ def _update_position_from_live_api(position: dict[str, object], item: dict[str, 
     position["realized_pnl"] = round(_float(item.get("realizedPnl"), _float(position.get("realized_pnl"))), 2)
     position["status"] = "open"
     position["synced_from_polymarket"] = True
+    if item.get("eventSlug"):
+        position["event_slug"] = str(item.get("eventSlug") or "")
 
 
 def _float(value, default: float = 0.0) -> float:
