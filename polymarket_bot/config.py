@@ -63,6 +63,7 @@ class Settings:
     smart_max_buy_price: float = _float_env("POLYMARKET_SMART_MAX_BUY_PRICE", 0.98)
     smart_max_spread: float = _float_env("POLYMARKET_SMART_MAX_SPREAD", 0.10)
     smart_min_hours_to_close: float = _float_env("POLYMARKET_SMART_MIN_HOURS_TO_CLOSE", 0.25)
+    smart_max_hours_to_close: float = _float_env("POLYMARKET_SMART_MAX_HOURS_TO_CLOSE", 72.0)
     smart_max_entry_slippage: float = _float_env("POLYMARKET_SMART_MAX_ENTRY_SLIPPAGE", 0.10)
     smart_crypto_micro_min_consensus: int = _int_env("POLYMARKET_SMART_CRYPTO_MICRO_MIN_CONSENSUS", 3)
     smart_crypto_micro_max_entry_slippage: float = _float_env("POLYMARKET_SMART_CRYPTO_MICRO_MAX_ENTRY_SLIPPAGE", 0.05)

@@ -33,7 +33,10 @@ def load_candidates(settings: Settings):
 def load_smart_candidates(settings: Settings):
     client = GammaClient(settings.gamma_base_url)
     now = utc_now()
-    horizon = now + timedelta(hours=settings.smart_soon_hours)
+    horizon_hours = settings.smart_soon_hours
+    if settings.smart_max_hours_to_close > 0:
+        horizon_hours = min(horizon_hours, settings.smart_max_hours_to_close)
+    horizon = now + timedelta(hours=horizon_hours)
     batches = []
     for kwargs in (
         {

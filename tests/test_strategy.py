@@ -528,6 +528,93 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(signals, [])
         self.assertEqual(details["rejected"]["too_close_to_expiry"], 1)
 
+    def test_smart_money_rejects_too_far_to_expiry(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will the long market resolve Yes?",
+            slug="long-market",
+            end_date=utc_now() + timedelta(hours=100),
+            hours_to_close=100,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.5,
+            token_id="yes-token",
+            score=10,
+            url="https://polymarket.com/event/long-market",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "yes-token", "BUY", 0.49, 100, 49, 1, "Long market", "Yes", "long-market"),
+            SmartTrade("0x2", "yes-token", "BUY", 0.50, 100, 50, 1, "Long market", "Yes", "long-market"),
+        ]
+
+        signals, details = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(smart_max_hours_to_close=24, smart_min_trade_usd=1),
+            include_details=True,
+        )
+
+        self.assertEqual(signals, [])
+        self.assertEqual(details["rejected"]["too_far_to_expiry"], 1)
+
+    def test_smart_money_prefers_shorter_market_when_quality_matches(self):
+        near = Candidate(
+            market_id="1",
+            question="Will the near market resolve Yes?",
+            slug="near-market",
+            end_date=utc_now() + timedelta(hours=3),
+            hours_to_close=3,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.5,
+            token_id="near-token",
+            score=10,
+            url="https://polymarket.com/event/near-market",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        far = Candidate(
+            market_id="2",
+            question="Will the far market resolve Yes?",
+            slug="far-market",
+            end_date=utc_now() + timedelta(hours=48),
+            hours_to_close=48,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.5,
+            token_id="far-token",
+            score=10,
+            url="https://polymarket.com/event/far-market",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "near-token", "BUY", 0.49, 100, 49, 1, "Near market", "Yes", "near-market"),
+            SmartTrade("0x2", "near-token", "BUY", 0.50, 100, 50, 1, "Near market", "Yes", "near-market"),
+            SmartTrade("0x1", "far-token", "BUY", 0.49, 100, 49, 1, "Far market", "Yes", "far-market"),
+            SmartTrade("0x2", "far-token", "BUY", 0.50, 100, 50, 1, "Far market", "Yes", "far-market"),
+        ]
+
+        signals = smart_money_signals(
+            [far, near],
+            trades,
+            Settings(smart_max_hours_to_close=72, smart_min_trade_usd=1),
+        )
+
+        self.assertEqual(signals[0].candidate.token_id, "near-token")
+        self.assertGreater(signals[0].score, signals[1].score)
+
     def test_crypto_micro_requires_higher_consensus(self):
         candidate = Candidate(
             market_id="1",

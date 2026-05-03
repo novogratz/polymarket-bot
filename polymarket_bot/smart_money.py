@@ -49,9 +49,14 @@ class SmartMoneySignal:
 
     @property
     def score(self) -> float:
-        # Score includes consensus, size, and now quality (weighted PnL)
-        pnl_bonus = min(self.total_trader_pnl / 1000.0, 15.0)  # Up to 15 points for high PnL wallets
-        return (self.consensus * 10.0) + min(self.copied_usdc / 10.0, 25.0) + pnl_bonus - (self.candidate.best_ask or 0.0)
+        pnl_bonus = min(self.total_trader_pnl / 1000.0, 15.0)
+        return (
+            (self.consensus * 10.0)
+            + min(self.copied_usdc / 10.0, 25.0)
+            + pnl_bonus
+            + _short_horizon_bonus(self.candidate.hours_to_close)
+            - (self.candidate.best_ask or 0.0)
+        )
 
     def to_dict(self) -> dict[str, Any]:
         price_distance = (
@@ -62,7 +67,8 @@ class SmartMoneySignal:
         selection_reason = (
             f"{self.consensus} profitable wallets bought this same token recently, "
             f"copying ${self.copied_usdc:.2f} total at avg {self.avg_copy_price:.4f}; "
-            f"current ask {self.candidate.best_ask} has spread {self.spread:.4f} "
+            f"current ask {self.candidate.best_ask} has spread {self.spread:.4f}, "
+            f"closes in {_format_hours(self.candidate.hours_to_close)}, "
             f"and passed min consensus {self.min_consensus}, price band, spread, and duplicate checks."
         )
         return {
@@ -87,6 +93,7 @@ class SmartMoneySignal:
                 "current_ask": self.candidate.best_ask,
                 "current_bid": self.candidate.best_bid,
                 "spread": round(self.spread, 4),
+                "hours_to_close": self.candidate.hours_to_close,
                 "ask_minus_avg_copy_price": price_distance,
                 "total_trader_pnl": round(self.total_trader_pnl, 2),
                 "is_crypto_micro": self.is_crypto_micro,
@@ -296,6 +303,13 @@ def smart_money_signals(
         if candidate.hours_to_close is not None and candidate.hours_to_close < settings.smart_min_hours_to_close:
             rejected["too_close_to_expiry"] = rejected.get("too_close_to_expiry", 0) + 1
             continue
+        if (
+            settings.smart_max_hours_to_close > 0
+            and candidate.hours_to_close is not None
+            and candidate.hours_to_close > settings.smart_max_hours_to_close
+        ):
+            rejected["too_far_to_expiry"] = rejected.get("too_far_to_expiry", 0) + 1
+            continue
         if not candidate.accepts_orders or candidate.tick_size is None:
             rejected["not_accepting_orders"] = rejected.get("not_accepting_orders", 0) + 1
             continue
@@ -372,6 +386,28 @@ def _categories(settings: Settings) -> list[str]:
 def _is_crypto_micro(candidate: Candidate) -> bool:
     text = f"{candidate.question} {candidate.slug}".lower()
     return ("bitcoin up or down" in text or "ethereum up or down" in text or "btc-updown" in text or "eth-updown" in text)
+
+
+def _short_horizon_bonus(hours_to_close: float | None) -> float:
+    if hours_to_close is None:
+        return 0.0
+    if hours_to_close <= 1:
+        return 8.0
+    if hours_to_close <= 6:
+        return 6.0
+    if hours_to_close <= 24:
+        return 4.0
+    if hours_to_close <= 72:
+        return 1.0
+    return -min((hours_to_close - 72.0) / 24.0, 5.0)
+
+
+def _format_hours(hours_to_close: float | None) -> str:
+    if hours_to_close is None:
+        return "unknown"
+    if hours_to_close < 1:
+        return f"{round(hours_to_close * 60)}m"
+    return f"{hours_to_close:.1f}h"
 
 
 def _float(value: Any, default: float = 0.0) -> float:
