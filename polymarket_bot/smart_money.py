@@ -50,11 +50,13 @@ class SmartMoneySignal:
     @property
     def score(self) -> float:
         pnl_bonus = min(self.total_trader_pnl / 1000.0, 15.0)
+        value = _value_score(self.avg_copy_price, self.candidate.best_ask, self.copied_usdc)
         return (
             (self.consensus * 10.0)
             + min(self.copied_usdc / 10.0, 25.0)
             + pnl_bonus
             + _short_horizon_bonus(self.candidate.hours_to_close)
+            + value
             - (self.candidate.best_ask or 0.0)
         )
 
@@ -64,11 +66,19 @@ class SmartMoneySignal:
             if self.avg_copy_price > 0.0 and self.candidate.best_ask is not None
             else None
         )
+        value_pct = _value_pct(self.avg_copy_price, self.candidate.best_ask)
+        value_text = (
+            f", value discount {abs(value_pct):.1%} below smart-money avg"
+            if value_pct > 0
+            else f", chase premium {abs(value_pct):.1%} above smart-money avg"
+            if value_pct < 0
+            else ""
+        )
         selection_reason = (
             f"{self.consensus} profitable wallets bought this same token recently, "
             f"copying ${self.copied_usdc:.2f} total at avg {self.avg_copy_price:.4f}; "
             f"current ask {self.candidate.best_ask} has spread {self.spread:.4f}, "
-            f"closes in {_format_hours(self.candidate.hours_to_close)}, "
+            f"closes in {_format_hours(self.candidate.hours_to_close)}{value_text}, "
             f"and passed min consensus {self.min_consensus}, price band, spread, and duplicate checks."
         )
         return {
@@ -95,6 +105,8 @@ class SmartMoneySignal:
                 "spread": round(self.spread, 4),
                 "hours_to_close": self.candidate.hours_to_close,
                 "ask_minus_avg_copy_price": price_distance,
+                "value_discount_pct": round(value_pct, 4),
+                "value_score": round(_value_score(self.avg_copy_price, self.candidate.best_ask, self.copied_usdc), 4),
                 "total_trader_pnl": round(self.total_trader_pnl, 2),
                 "is_crypto_micro": self.is_crypto_micro,
             },
@@ -400,6 +412,21 @@ def _short_horizon_bonus(hours_to_close: float | None) -> float:
     if hours_to_close <= 72:
         return 1.0
     return -min((hours_to_close - 72.0) / 24.0, 5.0)
+
+
+def _value_pct(avg_copy_price: float, current_ask: float | None) -> float:
+    if avg_copy_price <= 0.0 or current_ask is None:
+        return 0.0
+    return (avg_copy_price - current_ask) / avg_copy_price
+
+
+def _value_score(avg_copy_price: float, current_ask: float | None, copied_usdc: float) -> float:
+    value_pct = _value_pct(avg_copy_price, current_ask)
+    if value_pct > 0:
+        flow_quality = min(max(copied_usdc, 0.0) / 250.0, 1.0)
+        longshot_bonus = 4.0 if current_ask is not None and current_ask <= 0.15 and copied_usdc >= 20.0 else 0.0
+        return min(value_pct * 30.0, 18.0) * flow_quality + longshot_bonus
+    return -min(abs(value_pct) * 18.0, 12.0)
 
 
 def _format_hours(hours_to_close: float | None) -> str:

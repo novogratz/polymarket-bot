@@ -617,6 +617,61 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(signals[0].candidate.token_id, "near-token")
         self.assertGreater(signals[0].score, signals[1].score)
 
+    def test_smart_money_prefers_discount_to_smart_money_average(self):
+        discounted = Candidate(
+            market_id="1",
+            question="NBA Playoffs: Who Will Win Series?",
+            slug="nba-series-value",
+            end_date=utc_now() + timedelta(hours=12),
+            hours_to_close=12,
+            liquidity=10000,
+            volume=50000,
+            outcome="Celtics",
+            price=0.08,
+            token_id="discount-token",
+            score=10,
+            url="https://polymarket.com/event/nba-series-value",
+            best_bid=0.07,
+            best_ask=0.08,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        chased = Candidate(
+            market_id="2",
+            question="Will favorite win?",
+            slug="favorite-chase",
+            end_date=utc_now() + timedelta(hours=12),
+            hours_to_close=12,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.90,
+            token_id="chase-token",
+            score=10,
+            url="https://polymarket.com/event/favorite-chase",
+            best_bid=0.89,
+            best_ask=0.90,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "discount-token", "BUY", 0.24, 100, 24, 1, "NBA series", "Celtics", "nba-series-value"),
+            SmartTrade("0x2", "discount-token", "BUY", 0.26, 100, 26, 1, "NBA series", "Celtics", "nba-series-value"),
+            SmartTrade("0x1", "chase-token", "BUY", 0.80, 100, 80, 1, "Favorite", "Yes", "favorite-chase"),
+            SmartTrade("0x2", "chase-token", "BUY", 0.82, 100, 82, 1, "Favorite", "Yes", "favorite-chase"),
+        ]
+
+        signals = smart_money_signals(
+            [chased, discounted],
+            trades,
+            Settings(smart_max_hours_to_close=24, smart_min_trade_usd=1),
+        )
+        payload = signals[0].to_dict()
+
+        self.assertEqual(signals[0].candidate.token_id, "discount-token")
+        self.assertGreater(payload["selection_metrics"]["value_discount_pct"], 0)
+        self.assertGreater(payload["selection_metrics"]["value_score"], 0)
+
     def test_crypto_micro_requires_higher_consensus(self):
         candidate = Candidate(
             market_id="1",
