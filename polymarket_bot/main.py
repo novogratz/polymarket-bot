@@ -264,9 +264,9 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     portfolio,
                     min_trade_usd=1.0,
                     max_trade_usd=(
-                        settings.starter_trade_usd
+                        min(settings.starter_trade_usd, settings.max_position_usd)
                         if strategy == "smart_money_starter"
-                        else settings.smart_max_trade_usd
+                        else min(settings.smart_max_trade_usd, settings.max_position_usd)
                     ),
                     strategy=strategy,
                     signal=opportunity_payload,

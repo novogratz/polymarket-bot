@@ -113,6 +113,12 @@ Pour scanner plus vite, surcharge l'intervalle au lancement :
 POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B -m polymarket_bot.main auto-loop
 ```
 
+Si le CLOB retourne a tort `Live Balance: 0.0` alors que le compte Polymarket est finance, tu peux forcer une balance de sizing explicite. Les ordres restent gates par `POLYMARKET_ENABLE_LIVE_TRADING=1`, les checks smart-money, et le cap par trade :
+
+```bash
+POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_ASSUME_LIVE_BALANCE_USD=35 POLYMARKET_MAX_POSITION_USD=5 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B -m polymarket_bot.main auto-loop
+```
+
 Chaque tick smart-money imprime un `scan_report` avec les meilleures opportunites considerees, le signal selectionne s'il existe, les compteurs traders/trades, et les raisons de rejet quand rien ne qualifie. Le scanner n'utilise pas Codex, Claude ou un LLM.
 
 L'univers smart-money utilise `POLYMARKET_SMART_SOON_HOURS=72` par defaut, donc il cible aujourd'hui, demain et les prochains jours au lieu des contrats trop lointains. Les entrees autonomes exigent un consensus smart-money (`POLYMARKET_SMART_MIN_CONSENSUS=2` par defaut) sur des BUY recents de wallets profitables. S'il n'y a pas ce consensus, le bot skip au lieu de forcer un trade.

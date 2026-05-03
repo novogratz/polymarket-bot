@@ -158,7 +158,11 @@ class TradingSession:
         print(f"💰 Live Balance: {balance} USDC | Allowance: {allowance} USDC")
         
         values = [value for value in (balance, allowance) if value is not None]
-        return min(values) if values else 0.0
+        available = min(values) if values else 0.0
+        if available <= 0.0 and self.settings.assumed_live_balance_usd > 0.0:
+            print(f"⚠️  Using POLYMARKET_ASSUME_LIVE_BALANCE_USD={self.settings.assumed_live_balance_usd}")
+            return self.settings.assumed_live_balance_usd
+        return available
 
     def derive_or_create_api_creds(self) -> ApiCreds:
         if self.sdk_client is not None:
