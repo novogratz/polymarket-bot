@@ -270,6 +270,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     if report.opportunities:
         # Gracefully wait if out of funds
         live_cash = client.live_available_balance()
+        portfolio.cash = round(live_cash, 2)
         if live_cash < 1.0:
             portfolio.save(settings.state_path)
             return {

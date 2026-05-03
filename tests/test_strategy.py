@@ -127,6 +127,7 @@ class StrategyTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(portfolio.positions[0]["shares"], 5.0)
+        self.assertLess(portfolio.cash, 20.0)
 
     def test_live_trade_does_not_record_resting_buy_order(self):
         class FakeClient:
@@ -279,6 +280,7 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(position["stake"], 5.0)
         self.assertEqual(position["realized_pnl"], 15.0)
         self.assertEqual(position["exits"][0]["order_id"], "sell-1")
+        self.assertEqual(portfolio.cash, 20.0)
 
     def test_sell_plan_uses_profit_tiers_and_peak_protection(self):
         position = {

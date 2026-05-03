@@ -128,6 +128,7 @@ class Portfolio:
         position["live"] = True
         position["order_id"] = order_id
         position["order_response"] = order_response
+        self.cash = round(max(0.0, self.cash - stake), 2)
         self.positions.append(position)
         return position
 
@@ -164,6 +165,7 @@ class Portfolio:
             exit_record["reason"] = reason
         position.setdefault("exits", []).append(exit_record)
         position["realized_pnl"] = round(float(position.get("realized_pnl", 0.0)) + realized_pnl, 2)
+        self.cash = round(self.cash + proceeds, 2)
         position["shares"] = round(current_shares - sold_shares, 6)
         position["stake"] = round(max(0.0, stake - cost_basis), 2)
         position["current_price"] = exit_price
