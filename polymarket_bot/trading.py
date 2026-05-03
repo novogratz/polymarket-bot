@@ -182,7 +182,15 @@ class TradingSession:
         self.api_creds = creds
         return creds
 
-    def place_live_order(self, *, candidate: Candidate, price: float, size: float) -> tuple[dict[str, Any], Any]:
+    def place_live_order(
+        self,
+        *,
+        candidate: Candidate,
+        price: float,
+        size: float,
+        side: str = "BUY",
+    ) -> tuple[dict[str, Any], Any]:
+        side = side.upper()
         if self.sdk_client is not None:
             module, _ = _load_sdk_client()
             if module is not None:
@@ -195,7 +203,7 @@ class TradingSession:
                         token_id=candidate.token_id or "",
                         price=price,
                         size=size,
-                        side=getattr(side_cls, "BUY", "BUY"),
+                        side=getattr(side_cls, side, side),
                     )
                     options = partial_options_cls(
                         tick_size=str(candidate.tick_size or "0.01"),
@@ -212,7 +220,7 @@ class TradingSession:
                             "tokenId": candidate.token_id,
                             "price": price,
                             "size": size,
-                            "side": "BUY",
+                            "side": side,
                             "signatureType": self.settings.signature_type,
                         }
                         return order_dict, response
@@ -221,7 +229,7 @@ class TradingSession:
             token_id=candidate.token_id or "",
             price=price,
             size=size,
-            side="BUY",
+            side=side,
             maker=self.settings.funder_address or self.wallet_address,
             signer=self.wallet_address,
             signature_type=self.settings.signature_type,
@@ -346,7 +354,7 @@ def execute_live_trade(
         )
 
     print(f"\n🚀 EXECUTING TRADE: BUY {size} shares of '{candidate.outcome}' at {entry_price} on '{candidate.question}' (${stake} USDC)")
-    order, response = client.place_live_order(candidate=candidate, price=entry_price, size=size)
+    order, response = client.place_live_order(candidate=candidate, price=entry_price, size=size, side="BUY")
     print(f"📡 API RESPONSE: {json.dumps(response, indent=2)}\n")
 
     position = portfolio.record_live_position(
@@ -361,4 +369,49 @@ def execute_live_trade(
             position["strategy"] = strategy
         if signal is not None:
             position["signal"] = signal
+    return LiveTradeResult(order=order, response=response, candidate=candidate)
+
+
+def execute_live_sell(
+    client: TradingSession,
+    settings: Settings,
+    candidate: Candidate,
+    portfolio: Portfolio,
+    position: dict[str, Any],
+    *,
+    shares: float,
+    reason: str,
+) -> LiveTradeResult:
+    if candidate.best_bid is None or candidate.best_bid <= 0:
+        raise ValueError("candidate has no executable bid price")
+    if candidate.tick_size is None or candidate.tick_size <= 0:
+        raise ValueError("candidate has no tick size")
+
+    sell_price = round(max(candidate.best_bid, candidate.tick_size), 3)
+    available_shares = float(position.get("shares", 0.0))
+    size = round(min(shares, available_shares), 6)
+    if size <= 0:
+        raise ValueError("no shares available to sell")
+    if size < settings.min_order_shares:
+        raise ValueError(
+            f"sell size {size} shares is below Polymarket minimum of {settings.min_order_shares} shares"
+        )
+    proceeds = round(size * sell_price, 2)
+    if proceeds < settings.smart_min_sell_usd:
+        raise ValueError(f"sell proceeds {proceeds} is below minimum ${settings.smart_min_sell_usd}")
+
+    print(
+        f"\n💸 EXECUTING EXIT: SELL {size} shares of '{candidate.outcome}' at {sell_price} "
+        f"on '{candidate.question}' (${proceeds} USDC) reason={reason}"
+    )
+    order, response = client.place_live_order(candidate=candidate, price=sell_price, size=size, side="SELL")
+    print(f"📡 SELL RESPONSE: {json.dumps(response, indent=2)}\n")
+    portfolio.record_live_exit(
+        position,
+        shares=size,
+        exit_price=sell_price,
+        order_id=response.get("orderID") if isinstance(response, dict) else None,
+        order_response=response,
+        reason=reason,
+    )
     return LiveTradeResult(order=order, response=response, candidate=candidate)

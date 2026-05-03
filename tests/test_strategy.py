@@ -5,9 +5,11 @@ from polymarket_bot.bitcoin import BtcModel, btc_signal, btc_terminal_probabilit
 from polymarket_bot.config import Settings
 from polymarket_bot.models import Candidate, utc_now
 from polymarket_bot.polymarket import ApiCreds, PolymarketClient
+from polymarket_bot.portfolio import Portfolio
 from polymarket_bot.smart_money import SmartTrade, smart_money_signals
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
-from polymarket_bot.trading import execute_live_trade
+from polymarket_bot.trading import execute_live_sell, execute_live_trade
+from polymarket_bot.main import _sell_plan
 
 
 class StrategyTests(unittest.TestCase):
@@ -88,8 +90,8 @@ class StrategyTests(unittest.TestCase):
             def live_available_balance(self):
                 return 20.0
 
-            def place_live_order(self, *, candidate, price, size):
-                return {"price": price, "size": size}, {"success": True, "orderID": "order-1"}
+            def place_live_order(self, *, candidate, price, size, side="BUY"):
+                return {"price": price, "size": size, "side": side}, {"success": True, "orderID": "order-1"}
 
         candidate = Candidate(
             market_id="1",
@@ -120,6 +122,74 @@ class StrategyTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(result.order["size"], 5.0)
+
+    def test_live_sell_records_partial_exit(self):
+        class FakeClient:
+            def place_live_order(self, *, candidate, price, size, side="BUY"):
+                return {"price": price, "size": size, "side": side}, {"success": True, "orderID": "sell-1"}
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.4,
+            best_ask=0.41,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        position = {
+            "status": "open",
+            "live": True,
+            "market_id": "1",
+            "outcome": "Yes",
+            "token_id": "token",
+            "entry_price": 0.1,
+            "stake": 10.0,
+            "shares": 100.0,
+            "initial_shares": 100.0,
+        }
+        portfolio = Portfolio(cash=0.0, positions=[position])
+
+        result = execute_live_sell(
+            FakeClient(),
+            Settings(min_order_shares=5.0, smart_min_sell_usd=1.0),
+            candidate,
+            portfolio,
+            position,
+            shares=50.0,
+            reason="take_profit_100pct",
+        )
+
+        self.assertEqual(result.order["side"], "SELL")
+        self.assertEqual(position["shares"], 50.0)
+        self.assertEqual(position["stake"], 5.0)
+        self.assertEqual(position["realized_pnl"], 15.0)
+        self.assertEqual(position["exits"][0]["order_id"], "sell-1")
+
+    def test_sell_plan_uses_profit_tiers_and_peak_protection(self):
+        position = {
+            "shares": 100.0,
+            "initial_shares": 100.0,
+            "peak_pnl_pct": 1.2,
+            "sell_tiers_hit": [],
+            "exits": [],
+        }
+        plan = _sell_plan(position, 1.05, Settings())
+        self.assertEqual(plan["reason"], "take_profit_100pct")
+        self.assertEqual(plan["shares"], 50.0)
+
+        protected = _sell_plan({**position, "sell_tiers_hit": ["1.0"]}, 0.35, Settings())
+        self.assertEqual(protected["reason"], "peak_profit_protection")
+        self.assertEqual(protected["shares"], 100.0)
 
     def test_build_limit_order_uses_expected_fields(self):
         client = PolymarketClient(

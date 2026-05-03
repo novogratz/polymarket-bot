@@ -125,6 +125,8 @@ L'univers smart-money utilise `POLYMARKET_SMART_SOON_HOURS=72` par defaut, donc 
 
 Chaque opportunite inclut `selection_reason` et `selection_metrics`, qui expliquent pourquoi le bot l'a choisie: consensus wallets, taille copiee, PnL total des wallets, prix moyen copie, ask actuel, spread, score, et checks passes. Le bot essaie toutes les opportunites qualifiees d'un tick, avec `POLYMARKET_SMART_MAX_TRADE_USD=5` par defaut, jusqu'a manquer de fonds, atteindre `POLYMARKET_SMART_MAX_ORDERS_PER_TICK` si configure, ou epuiser les signaux.
 
+Avant de chercher de nouvelles entrees, chaque tick applique aussi une strategie de sortie sur les positions live ouvertes. Par defaut `POLYMARKET_SMART_TAKE_PROFIT_TIERS=1.0:0.50,2.0:0.25,3.0:0.15`: a +100% le bot vend 50% des shares, a +200% il vend 25% des shares initiales, a +300% il vend 15%, puis garde le reste. Si une position a deja atteint +100% (`POLYMARKET_SMART_PEAK_PROTECT_TRIGGER=1.0`) et retombe sous +40% (`POLYMARKET_SMART_PEAK_PROTECT_FLOOR=0.40`), le bot essaie de vendre le solde restant. Les ventes utilisent le bid executable et sont journalisees dans la position (`exits`, `realized_pnl`, shares restantes).
+
 `btc-edge-once` trade seulement les marches BTC above/below parsables quand le modele Coinbase spot/volatilite trouve assez d'edge. Il ignore les marches generiques.
 
 `btc-edge-loop` lance la strategie BTC edge toutes les `POLYMARKET_AUTO_INTERVAL_SECONDS` secondes. Mets `POLYMARKET_AUTO_MAX_TICKS=0` pour une boucle illimitee.

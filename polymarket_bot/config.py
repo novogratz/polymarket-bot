@@ -64,6 +64,13 @@ class Settings:
     smart_max_spread: float = _float_env("POLYMARKET_SMART_MAX_SPREAD", 0.10)
     smart_max_trade_usd: float = _float_env("POLYMARKET_SMART_MAX_TRADE_USD", 5.0)
     smart_max_orders_per_tick: int = _int_env("POLYMARKET_SMART_MAX_ORDERS_PER_TICK", 0)
+    smart_take_profit_tiers: str = os.getenv(
+        "POLYMARKET_SMART_TAKE_PROFIT_TIERS",
+        "1.0:0.50,2.0:0.25,3.0:0.15",
+    )
+    smart_peak_protect_trigger: float = _float_env("POLYMARKET_SMART_PEAK_PROTECT_TRIGGER", 1.0)
+    smart_peak_protect_floor: float = _float_env("POLYMARKET_SMART_PEAK_PROTECT_FLOOR", 0.40)
+    smart_min_sell_usd: float = _float_env("POLYMARKET_SMART_MIN_SELL_USD", 1.0)
     min_liquidity_usd: float = _float_env("POLYMARKET_MIN_LIQUIDITY_USD", 500.0)
     min_volume_usd: float = _float_env("POLYMARKET_MIN_VOLUME_USD", 1000.0)
     dashboard_host: str = os.getenv("POLYMARKET_DASHBOARD_HOST", "127.0.0.1")

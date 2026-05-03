@@ -66,6 +66,50 @@ class Portfolio:
         self.positions.append(position)
         return position
 
+    def record_live_exit(
+        self,
+        position: dict[str, Any],
+        *,
+        shares: float,
+        exit_price: float,
+        order_id: str | None = None,
+        order_response: Any = None,
+        reason: str | None = None,
+    ) -> dict[str, Any] | None:
+        current_shares = float(position.get("shares", 0.0))
+        if shares <= 0.0 or exit_price <= 0.0 or current_shares <= 0.0:
+            return None
+        sold_shares = min(shares, current_shares)
+        stake = float(position.get("stake", 0.0))
+        entry_price = float(position.get("entry_price", 0.0))
+        proceeds = round(sold_shares * exit_price, 2)
+        cost_basis = round(stake * (sold_shares / current_shares), 2) if current_shares else 0.0
+        realized_pnl = round(proceeds - cost_basis, 2)
+        exit_record = {
+            "closed_at": utc_now().isoformat(),
+            "shares": sold_shares,
+            "exit_price": exit_price,
+            "proceeds": proceeds,
+            "cost_basis": cost_basis,
+            "realized_pnl": realized_pnl,
+            "order_id": order_id,
+            "order_response": order_response,
+        }
+        if reason:
+            exit_record["reason"] = reason
+        position.setdefault("exits", []).append(exit_record)
+        position["realized_pnl"] = round(float(position.get("realized_pnl", 0.0)) + realized_pnl, 2)
+        position["shares"] = round(current_shares - sold_shares, 6)
+        position["stake"] = round(max(0.0, stake - cost_basis), 2)
+        position["current_price"] = exit_price
+        position["unrealized_pnl"] = round(float(position["shares"]) * exit_price - float(position["stake"]), 2)
+        if position["shares"] <= 0.000001 or float(position["stake"]) <= 0.01:
+            position["status"] = "closed"
+            position["closed_at"] = exit_record["closed_at"]
+        elif entry_price > 0:
+            position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", 0.0)), (exit_price - entry_price) / entry_price)
+        return exit_record
+
     def _build_position(
         self,
         candidate: Candidate,
@@ -88,6 +132,7 @@ class Portfolio:
             "current_price": trade_price,
             "stake": round(stake, 2),
             "shares": shares,
+            "initial_shares": shares,
             "unrealized_pnl": 0.0,
         }
 
@@ -108,6 +153,10 @@ class Portfolio:
             current_value = float(position["shares"]) * candidate.price
             position["current_price"] = candidate.price
             position["unrealized_pnl"] = round(current_value - float(position["stake"]), 2)
+            entry_price = float(position.get("entry_price", 0.0))
+            if entry_price > 0:
+                pnl_pct = (candidate.price - entry_price) / entry_price
+                position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", pnl_pct)), pnl_pct)
 
     def summary(self) -> dict[str, Any]:
         open_positions = [position for position in self.positions if position.get("status") == "open"]

@@ -15,7 +15,7 @@ from .portfolio import Portfolio
 from .models import utc_now
 from .portfolio import paper_tick
 from .smart_money import DataApiClient, analyze_smart_money, _top_traders
-from .trading import build_client, choose_trade, execute_live_trade
+from .trading import build_client, choose_trade, execute_live_sell, execute_live_trade
 from .strategy import rank_markets
 
 
@@ -192,13 +192,11 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             
             still_holding = any(t.asset == position.get("token_id") for t in recent_trades)
             if not still_holding and original_wallets:
-                # WHALE EXIT TRIGGERED
-                print(f"\n🐋 WHALE EXIT: Smart money left '{position['question']}'. Selling...\n")
-                # In a real bot, we'd call sdk_client.create_and_post_order for a SELL side
-                # For now, we mark as closed to free up the 'exposure' logic
-                position["status"] = "closed"
-                position["closed_at"] = utc_now().isoformat()
+                print(f"\n🐋 WHALE WATCH: No fresh buys from copied wallets on '{position['question']}'.\n")
                 whale_exit_report.append(position["question"])
+
+    require_saved_api_creds(settings)
+    exit_report = _execute_sell_strategy(client, settings, portfolio, candidates)
 
     # 2. CATEGORY DIVERSIFICATION: Count open categories
     open_categories: dict[str, int] = {}
@@ -233,8 +231,6 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             strategy = "smart_money_starter"
 
     signal_payload = signal.to_dict() if signal else None
-    require_saved_api_creds(settings)
-    client = build_client(settings)
 
     executed_trades: list[dict[str, object]] = []
     stop_reason: str | None = None
@@ -250,6 +246,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 "status": "waiting_for_funds",
                 "available_cash": live_cash,
                 "whale_exits": whale_exit_report,
+                "exits": exit_report,
                 "category_summary": open_categories,
                 "scan_report": report.to_dict(),
                 "summary": portfolio.summary(),
@@ -326,6 +323,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             "orders_placed": len(executed_trades),
             "stop_reason": stop_reason,
             "whale_exits": whale_exit_report,
+            "exits": exit_report,
             "category_summary": open_categories,
             "rejected_signals": rejected_signals,
             "scan_report": report.to_dict(),
@@ -337,11 +335,117 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "trade": None,
         "strategy": "smart_money",
         "whale_exits": whale_exit_report,
+        "exits": exit_report,
         "category_summary": open_categories,
         "rejected_signals": rejected_signals,
         "scan_report": report.to_dict(),
         "summary": portfolio.summary(),
     }
+
+
+def _execute_sell_strategy(
+    client,
+    settings: Settings,
+    portfolio: Portfolio,
+    candidates,
+) -> list[dict[str, object]]:
+    by_token = {candidate.token_id: candidate for candidate in candidates if candidate.token_id}
+    exit_report: list[dict[str, object]] = []
+    for position in list(portfolio.positions):
+        if position.get("status") != "open" or not position.get("live"):
+            continue
+        token_id = position.get("token_id")
+        candidate = by_token.get(token_id)
+        if candidate is None or candidate.best_bid is None:
+            continue
+
+        entry_price = float(position.get("entry_price", 0.0))
+        if entry_price <= 0:
+            continue
+        current_pnl_pct = (candidate.best_bid - entry_price) / entry_price
+        position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", current_pnl_pct)), current_pnl_pct)
+        plan = _sell_plan(position, current_pnl_pct, settings)
+        if plan is None:
+            continue
+
+        try:
+            result = execute_live_sell(
+                client,
+                settings,
+                candidate,
+                portfolio,
+                position,
+                shares=plan["shares"],
+                reason=str(plan["reason"]),
+            )
+        except ValueError as exc:
+            exit_report.append(
+                {
+                    "market_id": position.get("market_id"),
+                    "outcome": position.get("outcome"),
+                    "action": "skip_sell",
+                    "reason": str(exc),
+                    "pnl_pct": round(current_pnl_pct, 4),
+                    "peak_pnl_pct": round(float(position.get("peak_pnl_pct", 0.0)), 4),
+                }
+            )
+            continue
+
+        if str(plan["reason"]).startswith("take_profit_"):
+            position.setdefault("sell_tiers_hit", []).append(str(plan["tier"]))
+        portfolio.save(settings.state_path)
+        exit_report.append(
+            {
+                "market_id": position.get("market_id"),
+                "outcome": position.get("outcome"),
+                "action": "sell",
+                "reason": plan["reason"],
+                "pnl_pct": round(current_pnl_pct, 4),
+                "peak_pnl_pct": round(float(position.get("peak_pnl_pct", 0.0)), 4),
+                "order": result.order,
+                "response": result.response,
+            }
+        )
+    return exit_report
+
+
+def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Settings) -> dict[str, object] | None:
+    current_shares = float(position.get("shares", 0.0))
+    if current_shares <= 0:
+        return None
+    peak_pnl_pct = float(position.get("peak_pnl_pct", current_pnl_pct))
+    if peak_pnl_pct >= settings.smart_peak_protect_trigger and current_pnl_pct <= settings.smart_peak_protect_floor:
+        return {
+            "reason": "peak_profit_protection",
+            "shares": current_shares,
+        }
+
+    exits = position.get("exits", [])
+    sold_shares = sum(float(exit_record.get("shares", 0.0)) for exit_record in exits if isinstance(exit_record, dict))
+    initial_shares = float(position.get("initial_shares", current_shares + sold_shares))
+    tiers_hit = {str(item) for item in position.get("sell_tiers_hit", []) if item is not None}
+    for threshold, fraction in _take_profit_tiers(settings):
+        tier_key = str(threshold)
+        if current_pnl_pct >= threshold and tier_key not in tiers_hit:
+            return {
+                "reason": f"take_profit_{int(threshold * 100)}pct",
+                "tier": tier_key,
+                "shares": min(current_shares, initial_shares * fraction),
+            }
+    return None
+
+
+def _take_profit_tiers(settings: Settings) -> list[tuple[float, float]]:
+    tiers: list[tuple[float, float]] = []
+    for item in settings.smart_take_profit_tiers.split(","):
+        if not item.strip() or ":" not in item:
+            continue
+        threshold, fraction = item.split(":", 1)
+        try:
+            tiers.append((float(threshold), float(fraction)))
+        except ValueError:
+            continue
+    return sorted(tiers)
 
 
 def _is_funds_error(message: str) -> bool:
