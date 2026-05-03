@@ -123,6 +123,8 @@ Chaque tick smart-money imprime un `scan_report` avec les meilleures opportunite
 
 L'univers smart-money utilise `POLYMARKET_SMART_SOON_HOURS=72` par defaut, donc il cible aujourd'hui, demain et les prochains jours au lieu des contrats trop lointains. Les entrees autonomes exigent un consensus smart-money (`POLYMARKET_SMART_MIN_CONSENSUS=2` par defaut) sur des BUY recents de wallets profitables. S'il n'y a pas ce consensus, le bot skip au lieu de forcer un trade.
 
+Chaque opportunite inclut `selection_reason` et `selection_metrics`, qui expliquent pourquoi le bot l'a choisie: consensus wallets, taille copiee, PnL total des wallets, prix moyen copie, ask actuel, spread, score, et checks passes. Le bot essaie toutes les opportunites qualifiees d'un tick, avec `POLYMARKET_SMART_MAX_TRADE_USD=5` par defaut, jusqu'a manquer de fonds, atteindre `POLYMARKET_SMART_MAX_ORDERS_PER_TICK` si configure, ou epuiser les signaux.
+
 `btc-edge-once` trade seulement les marches BTC above/below parsables quand le modele Coinbase spot/volatilite trouve assez d'edge. Il ignore les marches generiques.
 
 `btc-edge-loop` lance la strategie BTC edge toutes les `POLYMARKET_AUTO_INTERVAL_SECONDS` secondes. Mets `POLYMARKET_AUTO_MAX_TICKS=0` pour une boucle illimitee.

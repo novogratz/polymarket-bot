@@ -256,6 +256,11 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(len(signals), 1)
         self.assertEqual(signals[0].consensus, 2)
         self.assertEqual(signals[0].candidate.token_id, "yes-token")
+        payload = signals[0].to_dict()
+        self.assertIn("selection_reason", payload)
+        self.assertEqual(payload["selection_metrics"]["profitable_wallet_count"], 2)
+        self.assertEqual(payload["selection_metrics"]["min_consensus"], 2)
+        self.assertEqual(payload["selection_metrics"]["spread"], 0.02)
 
     def test_smart_money_rejects_single_wallet(self):
         candidate = Candidate(

@@ -265,10 +265,12 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                         "market_id": opportunity.candidate.market_id,
                         "outcome": opportunity.candidate.outcome,
                         "reason": "duplicate_open_market",
+                        "selection_reason": opportunity.to_dict()["selection_reason"],
                     }
                 )
                 continue
             opportunity_payload = opportunity.to_dict()
+            print(f"🧠 SELECTED: {opportunity_payload['selection_reason']}")
             try:
                 result = execute_live_trade(
                     client,

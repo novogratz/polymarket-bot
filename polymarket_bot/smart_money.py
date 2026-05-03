@@ -43,6 +43,8 @@ class SmartMoneySignal:
     wallets: list[str]
     titles: list[str]
     total_trader_pnl: float = 0.0
+    spread: float = 0.0
+    min_consensus: int = 2
 
     @property
     def score(self) -> float:
@@ -51,6 +53,17 @@ class SmartMoneySignal:
         return (self.consensus * 10.0) + min(self.copied_usdc / 10.0, 25.0) + pnl_bonus - (self.candidate.best_ask or 0.0)
 
     def to_dict(self) -> dict[str, Any]:
+        price_distance = (
+            round((self.candidate.best_ask or 0.0) - self.avg_copy_price, 4)
+            if self.avg_copy_price > 0.0 and self.candidate.best_ask is not None
+            else None
+        )
+        selection_reason = (
+            f"{self.consensus} profitable wallets bought this same token recently, "
+            f"copying ${self.copied_usdc:.2f} total at avg {self.avg_copy_price:.4f}; "
+            f"current ask {self.candidate.best_ask} has spread {self.spread:.4f} "
+            f"and passed min consensus {self.min_consensus}, price band, spread, and duplicate checks."
+        )
         return {
             "market_id": self.candidate.market_id,
             "question": self.candidate.question,
@@ -63,6 +76,19 @@ class SmartMoneySignal:
             "wallets": self.wallets,
             "titles": self.titles,
             "total_trader_pnl": self.total_trader_pnl,
+            "score": round(self.score, 4),
+            "selection_reason": selection_reason,
+            "selection_metrics": {
+                "profitable_wallet_count": self.consensus,
+                "min_consensus": self.min_consensus,
+                "copied_usdc": self.copied_usdc,
+                "avg_copy_price": self.avg_copy_price,
+                "current_ask": self.candidate.best_ask,
+                "current_bid": self.candidate.best_bid,
+                "spread": round(self.spread, 4),
+                "ask_minus_avg_copy_price": price_distance,
+                "total_trader_pnl": round(self.total_trader_pnl, 2),
+            },
             "url": self.candidate.url,
         }
 
@@ -268,6 +294,8 @@ def smart_money_signals(
                 wallets=wallets,
                 titles=sorted({trade.title for trade in token_trades if trade.title})[:3],
                 total_trader_pnl=total_trader_pnl,
+                spread=spread,
+                min_consensus=min_consensus,
             )
         )
     if include_details:
