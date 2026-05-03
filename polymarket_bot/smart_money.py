@@ -46,6 +46,8 @@ class SmartMoneySignal:
     spread: float = 0.0
     min_consensus: int = 2
     is_crypto_micro: bool = False
+    category: str = "OTHER"
+    category_bonus: float = 0.0
 
     @property
     def score(self) -> float:
@@ -57,6 +59,7 @@ class SmartMoneySignal:
             + pnl_bonus
             + _short_horizon_bonus(self.candidate.hours_to_close)
             + value
+            + self.category_bonus
             - (self.candidate.best_ask or 0.0)
         )
 
@@ -93,6 +96,7 @@ class SmartMoneySignal:
             "wallets": self.wallets,
             "titles": self.titles,
             "total_trader_pnl": self.total_trader_pnl,
+            "category": self.category,
             "score": round(self.score, 4),
             "selection_reason": selection_reason,
             "selection_metrics": {
@@ -109,6 +113,8 @@ class SmartMoneySignal:
                 "value_score": round(_value_score(self.avg_copy_price, self.candidate.best_ask, self.copied_usdc), 4),
                 "total_trader_pnl": round(self.total_trader_pnl, 2),
                 "is_crypto_micro": self.is_crypto_micro,
+                "category": self.category,
+                "category_bonus": round(self.category_bonus, 4),
             },
             "url": self.candidate.url,
         }
@@ -334,6 +340,7 @@ def smart_money_signals(
             continue
 
         wallets = sorted({trade.wallet for trade in token_trades})
+        category = market_category(candidate.question, candidate.slug)
         is_crypto = _is_crypto_market(candidate)
         is_crypto_micro = _is_crypto_micro(candidate)
         min_consensus = max(2, settings.smart_min_consensus)
@@ -370,6 +377,8 @@ def smart_money_signals(
                 spread=spread,
                 min_consensus=min_consensus,
                 is_crypto_micro=is_crypto_micro,
+                category=category,
+                category_bonus=_category_bonus(category, settings),
             )
         )
     if include_details:
@@ -405,6 +414,49 @@ def _top_traders(client: DataApiClient, settings: Settings) -> list[SmartTrader]
 
 def _categories(settings: Settings) -> list[str]:
     return [item.strip().upper() for item in settings.smart_categories.split(",") if item.strip()]
+
+
+def market_category(question: str, slug: str = "") -> str:
+    text = f"{question} {slug}".lower()
+    sports_markers = (
+        " fc ",
+        " cf ",
+        " vs.",
+        " vs ",
+        "nba",
+        "nfl",
+        "nhl",
+        "mlb",
+        "epl",
+        "laliga",
+        "serie",
+        "champions league",
+        "playoffs",
+        "esports",
+        "lol:",
+        "o/u",
+    )
+    if any(marker in f" {text} " for marker in sports_markers):
+        return "SPORTS"
+    if any(marker in text for marker in ("rain", "snow", "temperature", "hurricane", "weather", "storm")):
+        return "WEATHER"
+    if any(marker in text for marker in ("trump", "biden", "election", "senate", "congress", "president", "politic")):
+        return "POLITICS"
+    if any(marker in text for marker in ("fed", "rate", "inflation", "cpi", "unemployment", "gdp", "recession")):
+        return "ECONOMICS"
+    if any(marker in text for marker in ("stock", "nasdaq", "s&p", "earnings", "ipo", "bank", "bitcoin", "ethereum")):
+        return "FINANCE"
+    if any(marker in text for marker in ("movie", "box office", "album", "grammy", "oscar", "streaming")):
+        return "CULTURE"
+    return "OTHER"
+
+
+def _category_bonus(category: str, settings: Settings) -> float:
+    if category == "SPORTS":
+        return -settings.smart_sports_score_penalty
+    if category in {"WEATHER", "POLITICS", "ECONOMICS", "FINANCE", "CULTURE"}:
+        return settings.smart_priority_category_bonus
+    return 0.0
 
 
 def _is_crypto_micro(candidate: Candidate) -> bool:

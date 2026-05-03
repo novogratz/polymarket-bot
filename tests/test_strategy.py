@@ -6,7 +6,7 @@ from polymarket_bot.config import Settings
 from polymarket_bot.models import Candidate, utc_now
 from polymarket_bot.polymarket import ApiCreds, PolymarketClient
 from polymarket_bot.portfolio import Portfolio
-from polymarket_bot.smart_money import SmartTrade, smart_money_signals
+from polymarket_bot.smart_money import SmartTrade, market_category, smart_money_signals
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
 from polymarket_bot.trading import _is_filled_buy_response, execute_live_sell, execute_live_trade
 from polymarket_bot.main import _is_unfilled_market_order_error, _max_trade_for_signal, _sell_plan
@@ -740,6 +740,61 @@ class StrategyTests(unittest.TestCase):
 
         self.assertEqual(signals[0].candidate.token_id, "near-token")
         self.assertGreater(signals[0].score, signals[1].score)
+
+    def test_smart_money_prefers_priority_category_when_quality_matches(self):
+        weather = Candidate(
+            market_id="1",
+            question="Will it rain in New York tomorrow?",
+            slug="will-it-rain-in-new-york-tomorrow",
+            end_date=utc_now() + timedelta(hours=12),
+            hours_to_close=12,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.5,
+            token_id="weather-token",
+            score=10,
+            url="https://polymarket.com/event/will-it-rain-in-new-york-tomorrow",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        sports = Candidate(
+            market_id="2",
+            question="Will Team A FC win today?",
+            slug="will-team-a-fc-win-today",
+            end_date=utc_now() + timedelta(hours=12),
+            hours_to_close=12,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.5,
+            token_id="sports-token",
+            score=10,
+            url="https://polymarket.com/event/will-team-a-fc-win-today",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "weather-token", "BUY", 0.5, 200, 100, 1, "Rain", "Yes", "rain"),
+            SmartTrade("0x2", "weather-token", "BUY", 0.5, 200, 100, 1, "Rain", "Yes", "rain"),
+            SmartTrade("0x1", "sports-token", "BUY", 0.5, 200, 100, 1, "Team A FC", "Yes", "team-a-fc"),
+            SmartTrade("0x2", "sports-token", "BUY", 0.5, 200, 100, 1, "Team A FC", "Yes", "team-a-fc"),
+        ]
+
+        signals = smart_money_signals(
+            [sports, weather],
+            trades,
+            Settings(smart_min_trade_usd=1, smart_min_copied_usdc=50),
+        )
+        payload = signals[0].to_dict()
+
+        self.assertEqual(signals[0].candidate.token_id, "weather-token")
+        self.assertEqual(payload["category"], "WEATHER")
+        self.assertEqual(market_category(sports.question, sports.slug), "SPORTS")
 
     def test_smart_money_prefers_discount_to_smart_money_average(self):
         discounted = Candidate(

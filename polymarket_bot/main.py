@@ -14,7 +14,7 @@ from .gamma import GammaClient
 from .portfolio import Portfolio
 from .models import parse_dt, utc_now
 from .portfolio import paper_tick
-from .smart_money import DataApiClient, analyze_smart_money, _top_traders
+from .smart_money import DataApiClient, analyze_smart_money, market_category, _top_traders
 from .trading import build_client, choose_trade, execute_live_sell, execute_live_trade
 from .strategy import rank_markets
 
@@ -232,7 +232,10 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     open_categories: dict[str, int] = {}
     for pos in portfolio.positions:
         if pos.get("status") == "open":
-            cat = pos.get("signal", {}).get("category", "OTHER")
+            cat = pos.get("signal", {}).get("category") or market_category(
+                str(pos.get("question") or ""),
+                str(pos.get("slug") or ""),
+            )
             open_categories[cat] = open_categories.get(cat, 0) + 1
 
     eligible_candidates = [
@@ -302,6 +305,22 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 )
                 continue
             opportunity_payload = opportunity.to_dict()
+            category = str(opportunity_payload.get("category") or "OTHER")
+            if (
+                category == "SPORTS"
+                and settings.smart_max_sports_positions >= 0
+                and open_categories.get("SPORTS", 0) >= settings.smart_max_sports_positions
+            ):
+                rejected_signals.append(
+                    {
+                        "market_id": opportunity.candidate.market_id,
+                        "outcome": opportunity.candidate.outcome,
+                        "reason": "sports_position_cap_reached",
+                        "category": category,
+                        "selection_reason": opportunity_payload["selection_reason"],
+                    }
+                )
+                continue
             print(f"🧠 SELECTED: {opportunity_payload['selection_reason']}")
             max_trade_usd = _max_trade_for_signal(settings, opportunity_payload, strategy)
             try:
@@ -324,6 +343,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     "response": result.response,
                 }
                 executed_trades.append(trade_payload)
+                open_categories[category] = open_categories.get(category, 0) + 1
                 portfolio.save(settings.state_path)
             except ValueError as e:
                 if "Anti-pump" in str(e):
