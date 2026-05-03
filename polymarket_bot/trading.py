@@ -147,6 +147,13 @@ class TradingSession:
 
         balance = self._normalize_amount(balance_info.get("balance"))
         allowance = self._normalize_amount(balance_info.get("allowance"))
+        if allowance is None and isinstance(balance_info.get("allowances"), dict):
+            allowance_values = [
+                normalized
+                for value in balance_info["allowances"].values()
+                if (normalized := self._normalize_amount(value)) is not None
+            ]
+            allowance = max(allowance_values) if allowance_values else None
         
         print(f"💰 Live Balance: {balance} USDC | Allowance: {allowance} USDC")
         

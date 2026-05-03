@@ -236,9 +236,9 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     require_saved_api_creds(settings)
     client = build_client(settings)
 
-    # Try to take the smart money trade
     trade_executed = False
-    if signal:
+    rejected_signals: list[dict[str, object]] = []
+    if report.opportunities:
         # Gracefully wait if out of funds
         live_cash = client.live_available_balance()
         if live_cash < 1.0:
@@ -254,23 +254,38 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 "summary": portfolio.summary(),
             }
 
-        try:
-            result = execute_live_trade(
-                client,
-                settings,
-                signal.candidate,
-                portfolio,
-                min_trade_usd=1.0,
-                max_trade_usd=settings.starter_trade_usd if strategy == "smart_money_starter" else settings.smart_max_trade_usd,
-                strategy=strategy,
-                signal=signal_payload,
-            )
-            trade_executed = True
-        except ValueError as e:
-            if "Anti-pump" in str(e):
+        for opportunity in report.opportunities:
+            opportunity_payload = opportunity.to_dict()
+            try:
+                result = execute_live_trade(
+                    client,
+                    settings,
+                    opportunity.candidate,
+                    portfolio,
+                    min_trade_usd=1.0,
+                    max_trade_usd=(
+                        settings.starter_trade_usd
+                        if strategy == "smart_money_starter"
+                        else settings.smart_max_trade_usd
+                    ),
+                    strategy=strategy,
+                    signal=opportunity_payload,
+                )
+                signal = opportunity
+                signal_payload = opportunity_payload
+                trade_executed = True
+                break
+            except ValueError as e:
+                if "Anti-pump" not in str(e):
+                    raise e
                 print(f"⚠️  Skipping pumped signal: {str(e)}")
-            else:
-                raise e
+                rejected_signals.append(
+                    {
+                        "market_id": opportunity.candidate.market_id,
+                        "outcome": opportunity.candidate.outcome,
+                        "reason": str(e),
+                    }
+                )
 
     if trade_executed:
         portfolio.save(settings.state_path)
@@ -293,6 +308,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "strategy": "smart_money",
         "whale_exits": whale_exit_report,
         "category_summary": open_categories,
+        "rejected_signals": rejected_signals,
         "scan_report": report.to_dict(),
         "summary": portfolio.summary(),
     }
