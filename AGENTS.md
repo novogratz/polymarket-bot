@@ -27,6 +27,42 @@ For faster scans:
 POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B -m polymarket_bot.main auto-loop
 ```
 
+Recommended live command:
+
+```bash
+POLYMARKET_ENABLE_LIVE_TRADING=1 \
+  POLYMARKET_SYNC_LIVE_POSITIONS=0 \
+  POLYMARKET_SMART_CATEGORIES=OVERALL,FINANCE,ECONOMICS,TECH,POLITICS,SPORTS,CULTURE,WEATHER \
+  POLYMARKET_SMART_DISCOVERY_KEYWORDS='election,trump,senate,congress,fed,inflation,cpi,unemployment,gdp,weather,rain,snow,hurricane,temperature,box office,movie,earnings,stock,nasdaq' \
+  POLYMARKET_SMART_ALLOW_CRYPTO=1 \
+  POLYMARKET_SMART_CRYPTO_MIN_BUY_PRICE=0.70 \
+  POLYMARKET_SMART_CRYPTO_MIN_HOURS_TO_CLOSE=0 \
+  POLYMARKET_SMART_CRYPTO_MAX_HOURS_TO_CLOSE=48 \
+  POLYMARKET_MAX_POSITION_USD=25 \
+  POLYMARKET_SMART_MAX_TRADE_USD=25 \
+  POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION=0.50 \
+  POLYMARKET_SMART_MIN_CONSENSUS=2 \
+  POLYMARKET_SMART_FALLBACK_CONSENSUS=2 \
+  POLYMARKET_SMART_TRADE_LOOKBACK_MINUTES=30 \
+  POLYMARKET_SMART_MAX_SIGNAL_AGE_MINUTES=5 \
+  POLYMARKET_SMART_MIN_TRADE_USD=1 \
+  POLYMARKET_SMART_MIN_COPIED_USDC=75 \
+  POLYMARKET_SMART_MAX_CHASE_PREMIUM=0.25 \
+  POLYMARKET_SMART_PRIORITY_CATEGORY_BONUS=8 \
+  POLYMARKET_SMART_SPORTS_SCORE_PENALTY=12 \
+  POLYMARKET_SMART_MAX_SPORTS_POSITIONS=3 \
+  POLYMARKET_SMART_SOON_HOURS=168 \
+  POLYMARKET_SMART_MAX_HOURS_TO_CLOSE=48 \
+  POLYMARKET_SMART_LEADERBOARD_LIMIT=100 \
+  POLYMARKET_SMART_MIN_HOURS_TO_CLOSE=0.01 \
+  POLYMARKET_SMART_MAX_ENTRY_SLIPPAGE=0.25 \
+  POLYMARKET_SMART_MIN_BUY_PRICE=0.01 \
+  POLYMARKET_SMART_MAX_BUY_PRICE=0.99 \
+  POLYMARKET_SMART_MAX_SPREAD=0.18 \
+  POLYMARKET_AUTO_INTERVAL_SECONDS=10 \
+  python3 -B -m polymarket_bot.main auto-loop
+```
+
 Each smart-money tick emits a `scan_report` that explains selected opportunities, considered opportunities, counts, and rejection reasons. The scanner must remain deterministic API/rules code and must not call Codex, Claude, or any LLM.
 
 Each selected opportunity should include `selection_reason` and `selection_metrics`. Each tick may place multiple $5-capped smart-money orders until funds run out, a configured per-tick cap is reached, or qualified signals are exhausted.
