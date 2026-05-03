@@ -11,8 +11,9 @@ The bot is built to monetize that signal by:
 - Copying recent BUY flow from leaderboard wallets with configured positive PnL.
 - Requiring consensus across multiple wallets before entry.
 - Avoiding expensive fills by enforcing spread and price-band limits.
-- Keeping trade size bounded by live balance and a max dollar cap.
+- Spending available live balance across qualified opportunities in $5-capped chunks.
 - Refusing duplicate positions so it does not accidentally pyramid into the same outcome.
+- Taking profits with partial SELL orders instead of only waiting for resolution.
 
 The strategy does not predict every market from scratch. It follows public smart-money activity only when execution quality is acceptable.
 
@@ -31,11 +32,18 @@ The smart-money strategy scans recent BUY trades from profitable Polymarket lead
 
 Live order size is based on available USDC balance:
 
-- Base size: `POLYMARKET_TRADE_FRACTION` of available balance.
-- Cap: `POLYMARKET_SMART_MAX_TRADE_USD`.
+- Base size: `POLYMARKET_TRADE_FRACTION`, default `1.0`, of available balance.
+- Cap: `POLYMARKET_SMART_MAX_TRADE_USD`, default `$5`, and `POLYMARKET_MAX_POSITION_USD`, default `$5`.
 - Minimum: Polymarket's $1 practical minimum.
 
 This is risk control, not a profit guarantee.
+
+Each tick attempts every qualified smart-money opportunity until one of these happens:
+
+- The account runs out of spendable USDC.
+- `POLYMARKET_SMART_MAX_ORDERS_PER_TICK` is reached, if configured above `0`.
+- No more qualified opportunities remain.
+- The order API rejects because funds, allowance, or minimum order constraints are no longer satisfied.
 
 ## When The Bot Refuses To Trade
 
@@ -70,6 +78,33 @@ The fallback uses `POLYMARKET_SMART_FALLBACK_CONSENSUS`, default `2`, matching t
 
 If that does not qualify, the bot skips. It does not force a liquidity-only trade.
 
+## Exit Strategy
+
+Before looking for new entries, each smart-money tick reviews open live positions and may place SELL orders.
+
+Default take-profit ladder:
+
+- `+100%`: sell `50%` of the initial shares.
+- `+200%`: sell another `25%` of the initial shares.
+- `+300%`: sell another `15%` of the initial shares.
+- Keep the remaining shares running.
+
+Default peak protection:
+
+- Once a position has reached `+100%`, track its peak.
+- If it falls back to `+40%` or lower, sell the remaining shares.
+
+Config:
+
+```bash
+POLYMARKET_SMART_TAKE_PROFIT_TIERS=1.0:0.50,2.0:0.25,3.0:0.15
+POLYMARKET_SMART_PEAK_PROTECT_TRIGGER=1.0
+POLYMARKET_SMART_PEAK_PROTECT_FLOOR=0.40
+POLYMARKET_SMART_MIN_SELL_USD=1
+```
+
+SELL orders use the executable bid. The ledger records `exits`, remaining `shares`, remaining `stake`, and `realized_pnl`.
+
 ## Automation
 
 Run:
@@ -90,9 +125,11 @@ Each tick prints a `scan_report` with:
 
 - The selected opportunity, if one qualified.
 - The top opportunities considered.
+- `selection_reason` and `selection_metrics` explaining why each opportunity qualified.
 - Trader and trade counts.
 - Eligible trade and grouped token counts.
 - Rejection reasons when nothing qualified.
+- Exit actions under `exits`, including sell reason and order response.
 
 The scan path is deterministic Python code calling Polymarket APIs. It does not use Codex, Claude, or any LLM.
 
@@ -110,6 +147,7 @@ Open `http://127.0.0.1:8765`. The dashboard auto-refreshes and shows:
 - Equity, cash, invested capital, open positions, and unrealized PnL from the local ledger.
 - Open positions.
 - Recent bot trades and order IDs when available.
+- Recorded partial exits and realized PnL in the local ledger when the exit strategy sells.
 - Current soon-market scanner candidates.
 
 If the dashboard gets stale because positions were changed manually on Polymarket, reset the local ledger:

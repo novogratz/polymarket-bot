@@ -14,7 +14,7 @@ Use this file as the Claude Code entry point for the Polymarket bot.
 - `polymarket_bot/main.py`: CLI commands and strategy loops.
 - `polymarket_bot/smart_money.py`: autonomous smart-money copy-trading filters.
 - `polymarket_bot/bitcoin.py`: optional BTC threshold edge model.
-- `polymarket_bot/trading.py`: authenticated live order placement and sizing.
+- `polymarket_bot/trading.py`: authenticated live BUY/SELL order placement and sizing.
 - `polymarket_bot/dashboard.py`: local real-time HTML dashboard.
 - `polymarket_bot/portfolio.py`: local ledger for paper and live positions.
 - `tests/test_strategy.py`: strategy and order-building tests.
@@ -45,7 +45,7 @@ Run it faster:
 POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B -m polymarket_bot.main auto-loop
 ```
 
-Each smart-money tick prints a `scan_report` explaining selected opportunities, considered opportunities, counts, and rejection reasons. Scanning and trade selection are deterministic Python rules over Polymarket APIs; do not add Claude, Codex, or any LLM call to the scan path.
+Each smart-money tick prints a `scan_report` explaining selected opportunities, considered opportunities, counts, rejection reasons, and sell exits. Scanning and trade selection are deterministic Python rules over Polymarket APIs; do not add Claude, Codex, or any LLM call to the scan path.
 
 The dashboard is served at `http://127.0.0.1:8765` by default.
 
@@ -61,5 +61,7 @@ The live entry should require:
 - A tradable market with acceptable spread and ask price.
 - No existing open position for the same market and outcome.
 - Explicit live-trading enablement.
+- $5-capped order sizing by default, repeated across qualified opportunities until funds, per-tick cap, or signal exhaustion stops the tick.
+- Profit-taking exits before new buys: default +100%/+200%/+300% partial sells, plus peak giveback protection.
 
 The expected edge comes from copying strong public flow while avoiding bad execution. This is not guaranteed profit; no-signal/no-trade is part of the strategy.

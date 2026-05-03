@@ -29,12 +29,16 @@ POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B 
 
 Each smart-money tick emits a `scan_report` that explains selected opportunities, considered opportunities, counts, and rejection reasons. The scanner must remain deterministic API/rules code and must not call Codex, Claude, or any LLM.
 
+Each selected opportunity should include `selection_reason` and `selection_metrics`. Each tick may place multiple $5-capped smart-money orders until funds run out, a configured per-tick cap is reached, or qualified signals are exhausted.
+
 ## Trading Rules
 
 - Do not add random trade selection.
 - Live trading must remain gated by `POLYMARKET_ENABLE_LIVE_TRADING=1`.
 - Prefer strategies with explicit entry criteria, sizing limits, spread limits, and duplicate-position checks.
 - The smart-money strategy copies only recent BUY trades from profitable leaderboard wallets when multiple wallets bought the same token.
+- The live strategy may use all available balance only across qualified smart-money opportunities; do not add forced liquidity-only or random buys to zero out cash.
+- The sell strategy should run before new entries: partial profit-taking at configured tiers and peak giveback protection via SELL orders.
 - BTC edge trading is separate and should not be the default autonomous strategy.
 
 ## Strategy To Make Money
@@ -48,7 +52,8 @@ Required properties for autonomous live entries:
 - The market is liquid, accepting orders, and has a spread under the configured max.
 - The ask price is inside the configured price band.
 - The local ledger has no duplicate open position for that market/outcome.
-- Sizing is capped so one trade cannot dominate the account.
+- Sizing is capped at the per-trade limit so one trade cannot dominate the account.
+- Open live positions are checked for configured take-profit and peak-protection exits before new buys.
 
 If those conditions are not present, the correct behavior is to skip. Do not weaken this into forced trading.
 
