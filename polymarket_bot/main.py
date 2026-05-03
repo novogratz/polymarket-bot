@@ -236,7 +236,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     require_saved_api_creds(settings)
     client = build_client(settings)
 
-    trade_executed = False
+    executed_trades: list[dict[str, object]] = []
+    stop_reason: str | None = None
     rejected_signals: list[dict[str, object]] = []
     if report.opportunities:
         # Gracefully wait if out of funds
@@ -255,6 +256,18 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             }
 
         for opportunity in report.opportunities:
+            if settings.smart_max_orders_per_tick > 0 and len(executed_trades) >= settings.smart_max_orders_per_tick:
+                stop_reason = "max_orders_per_tick_reached"
+                break
+            if portfolio.has_open_position(opportunity.candidate.market_id):
+                rejected_signals.append(
+                    {
+                        "market_id": opportunity.candidate.market_id,
+                        "outcome": opportunity.candidate.outcome,
+                        "reason": "duplicate_open_market",
+                    }
+                )
+                continue
             opportunity_payload = opportunity.to_dict()
             try:
                 result = execute_live_trade(
@@ -273,31 +286,46 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 )
                 signal = opportunity
                 signal_payload = opportunity_payload
-                trade_executed = True
-                break
+                trade_payload = {
+                    "strategy": strategy,
+                    "signal": signal_payload,
+                    "order": result.order,
+                    "response": result.response,
+                }
+                executed_trades.append(trade_payload)
+                portfolio.save(settings.state_path)
             except ValueError as e:
-                if "Anti-pump" not in str(e):
+                if "Anti-pump" in str(e):
+                    print(f"⚠️  Skipping pumped signal: {str(e)}")
+                    rejected_signals.append(
+                        {
+                            "market_id": opportunity.candidate.market_id,
+                            "outcome": opportunity.candidate.outcome,
+                            "reason": str(e),
+                        }
+                    )
+                    continue
+                if _is_funds_error(str(e)):
+                    stop_reason = str(e)
+                    break
+                else:
                     raise e
-                print(f"⚠️  Skipping pumped signal: {str(e)}")
-                rejected_signals.append(
-                    {
-                        "market_id": opportunity.candidate.market_id,
-                        "outcome": opportunity.candidate.outcome,
-                        "reason": str(e),
-                    }
-                )
+            except Exception as e:
+                if _is_funds_error(str(e)):
+                    stop_reason = str(e)
+                    break
+                raise
 
-    if trade_executed:
+    if executed_trades:
         portfolio.save(settings.state_path)
         return {
-            "trade": {
-                "strategy": strategy,
-                "signal": signal_payload,
-                "order": result.order,
-                "response": result.response,
-            },
+            "trade": executed_trades[-1],
+            "trades": executed_trades,
+            "orders_placed": len(executed_trades),
+            "stop_reason": stop_reason,
             "whale_exits": whale_exit_report,
             "category_summary": open_categories,
+            "rejected_signals": rejected_signals,
             "scan_report": report.to_dict(),
             "summary": portfolio.summary(),
         }
@@ -312,6 +340,21 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "scan_report": report.to_dict(),
         "summary": portfolio.summary(),
     }
+
+
+def _is_funds_error(message: str) -> bool:
+    lowered = message.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "insufficient",
+            "not enough",
+            "no live balance",
+            "no cash available",
+            "below polymarket",
+            "below minimum",
+        )
+    )
 
 
 def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
