@@ -534,6 +534,10 @@ def _max_trade_for_signal(settings: Settings, signal: dict[str, object], strateg
         quality_cap = settings.max_position_usd
     elif consensus >= 3 and copied_usdc >= 250:
         quality_cap = min(settings.max_position_usd, 10.0)
+    elif consensus >= 2 and copied_usdc >= 1000:
+        quality_cap = settings.max_position_usd
+    elif consensus >= 2 and copied_usdc >= 250:
+        quality_cap = min(settings.max_position_usd, 10.0)
     else:
         quality_cap = min(settings.max_position_usd, 5.0)
     return min(base_cap, quality_cap)

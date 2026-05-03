@@ -404,6 +404,9 @@ def execute_live_trade(
         elif consensus >= 3 and copied_usdc >= 250:
             quality_multiplier = 1.5
         maximum = min(maximum, settings.max_position_usd * quality_multiplier)
+        if _is_high_conviction_signal(signal) and settings.smart_high_conviction_balance_fraction > 0:
+            maximum = max(maximum, live_balance * settings.smart_high_conviction_balance_fraction)
+            maximum = min(maximum, live_balance)
     
     # Use the needed amount, but capped by available balance and max per trade
     stake = min(needed_usd, live_balance, maximum)
@@ -487,6 +490,19 @@ def _is_filled_buy_response(response: Any) -> bool:
             except (TypeError, ValueError):
                 continue
     return False
+
+
+def _is_high_conviction_signal(signal: dict[str, Any]) -> bool:
+    metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
+    consensus = float(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0.0)
+    copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
+    value_score = float(metrics.get("value_score") or 0.0)
+    value_discount_pct = float(metrics.get("value_discount_pct") or 0.0)
+    if consensus >= 4 and copied_usdc >= 1000:
+        return True
+    if consensus >= 3 and copied_usdc >= 5000:
+        return True
+    return consensus >= 2 and copied_usdc >= 250 and value_score >= 10 and value_discount_pct >= 0
 
 
 def execute_live_sell(

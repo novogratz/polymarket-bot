@@ -71,6 +71,10 @@ class Settings:
     smart_crypto_micro_max_entry_slippage: float = _float_env("POLYMARKET_SMART_CRYPTO_MICRO_MAX_ENTRY_SLIPPAGE", 0.05)
     smart_crypto_micro_max_trade_usd: float = _float_env("POLYMARKET_SMART_CRYPTO_MICRO_MAX_TRADE_USD", 5.0)
     smart_max_trade_usd: float = _float_env("POLYMARKET_SMART_MAX_TRADE_USD", 5.0)
+    smart_high_conviction_balance_fraction: float = _float_env(
+        "POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION",
+        0.0,
+    )
     smart_max_orders_per_tick: int = _int_env("POLYMARKET_SMART_MAX_ORDERS_PER_TICK", 0)
     smart_take_profit_tiers: str = os.getenv(
         "POLYMARKET_SMART_TAKE_PROFIT_TIERS",
