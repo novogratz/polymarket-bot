@@ -250,7 +250,8 @@ def smart_money_signals(
             continue
 
         wallets = sorted({trade.wallet for trade in token_trades})
-        if len(wallets) < settings.smart_min_consensus:
+        min_consensus = max(2, settings.smart_min_consensus)
+        if len(wallets) < min_consensus:
             rejected["not_enough_wallet_consensus"] = rejected.get("not_enough_wallet_consensus", 0) + 1
             continue
 

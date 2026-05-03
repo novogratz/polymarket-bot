@@ -224,7 +224,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     if signal is None and open_count < settings.min_open_positions:
         fallback_settings = replace(
             settings,
-            smart_min_consensus=max(1, settings.smart_fallback_consensus),
+            smart_min_consensus=max(2, settings.smart_fallback_consensus),
         )
         fallback_report = analyze_smart_money(eligible_candidates, fallback_settings)
         if fallback_report.selected is not None:
@@ -277,58 +277,6 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         return {
             "trade": {
                 "strategy": strategy,
-                "signal": signal_payload,
-                "order": result.order,
-                "response": result.response,
-            },
-            "whale_exits": whale_exit_report,
-            "category_summary": open_categories,
-            "scan_report": report.to_dict(),
-            "summary": portfolio.summary(),
-        }
-
-    # FALLBACK: If no signal OR signal was rejected (e.g. anti-pump), and we still have no trades
-    if open_count < settings.min_open_positions and eligible_candidates:
-        starter = eligible_candidates[0]
-        signal_payload = {
-            "market_id": starter.market_id,
-            "question": starter.question,
-            "outcome": starter.outcome,
-            "best_ask": starter.best_ask,
-            "best_bid": starter.best_bid,
-            "url": starter.url,
-            "reason": "fallback_liquidity_starter_active_goal",
-        }
-        
-        # Gracefully wait if out of funds
-        live_cash = client.live_available_balance()
-        if live_cash < 1.0:
-            portfolio.save(settings.state_path)
-            return {
-                "trade": None,
-                "strategy": "liquidity_starter",
-                "status": "waiting_for_funds",
-                "available_cash": live_cash,
-                "whale_exits": whale_exit_report,
-                "category_summary": open_categories,
-                "scan_report": report.to_dict(),
-                "summary": portfolio.summary(),
-            }
-
-        result = execute_live_trade(
-            client,
-            settings,
-            starter,
-            portfolio,
-            min_trade_usd=1.0,
-            max_trade_usd=settings.starter_trade_usd,
-            strategy="liquidity_starter",
-            signal=signal_payload,
-        )
-        portfolio.save(settings.state_path)
-        return {
-            "trade": {
-                "strategy": "liquidity_starter",
                 "signal": signal_payload,
                 "order": result.order,
                 "response": result.response,

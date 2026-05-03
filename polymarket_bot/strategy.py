@@ -22,8 +22,8 @@ def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Cand
         if liquidity < settings.min_liquidity_usd or volume < settings.min_volume_usd:
             continue
 
-        best_bid = as_float(market.get("bestBid"), default=None) if market.get("bestBid") is not None else None
-        best_ask = as_float(market.get("bestAsk"), default=None) if market.get("bestAsk") is not None else None
+        market_best_bid = as_float(market.get("bestBid"), default=None) if market.get("bestBid") is not None else None
+        market_best_ask = as_float(market.get("bestAsk"), default=None) if market.get("bestAsk") is not None else None
         tick_size = as_float(market.get("orderPriceMinTickSize"), default=None) if market.get("orderPriceMinTickSize") is not None else None
         neg_risk = bool(market.get("negRisk"))
         accepts_orders = bool(market.get("acceptingOrders"))
@@ -45,6 +45,7 @@ def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Cand
             fair_price_bias = 1.0 - abs(price - 0.5)
             score = (tradability * 2.0) + (urgency * 5.0) + fair_price_bias
             slug = str(market.get("slug") or market.get("id") or "")
+            best_bid, best_ask = _quote_for_outcome(index, len(outcomes), market_best_bid, market_best_ask)
             candidates.append(
                 Candidate(
                     market_id=str(market.get("id") or ""),
@@ -73,3 +74,20 @@ def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Cand
 def stake_for_candidate(candidate: Candidate, cash: float, settings: Settings) -> float:
     del candidate
     return round(max(0.0, min(cash, settings.max_position_usd)), 2)
+
+
+def _quote_for_outcome(
+    index: int,
+    outcome_count: int,
+    market_best_bid: float | None,
+    market_best_ask: float | None,
+) -> tuple[float | None, float | None]:
+    if market_best_bid is None or market_best_ask is None:
+        return None, None
+    if outcome_count != 2:
+        return None, None
+    if index == 0:
+        return market_best_bid, market_best_ask
+    if index == 1:
+        return round(1.0 - market_best_ask, 4), round(1.0 - market_best_bid, 4)
+    return None, None

@@ -34,6 +34,35 @@ class StrategyTests(unittest.TestCase):
         self.assertIn(candidates[0].outcome, {"Yes", "No"})
         self.assertGreater(candidates[0].score, 0)
 
+    def test_rank_markets_maps_binary_quotes_to_each_outcome(self):
+        end_date = (utc_now() + timedelta(hours=12)).isoformat().replace("+00:00", "Z")
+        candidates = rank_markets(
+            [
+                {
+                    "id": "1",
+                    "question": "Team A vs. Team B",
+                    "slug": "team-a-team-b",
+                    "endDate": end_date,
+                    "liquidity": "1000",
+                    "volume": "2000",
+                    "bestBid": "0.11",
+                    "bestAsk": "0.12",
+                    "orderPriceMinTickSize": "0.01",
+                    "acceptingOrders": True,
+                    "outcomes": '["Team A","Team B"]',
+                    "outcomePrices": '["0.115","0.885"]',
+                    "clobTokenIds": '["team-a-token","team-b-token"]',
+                }
+            ],
+            Settings(min_liquidity_usd=100, min_volume_usd=100, soon_hours=24),
+        )
+
+        by_outcome = {candidate.outcome: candidate for candidate in candidates}
+        self.assertEqual(by_outcome["Team A"].best_bid, 0.11)
+        self.assertEqual(by_outcome["Team A"].best_ask, 0.12)
+        self.assertEqual(by_outcome["Team B"].best_bid, 0.88)
+        self.assertEqual(by_outcome["Team B"].best_ask, 0.89)
+
     def test_stake_is_capped(self):
         end_date = (utc_now() + timedelta(hours=1)).isoformat()
         candidate = rank_markets(
@@ -253,6 +282,34 @@ class StrategyTests(unittest.TestCase):
 
         self.assertEqual(
             smart_money_signals([candidate], trades, Settings(smart_min_consensus=2, smart_min_trade_usd=25)),
+            [],
+        )
+
+    def test_smart_money_clamps_consensus_to_multiple_wallets(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will the test market resolve Yes?",
+            slug="test-market",
+            end_date=utc_now() + timedelta(hours=12),
+            hours_to_close=12,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.75,
+            token_id="yes-token",
+            score=10,
+            url="https://polymarket.com/event/test-market",
+            best_bid=0.74,
+            best_ask=0.76,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "yes-token", "BUY", 0.75, 100, 75, 1, "Test market", "Yes", "test-market"),
+        ]
+
+        self.assertEqual(
+            smart_money_signals([candidate], trades, Settings(smart_min_consensus=1, smart_min_trade_usd=25)),
             [],
         )
 

@@ -115,7 +115,7 @@ POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B 
 
 Chaque tick smart-money imprime un `scan_report` avec les meilleures opportunites considerees, le signal selectionne s'il existe, les compteurs traders/trades, et les raisons de rejet quand rien ne qualifie. Le scanner n'utilise pas Codex, Claude ou un LLM.
 
-L'univers smart-money utilise `POLYMARKET_SMART_SOON_HOURS=72` par defaut, donc il cible aujourd'hui, demain et les prochains jours au lieu des contrats trop lointains. S'il n'y a aucune position ouverte et qu'aucun trade normal avec consensus ne qualifie, le bot peut utiliser un fallback `smart_money_starter` ou `liquidity_starter` pour maintenir au moins `POLYMARKET_MIN_OPEN_POSITIONS`. Les starter trades utilisent `POLYMARKET_STARTER_TRADE_USD=1` par defaut et exigent quand meme des marches executables, les filtres de spread/prix quand applicables, et les checks anti-duplicate.
+L'univers smart-money utilise `POLYMARKET_SMART_SOON_HOURS=72` par defaut, donc il cible aujourd'hui, demain et les prochains jours au lieu des contrats trop lointains. Les entrees autonomes exigent un consensus smart-money (`POLYMARKET_SMART_MIN_CONSENSUS=2` par defaut) sur des BUY recents de wallets profitables. S'il n'y a pas ce consensus, le bot skip au lieu de forcer un trade.
 
 `btc-edge-once` trade seulement les marches BTC above/below parsables quand le modele Coinbase spot/volatilite trouve assez d'edge. Il ignore les marches generiques.
 
