@@ -13,17 +13,28 @@ from .models import Candidate, utc_now
 class Portfolio:
     cash: float
     positions: list[dict[str, Any]]
+    pending_orders: list[dict[str, Any]] | None = None
 
     @classmethod
     def load(cls, path: Path, starting_cash: float) -> "Portfolio":
         if not path.exists():
-            return cls(cash=starting_cash, positions=[])
+            return cls(cash=starting_cash, positions=[], pending_orders=[])
         data = json.loads(path.read_text())
-        return cls(cash=float(data.get("cash", starting_cash)), positions=list(data.get("positions", [])))
+        return cls(
+            cash=float(data.get("cash", starting_cash)),
+            positions=list(data.get("positions", [])),
+            pending_orders=list(data.get("pending_orders", [])),
+        )
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"cash": self.cash, "positions": self.positions}, indent=2, sort_keys=True))
+        path.write_text(
+            json.dumps(
+                {"cash": self.cash, "positions": self.positions, "pending_orders": self.pending_orders or []},
+                indent=2,
+                sort_keys=True,
+            )
+        )
 
     def has_open_position(self, market_id: str, outcome: str | None = None) -> bool:
         """
@@ -49,6 +60,15 @@ class Portfolio:
             for position in self.positions
         )
 
+    def has_pending_token(self, token_id: str | None) -> bool:
+        if not token_id:
+            return False
+        return any(
+            order.get("token_id") == token_id
+            and order.get("status") == "live"
+            for order in (self.pending_orders or [])
+        )
+
     def open_paper_position(self, candidate: Candidate, stake: float, *, entry_price: float | None = None) -> dict[str, Any] | None:
         if stake <= 0.0 or stake > self.cash or self.has_open_position(candidate.market_id, candidate.outcome):
             return None
@@ -56,6 +76,42 @@ class Portfolio:
         self.cash = round(self.cash - stake, 2)
         self.positions.append(position)
         return position
+
+    def record_pending_order(
+        self,
+        candidate: Candidate,
+        stake: float,
+        *,
+        entry_price: float,
+        size: float,
+        order_id: str | None,
+        order_response: Any = None,
+        strategy: str | None = None,
+        signal: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if self.pending_orders is None:
+            self.pending_orders = []
+        pending = {
+            "status": "live",
+            "created_at": utc_now().isoformat(),
+            "market_id": candidate.market_id,
+            "question": candidate.question,
+            "slug": candidate.slug,
+            "url": candidate.url,
+            "outcome": candidate.outcome,
+            "token_id": candidate.token_id,
+            "price": entry_price,
+            "stake": round(stake, 2),
+            "size": size,
+            "order_id": order_id,
+            "order_response": order_response,
+        }
+        if strategy:
+            pending["strategy"] = strategy
+        if signal is not None:
+            pending["signal"] = signal
+        self.pending_orders.append(pending)
+        return pending
 
     def record_live_position(
         self,

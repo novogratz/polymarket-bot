@@ -43,7 +43,7 @@ class Settings:
     btc_min_trade_usd: float = _float_env("POLYMARKET_BTC_MIN_TRADE_USD", 1.0)
     btc_max_trade_usd: float = _float_env("POLYMARKET_BTC_MAX_TRADE_USD", 50.0)
     btc_volatility_days: int = _int_env("POLYMARKET_BTC_VOLATILITY_DAYS", 7)
-    auto_interval_seconds: int = _int_env("POLYMARKET_AUTO_INTERVAL_SECONDS", 300)
+    auto_interval_seconds: int = _int_env("POLYMARKET_AUTO_INTERVAL_SECONDS", 10)
     auto_max_ticks: int = _int_env("POLYMARKET_AUTO_MAX_TICKS", 0)
     data_api_base_url: str = os.getenv("POLYMARKET_DATA_API_URL", "https://data-api.polymarket.com")
     smart_categories: str = os.getenv("POLYMARKET_SMART_CATEGORIES", "OVERALL,CRYPTO,FINANCE,ECONOMICS,TECH,POLITICS")
@@ -78,6 +78,7 @@ class Settings:
     smart_min_sell_usd: float = _float_env("POLYMARKET_SMART_MIN_SELL_USD", 1.0)
     smart_exit_minutes_to_close: int = _int_env("POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE", 20)
     smart_exit_min_profit: float = _float_env("POLYMARKET_SMART_EXIT_MIN_PROFIT", 0.05)
+    smart_pending_order_ttl_seconds: int = _int_env("POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS", 45)
     live_position_min_value_usd: float = _float_env("POLYMARKET_LIVE_POSITION_MIN_VALUE_USD", 1.0)
     sync_live_positions: bool = os.getenv("POLYMARKET_SYNC_LIVE_POSITIONS", "1").lower() in {"1", "true", "yes"}
     min_liquidity_usd: float = _float_env("POLYMARKET_MIN_LIQUIDITY_USD", 500.0)

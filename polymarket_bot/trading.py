@@ -238,6 +238,15 @@ class TradingSession:
         response = self.legacy_client.post_order(order, "GTC")
         return order, response
 
+    def cancel_order(self, order_id: str) -> Any:
+        if self.sdk_client is not None:
+            module, _ = _load_sdk_client()
+            order_payload_cls = getattr(module, "OrderPayload", None) if module is not None else None
+            method = getattr(self.sdk_client, "cancel_order", None)
+            if callable(method) and order_payload_cls is not None:
+                return method(order_payload_cls(orderID=order_id))
+        raise ValueError("installed Polymarket client does not support order cancellation")
+
     @staticmethod
     def _normalize_amount(value: Any) -> float | None:
         if value is None or value == "":
@@ -390,26 +399,57 @@ def execute_live_trade(
     print("   Sending order...")
     order, response = client.place_live_order(candidate=candidate, price=entry_price, size=size, side="BUY")
     if isinstance(response, dict) and response.get("success"):
+        status = str(response.get("status") or "")
+        label = "✅ BUY FILLED" if _is_filled_buy_response(response) else "🕒 BUY POSTED LIVE"
         print(
-            "✅ BUY MATCHED/POSTED: "
-            f"status={response.get('status')} order_id={response.get('orderID')} "
+            f"{label}: "
+            f"status={status} order_id={response.get('orderID')} "
             f"making={response.get('makingAmount')} taking={response.get('takingAmount')}"
         )
     print(f"📡 BUY API RESPONSE: {json.dumps(response, indent=2)}\n")
 
-    position = portfolio.record_live_position(
-        candidate,
-        stake,
-        entry_price=entry_price,
-        order_id=response.get("orderID") if isinstance(response, dict) else None,
-        order_response=response,
-    )
-    if position is not None:
-        if strategy:
-            position["strategy"] = strategy
-        if signal is not None:
-            position["signal"] = signal
+    order_id = response.get("orderID") if isinstance(response, dict) else None
+    if _is_filled_buy_response(response):
+        position = portfolio.record_live_position(
+            candidate,
+            stake,
+            entry_price=entry_price,
+            order_id=order_id,
+            order_response=response,
+        )
+        if position is not None:
+            if strategy:
+                position["strategy"] = strategy
+            if signal is not None:
+                position["signal"] = signal
+    else:
+        portfolio.record_pending_order(
+            candidate,
+            stake,
+            entry_price=entry_price,
+            size=size,
+            order_id=order_id,
+            order_response=response,
+            strategy=strategy,
+            signal=signal,
+        )
     return LiveTradeResult(order=order, response=response, candidate=candidate)
+
+
+def _is_filled_buy_response(response: Any) -> bool:
+    if not isinstance(response, dict):
+        return False
+    if str(response.get("status") or "").lower() == "matched":
+        return True
+    for key in ("takingAmount", "makingAmount"):
+        value = response.get(key)
+        if value not in (None, ""):
+            try:
+                if float(value) > 0:
+                    return True
+            except (TypeError, ValueError):
+                continue
+    return False
 
 
 def execute_live_sell(

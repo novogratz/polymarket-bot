@@ -54,6 +54,8 @@ Each tick attempts every qualified smart-money opportunity until one of these ha
 - No more qualified opportunities remain.
 - The order API rejects because funds, allowance, or minimum order constraints are no longer satisfied.
 
+Resting BUY orders are not recorded as open positions. They are saved under `pending_orders` and cancelled after `POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS`, default `45`, unless live position sync sees that they filled.
+
 ## When The Bot Refuses To Trade
 
 No trade is a valid outcome. The bot should skip if:
@@ -112,6 +114,7 @@ POLYMARKET_SMART_PEAK_PROTECT_FLOOR=0.40
 POLYMARKET_SMART_MIN_SELL_USD=1
 POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE=20
 POLYMARKET_SMART_EXIT_MIN_PROFIT=0.05
+POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS=45
 POLYMARKET_SYNC_LIVE_POSITIONS=1
 POLYMARKET_LIVE_POSITION_MIN_VALUE_USD=1
 ```

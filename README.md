@@ -65,7 +65,7 @@ POLYMARKET_BTC_MAX_SPREAD=0.03
 POLYMARKET_BTC_MIN_TRADE_USD=1
 POLYMARKET_BTC_MAX_TRADE_USD=25
 POLYMARKET_BTC_VOLATILITY_DAYS=7
-POLYMARKET_AUTO_INTERVAL_SECONDS=300
+POLYMARKET_AUTO_INTERVAL_SECONDS=10
 POLYMARKET_AUTO_MAX_TICKS=0
 POLYMARKET_DATA_API_URL=https://data-api.polymarket.com
 POLYMARKET_SMART_CATEGORIES=OVERALL,CRYPTO,FINANCE,ECONOMICS,TECH,POLITICS
@@ -97,6 +97,7 @@ POLYMARKET_SMART_PEAK_PROTECT_FLOOR=0.40
 POLYMARKET_SMART_MIN_SELL_USD=1
 POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE=20
 POLYMARKET_SMART_EXIT_MIN_PROFIT=0.05
+POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS=45
 POLYMARKET_SYNC_LIVE_POSITIONS=1
 POLYMARKET_LIVE_POSITION_MIN_VALUE_USD=1
 POLYMARKET_MIN_LIQUIDITY_USD=500
@@ -139,7 +140,7 @@ Chaque tick smart-money imprime un `scan_report` avec les meilleures opportunite
 
 L'univers smart-money utilise `POLYMARKET_SMART_SOON_HOURS=72` par defaut, donc il cible aujourd'hui, demain et les prochains jours au lieu des contrats trop lointains. Les entrees autonomes exigent un consensus smart-money (`POLYMARKET_SMART_MIN_CONSENSUS=2` par defaut) sur des BUY recents de wallets profitables. S'il n'y a pas ce consensus, le bot skip au lieu de forcer un trade. Le bot refuse aussi les marches trop proches de l'expiration (`POLYMARKET_SMART_MIN_HOURS_TO_CLOSE=0.25`) et applique des regles plus strictes aux micro-marches crypto up/down.
 
-Chaque opportunite inclut `selection_reason` et `selection_metrics`, qui expliquent pourquoi le bot l'a choisie: consensus wallets, taille copiee, PnL total des wallets, prix moyen copie, ask actuel, spread, score, et checks passes. Le bot essaie toutes les opportunites qualifiees d'un tick, avec `POLYMARKET_SMART_MAX_TRADE_USD=5` par defaut, jusqu'a manquer de fonds, atteindre `POLYMARKET_SMART_MAX_ORDERS_PER_TICK` si configure, ou epuiser les signaux. Si les caps env sont plus hauts, le sizing augmente seulement avec la qualite du signal: consensus 2 reste petit, consensus 3+ peut grossir, consensus 4+ avec gros flow peut atteindre le cap.
+Chaque opportunite inclut `selection_reason` et `selection_metrics`, qui expliquent pourquoi le bot l'a choisie: consensus wallets, taille copiee, PnL total des wallets, prix moyen copie, ask actuel, spread, score, et checks passes. Le bot essaie toutes les opportunites qualifiees d'un tick, avec `POLYMARKET_SMART_MAX_TRADE_USD=5` par defaut, jusqu'a manquer de fonds, atteindre `POLYMARKET_SMART_MAX_ORDERS_PER_TICK` si configure, ou epuiser les signaux. Si les caps env sont plus hauts, le sizing augmente seulement avec la qualite du signal: consensus 2 reste petit, consensus 3+ peut grossir, consensus 4+ avec gros flow peut atteindre le cap. Les BUY live non remplis immediatement sont stockes comme `pending_orders`, pas comme positions ouvertes, puis annules apres `POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS=45` secondes sauf s'ils apparaissent dans les positions live sync.
 
 Avant de chercher de nouvelles entrees, chaque tick synchronise les positions live via la Data API (`POLYMARKET_SYNC_LIVE_POSITIONS=1`) puis applique une strategie de sortie sur les positions live ouvertes. Par defaut `POLYMARKET_SMART_TAKE_PROFIT_TIERS=1.0:0.50,2.0:0.25,3.0:0.15`: a +100% le bot vend 50% des shares, a +200% il vend 25% des shares initiales, a +300% il vend 15%, puis garde le reste. Si une position a deja atteint +100% (`POLYMARKET_SMART_PEAK_PROTECT_TRIGGER=1.0`) et retombe sous +40% (`POLYMARKET_SMART_PEAK_PROTECT_FLOOR=0.40`), le bot essaie de vendre le solde restant. Si une position profitable approche de l'expiration (`POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE=20`, `POLYMARKET_SMART_EXIT_MIN_PROFIT=0.05`), le bot essaie aussi de sortir. Les ventes utilisent le bid executable et sont journalisees dans la position (`exits`, `realized_pnl`, shares restantes).
 

@@ -8,7 +8,7 @@ from polymarket_bot.polymarket import ApiCreds, PolymarketClient
 from polymarket_bot.portfolio import Portfolio
 from polymarket_bot.smart_money import SmartTrade, smart_money_signals
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
-from polymarket_bot.trading import execute_live_sell, execute_live_trade
+from polymarket_bot.trading import _is_filled_buy_response, execute_live_sell, execute_live_trade
 from polymarket_bot.main import _max_trade_for_signal, _sell_plan
 
 
@@ -122,6 +122,54 @@ class StrategyTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(result.order["size"], 5.0)
+
+    def test_live_trade_records_resting_order_as_pending(self):
+        class FakeClient:
+            def live_available_balance(self):
+                return 20.0
+
+            def place_live_order(self, *, candidate, price, size, side="BUY"):
+                return {"price": price, "size": size, "side": side}, {
+                    "success": True,
+                    "status": "live",
+                    "orderID": "order-live",
+                    "makingAmount": "",
+                    "takingAmount": "",
+                }
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.39,
+            best_ask=0.4,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=20.0, positions=[])
+
+        execute_live_trade(
+            FakeClient(),
+            Settings(trade_fraction=0.10, min_order_shares=5.0),
+            candidate,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=1.0,
+        )
+
+        self.assertEqual(portfolio.positions, [])
+        self.assertEqual(len(portfolio.pending_orders), 1)
+        self.assertTrue(portfolio.has_pending_token("token"))
+        self.assertFalse(_is_filled_buy_response(portfolio.pending_orders[0]["order_response"]))
 
     def test_live_sell_records_partial_exit(self):
         class FakeClient:

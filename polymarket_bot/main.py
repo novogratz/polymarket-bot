@@ -12,7 +12,7 @@ from .config import Settings
 from .dashboard import serve
 from .gamma import GammaClient
 from .portfolio import Portfolio
-from .models import utc_now
+from .models import parse_dt, utc_now
 from .portfolio import paper_tick
 from .smart_money import DataApiClient, analyze_smart_money, _top_traders
 from .trading import build_client, choose_trade, execute_live_sell, execute_live_trade
@@ -176,6 +176,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
 
     # 1. WHALE EXIT: Check if we should close any existing positions
     client = build_client(settings)
+    pending_report = _cancel_stale_pending_orders(client, settings, portfolio)
     whale_exit_report = []
     if portfolio.positions:
         # Get latest smart money trades to see who is still in
@@ -240,6 +241,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         and candidate.best_bid is not None
         and candidate.tick_size is not None
         and not portfolio.has_open_position(candidate.market_id)
+        and not portfolio.has_open_token(candidate.token_id)
+        and not portfolio.has_pending_token(candidate.token_id)
     ]
 
     report = analyze_smart_money(eligible_candidates, settings)
@@ -274,6 +277,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 "whale_exits": whale_exit_report,
                 "exits": exit_report,
                 "sync": sync_report,
+                "pending_orders": pending_report,
                 "category_summary": open_categories,
                 "scan_report": report.to_dict(),
                 "summary": portfolio.summary(),
@@ -349,6 +353,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             "whale_exits": whale_exit_report,
             "exits": exit_report,
             "sync": sync_report,
+            "pending_orders": pending_report,
             "category_summary": open_categories,
             "rejected_signals": rejected_signals,
             "scan_report": report.to_dict(),
@@ -362,6 +367,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "whale_exits": whale_exit_report,
         "exits": exit_report,
         "sync": sync_report,
+        "pending_orders": pending_report,
         "category_summary": open_categories,
         "rejected_signals": rejected_signals,
         "scan_report": report.to_dict(),
@@ -438,6 +444,55 @@ def _execute_sell_strategy(
             }
         )
     return exit_report
+
+
+def _cancel_stale_pending_orders(client, settings: Settings, portfolio: Portfolio) -> list[dict[str, object]]:
+    if settings.smart_pending_order_ttl_seconds <= 0:
+        return []
+    now = utc_now()
+    report: list[dict[str, object]] = []
+    for order in portfolio.pending_orders or []:
+        if order.get("status") != "live":
+            continue
+        created_at = parse_dt(str(order.get("created_at") or ""))
+        if created_at is None:
+            continue
+        age_seconds = (now - created_at).total_seconds()
+        if age_seconds < settings.smart_pending_order_ttl_seconds:
+            continue
+        order_id = str(order.get("order_id") or "")
+        if not order_id:
+            order["status"] = "stale_missing_order_id"
+            report.append({"action": "pending_order_stale_missing_order_id", "question": order.get("question")})
+            continue
+        try:
+            response = client.cancel_order(order_id)
+        except Exception as exc:
+            order["cancel_error"] = f"{type(exc).__name__}: {exc}"
+            report.append(
+                {
+                    "action": "pending_order_cancel_failed",
+                    "order_id": order_id,
+                    "question": order.get("question"),
+                    "reason": order["cancel_error"],
+                }
+            )
+            continue
+        order["status"] = "canceled"
+        order["canceled_at"] = now.isoformat()
+        order["cancel_response"] = response
+        report.append(
+            {
+                "action": "pending_order_canceled",
+                "order_id": order_id,
+                "question": order.get("question"),
+                "age_seconds": round(age_seconds, 1),
+                "response": response,
+            }
+        )
+    if report:
+        portfolio.save(settings.state_path)
+    return report
 
 
 def _max_trade_for_signal(settings: Settings, signal: dict[str, object], strategy: str) -> float:
@@ -544,6 +599,10 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
 
     for token_id, item in active_by_token.items():
         position = local_by_token.get(token_id)
+        for pending in portfolio.pending_orders or []:
+            if pending.get("status") == "live" and pending.get("token_id") == token_id:
+                pending["status"] = "filled_by_live_sync"
+                pending["filled_at"] = utc_now().isoformat()
         if position is None:
             position = _position_from_live_api(item)
             portfolio.positions.append(position)
