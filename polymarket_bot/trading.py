@@ -238,6 +238,54 @@ class TradingSession:
         response = self.legacy_client.post_order(order, "GTC")
         return order, response
 
+    def place_market_order(
+        self,
+        *,
+        candidate: Candidate,
+        amount: float,
+        side: str = "BUY",
+        price: float = 0.0,
+    ) -> tuple[dict[str, Any], Any]:
+        side = side.upper()
+        if self.sdk_client is not None:
+            module, _ = _load_sdk_client()
+            if module is not None:
+                market_order_args_cls = getattr(module, "MarketOrderArgs", None)
+                order_type_cls = getattr(module, "OrderType", None)
+                partial_options_cls = getattr(module, "PartialCreateOrderOptions", None)
+                side_cls = getattr(module, "Side", None)
+                if market_order_args_cls and order_type_cls and partial_options_cls and side_cls:
+                    order_args = market_order_args_cls(
+                        token_id=candidate.token_id or "",
+                        amount=amount,
+                        side=getattr(side_cls, side, side),
+                        price=price,
+                        order_type=getattr(order_type_cls, "FOK", "FOK"),
+                        user_usdc_balance=amount if side == "BUY" else 0,
+                    )
+                    options = partial_options_cls(
+                        tick_size=str(candidate.tick_size or "0.01"),
+                        neg_risk=candidate.neg_risk,
+                    )
+                    method = getattr(self.sdk_client, "create_and_post_market_order", None)
+                    if callable(method):
+                        response = method(
+                            order_args=order_args,
+                            options=options,
+                            order_type=getattr(order_type_cls, "FOK", "FOK"),
+                        )
+                        order_dict = {
+                            "tokenId": candidate.token_id,
+                            "amount": amount,
+                            "price": price,
+                            "side": side,
+                            "orderType": "FOK",
+                            "signatureType": self.settings.signature_type,
+                        }
+                        return order_dict, response
+
+        return self.place_live_order(candidate=candidate, price=price, size=amount, side=side)
+
     def cancel_order(self, order_id: str) -> Any:
         if self.sdk_client is not None:
             module, _ = _load_sdk_client()
@@ -380,8 +428,8 @@ def execute_live_trade(
             f"order size {size} shares is below Polymarket minimum of {settings.min_order_shares} shares"
         )
 
-    print(f"\n🚀 BUY ORDER: {candidate.outcome} on {candidate.question}")
-    print(f"   Stake: ${stake} USDC | Entry limit: {entry_price} | Shares: {size}")
+    print(f"\n🚀 MARKET BUY: {candidate.outcome} on {candidate.question}")
+    print(f"   Stake: ${stake} USDC | Max price guard: {entry_price} | Est. shares: {size}")
     print(f"   Market: {candidate.url}")
     if signal:
         metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
@@ -396,11 +444,11 @@ def execute_live_trade(
             f"spread={metrics.get('spread')} "
             f"wallet_pnl=${metrics.get('total_trader_pnl', signal.get('total_trader_pnl'))}"
         )
-    print("   Sending order...")
-    order, response = client.place_live_order(candidate=candidate, price=entry_price, size=size, side="BUY")
+    print("   Sending FOK market order...")
+    order, response = client.place_market_order(candidate=candidate, amount=stake, price=entry_price, side="BUY")
     if isinstance(response, dict) and response.get("success"):
         status = str(response.get("status") or "")
-        label = "✅ BUY FILLED" if _is_filled_buy_response(response) else "🕒 BUY POSTED LIVE"
+        label = "✅ BUY FILLED" if _is_filled_buy_response(response) else "⚠️  BUY NOT FILLED"
         print(
             f"{label}: "
             f"status={status} order_id={response.get('orderID')} "
@@ -422,17 +470,6 @@ def execute_live_trade(
                 position["strategy"] = strategy
             if signal is not None:
                 position["signal"] = signal
-    else:
-        portfolio.record_pending_order(
-            candidate,
-            stake,
-            entry_price=entry_price,
-            size=size,
-            order_id=order_id,
-            order_response=response,
-            strategy=strategy,
-            signal=signal,
-        )
     return LiveTradeResult(order=order, response=response, candidate=candidate)
 
 

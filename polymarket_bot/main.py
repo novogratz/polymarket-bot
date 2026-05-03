@@ -332,12 +332,32 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                         }
                     )
                     continue
+                if _is_unfilled_market_order_error(str(e)):
+                    print(f"⚠️  Skipping unfilled market order: {str(e)}")
+                    rejected_signals.append(
+                        {
+                            "market_id": opportunity.candidate.market_id,
+                            "outcome": opportunity.candidate.outcome,
+                            "reason": str(e),
+                        }
+                    )
+                    continue
                 if _is_funds_error(str(e)):
                     stop_reason = str(e)
                     break
                 else:
                     raise e
             except Exception as e:
+                if _is_unfilled_market_order_error(str(e)):
+                    print(f"⚠️  Skipping unfilled market order: {str(e)}")
+                    rejected_signals.append(
+                        {
+                            "market_id": opportunity.candidate.market_id,
+                            "outcome": opportunity.candidate.outcome,
+                            "reason": str(e),
+                        }
+                    )
+                    continue
                 if _is_funds_error(str(e)):
                     stop_reason = str(e)
                     break
@@ -674,6 +694,18 @@ def _is_funds_error(message: str) -> bool:
             "no cash available",
             "below polymarket",
             "below minimum",
+        )
+    )
+
+
+def _is_unfilled_market_order_error(message: str) -> bool:
+    lowered = message.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "fully filled or killed",
+            "couldn't be fully filled",
+            "could not be fully filled",
         )
     )
 
