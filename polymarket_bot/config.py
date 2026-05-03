@@ -53,7 +53,15 @@ class Settings:
     auto_interval_seconds: int = _int_env("POLYMARKET_AUTO_INTERVAL_SECONDS", 10)
     auto_max_ticks: int = _int_env("POLYMARKET_AUTO_MAX_TICKS", 0)
     data_api_base_url: str = os.getenv("POLYMARKET_DATA_API_URL", "https://data-api.polymarket.com")
-    smart_categories: str = os.getenv("POLYMARKET_SMART_CATEGORIES", "OVERALL,CRYPTO,FINANCE,ECONOMICS,TECH,POLITICS")
+    smart_categories: str = os.getenv(
+        "POLYMARKET_SMART_CATEGORIES",
+        "OVERALL,FINANCE,ECONOMICS,TECH,POLITICS,SPORTS,CULTURE,WEATHER",
+    )
+    smart_discovery_keywords: str = os.getenv(
+        "POLYMARKET_SMART_DISCOVERY_KEYWORDS",
+        "election,trump,senate,congress,fed,inflation,cpi,unemployment,gdp,weather,rain,snow,"
+        "hurricane,temperature,box office,movie,earnings,stock,nasdaq",
+    )
     smart_time_period: str = os.getenv("POLYMARKET_SMART_TIME_PERIOD", "WEEK")
     smart_leaderboard_limit: int = _int_env("POLYMARKET_SMART_LEADERBOARD_LIMIT", 25)
     smart_scan_limit: int = _int_env("POLYMARKET_SMART_SCAN_LIMIT", 1000)

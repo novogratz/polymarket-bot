@@ -22,6 +22,7 @@ class GammaClient:
         ascending: bool = True,
         end_date_min: datetime | None = None,
         end_date_max: datetime | None = None,
+        question_contains: str | None = None,
     ) -> list[dict[str, Any]]:
         query: dict[str, str] = {
             "active": str(active).lower(),
@@ -34,6 +35,8 @@ class GammaClient:
             query["end_date_min"] = end_date_min.isoformat()
         if end_date_max is not None:
             query["end_date_max"] = end_date_max.isoformat()
+        if question_contains:
+            query["question_contains"] = question_contains
         params = urllib.parse.urlencode(query)
         return self._get_json(f"/markets?{params}")
 

@@ -56,6 +56,21 @@ def load_smart_candidates(settings: Settings):
             batches.append(client.get_markets(**kwargs))
         except Exception as exc:
             print(f"⚠️  Gamma smart market batch skipped: {type(exc).__name__}: {exc}")
+    keyword_limit = max(20, min(settings.smart_scan_limit // 10, 100))
+    for keyword in _smart_discovery_keywords(settings):
+        try:
+            batches.append(
+                client.get_markets(
+                    limit=keyword_limit,
+                    order="volume",
+                    ascending=False,
+                    end_date_min=now,
+                    end_date_max=horizon,
+                    question_contains=keyword,
+                )
+            )
+        except Exception as exc:
+            print(f"⚠️  Gamma keyword batch skipped: {keyword} {type(exc).__name__}: {exc}")
     markets_by_id = {
         str(market.get("id") or market.get("conditionId") or index): market
         for index, batch in enumerate(batches)
@@ -561,6 +576,18 @@ def _max_trade_for_signal(settings: Settings, signal: dict[str, object], strateg
     else:
         quality_cap = min(settings.max_position_usd, 5.0)
     return min(base_cap, quality_cap)
+
+
+def _smart_discovery_keywords(settings: Settings) -> list[str]:
+    seen: set[str] = set()
+    keywords: list[str] = []
+    for raw in settings.smart_discovery_keywords.split(","):
+        keyword = raw.strip()
+        key = keyword.lower()
+        if keyword and key not in seen:
+            seen.add(key)
+            keywords.append(keyword)
+    return keywords
 
 
 def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Settings) -> dict[str, object] | None:

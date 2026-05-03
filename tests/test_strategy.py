@@ -9,7 +9,7 @@ from polymarket_bot.portfolio import Portfolio
 from polymarket_bot.smart_money import SmartTrade, market_category, smart_money_signals
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
 from polymarket_bot.trading import _is_filled_buy_response, execute_live_sell, execute_live_trade
-from polymarket_bot.main import _is_unfilled_market_order_error, _max_trade_for_signal, _sell_plan
+from polymarket_bot.main import _is_unfilled_market_order_error, _max_trade_for_signal, _sell_plan, _smart_discovery_keywords
 
 
 class StrategyTests(unittest.TestCase):
@@ -84,6 +84,11 @@ class StrategyTests(unittest.TestCase):
         )[0]
 
         self.assertEqual(stake_for_candidate(candidate, 20.0, Settings(max_position_usd=5.0)), 5.0)
+
+    def test_smart_discovery_keywords_are_deduped(self):
+        settings = Settings(smart_discovery_keywords=" election,weather,election, fed ")
+
+        self.assertEqual(_smart_discovery_keywords(settings), ["election", "weather", "fed"])
 
     def test_live_trade_respects_minimum_share_size(self):
         class FakeClient:
