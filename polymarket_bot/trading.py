@@ -496,11 +496,14 @@ def _is_high_conviction_signal(signal: dict[str, Any]) -> bool:
     metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
     consensus = float(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0.0)
     copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
+    total_trader_pnl = float(metrics.get("total_trader_pnl") or signal.get("total_trader_pnl") or 0.0)
     value_score = float(metrics.get("value_score") or 0.0)
     value_discount_pct = float(metrics.get("value_discount_pct") or 0.0)
     if consensus >= 4 and copied_usdc >= 1000:
         return True
     if consensus >= 3 and copied_usdc >= 5000:
+        return True
+    if consensus >= 2 and copied_usdc >= 1000 and total_trader_pnl >= 250000 and value_discount_pct >= -0.10:
         return True
     return consensus >= 2 and copied_usdc >= 250 and value_score >= 10 and value_discount_pct >= 0
 

@@ -190,6 +190,69 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(result.order["amount"], 50.0)
         self.assertEqual(portfolio.positions[0]["stake"], 50.0)
 
+    def test_high_flow_two_wallet_trade_can_use_balance_fraction(self):
+        class FakeClient:
+            def live_available_balance(self):
+                return 100.0
+
+            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
+                return {"price": price, "amount": amount, "side": side}, {
+                    "success": True,
+                    "status": "matched",
+                    "orderID": "order-1",
+                    "makingAmount": str(amount),
+                }
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.49,
+            best_ask=0.5,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        signal = {
+            "consensus": 2,
+            "copied_usdc": 1500,
+            "avg_copy_price": 0.5,
+            "total_trader_pnl": 500000,
+            "selection_metrics": {
+                "profitable_wallet_count": 2,
+                "copied_usdc": 1500,
+                "avg_copy_price": 0.5,
+                "total_trader_pnl": 500000,
+                "value_score": 0,
+                "value_discount_pct": 0,
+            },
+        }
+        portfolio = Portfolio(cash=100.0, positions=[])
+        result = execute_live_trade(
+            FakeClient(),
+            Settings(
+                trade_fraction=1.0,
+                max_position_usd=10,
+                smart_high_conviction_balance_fraction=0.5,
+            ),
+            candidate,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=10.0,
+            signal=signal,
+        )
+
+        self.assertEqual(result.order["amount"], 50.0)
+        self.assertEqual(portfolio.positions[0]["stake"], 50.0)
+
     def test_live_trade_does_not_record_resting_buy_order(self):
         class FakeClient:
             def live_available_balance(self):
