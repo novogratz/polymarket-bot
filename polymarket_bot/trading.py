@@ -353,9 +353,31 @@ def execute_live_trade(
             f"order size {size} shares is below Polymarket minimum of {settings.min_order_shares} shares"
         )
 
-    print(f"\n🚀 EXECUTING TRADE: BUY {size} shares of '{candidate.outcome}' at {entry_price} on '{candidate.question}' (${stake} USDC)")
+    print(f"\n🚀 BUY ORDER: {candidate.outcome} on {candidate.question}")
+    print(f"   Stake: ${stake} USDC | Entry limit: {entry_price} | Shares: {size}")
+    print(f"   Market: {candidate.url}")
+    if signal:
+        metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
+        print(f"   Why: {signal.get('selection_reason', 'smart-money signal passed filters')}")
+        print(
+            "   Signal: "
+            f"wallets={metrics.get('profitable_wallet_count', signal.get('consensus'))} "
+            f"copied=${metrics.get('copied_usdc', signal.get('copied_usdc'))} "
+            f"avg_copy={metrics.get('avg_copy_price', signal.get('avg_copy_price'))} "
+            f"ask={metrics.get('current_ask', signal.get('best_ask'))} "
+            f"bid={metrics.get('current_bid', signal.get('best_bid'))} "
+            f"spread={metrics.get('spread')} "
+            f"wallet_pnl=${metrics.get('total_trader_pnl', signal.get('total_trader_pnl'))}"
+        )
+    print("   Sending order...")
     order, response = client.place_live_order(candidate=candidate, price=entry_price, size=size, side="BUY")
-    print(f"📡 API RESPONSE: {json.dumps(response, indent=2)}\n")
+    if isinstance(response, dict) and response.get("success"):
+        print(
+            "✅ BUY MATCHED/POSTED: "
+            f"status={response.get('status')} order_id={response.get('orderID')} "
+            f"making={response.get('makingAmount')} taking={response.get('takingAmount')}"
+        )
+    print(f"📡 BUY API RESPONSE: {json.dumps(response, indent=2)}\n")
 
     position = portfolio.record_live_position(
         candidate,

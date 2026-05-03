@@ -170,7 +170,6 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     if portfolio.positions:
         # Get latest smart money trades to see who is still in
         data_client = DataApiClient(settings.data_api_base_url)
-        traders = _top_traders(data_client, settings)
         # Look back 2 hours for exits
         exit_lookback = int(time.time()) - (120 * 60)
         
@@ -187,8 +186,25 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             # Check if any of the original wallets have bought again recently
             # If they haven't bought in the last 2 hours, and we find NO recent buys for this token, we exit
             recent_trades = []
+            whale_watch_failed = False
             for wallet in original_wallets:
-                recent_trades.extend(data_client.trades(user=wallet, start=exit_lookback))
+                try:
+                    recent_trades.extend(data_client.trades(user=wallet, start=exit_lookback))
+                except Exception as exc:
+                    message = f"whale_watch_timeout_or_api_error: {type(exc).__name__}: {exc}"
+                    print(f"⚠️  WHALE WATCH SKIPPED for '{position['question']}': {message}")
+                    whale_exit_report.append(
+                        {
+                            "question": position.get("question"),
+                            "status": "skipped",
+                            "reason": message,
+                        }
+                    )
+                    recent_trades = []
+                    whale_watch_failed = True
+                    break
+            if whale_watch_failed:
+                continue
             
             still_holding = any(t.asset == position.get("token_id") for t in recent_trades)
             if not still_holding and original_wallets:
