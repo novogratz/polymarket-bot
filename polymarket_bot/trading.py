@@ -383,13 +383,11 @@ def execute_live_trade(
     if live_balance <= 0:
         raise ValueError("no live balance available")
 
-    # TARGET EXPOSURE SIZING: Aim for total exposure = 50% of equity
+    # Target exposure sizing: deploy until invested capital reaches the configured equity fraction.
     summary = portfolio.summary()
-    total_equity = live_balance + summary.get("total_stake", 0.0)
+    current_exposure = float(summary.get("invested", 0.0))
+    total_equity = live_balance + current_exposure
     target_total_exposure = total_equity * settings.trade_fraction
-    current_exposure = summary.get("total_stake", 0.0)
-    
-    # How much more do we need to reach the target?
     needed_usd = max(0.0, target_total_exposure - current_exposure)
     
     # Sizing logic
@@ -419,7 +417,7 @@ def execute_live_trade(
         stake = minimum
 
     min_share_stake = settings.min_order_shares * entry_price
-    if live_balance >= min_share_stake:
+    if stake > 0 and live_balance >= min_share_stake:
         stake = max(stake, min_share_stake)
     
     stake = round(min(stake, live_balance), 2)

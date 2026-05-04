@@ -275,6 +275,63 @@ class StrategyTests(unittest.TestCase):
                 max_trade_usd=10.0,
             )
 
+    def test_live_trade_counts_existing_invested_exposure(self):
+        class FakeClient:
+            def live_available_balance(self):
+                return 52.0
+
+            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
+                raise AssertionError("target exposure is already reached")
+
+        open_candidate = Candidate(
+            market_id="open",
+            question="Q",
+            slug="q-open",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="open-token",
+            score=1,
+            url="https://polymarket.com/event/q-open",
+            best_bid=0.49,
+            best_ask=0.5,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        next_candidate = Candidate(
+            market_id="next",
+            question="Next Q",
+            slug="q-next",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="next-token",
+            score=1,
+            url="https://polymarket.com/event/q-next",
+            best_bid=0.49,
+            best_ask=0.5,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=52.0, positions=[])
+        self.assertIsNotNone(portfolio.record_live_position(open_candidate, 80.0, entry_price=0.5))
+
+        with self.assertRaisesRegex(ValueError, "target exposure already reached"):
+            execute_live_trade(
+                FakeClient(),
+                Settings(trade_fraction=0.5, max_position_usd=30),
+                next_candidate,
+                portfolio,
+                min_trade_usd=1.0,
+                max_trade_usd=30.0,
+            )
+
     def test_high_flow_two_wallet_trade_can_use_balance_fraction(self):
         class FakeClient:
             def live_available_balance(self):
