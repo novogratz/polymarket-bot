@@ -773,6 +773,153 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
     return None
 
 
+def journal_stats(settings: Settings) -> dict[str, object]:
+    path = settings.trade_journal_path
+    records: list[dict[str, object]] = []
+    if path.exists():
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except Exception:
+                continue
+    if not records:
+        return {"records": 0, "message": "no closed trades yet"}
+
+    def pnl(record: dict[str, object]) -> float:
+        try:
+            return float(record.get("realized_pnl") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def bucket_stats(group: list[dict[str, object]]) -> dict[str, object]:
+        if not group:
+            return {"count": 0, "total_pnl": 0.0, "avg_pnl": 0.0, "win_rate": 0.0}
+        pnls = [pnl(r) for r in group]
+        wins = sum(1 for p in pnls if p > 0)
+        return {
+            "count": len(group),
+            "total_pnl": round(sum(pnls), 2),
+            "avg_pnl": round(sum(pnls) / len(pnls), 4),
+            "win_rate": round(wins / len(group), 3),
+        }
+
+    def group_by(records: list[dict[str, object]], key_fn) -> dict[str, dict[str, object]]:
+        groups: dict[str, list[dict[str, object]]] = {}
+        for record in records:
+            key = key_fn(record)
+            if key is None:
+                continue
+            groups.setdefault(str(key), []).append(record)
+        return {k: bucket_stats(v) for k, v in sorted(groups.items())}
+
+    def consensus_bucket(record: dict[str, object]) -> str:
+        consensus = record.get("consensus")
+        if consensus is None:
+            return "unknown"
+        try:
+            consensus_int = int(consensus)
+        except (TypeError, ValueError):
+            return "unknown"
+        if consensus_int <= 1:
+            return "1_wallet"
+        if consensus_int == 2:
+            return "2_wallets"
+        if consensus_int == 3:
+            return "3_wallets"
+        return "4plus_wallets"
+
+    def price_bucket(record: dict[str, object]) -> str:
+        try:
+            entry = float(record.get("entry_price") or 0)
+        except (TypeError, ValueError):
+            return "unknown"
+        if entry <= 0:
+            return "unknown"
+        if entry < 0.20:
+            return "0.00-0.20"
+        if entry < 0.50:
+            return "0.20-0.50"
+        if entry < 0.80:
+            return "0.50-0.80"
+        return "0.80-1.00"
+
+    pnls = [pnl(r) for r in records]
+    wins = sum(1 for p in pnls if p > 0)
+    losses = sum(1 for p in pnls if p < 0)
+    flats = sum(1 for p in pnls if p == 0)
+    return {
+        "records": len(records),
+        "total_pnl": round(sum(pnls), 2),
+        "wins": wins,
+        "losses": losses,
+        "flats": flats,
+        "win_rate": round(wins / len(records), 3),
+        "avg_pnl": round(sum(pnls) / len(records), 4),
+        "by_category": group_by(records, lambda r: r.get("category")),
+        "by_consensus": group_by(records, consensus_bucket),
+        "by_strategy": group_by(records, lambda r: r.get("strategy")),
+        "by_exit_reason": group_by(records, lambda r: r.get("exit_reason")),
+        "by_entry_price_bucket": group_by(records, price_bucket),
+        "suggestions": _journal_suggestions(records),
+    }
+
+
+def _journal_suggestions(records: list[dict[str, object]]) -> list[str]:
+    if len(records) < 30:
+        return [
+            f"only {len(records)} closed trades — need ~30+ before any reading is statistically meaningful; suggestions paused."
+        ]
+    suggestions: list[str] = []
+    by_category: dict[str, list[float]] = {}
+    by_consensus: dict[int, list[float]] = {}
+    by_exit: dict[str, list[float]] = {}
+    for record in records:
+        try:
+            pnl = float(record.get("realized_pnl") or 0)
+        except (TypeError, ValueError):
+            continue
+        category = str(record.get("category") or "OTHER")
+        by_category.setdefault(category, []).append(pnl)
+        consensus = record.get("consensus")
+        try:
+            consensus_int = int(consensus) if consensus is not None else None
+        except (TypeError, ValueError):
+            consensus_int = None
+        if consensus_int is not None:
+            by_consensus.setdefault(consensus_int, []).append(pnl)
+        exit_reason = str(record.get("exit_reason") or "unknown")
+        by_exit.setdefault(exit_reason, []).append(pnl)
+    for category, pnls in by_category.items():
+        if len(pnls) < 10:
+            continue
+        avg = sum(pnls) / len(pnls)
+        if avg < -0.20:
+            suggestions.append(
+                f"category {category}: {len(pnls)} trades, avg PnL ${avg:.2f} — consider penalizing or excluding."
+            )
+    for consensus, pnls in sorted(by_consensus.items()):
+        if len(pnls) < 10:
+            continue
+        avg = sum(pnls) / len(pnls)
+        if consensus <= 2 and avg < -0.10:
+            suggestions.append(
+                f"consensus={consensus}: {len(pnls)} trades, avg PnL ${avg:.2f} — consider raising POLYMARKET_SMART_MIN_CONSENSUS."
+            )
+    stop_pnls = by_exit.get("stop_loss", [])
+    if len(stop_pnls) >= 10:
+        share = len(stop_pnls) / len(records)
+        if share > 0.30:
+            suggestions.append(
+                f"stop_loss exits = {share:.0%} of trades — entry filters may be too loose; consider tightening MAX_CHASE_PREMIUM or MAX_RELATIVE_SPREAD."
+            )
+    if not suggestions:
+        suggestions.append("no clear underperformer across buckets with >= 10 trades each.")
+    return suggestions
+
+
 def _append_trade_journal(settings: Settings, position: dict[str, object], reason: str) -> None:
     path = settings.trade_journal_path
     try:
@@ -1029,6 +1176,7 @@ def main() -> None:
             "auto-loop",
             "bootstrap-creds",
             "reset-ledger",
+            "journal-stats",
             "dashboard",
         ],
     )
@@ -1046,6 +1194,8 @@ def main() -> None:
         print(json.dumps(bootstrap_creds(settings), indent=2))
     elif args.command == "reset-ledger":
         print(json.dumps(reset_ledger(settings), indent=2))
+    elif args.command == "journal-stats":
+        print(json.dumps(journal_stats(settings), indent=2))
     elif args.command == "trade-once":
         if not settings.live_trading_enabled:
             raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
