@@ -192,56 +192,18 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     portfolio.mark_to_market(candidates)
     open_count = portfolio.summary()["open_positions"]
 
-    # 1. WHALE EXIT: Check if we should close any existing positions
     client = build_client(settings)
     pending_report = _cancel_stale_pending_orders(client, settings, portfolio)
-    whale_exit_report = []
-    if portfolio.positions:
-        # Get latest smart money trades to see who is still in
-        data_client = DataApiClient(settings.data_api_base_url)
-        # Look back 2 hours for exits
-        exit_lookback = int(time.time()) - (120 * 60)
-        
-        for position in portfolio.positions:
-            if position.get("status") != "open" or not position.get("live"):
-                continue
-            
-            # If this trade was from smart money, check if they are still buying/holding
-            signal = position.get("signal")
-            if not signal or "wallets" not in signal:
-                continue
-                
-            original_wallets = set(signal["wallets"])
-            # Check if any of the original wallets have bought again recently
-            # If they haven't bought in the last 2 hours, and we find NO recent buys for this token, we exit
-            recent_trades = []
-            whale_watch_failed = False
-            for wallet in original_wallets:
-                try:
-                    recent_trades.extend(data_client.trades(user=wallet, start=exit_lookback))
-                except Exception as exc:
-                    message = f"whale_watch_timeout_or_api_error: {type(exc).__name__}: {exc}"
-                    print(f"⚠️  WHALE WATCH SKIPPED for '{position['question']}': {message}")
-                    whale_exit_report.append(
-                        {
-                            "question": position.get("question"),
-                            "status": "skipped",
-                            "reason": message,
-                        }
-                    )
-                    recent_trades = []
-                    whale_watch_failed = True
-                    break
-            if whale_watch_failed:
-                continue
-            
-            still_holding = any(t.asset == position.get("token_id") for t in recent_trades)
-            if not still_holding and original_wallets:
-                print(f"\n🐋 WHALE WATCH: No fresh buys from copied wallets on '{position['question']}'.\n")
-                whale_exit_report.append(position["question"])
+    cohort_exit_tokens, whale_exit_report = _detect_cohort_exits(settings, portfolio)
 
     require_saved_api_creds(settings)
-    exit_report = _execute_sell_strategy(client, settings, portfolio, candidates)
+    exit_report = _execute_sell_strategy(
+        client,
+        settings,
+        portfolio,
+        candidates,
+        cohort_exit_tokens=cohort_exit_tokens,
+    )
 
     # 2. CATEGORY DIVERSIFICATION: Count open categories
     open_categories: dict[str, int] = {}
@@ -451,8 +413,11 @@ def _execute_sell_strategy(
     settings: Settings,
     portfolio: Portfolio,
     candidates,
+    *,
+    cohort_exit_tokens: set[str] | None = None,
 ) -> list[dict[str, object]]:
     by_token = {candidate.token_id: candidate for candidate in candidates if candidate.token_id}
+    cohort_exit_tokens = cohort_exit_tokens or set()
     exit_report: list[dict[str, object]] = []
     for position in list(portfolio.positions):
         if position.get("status") != "open" or not position.get("live"):
@@ -471,6 +436,11 @@ def _execute_sell_strategy(
         if plan is None and _should_exit_before_expiry(candidate, current_pnl_pct, settings):
             plan = {
                 "reason": "positive_pnl_before_expiry",
+                "shares": float(position.get("shares", 0.0)),
+            }
+        if plan is None and token_id in cohort_exit_tokens:
+            plan = {
+                "reason": "cohort_sell_exit",
                 "shares": float(position.get("shares", 0.0)),
             }
         if plan is None:
@@ -515,6 +485,64 @@ def _execute_sell_strategy(
             }
         )
     return exit_report
+
+
+def _detect_cohort_exits(
+    settings: Settings,
+    portfolio: Portfolio,
+) -> tuple[set[str], list[dict[str, object]]]:
+    report: list[dict[str, object]] = []
+    exit_tokens: set[str] = set()
+    if not settings.smart_cohort_exit_enabled or not portfolio.positions:
+        return exit_tokens, report
+    data_client = DataApiClient(settings.data_api_base_url)
+    lookback = int(time.time()) - max(settings.smart_cohort_exit_lookback_minutes, 1) * 60
+    min_age = max(settings.smart_cohort_exit_min_age_minutes, 0)
+    min_wallets = max(settings.smart_cohort_exit_min_wallets, 1)
+    for position in portfolio.positions:
+        if position.get("status") != "open" or not position.get("live"):
+            continue
+        token_id = str(position.get("token_id") or "")
+        if not token_id:
+            continue
+        signal = position.get("signal")
+        if not isinstance(signal, dict):
+            continue
+        wallets = [w for w in (signal.get("wallets") or []) if isinstance(w, str) and w]
+        if len(wallets) < min_wallets:
+            continue
+        if _position_age_minutes(position) < min_age:
+            continue
+        recent_trades = []
+        failed = False
+        for wallet in wallets:
+            try:
+                recent_trades.extend(data_client.trades(user=wallet, start=lookback))
+            except Exception as exc:
+                report.append(
+                    {
+                        "question": position.get("question"),
+                        "status": "skipped",
+                        "reason": f"cohort_watch_api_error: {type(exc).__name__}: {exc}",
+                    }
+                )
+                failed = True
+                break
+        if failed:
+            continue
+        still_buying = any(getattr(trade, "asset", None) == token_id for trade in recent_trades)
+        if not still_buying:
+            exit_tokens.add(token_id)
+            report.append(
+                {
+                    "question": position.get("question"),
+                    "token_id": token_id,
+                    "status": "cohort_flipped",
+                    "wallets": wallets,
+                    "lookback_minutes": settings.smart_cohort_exit_lookback_minutes,
+                }
+            )
+    return exit_tokens, report
 
 
 def _cancel_stale_pending_orders(client, settings: Settings, portfolio: Portfolio) -> list[dict[str, object]]:
@@ -607,6 +635,16 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
     if current_shares <= 0:
         return None
     peak_pnl_pct = float(position.get("peak_pnl_pct", current_pnl_pct))
+    if (
+        settings.smart_stop_loss_pct > 0
+        and current_pnl_pct <= -abs(settings.smart_stop_loss_pct)
+        and peak_pnl_pct < settings.smart_peak_protect_trigger
+        and _position_age_minutes(position) >= settings.smart_stop_loss_min_age_minutes
+    ):
+        return {
+            "reason": "stop_loss",
+            "shares": current_shares,
+        }
     if peak_pnl_pct >= settings.smart_peak_protect_trigger and current_pnl_pct <= settings.smart_peak_protect_floor:
         return {
             "reason": "peak_profit_protection",
@@ -626,6 +664,13 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
                 "shares": min(current_shares, initial_shares * fraction),
             }
     return None
+
+
+def _position_age_minutes(position: dict[str, object]) -> float:
+    opened_at = parse_dt(str(position.get("opened_at") or ""))
+    if opened_at is None:
+        return float("inf")
+    return max((utc_now() - opened_at).total_seconds() / 60.0, 0.0)
 
 
 def _should_exit_before_expiry(candidate, current_pnl_pct: float, settings: Settings) -> bool:

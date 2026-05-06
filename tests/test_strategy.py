@@ -564,6 +564,62 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(protected["reason"], "peak_profit_protection")
         self.assertEqual(protected["shares"], 100.0)
 
+    def test_sell_plan_stop_loss_triggers_after_min_age(self):
+        old_open = (utc_now() - timedelta(hours=2)).isoformat()
+        position = {
+            "shares": 100.0,
+            "initial_shares": 100.0,
+            "peak_pnl_pct": -0.10,
+            "sell_tiers_hit": [],
+            "exits": [],
+            "opened_at": old_open,
+        }
+        settings = Settings(smart_stop_loss_pct=0.40, smart_stop_loss_min_age_minutes=15)
+        plan = _sell_plan(position, -0.45, settings)
+        self.assertEqual(plan["reason"], "stop_loss")
+        self.assertEqual(plan["shares"], 100.0)
+
+    def test_sell_plan_stop_loss_skipped_for_fresh_positions(self):
+        fresh_open = utc_now().isoformat()
+        position = {
+            "shares": 100.0,
+            "initial_shares": 100.0,
+            "peak_pnl_pct": -0.10,
+            "sell_tiers_hit": [],
+            "exits": [],
+            "opened_at": fresh_open,
+        }
+        settings = Settings(smart_stop_loss_pct=0.40, smart_stop_loss_min_age_minutes=15)
+        plan = _sell_plan(position, -0.50, settings)
+        self.assertIsNone(plan)
+
+    def test_sell_plan_stop_loss_disabled_when_zero(self):
+        old_open = (utc_now() - timedelta(hours=2)).isoformat()
+        position = {
+            "shares": 100.0,
+            "initial_shares": 100.0,
+            "peak_pnl_pct": -0.10,
+            "sell_tiers_hit": [],
+            "exits": [],
+            "opened_at": old_open,
+        }
+        settings = Settings(smart_stop_loss_pct=0.0)
+        plan = _sell_plan(position, -0.80, settings)
+        self.assertIsNone(plan)
+
+    def test_sell_plan_peak_protection_beats_stop_loss(self):
+        old_open = (utc_now() - timedelta(hours=2)).isoformat()
+        position = {
+            "shares": 100.0,
+            "initial_shares": 100.0,
+            "peak_pnl_pct": 1.5,
+            "sell_tiers_hit": ["1.0"],
+            "exits": [],
+            "opened_at": old_open,
+        }
+        plan = _sell_plan(position, -0.50, Settings(smart_stop_loss_pct=0.40))
+        self.assertEqual(plan["reason"], "peak_profit_protection")
+
     def test_build_limit_order_uses_expected_fields(self):
         client = PolymarketClient(
             "https://clob.polymarket.com",
@@ -704,6 +760,48 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(payload["selection_metrics"]["profitable_wallet_count"], 2)
         self.assertEqual(payload["selection_metrics"]["min_consensus"], 2)
         self.assertEqual(payload["selection_metrics"]["spread"], 0.02)
+
+    def test_smart_money_rejects_high_relative_spread(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will the cheap market resolve Yes?",
+            slug="cheap-market",
+            end_date=utc_now() + timedelta(hours=12),
+            hours_to_close=12,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.10,
+            token_id="cheap-token",
+            score=10,
+            url="https://polymarket.com/event/cheap-market",
+            best_bid=0.06,
+            best_ask=0.10,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "cheap-token", "BUY", 0.09, 1000, 90, 1, "Cheap", "Yes", "cheap-market"),
+            SmartTrade("0x2", "cheap-token", "BUY", 0.09, 1000, 90, 1, "Cheap", "Yes", "cheap-market"),
+        ]
+
+        result, details = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(
+                smart_min_consensus=2,
+                smart_min_trade_usd=25,
+                smart_min_buy_price=0.01,
+                smart_max_buy_price=0.99,
+                smart_max_spread=0.05,
+                smart_max_relative_spread=0.30,
+                smart_max_chase_premium=0.50,
+            ),
+            include_details=True,
+        )
+
+        self.assertEqual(result, [])
+        self.assertGreaterEqual(details["rejected"].get("spread_too_wide_relative", 0), 1)
 
     def test_smart_money_rejects_single_wallet(self):
         candidate = Candidate(

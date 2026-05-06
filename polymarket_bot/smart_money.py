@@ -344,6 +344,13 @@ def smart_money_signals(
         if spread < 0 or spread > settings.smart_max_spread:
             rejected["spread_too_wide"] = rejected.get("spread_too_wide", 0) + 1
             continue
+        if (
+            settings.smart_max_relative_spread > 0
+            and candidate.best_ask > 0
+            and (spread / candidate.best_ask) > settings.smart_max_relative_spread
+        ):
+            rejected["spread_too_wide_relative"] = rejected.get("spread_too_wide_relative", 0) + 1
+            continue
         if candidate.best_ask < settings.smart_min_buy_price or candidate.best_ask > settings.smart_max_buy_price:
             rejected["ask_outside_price_band"] = rejected.get("ask_outside_price_band", 0) + 1
             continue
