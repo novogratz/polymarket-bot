@@ -803,17 +803,17 @@ def _max_trade_for_signal(
     is_crypto_micro = bool(metrics.get("is_crypto_micro"))
 
     if is_crypto_micro:
-        quality_mult = 0.5
+        quality_mult = 0.55
     elif consensus >= 4 and copied_usdc >= 1000:
         quality_mult = 1.0
     elif consensus >= 3 and copied_usdc >= 250:
-        quality_mult = 0.85
+        quality_mult = 0.9
     elif consensus >= 2 and copied_usdc >= 1000:
-        quality_mult = 0.85
+        quality_mult = 0.9
     elif consensus >= 2 and copied_usdc >= 250:
-        quality_mult = 0.7
+        quality_mult = 0.8
     else:
-        quality_mult = 0.5
+        quality_mult = 0.65
 
     if (
         settings.smart_position_pct > 0

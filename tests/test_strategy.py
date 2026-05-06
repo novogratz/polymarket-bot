@@ -1438,7 +1438,7 @@ class StrategyTests(unittest.TestCase):
         )
         self.assertEqual(
             _max_trade_for_signal(settings, weak, "smart_money", available_cash=90.0),
-            4.5,
+            5.85,
         )
         self.assertEqual(
             _max_trade_for_signal(settings, micro, "smart_money", available_cash=900.0),
