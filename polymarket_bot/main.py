@@ -648,6 +648,8 @@ def _reverse_lookup_smart_money_markets(
         settings,
         scan_limit=settings.smart_scan_limit,
         soon_hours=settings.smart_soon_hours,
+        min_liquidity_usd=min(settings.min_liquidity_usd, settings.smart_reverse_lookup_min_liquidity_usd),
+        min_volume_usd=min(settings.min_volume_usd, settings.smart_reverse_lookup_min_volume_usd),
     )
     new_candidates = rank_markets(markets, smart_settings)
     print(

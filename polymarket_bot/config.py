@@ -126,6 +126,8 @@ class Settings:
     smart_reverse_lookup_enabled: bool = _bool_env("POLYMARKET_SMART_REVERSE_LOOKUP_ENABLED", True)
     smart_reverse_lookup_max_tokens: int = _int_env("POLYMARKET_SMART_REVERSE_LOOKUP_MAX_TOKENS", 30)
     smart_reverse_lookup_min_copied_usdc: float = _float_env("POLYMARKET_SMART_REVERSE_LOOKUP_MIN_COPIED_USDC", 100.0)
+    smart_reverse_lookup_min_liquidity_usd: float = _float_env("POLYMARKET_SMART_REVERSE_LOOKUP_MIN_LIQUIDITY_USD", 200.0)
+    smart_reverse_lookup_min_volume_usd: float = _float_env("POLYMARKET_SMART_REVERSE_LOOKUP_MIN_VOLUME_USD", 500.0)
     smart_trade_fetch_concurrency: int = _int_env("POLYMARKET_SMART_TRADE_FETCH_CONCURRENCY", 16)
     smart_trailing_stop_arm_pct: float = _float_env("POLYMARKET_SMART_TRAILING_STOP_ARM_PCT", 0.25)
     smart_trailing_stop_giveback_pct: float = _float_env("POLYMARKET_SMART_TRAILING_STOP_GIVEBACK_PCT", 0.50)
