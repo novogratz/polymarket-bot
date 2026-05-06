@@ -272,7 +272,13 @@ def analyze_smart_money(
             rejected={f"leaderboard_api_error_{type(exc).__name__}": 1},
         )
     pnl_by_wallet = {t.wallet.lower(): t.pnl for t in traders}
-    
+
+    qualified = [t for t in traders if t.pnl >= settings.smart_min_trader_pnl]
+    if qualified:
+        print(
+            f"      pulling trades for {len(qualified)} qualified trader(s)...",
+            flush=True,
+        )
     start = int(time.time()) - (settings.smart_trade_lookback_minutes * 60)
     trades: list[SmartTrade] = []
     traders_used = 0
@@ -280,6 +286,11 @@ def analyze_smart_money(
         if trader.pnl < settings.smart_min_trader_pnl:
             continue
         traders_used += 1
+        if traders_used == 1 or traders_used % 50 == 0:
+            print(
+                f"      trades fetched: {traders_used}/{len(qualified)} (running total: {len(trades)})",
+                flush=True,
+            )
         try:
             trades.extend(client.trades(user=trader.wallet, start=start))
         except Exception:
@@ -421,7 +432,9 @@ def smart_money_signals(
 def _top_traders(client: DataApiClient, settings: Settings) -> list[SmartTrader]:
     seen: set[str] = set()
     traders: list[SmartTrader] = []
-    for category in _categories(settings):
+    categories = _categories(settings)
+    for index, category in enumerate(categories, 1):
+        print(f"      leaderboard {index}/{len(categories)} {category}...", flush=True)
         try:
             category_traders = client.leaderboard(
                 category=category,
@@ -429,13 +442,16 @@ def _top_traders(client: DataApiClient, settings: Settings) -> list[SmartTrader]
                 limit=settings.smart_leaderboard_limit,
             )
         except Exception as exc:
-            print(f"⚠️  Smart-money leaderboard category skipped: {category} {type(exc).__name__}: {exc}")
+            print(f"⚠️  Smart-money leaderboard category skipped: {category} {type(exc).__name__}: {exc}", flush=True)
             continue
+        added = 0
         for trader in category_traders:
             if trader.wallet.lower() in seen:
                 continue
             seen.add(trader.wallet.lower())
             traders.append(trader)
+            added += 1
+        print(f"         +{added} new (total {len(traders)})", flush=True)
     return traders
 
 

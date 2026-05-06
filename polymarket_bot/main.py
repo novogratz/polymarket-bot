@@ -186,17 +186,36 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
 
 
 def smart_money_once(settings: Settings) -> dict[str, object]:
+    print("▶  tick start", flush=True)
+    print("   loading markets...", flush=True)
     candidates = load_smart_candidates(settings)
+    print(f"   markets: {len(candidates)} candidates", flush=True)
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
-    sync_report = _sync_live_positions(settings, portfolio) if settings.sync_live_positions else []
+    if settings.sync_live_positions:
+        print("   syncing live positions...", flush=True)
+        sync_report = _sync_live_positions(settings, portfolio)
+        print(f"   sync actions: {len(sync_report)}", flush=True)
+    else:
+        sync_report = []
     portfolio.mark_to_market(candidates)
     open_count = portfolio.summary()["open_positions"]
+    print(f"   open positions: {open_count}", flush=True)
 
     client = build_client(settings)
     pending_report = _cancel_stale_pending_orders(client, settings, portfolio)
+    if pending_report:
+        print(f"   pending orders cleared: {len(pending_report)}", flush=True)
+    live_open_count = sum(
+        1 for p in portfolio.positions if p.get("status") == "open" and p.get("live")
+    )
+    if settings.smart_cohort_exit_enabled and live_open_count:
+        print(f"   cohort-exit check on {live_open_count} live position(s)...", flush=True)
     cohort_exit_tokens, whale_exit_report = _detect_cohort_exits(settings, portfolio)
+    if cohort_exit_tokens:
+        print(f"   cohort flipped on {len(cohort_exit_tokens)} token(s) -> exit", flush=True)
 
     require_saved_api_creds(settings)
+    print("   running sell strategy...", flush=True)
     exit_report = _execute_sell_strategy(
         client,
         settings,
@@ -204,6 +223,9 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         candidates,
         cohort_exit_tokens=cohort_exit_tokens,
     )
+    sells = sum(1 for e in exit_report if e.get("action") == "sell")
+    if sells:
+        print(f"   sells executed: {sells}", flush=True)
 
     # 2. CATEGORY DIVERSIFICATION: Count open categories
     open_categories: dict[str, int] = {}
@@ -229,16 +251,23 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         and not portfolio.has_open_event_position(candidate)
     ]
 
+    print(f"   smart-money scan over {len(eligible_candidates)} eligible candidate(s)...", flush=True)
     report = analyze_smart_money(eligible_candidates, settings)
+    print(f"   strict scan: {len(report.opportunities)} opportunity(ies)", flush=True)
     signal = report.selected
     strategy = "smart_money"
     opportunities = list(report.opportunities)
     if open_count + len(opportunities) < settings.min_open_positions:
+        print(
+            f"   below min open positions ({open_count + len(opportunities)} < {settings.min_open_positions}); running relaxed scan...",
+            flush=True,
+        )
         fallback_settings = replace(
             settings,
             smart_min_consensus=max(2, settings.smart_fallback_consensus),
         )
         fallback_report = analyze_smart_money(eligible_candidates, fallback_settings)
+        print(f"   relaxed scan: {len(fallback_report.opportunities)} opportunity(ies)", flush=True)
         seen_tokens = {opp.candidate.token_id for opp in opportunities if opp.candidate.token_id}
         for opp in fallback_report.opportunities:
             token_id = opp.candidate.token_id
