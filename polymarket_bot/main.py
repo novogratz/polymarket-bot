@@ -389,7 +389,9 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 )
                 continue
             print(f"🧠 SELECTED: {opportunity_payload['selection_reason']}")
-            max_trade_usd = _max_trade_for_signal(settings, opportunity_payload, strategy)
+            max_trade_usd = _max_trade_for_signal(
+                settings, opportunity_payload, strategy, available_cash=portfolio.cash
+            )
             try:
                 result = execute_live_trade(
                     client,
@@ -701,16 +703,48 @@ def _cancel_stale_pending_orders(client, settings: Settings, portfolio: Portfoli
     return report
 
 
-def _max_trade_for_signal(settings: Settings, signal: dict[str, object], strategy: str) -> float:
+def _max_trade_for_signal(
+    settings: Settings,
+    signal: dict[str, object],
+    strategy: str,
+    available_cash: float | None = None,
+) -> float:
+    metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
+    consensus = int(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0)
+    copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
+    is_crypto_micro = bool(metrics.get("is_crypto_micro"))
+
+    if is_crypto_micro:
+        quality_mult = 0.5
+    elif consensus >= 4 and copied_usdc >= 1000:
+        quality_mult = 1.0
+    elif consensus >= 3 and copied_usdc >= 250:
+        quality_mult = 0.85
+    elif consensus >= 2 and copied_usdc >= 1000:
+        quality_mult = 0.85
+    elif consensus >= 2 and copied_usdc >= 250:
+        quality_mult = 0.7
+    else:
+        quality_mult = 0.5
+
+    if (
+        settings.smart_position_pct > 0
+        and available_cash is not None
+        and available_cash > 0
+    ):
+        size = available_cash * settings.smart_position_pct * quality_mult
+        if settings.smart_max_position_ceiling_usd > 0:
+            size = min(size, settings.smart_max_position_ceiling_usd)
+        if is_crypto_micro:
+            size = min(size, settings.smart_crypto_micro_max_trade_usd)
+        return round(max(0.0, size), 2)
+
     base_cap = (
         min(settings.starter_trade_usd, settings.max_position_usd)
         if strategy == "smart_money_starter"
         else min(settings.smart_max_trade_usd, settings.max_position_usd)
     )
-    metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
-    consensus = int(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0)
-    copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
-    if metrics.get("is_crypto_micro"):
+    if is_crypto_micro:
         base_cap = min(base_cap, settings.smart_crypto_micro_max_trade_usd)
     if consensus >= 4 and copied_usdc >= 1000:
         quality_cap = settings.max_position_usd

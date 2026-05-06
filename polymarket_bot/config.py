@@ -98,6 +98,11 @@ class Settings:
     smart_crypto_min_consensus: int = _int_env("POLYMARKET_SMART_CRYPTO_MIN_CONSENSUS", 3)
     smart_crypto_min_buy_price: float = _float_env("POLYMARKET_SMART_CRYPTO_MIN_BUY_PRICE", 0.70)
     smart_max_trade_usd: float = _float_env("POLYMARKET_SMART_MAX_TRADE_USD", 5.0)
+    smart_position_pct: float = _float_env("POLYMARKET_SMART_POSITION_PCT", 0.0)
+    smart_max_position_ceiling_usd: float = _float_env(
+        "POLYMARKET_SMART_MAX_POSITION_CEILING_USD",
+        50.0,
+    )
     smart_high_conviction_balance_fraction: float = _float_env(
         "POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION",
         0.0,

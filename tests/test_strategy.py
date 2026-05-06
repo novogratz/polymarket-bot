@@ -1371,6 +1371,54 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(_max_trade_for_signal(settings, strong, "smart_money"), 20.0)
         self.assertEqual(_max_trade_for_signal(settings, micro, "smart_money"), 5.0)
 
+    def test_max_trade_percentage_sizing_scales_with_cash(self):
+        settings = Settings(
+            smart_position_pct=0.10,
+            smart_max_position_ceiling_usd=50.0,
+            smart_crypto_micro_max_trade_usd=5.0,
+        )
+        strong = {
+            "consensus": 4,
+            "selection_metrics": {"profitable_wallet_count": 4, "copied_usdc": 2000},
+        }
+        weak = {
+            "consensus": 2,
+            "selection_metrics": {"profitable_wallet_count": 2, "copied_usdc": 100},
+        }
+        micro = {
+            "consensus": 4,
+            "selection_metrics": {"profitable_wallet_count": 4, "copied_usdc": 2000, "is_crypto_micro": True},
+        }
+
+        self.assertEqual(
+            _max_trade_for_signal(settings, strong, "smart_money", available_cash=90.0),
+            9.0,
+        )
+        self.assertEqual(
+            _max_trade_for_signal(settings, strong, "smart_money", available_cash=900.0),
+            50.0,
+        )
+        self.assertEqual(
+            _max_trade_for_signal(settings, weak, "smart_money", available_cash=90.0),
+            4.5,
+        )
+        self.assertEqual(
+            _max_trade_for_signal(settings, micro, "smart_money", available_cash=900.0),
+            5.0,
+        )
+
+    def test_max_trade_percentage_sizing_falls_back_when_cash_missing(self):
+        settings = Settings(
+            smart_position_pct=0.10,
+            max_position_usd=20,
+            smart_max_trade_usd=20,
+        )
+        strong = {
+            "consensus": 4,
+            "selection_metrics": {"profitable_wallet_count": 4, "copied_usdc": 2000},
+        }
+        self.assertEqual(_max_trade_for_signal(settings, strong, "smart_money"), 20.0)
+
 
 if __name__ == "__main__":
     unittest.main()
