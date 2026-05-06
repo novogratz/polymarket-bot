@@ -234,6 +234,13 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     if sells:
         print(f"   sells executed: {sells}", flush=True)
 
+    try:
+        live_cash = client.live_available_balance()
+        portfolio.cash = round(live_cash, 2)
+        print(f"   live cash: ${portfolio.cash:.2f}", flush=True)
+    except Exception as exc:
+        print(f"   live cash refresh failed: {type(exc).__name__}: {exc}", flush=True)
+
     # 2. CATEGORY DIVERSIFICATION: Count open categories
     open_categories: dict[str, int] = {}
     for pos in portfolio.positions:
@@ -635,7 +642,7 @@ def _reverse_lookup_smart_money_markets(
         print(f"   reverse-lookup failed: {type(exc).__name__}: {exc}", flush=True)
         return []
     if not markets:
-        print("   reverse-lookup: 0 markets returned", flush=True)
+        print("   reverse-lookup: 0 markets returned by Gamma (clob_token_ids filter may be unsupported)", flush=True)
         return []
     smart_settings = replace(
         settings,
@@ -643,7 +650,10 @@ def _reverse_lookup_smart_money_markets(
         soon_hours=settings.smart_soon_hours,
     )
     new_candidates = rank_markets(markets, smart_settings)
-    print(f"   reverse-lookup: {len(new_candidates)} new candidate(s) ranked", flush=True)
+    print(
+        f"   reverse-lookup: gamma returned {len(markets)} market(s), {len(new_candidates)} survived ranking",
+        flush=True,
+    )
     return new_candidates
 
 
