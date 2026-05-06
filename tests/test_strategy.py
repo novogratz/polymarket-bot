@@ -607,6 +607,44 @@ class StrategyTests(unittest.TestCase):
         plan = _sell_plan(position, -0.80, settings)
         self.assertIsNone(plan)
 
+    def test_sell_plan_trailing_stop_locks_partial_gains(self):
+        old_open = (utc_now() - timedelta(hours=2)).isoformat()
+        position = {
+            "shares": 100.0,
+            "initial_shares": 100.0,
+            "peak_pnl_pct": 0.50,
+            "sell_tiers_hit": [],
+            "exits": [],
+            "opened_at": old_open,
+        }
+        settings = Settings(
+            smart_trailing_stop_arm_pct=0.25,
+            smart_trailing_stop_giveback_pct=0.50,
+            smart_peak_protect_trigger=1.0,
+        )
+        plan = _sell_plan(position, 0.20, settings)
+        self.assertEqual(plan["reason"], "trailing_stop")
+        self.assertEqual(plan["shares"], 100.0)
+
+    def test_sell_plan_trailing_stop_skips_when_pnl_negative(self):
+        old_open = (utc_now() - timedelta(hours=2)).isoformat()
+        position = {
+            "shares": 100.0,
+            "initial_shares": 100.0,
+            "peak_pnl_pct": 0.30,
+            "sell_tiers_hit": [],
+            "exits": [],
+            "opened_at": old_open,
+        }
+        settings = Settings(
+            smart_stop_loss_pct=0.0,
+            smart_trailing_stop_arm_pct=0.25,
+            smart_trailing_stop_giveback_pct=0.50,
+            smart_peak_protect_trigger=1.0,
+        )
+        plan = _sell_plan(position, -0.05, settings)
+        self.assertIsNone(plan)
+
     def test_sell_plan_peak_protection_beats_stop_loss(self):
         old_open = (utc_now() - timedelta(hours=2)).isoformat()
         position = {

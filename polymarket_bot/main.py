@@ -260,6 +260,36 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
 
     print(f"   smart-money scan over {len(eligible_candidates)} eligible candidate(s)...", flush=True)
     smart_data = fetch_smart_money_data(settings)
+
+    if settings.smart_reverse_lookup_enabled:
+        extra_candidates = _reverse_lookup_smart_money_markets(settings, smart_data, candidates)
+        if extra_candidates:
+            existing_tokens_eligible = {c.token_id for c in eligible_candidates if c.token_id}
+            added = 0
+            for extra in extra_candidates:
+                if not extra.token_id or extra.token_id in existing_tokens_eligible:
+                    continue
+                if (
+                    not extra.accepts_orders
+                    or extra.best_bid is None
+                    or extra.best_ask is None
+                    or extra.tick_size is None
+                ):
+                    continue
+                if portfolio.has_open_position(extra.market_id):
+                    continue
+                if portfolio.has_open_token(extra.token_id):
+                    continue
+                if portfolio.has_pending_token(extra.token_id):
+                    continue
+                if portfolio.has_open_event_position(extra):
+                    continue
+                eligible_candidates.append(extra)
+                existing_tokens_eligible.add(extra.token_id)
+                added += 1
+            if added:
+                print(f"   eligible after reverse-lookup: {len(eligible_candidates)} (+{added})", flush=True)
+
     report = analyze_smart_money_with_data(eligible_candidates, settings, smart_data)
     print(f"   strict scan: {len(report.opportunities)} opportunity(ies)", flush=True)
     signal = report.selected
@@ -569,6 +599,54 @@ def _execute_sell_strategy(
     return exit_report
 
 
+def _reverse_lookup_smart_money_markets(
+    settings: Settings,
+    smart_data,
+    existing_candidates: list,
+) -> list:
+    if not settings.smart_reverse_lookup_enabled or not getattr(smart_data, "trades", None):
+        return []
+    existing_tokens = {c.token_id for c in existing_candidates if c.token_id}
+    flow_by_token: dict[str, float] = {}
+    for trade in smart_data.trades:
+        if trade.side.upper() != "BUY":
+            continue
+        if not trade.asset or trade.asset in existing_tokens:
+            continue
+        flow_by_token[trade.asset] = flow_by_token.get(trade.asset, 0.0) + trade.usdc_size
+    flow_by_token = {
+        token: usdc
+        for token, usdc in flow_by_token.items()
+        if usdc >= settings.smart_reverse_lookup_min_copied_usdc
+    }
+    if not flow_by_token:
+        return []
+    top_tokens = sorted(flow_by_token.items(), key=lambda kv: kv[1], reverse=True)[
+        : max(1, settings.smart_reverse_lookup_max_tokens)
+    ]
+    print(
+        f"   reverse-lookup: fetching markets for {len(top_tokens)} smart-money token(s) not in scan...",
+        flush=True,
+    )
+    gamma = GammaClient(settings.gamma_base_url)
+    try:
+        markets = gamma.get_markets_by_clob_token_ids([token for token, _ in top_tokens])
+    except Exception as exc:
+        print(f"   reverse-lookup failed: {type(exc).__name__}: {exc}", flush=True)
+        return []
+    if not markets:
+        print("   reverse-lookup: 0 markets returned", flush=True)
+        return []
+    smart_settings = replace(
+        settings,
+        scan_limit=settings.smart_scan_limit,
+        soon_hours=settings.smart_soon_hours,
+    )
+    new_candidates = rank_markets(markets, smart_settings)
+    print(f"   reverse-lookup: {len(new_candidates)} new candidate(s) ranked", flush=True)
+    return new_candidates
+
+
 def _detect_cohort_exits(
     settings: Settings,
     portfolio: Portfolio,
@@ -791,6 +869,19 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
             "reason": "peak_profit_protection",
             "shares": current_shares,
         }
+
+    if (
+        settings.smart_trailing_stop_arm_pct > 0
+        and settings.smart_trailing_stop_giveback_pct > 0
+        and peak_pnl_pct >= settings.smart_trailing_stop_arm_pct
+        and peak_pnl_pct < settings.smart_peak_protect_trigger
+    ):
+        giveback_floor = peak_pnl_pct * (1.0 - settings.smart_trailing_stop_giveback_pct)
+        if current_pnl_pct <= giveback_floor and current_pnl_pct > 0:
+            return {
+                "reason": "trailing_stop",
+                "shares": current_shares,
+            }
 
     exits = position.get("exits", [])
     sold_shares = sum(float(exit_record.get("shares", 0.0)) for exit_record in exits if isinstance(exit_record, dict))

@@ -4,6 +4,7 @@ import json
 import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any
 
@@ -282,28 +283,56 @@ def fetch_smart_money_data(
             leaderboard_error=f"leaderboard_api_error_{type(exc).__name__}",
         )
     pnl_by_wallet = {t.wallet.lower(): t.pnl for t in traders}
-    qualified = [t for t in traders if t.pnl >= settings.smart_min_trader_pnl]
+
+    def _qualifies(trader: SmartTrader) -> bool:
+        if trader.pnl < settings.smart_min_trader_pnl:
+            return False
+        if settings.smart_min_trader_volume > 0 and trader.volume < settings.smart_min_trader_volume:
+            return False
+        if settings.smart_min_trader_roi > 0:
+            roi = trader.pnl / trader.volume if trader.volume > 0 else 0.0
+            if roi < settings.smart_min_trader_roi:
+                return False
+        return True
+
+    qualified = [t for t in traders if _qualifies(t)]
     if qualified:
         print(
-            f"      pulling trades for {len(qualified)} qualified trader(s)...",
+            f"      pulling trades for {len(qualified)} qualified trader(s)"
+            f" (concurrency={max(1, settings.smart_trade_fetch_concurrency)})...",
             flush=True,
         )
     start = int(time.time()) - (settings.smart_trade_lookback_minutes * 60)
     trades: list[SmartTrade] = []
     traders_used = 0
-    for trader in traders:
-        if trader.pnl < settings.smart_min_trader_pnl:
-            continue
-        traders_used += 1
-        if traders_used == 1 or traders_used % 50 == 0:
-            print(
-                f"      trades fetched: {traders_used}/{len(qualified)} (running total: {len(trades)})",
-                flush=True,
-            )
+    concurrency = max(1, settings.smart_trade_fetch_concurrency)
+
+    def _pull(trader: SmartTrader) -> list[SmartTrade]:
         try:
-            trades.extend(client.trades(user=trader.wallet, start=start))
+            return client.trades(user=trader.wallet, start=start)
         except Exception:
-            continue
+            return []
+
+    if concurrency > 1 and len(qualified) > 1:
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = {executor.submit(_pull, trader): trader for trader in qualified}
+            for future in as_completed(futures):
+                traders_used += 1
+                if traders_used == 1 or traders_used % 50 == 0 or traders_used == len(qualified):
+                    print(
+                        f"      trades fetched: {traders_used}/{len(qualified)} (running total: {len(trades)})",
+                        flush=True,
+                    )
+                trades.extend(future.result())
+    else:
+        for trader in qualified:
+            traders_used += 1
+            if traders_used == 1 or traders_used % 50 == 0 or traders_used == len(qualified):
+                print(
+                    f"      trades fetched: {traders_used}/{len(qualified)} (running total: {len(trades)})",
+                    flush=True,
+                )
+            trades.extend(_pull(trader))
     return SmartMoneyData(
         traders=traders,
         trades=trades,

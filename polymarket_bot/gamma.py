@@ -40,6 +40,21 @@ class GammaClient:
         params = urllib.parse.urlencode(query)
         return self._get_json(f"/markets?{params}")
 
+    def get_markets_by_clob_token_ids(self, token_ids: list[str]) -> list[dict[str, Any]]:
+        if not token_ids:
+            return []
+        pairs: list[tuple[str, str]] = [("clob_token_ids", token) for token in token_ids if token]
+        if not pairs:
+            return []
+        pairs.extend(
+            [
+                ("active", "true"),
+                ("closed", "false"),
+                ("limit", str(max(len(token_ids) * 2, 200))),
+            ]
+        )
+        return self._get_json(f"/markets?{urllib.parse.urlencode(pairs)}")
+
     def _get_json(self, path: str) -> Any:
         request = urllib.request.Request(
             f"{self.base_url}{path}",
