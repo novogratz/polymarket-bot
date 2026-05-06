@@ -232,13 +232,22 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     report = analyze_smart_money(eligible_candidates, settings)
     signal = report.selected
     strategy = "smart_money"
-    if signal is None and open_count < settings.min_open_positions:
+    opportunities = list(report.opportunities)
+    if open_count + len(opportunities) < settings.min_open_positions:
         fallback_settings = replace(
             settings,
             smart_min_consensus=max(2, settings.smart_fallback_consensus),
         )
         fallback_report = analyze_smart_money(eligible_candidates, fallback_settings)
-        if fallback_report.selected is not None:
+        seen_tokens = {opp.candidate.token_id for opp in opportunities if opp.candidate.token_id}
+        for opp in fallback_report.opportunities:
+            token_id = opp.candidate.token_id
+            if token_id and token_id in seen_tokens:
+                continue
+            opportunities.append(opp)
+            if token_id:
+                seen_tokens.add(token_id)
+        if signal is None and fallback_report.selected is not None:
             report = fallback_report
             signal = fallback_report.selected
             strategy = "smart_money_starter"
@@ -248,7 +257,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     executed_trades: list[dict[str, object]] = []
     stop_reason: str | None = None
     rejected_signals: list[dict[str, object]] = []
-    if report.opportunities:
+    if opportunities:
         # Gracefully wait if out of funds
         live_cash = client.live_available_balance()
         portfolio.cash = round(live_cash, 2)
@@ -268,7 +277,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 "summary": portfolio.summary(),
             }
 
-        for opportunity in report.opportunities:
+        for opportunity in opportunities:
             if settings.smart_max_orders_per_tick > 0 and len(executed_trades) >= settings.smart_max_orders_per_tick:
                 stop_reason = "max_orders_per_tick_reached"
                 break
