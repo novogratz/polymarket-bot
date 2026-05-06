@@ -14,7 +14,14 @@ from .gamma import GammaClient
 from .portfolio import Portfolio
 from .models import parse_dt, utc_now
 from .portfolio import paper_tick
-from .smart_money import DataApiClient, analyze_smart_money, market_category, _top_traders
+from .smart_money import (
+    DataApiClient,
+    analyze_smart_money,
+    analyze_smart_money_with_data,
+    fetch_smart_money_data,
+    market_category,
+    _top_traders,
+)
 from .trading import build_client, choose_trade, execute_live_sell, execute_live_trade
 from .strategy import rank_markets
 
@@ -252,21 +259,22 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     ]
 
     print(f"   smart-money scan over {len(eligible_candidates)} eligible candidate(s)...", flush=True)
-    report = analyze_smart_money(eligible_candidates, settings)
+    smart_data = fetch_smart_money_data(settings)
+    report = analyze_smart_money_with_data(eligible_candidates, settings, smart_data)
     print(f"   strict scan: {len(report.opportunities)} opportunity(ies)", flush=True)
     signal = report.selected
     strategy = "smart_money"
     opportunities = list(report.opportunities)
     if open_count + len(opportunities) < settings.min_open_positions:
         print(
-            f"   below min open positions ({open_count + len(opportunities)} < {settings.min_open_positions}); running relaxed scan...",
+            f"   below min open positions ({open_count + len(opportunities)} < {settings.min_open_positions}); running relaxed scan (reusing leaderboard+trades)...",
             flush=True,
         )
         fallback_settings = replace(
             settings,
             smart_min_consensus=max(2, settings.smart_fallback_consensus),
         )
-        fallback_report = analyze_smart_money(eligible_candidates, fallback_settings)
+        fallback_report = analyze_smart_money_with_data(eligible_candidates, fallback_settings, smart_data)
         print(f"   relaxed scan: {len(fallback_report.opportunities)} opportunity(ies)", flush=True)
         seen_tokens = {opp.candidate.token_id for opp in opportunities if opp.candidate.token_id}
         for opp in fallback_report.opportunities:
@@ -280,6 +288,38 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             report = fallback_report
             signal = fallback_report.selected
             strategy = "smart_money_starter"
+        if (
+            settings.smart_deep_fallback_enabled
+            and open_count + len(opportunities) < settings.min_open_positions
+        ):
+            print(
+                f"   still below min ({open_count + len(opportunities)} < {settings.min_open_positions}); running deep fallback (single-wallet, loosened filters)...",
+                flush=True,
+            )
+            deep_settings = replace(
+                settings,
+                smart_min_consensus=1,
+                smart_min_buy_price=max(0.02, settings.smart_min_buy_price - 0.02),
+                smart_max_buy_price=min(0.98, settings.smart_max_buy_price + 0.03),
+                smart_max_relative_spread=max(0.40, settings.smart_max_relative_spread),
+                smart_max_chase_premium=max(0.15, settings.smart_max_chase_premium),
+                smart_min_copied_usdc=max(
+                    settings.smart_deep_fallback_min_copied_usdc, settings.smart_min_copied_usdc
+                ),
+            )
+            deep_report = analyze_smart_money_with_data(eligible_candidates, deep_settings, smart_data)
+            print(f"   deep fallback: {len(deep_report.opportunities)} opportunity(ies)", flush=True)
+            for opp in deep_report.opportunities:
+                token_id = opp.candidate.token_id
+                if token_id and token_id in seen_tokens:
+                    continue
+                opportunities.append(opp)
+                if token_id:
+                    seen_tokens.add(token_id)
+            if signal is None and deep_report.selected is not None:
+                report = deep_report
+                signal = deep_report.selected
+                strategy = "smart_money_deep_fallback"
 
     signal_payload = signal.to_dict() if signal else None
 

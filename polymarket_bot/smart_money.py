@@ -250,29 +250,32 @@ def choose_smart_money_trade(
     return analyze_smart_money(candidates, settings, client=client).selected
 
 
-def analyze_smart_money(
-    candidates: list[Candidate],
+@dataclass(frozen=True)
+class SmartMoneyData:
+    traders: list[SmartTrader]
+    trades: list[SmartTrade]
+    pnl_by_wallet: dict[str, float]
+    traders_used: int
+    leaderboard_error: str | None = None
+
+
+def fetch_smart_money_data(
     settings: Settings,
     *,
     client: DataApiClient | None = None,
-) -> SmartMoneyReport:
+) -> SmartMoneyData:
     client = client or DataApiClient(settings.data_api_base_url)
     try:
         traders = _top_traders(client, settings)
     except Exception as exc:
-        return SmartMoneyReport(
-            selected=None,
-            opportunities=[],
-            traders_checked=0,
+        return SmartMoneyData(
+            traders=[],
+            trades=[],
+            pnl_by_wallet={},
             traders_used=0,
-            trades_checked=0,
-            eligible_trade_count=0,
-            grouped_tokens=0,
-            matched_tokens=0,
-            rejected={f"leaderboard_api_error_{type(exc).__name__}": 1},
+            leaderboard_error=f"leaderboard_api_error_{type(exc).__name__}",
         )
     pnl_by_wallet = {t.wallet.lower(): t.pnl for t in traders}
-
     qualified = [t for t in traders if t.pnl >= settings.smart_min_trader_pnl]
     if qualified:
         print(
@@ -295,19 +298,56 @@ def analyze_smart_money(
             trades.extend(client.trades(user=trader.wallet, start=start))
         except Exception:
             continue
-    signals, details = smart_money_signals(candidates, trades, settings, pnl_by_wallet=pnl_by_wallet, include_details=True)
+    return SmartMoneyData(
+        traders=traders,
+        trades=trades,
+        pnl_by_wallet=pnl_by_wallet,
+        traders_used=traders_used,
+    )
+
+
+def analyze_smart_money_with_data(
+    candidates: list[Candidate],
+    settings: Settings,
+    data: SmartMoneyData,
+) -> SmartMoneyReport:
+    if data.leaderboard_error is not None:
+        return SmartMoneyReport(
+            selected=None,
+            opportunities=[],
+            traders_checked=0,
+            traders_used=0,
+            trades_checked=0,
+            eligible_trade_count=0,
+            grouped_tokens=0,
+            matched_tokens=0,
+            rejected={data.leaderboard_error: 1},
+        )
+    signals, details = smart_money_signals(
+        candidates, data.trades, settings, pnl_by_wallet=data.pnl_by_wallet, include_details=True
+    )
     opportunities = sorted(signals, key=lambda item: item.score, reverse=True)
     return SmartMoneyReport(
         selected=opportunities[0] if opportunities else None,
         opportunities=opportunities,
-        traders_checked=len(traders),
-        traders_used=traders_used,
-        trades_checked=len(trades),
+        traders_checked=len(data.traders),
+        traders_used=data.traders_used,
+        trades_checked=len(data.trades),
         eligible_trade_count=int(details["eligible_trade_count"]),
         grouped_tokens=int(details["grouped_tokens"]),
         matched_tokens=int(details["matched_tokens"]),
         rejected=dict(details["rejected"]),
     )
+
+
+def analyze_smart_money(
+    candidates: list[Candidate],
+    settings: Settings,
+    *,
+    client: DataApiClient | None = None,
+) -> SmartMoneyReport:
+    data = fetch_smart_money_data(settings, client=client)
+    return analyze_smart_money_with_data(candidates, settings, data)
 
 
 def smart_money_signals(
@@ -370,7 +410,7 @@ def smart_money_signals(
         category = market_category(candidate.question, candidate.slug)
         is_crypto = _is_crypto_market(candidate)
         is_crypto_micro = _is_crypto_micro(candidate)
-        min_consensus = max(2, settings.smart_min_consensus)
+        min_consensus = max(1, settings.smart_min_consensus)
         if is_crypto:
             min_consensus = max(min_consensus, settings.smart_crypto_min_consensus)
         if is_crypto_micro:

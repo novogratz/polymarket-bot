@@ -831,7 +831,7 @@ class StrategyTests(unittest.TestCase):
             [],
         )
 
-    def test_smart_money_clamps_consensus_to_multiple_wallets(self):
+    def test_smart_money_allows_single_wallet_when_consensus_set_to_one(self):
         candidate = Candidate(
             market_id="1",
             question="Will the test market resolve Yes?",
@@ -854,8 +854,48 @@ class StrategyTests(unittest.TestCase):
             SmartTrade("0x1", "yes-token", "BUY", 0.75, 100, 75, 1, "Test market", "Yes", "test-market"),
         ]
 
+        signals = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(
+                smart_min_consensus=1,
+                smart_min_trade_usd=25,
+                smart_min_buy_price=0.05,
+                smart_max_buy_price=0.85,
+                smart_max_spread=0.05,
+            ),
+        )
+        self.assertEqual(len(signals), 1)
+        self.assertEqual(signals[0].consensus, 1)
+
+    def test_smart_money_default_floor_still_requires_two_wallets(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will the test market resolve Yes?",
+            slug="test-market",
+            end_date=utc_now() + timedelta(hours=12),
+            hours_to_close=12,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.75,
+            token_id="yes-token",
+            score=10,
+            url="https://polymarket.com/event/test-market",
+            best_bid=0.74,
+            best_ask=0.76,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "yes-token", "BUY", 0.75, 100, 75, 1, "Test market", "Yes", "test-market"),
+        ]
         self.assertEqual(
-            smart_money_signals([candidate], trades, Settings(smart_min_consensus=1, smart_min_trade_usd=25)),
+            smart_money_signals(
+                [candidate],
+                trades,
+                Settings(smart_min_consensus=2, smart_min_trade_usd=25),
+            ),
             [],
         )
 

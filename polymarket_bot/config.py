@@ -115,6 +115,8 @@ class Settings:
     smart_cohort_exit_min_age_minutes: int = _int_env("POLYMARKET_SMART_COHORT_EXIT_MIN_AGE_MINUTES", 30)
     smart_cohort_exit_min_wallets: int = _int_env("POLYMARKET_SMART_COHORT_EXIT_MIN_WALLETS", 2)
     smart_max_relative_spread: float = _float_env("POLYMARKET_SMART_MAX_RELATIVE_SPREAD", 0.30)
+    smart_deep_fallback_enabled: bool = _bool_env("POLYMARKET_SMART_DEEP_FALLBACK_ENABLED", True)
+    smart_deep_fallback_min_copied_usdc: float = _float_env("POLYMARKET_SMART_DEEP_FALLBACK_MIN_COPIED_USDC", 250.0)
     smart_min_sell_usd: float = _float_env("POLYMARKET_SMART_MIN_SELL_USD", 1.0)
     smart_exit_minutes_to_close: int = _int_env("POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE", 20)
     smart_exit_min_profit: float = _float_env("POLYMARKET_SMART_EXIT_MIN_PROFIT", 0.05)
