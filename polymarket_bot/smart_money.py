@@ -185,17 +185,23 @@ class DataApiClient:
             )
         return traders
 
-    def trades(self, *, user: str, start: int, limit: int = 100) -> list[SmartTrade]:
-        payload = self._get_json(
-            "/trades",
-            {
-                "user": user,
-                "side": "BUY",
-                "start": str(start),
-                "limit": str(limit),
-                "takerOnly": "true",
-            },
-        )
+    def trades(
+        self,
+        *,
+        user: str,
+        start: int,
+        limit: int = 100,
+        side: str | None = "BUY",
+    ) -> list[SmartTrade]:
+        params: dict[str, str] = {
+            "user": user,
+            "start": str(start),
+            "limit": str(limit),
+            "takerOnly": "true",
+        }
+        if side:
+            params["side"] = side
+        payload = self._get_json("/trades", params)
         trades: list[SmartTrade] = []
         for item in payload if isinstance(payload, list) else []:
             asset = str(item.get("asset") or "")

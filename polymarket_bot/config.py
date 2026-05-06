@@ -36,6 +36,7 @@ class Settings:
     gamma_base_url: str = os.getenv("POLYMARKET_GAMMA_URL", "https://gamma-api.polymarket.com")
     clob_base_url: str = os.getenv("POLYMARKET_CLOB_URL", "https://clob.polymarket.com")
     state_path: Path = Path(os.getenv("POLYMARKET_STATE_PATH", "data/paper_state.json"))
+    trade_journal_path: Path = Path(os.getenv("POLYMARKET_TRADE_JOURNAL_PATH", "data/trade_journal.jsonl"))
     scan_limit: int = _int_env("POLYMARKET_SCAN_LIMIT", 200)
     soon_hours: int = _int_env("POLYMARKET_SOON_HOURS", 72)
     paper_balance_usd: float = _float_env("POLYMARKET_PAPER_BALANCE_USD", 20.0)

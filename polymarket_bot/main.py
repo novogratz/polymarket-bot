@@ -492,10 +492,10 @@ def _execute_sell_strategy(
     portfolio: Portfolio,
     candidates,
     *,
-    cohort_exit_tokens: set[str] | None = None,
+    cohort_exit_tokens: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
     by_token = {candidate.token_id: candidate for candidate in candidates if candidate.token_id}
-    cohort_exit_tokens = cohort_exit_tokens or set()
+    cohort_exit_tokens = cohort_exit_tokens or {}
     exit_report: list[dict[str, object]] = []
     for position in list(portfolio.positions):
         if position.get("status") != "open" or not position.get("live"):
@@ -518,7 +518,7 @@ def _execute_sell_strategy(
             }
         if plan is None and token_id in cohort_exit_tokens:
             plan = {
-                "reason": "cohort_sell_exit",
+                "reason": cohort_exit_tokens[token_id],
                 "shares": float(position.get("shares", 0.0)),
             }
         if plan is None:
@@ -550,6 +550,8 @@ def _execute_sell_strategy(
         if str(plan["reason"]).startswith("take_profit_"):
             position.setdefault("sell_tiers_hit", []).append(str(plan["tier"]))
         portfolio.save(settings.state_path)
+        if position.get("status") == "closed":
+            _append_trade_journal(settings, position, str(plan["reason"]))
         exit_report.append(
             {
                 "market_id": position.get("market_id"),
@@ -568,9 +570,9 @@ def _execute_sell_strategy(
 def _detect_cohort_exits(
     settings: Settings,
     portfolio: Portfolio,
-) -> tuple[set[str], list[dict[str, object]]]:
+) -> tuple[dict[str, str], list[dict[str, object]]]:
     report: list[dict[str, object]] = []
-    exit_tokens: set[str] = set()
+    exit_tokens: dict[str, str] = {}
     if not settings.smart_cohort_exit_enabled or not portfolio.positions:
         return exit_tokens, report
     data_client = DataApiClient(settings.data_api_base_url)
@@ -591,11 +593,13 @@ def _detect_cohort_exits(
             continue
         if _position_age_minutes(position) < min_age:
             continue
-        recent_trades = []
+        cohort_lower = {w.lower() for w in wallets}
+        recent_trades: list = []
         failed = False
         for wallet in wallets:
             try:
-                recent_trades.extend(data_client.trades(user=wallet, start=lookback))
+                recent_trades.extend(data_client.trades(user=wallet, start=lookback, side="BUY"))
+                recent_trades.extend(data_client.trades(user=wallet, start=lookback, side="SELL"))
             except Exception as exc:
                 report.append(
                     {
@@ -608,14 +612,39 @@ def _detect_cohort_exits(
                 break
         if failed:
             continue
-        still_buying = any(getattr(trade, "asset", None) == token_id for trade in recent_trades)
-        if not still_buying:
-            exit_tokens.add(token_id)
+        sells_by_cohort = {
+            t.wallet.lower()
+            for t in recent_trades
+            if getattr(t, "asset", None) == token_id
+            and t.side.upper() == "SELL"
+            and t.wallet.lower() in cohort_lower
+        }
+        buys_by_cohort = {
+            t.wallet.lower()
+            for t in recent_trades
+            if getattr(t, "asset", None) == token_id
+            and t.side.upper() == "BUY"
+            and t.wallet.lower() in cohort_lower
+        }
+        if sells_by_cohort:
+            exit_tokens[token_id] = "cohort_sold"
             report.append(
                 {
                     "question": position.get("question"),
                     "token_id": token_id,
-                    "status": "cohort_flipped",
+                    "status": "cohort_sold",
+                    "selling_wallets": sorted(sells_by_cohort),
+                    "wallets": wallets,
+                    "lookback_minutes": settings.smart_cohort_exit_lookback_minutes,
+                }
+            )
+        elif not buys_by_cohort:
+            exit_tokens[token_id] = "cohort_silent"
+            report.append(
+                {
+                    "question": position.get("question"),
+                    "token_id": token_id,
+                    "status": "cohort_silent",
                     "wallets": wallets,
                     "lookback_minutes": settings.smart_cohort_exit_lookback_minutes,
                 }
@@ -742,6 +771,52 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
                 "shares": min(current_shares, initial_shares * fraction),
             }
     return None
+
+
+def _append_trade_journal(settings: Settings, position: dict[str, object], reason: str) -> None:
+    path = settings.trade_journal_path
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        return
+    signal = position.get("signal") if isinstance(position.get("signal"), dict) else {}
+    metrics = signal.get("selection_metrics") if isinstance(signal, dict) else {}
+    metrics = metrics if isinstance(metrics, dict) else {}
+    exits = position.get("exits") if isinstance(position.get("exits"), list) else []
+    realized_pnl = float(position.get("realized_pnl") or 0.0)
+    entry_price = float(position.get("entry_price") or 0.0)
+    initial_shares = float(position.get("initial_shares") or 0.0)
+    cost_basis = round(entry_price * initial_shares, 4) if entry_price and initial_shares else 0.0
+    pnl_pct = round(realized_pnl / cost_basis, 4) if cost_basis > 0 else None
+    record = {
+        "closed_at": position.get("closed_at") or utc_now().isoformat(),
+        "opened_at": position.get("opened_at"),
+        "market_id": position.get("market_id"),
+        "question": position.get("question"),
+        "outcome": position.get("outcome"),
+        "token_id": position.get("token_id"),
+        "event_slug": position.get("event_slug"),
+        "category": signal.get("category") if isinstance(signal, dict) else None,
+        "strategy": position.get("strategy"),
+        "exit_reason": reason,
+        "entry_price": entry_price,
+        "initial_shares": initial_shares,
+        "cost_basis": cost_basis,
+        "realized_pnl": realized_pnl,
+        "pnl_pct": pnl_pct,
+        "peak_pnl_pct": position.get("peak_pnl_pct"),
+        "consensus": metrics.get("profitable_wallet_count"),
+        "copied_usdc": metrics.get("copied_usdc"),
+        "avg_copy_price": metrics.get("avg_copy_price"),
+        "score": signal.get("score") if isinstance(signal, dict) else None,
+        "wallets": signal.get("wallets") if isinstance(signal, dict) else None,
+        "exit_count": len(exits),
+    }
+    try:
+        with path.open("a") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except Exception as exc:
+        print(f"⚠️  trade journal write failed: {type(exc).__name__}: {exc}", flush=True)
 
 
 def _position_age_minutes(position: dict[str, object]) -> float:
