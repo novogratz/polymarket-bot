@@ -542,6 +542,14 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 flush=True,
             )
             for candidate in noise_picks:
+                if portfolio.has_open_position(candidate.market_id):
+                    continue
+                if portfolio.has_open_token(candidate.token_id):
+                    continue
+                if portfolio.has_pending_token(candidate.token_id):
+                    continue
+                if portfolio.has_open_event_position(candidate):
+                    continue
                 try:
                     noise_signal = {
                         "category": market_category(candidate.question, candidate.slug),
@@ -699,6 +707,7 @@ def _noise_fallback_candidates(
     if open_count >= settings.min_open_positions:
         return []
     picks: list = []
+    seen_market_ids: set[str] = set()
     for candidate in candidates:
         if not candidate.token_id or not candidate.accepts_orders:
             continue
@@ -710,6 +719,9 @@ def _noise_fallback_candidates(
             continue
         spread = candidate.best_ask - candidate.best_bid
         if spread < 0 or spread > settings.smart_noise_fallback_max_spread:
+            continue
+        market_id = str(candidate.market_id or "")
+        if market_id and market_id in seen_market_ids:
             continue
         if portfolio.has_open_position(candidate.market_id):
             continue
@@ -723,6 +735,8 @@ def _noise_fallback_candidates(
         if category == "SPORTS" and open_categories.get("SPORTS", 0) >= settings.smart_max_sports_positions:
             continue
         picks.append(candidate)
+        if market_id:
+            seen_market_ids.add(market_id)
         if len(picks) >= settings.smart_noise_fallback_max_trades_per_tick:
             break
     return picks
