@@ -399,12 +399,13 @@ def execute_live_trade(
             maximum = min(maximum, settings.smart_crypto_micro_max_trade_usd)
         consensus = float(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0.0)
         copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
-        quality_multiplier = 1.0
-        if consensus >= 4 and copied_usdc >= 1000:
-            quality_multiplier = 2.0
-        elif consensus >= 3 and copied_usdc >= 250:
-            quality_multiplier = 1.5
-        maximum = min(maximum, settings.max_position_usd * quality_multiplier)
+        if settings.smart_position_pct <= 0:
+            quality_multiplier = 1.0
+            if consensus >= 4 and copied_usdc >= 1000:
+                quality_multiplier = 2.0
+            elif consensus >= 3 and copied_usdc >= 250:
+                quality_multiplier = 1.5
+            maximum = min(maximum, settings.max_position_usd * quality_multiplier)
         if _is_high_conviction_signal(signal) and settings.smart_high_conviction_balance_fraction > 0:
             maximum = max(maximum, live_balance * settings.smart_high_conviction_balance_fraction)
             maximum = min(maximum, live_balance)
