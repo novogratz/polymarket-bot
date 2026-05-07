@@ -397,7 +397,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 "summary": portfolio.summary(),
             }
 
-        for opportunity in opportunities:
+        for slot_index, opportunity in enumerate(opportunities):
+            remaining_slots = max(1, len(opportunities) - slot_index)
             if settings.smart_max_orders_per_tick > 0 and len(executed_trades) >= settings.smart_max_orders_per_tick:
                 stop_reason = "max_orders_per_tick_reached"
                 break
@@ -440,8 +441,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 )
                 continue
             print(f"🧠 SELECTED: {opportunity_payload['selection_reason']}")
-            max_trade_usd = _max_trade_for_signal(
-                settings, opportunity_payload, strategy, available_cash=portfolio.cash
+            max_trade_usd = _dynamic_max_trade(
+                settings, opportunity_payload, strategy, portfolio, remaining_slots
             )
             try:
                 result = execute_live_trade(
@@ -805,6 +806,56 @@ def _cancel_stale_pending_orders(client, settings: Settings, portfolio: Portfoli
     if report:
         portfolio.save(settings.state_path)
     return report
+
+
+def _signal_quality_multiplier(signal: dict[str, object]) -> tuple[float, bool]:
+    metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
+    consensus = int(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0)
+    copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
+    is_crypto_micro = bool(metrics.get("is_crypto_micro"))
+    if is_crypto_micro:
+        return 0.55, True
+    if consensus >= 4 and copied_usdc >= 1000:
+        return 1.0, False
+    if consensus >= 3 and copied_usdc >= 250:
+        return 0.9, False
+    if consensus >= 2 and copied_usdc >= 1000:
+        return 0.9, False
+    if consensus >= 2 and copied_usdc >= 250:
+        return 0.8, False
+    return 0.65, False
+
+
+def _dynamic_max_trade(
+    settings: Settings,
+    signal: dict[str, object],
+    strategy: str,
+    portfolio: Portfolio,
+    remaining_slots: int,
+) -> float:
+    base = _max_trade_for_signal(settings, signal, strategy, available_cash=portfolio.cash)
+    if settings.smart_cash_floor_pct <= 0 or settings.smart_cash_floor_pct >= 1:
+        return base
+    summary = portfolio.summary()
+    cash = float(summary.get("cash") or 0.0)
+    invested = float(summary.get("invested") or 0.0)
+    unrealized = float(summary.get("unrealized_pnl") or 0.0)
+    total_equity = cash + invested + unrealized
+    if total_equity <= 0:
+        return base
+    target_deployed = total_equity * (1.0 - settings.smart_cash_floor_pct)
+    remaining_to_deploy = max(0.0, target_deployed - invested)
+    if remaining_to_deploy <= 0 or remaining_slots <= 0:
+        return base
+    quality_mult, is_crypto_micro = _signal_quality_multiplier(signal)
+    per_slot = remaining_to_deploy / max(1, remaining_slots)
+    dynamic = per_slot * quality_mult
+    if is_crypto_micro:
+        dynamic = min(dynamic, settings.smart_crypto_micro_max_trade_usd)
+    if settings.smart_max_position_ceiling_usd > 0:
+        dynamic = min(dynamic, settings.smart_max_position_ceiling_usd)
+    dynamic = min(dynamic, cash)
+    return round(max(base, dynamic), 2)
 
 
 def _max_trade_for_signal(

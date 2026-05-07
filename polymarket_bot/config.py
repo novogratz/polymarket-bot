@@ -106,6 +106,7 @@ class Settings:
         "POLYMARKET_SMART_MAX_POSITION_CEILING_USD",
         50.0,
     )
+    smart_cash_floor_pct: float = _float_env("POLYMARKET_SMART_CASH_FLOOR_PCT", 0.0)
     smart_high_conviction_balance_fraction: float = _float_env(
         "POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION",
         0.0,
