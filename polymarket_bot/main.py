@@ -510,7 +510,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
 
     if executed_trades:
         portfolio.save(settings.state_path)
-        return {
+        response_with_trades: dict[str, object] = {
             "trade": executed_trades[-1],
             "trades": executed_trades,
             "orders_placed": len(executed_trades),
@@ -524,9 +524,17 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             "scan_report": report.to_dict(),
             "summary": portfolio.summary(),
         }
+        if settings.btc_edge_integrated:
+            try:
+                print("   running btc-edge tick...", flush=True)
+                response_with_trades["btc_edge"] = btc_edge_once(settings)
+            except Exception as exc:
+                print(f"   btc-edge tick failed: {type(exc).__name__}: {exc}", flush=True)
+                response_with_trades["btc_edge"] = {"error": f"{type(exc).__name__}: {exc}"}
+        return response_with_trades
 
     portfolio.save(settings.state_path)
-    return {
+    response: dict[str, object] = {
         "trade": None,
         "strategy": "smart_money",
         "whale_exits": whale_exit_report,
@@ -538,6 +546,14 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "scan_report": report.to_dict(),
         "summary": portfolio.summary(),
     }
+    if settings.btc_edge_integrated:
+        try:
+            print("   running btc-edge tick...", flush=True)
+            response["btc_edge"] = btc_edge_once(settings)
+        except Exception as exc:
+            print(f"   btc-edge tick failed: {type(exc).__name__}: {exc}", flush=True)
+            response["btc_edge"] = {"error": f"{type(exc).__name__}: {exc}"}
+    return response
 
 
 def _execute_sell_strategy(
