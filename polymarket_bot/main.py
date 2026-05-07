@@ -936,15 +936,21 @@ def _signal_quality_multiplier(signal: dict[str, object]) -> tuple[float, bool]:
     is_crypto_micro = bool(metrics.get("is_crypto_micro"))
     if is_crypto_micro:
         return 0.55, True
+    if consensus >= 5 and copied_usdc >= 5000:
+        return 2.5, False
+    if consensus >= 4 and copied_usdc >= 2000:
+        return 2.0, False
     if consensus >= 4 and copied_usdc >= 1000:
-        return 1.0, False
+        return 1.6, False
+    if consensus >= 3 and copied_usdc >= 500:
+        return 1.3, False
     if consensus >= 3 and copied_usdc >= 250:
-        return 0.9, False
+        return 1.1, False
     if consensus >= 2 and copied_usdc >= 1000:
-        return 0.9, False
+        return 1.1, False
     if consensus >= 2 and copied_usdc >= 250:
-        return 0.8, False
-    return 0.65, False
+        return 0.9, False
+    return 0.7, False
 
 
 def _dynamic_max_trade(
@@ -985,23 +991,10 @@ def _max_trade_for_signal(
     strategy: str,
     available_cash: float | None = None,
 ) -> float:
+    quality_mult, is_crypto_micro = _signal_quality_multiplier(signal)
     metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
     consensus = int(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0)
     copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
-    is_crypto_micro = bool(metrics.get("is_crypto_micro"))
-
-    if is_crypto_micro:
-        quality_mult = 0.55
-    elif consensus >= 4 and copied_usdc >= 1000:
-        quality_mult = 1.0
-    elif consensus >= 3 and copied_usdc >= 250:
-        quality_mult = 0.9
-    elif consensus >= 2 and copied_usdc >= 1000:
-        quality_mult = 0.9
-    elif consensus >= 2 and copied_usdc >= 250:
-        quality_mult = 0.8
-    else:
-        quality_mult = 0.65
 
     if (
         settings.smart_position_pct > 0
