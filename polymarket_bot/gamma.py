@@ -40,20 +40,43 @@ class GammaClient:
         params = urllib.parse.urlencode(query)
         return self._get_json(f"/markets?{params}")
 
-    def get_markets_by_clob_token_ids(self, token_ids: list[str]) -> list[dict[str, Any]]:
-        if not token_ids:
+    def get_markets_by_clob_token_ids(
+        self,
+        token_ids: list[str],
+        *,
+        batch_size: int = 20,
+    ) -> list[dict[str, Any]]:
+        cleaned = [token for token in token_ids if token]
+        if not cleaned:
             return []
-        pairs: list[tuple[str, str]] = [("clob_token_ids", token) for token in token_ids if token]
-        if not pairs:
-            return []
-        pairs.extend(
-            [
-                ("active", "true"),
-                ("closed", "false"),
-                ("limit", str(max(len(token_ids) * 2, 200))),
-            ]
-        )
-        return self._get_json(f"/markets?{urllib.parse.urlencode(pairs)}")
+        results: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for start in range(0, len(cleaned), max(1, batch_size)):
+            batch = cleaned[start : start + batch_size]
+            pairs: list[tuple[str, str]] = [("clob_token_ids", token) for token in batch]
+            pairs.extend(
+                [
+                    ("active", "true"),
+                    ("closed", "false"),
+                    ("limit", str(max(len(batch) * 2, 50))),
+                ]
+            )
+            try:
+                payload = self._get_json(f"/markets?{urllib.parse.urlencode(pairs)}")
+            except Exception:
+                continue
+            if not isinstance(payload, list):
+                continue
+            for market in payload:
+                if not isinstance(market, dict):
+                    continue
+                key = str(market.get("id") or market.get("conditionId") or "")
+                if key and key in seen_ids:
+                    continue
+                if key:
+                    seen_ids.add(key)
+                results.append(market)
+        return results
 
     def _get_json(self, path: str) -> Any:
         request = urllib.request.Request(
