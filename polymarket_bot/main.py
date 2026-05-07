@@ -533,10 +533,60 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 response_with_trades["btc_edge"] = {"error": f"{type(exc).__name__}: {exc}"}
         return response_with_trades
 
+    noise_trades: list[dict[str, object]] = []
+    if settings.smart_noise_fallback_enabled:
+        noise_picks = _noise_fallback_candidates(settings, portfolio, candidates, open_categories)
+        if noise_picks:
+            print(
+                f"   noise fallback: trying {len(noise_picks)} small bet(s) (no smart-money signal qualified)",
+                flush=True,
+            )
+            for candidate in noise_picks:
+                try:
+                    noise_signal = {
+                        "category": market_category(candidate.question, candidate.slug),
+                        "selection_reason": "noise_fallback: no smart-money signal; small bet on top-scored candidate",
+                        "selection_metrics": {
+                            "current_ask": candidate.best_ask,
+                            "current_bid": candidate.best_bid,
+                            "spread": (candidate.best_ask or 0) - (candidate.best_bid or 0),
+                        },
+                    }
+                    noise_result = execute_live_trade(
+                        client,
+                        settings,
+                        candidate,
+                        portfolio,
+                        min_trade_usd=1.0,
+                        max_trade_usd=settings.smart_noise_fallback_max_trade_usd,
+                        strategy="noise_fallback",
+                        signal=noise_signal,
+                    )
+                    noise_trades.append(
+                        {
+                            "strategy": "noise_fallback",
+                            "signal": noise_signal,
+                            "order": noise_result.order,
+                            "response": noise_result.response,
+                        }
+                    )
+                    portfolio.save(settings.state_path)
+                except ValueError as exc:
+                    if _is_funds_error(str(exc)):
+                        break
+                    print(f"   noise fallback skipped: {exc}", flush=True)
+                    continue
+                except Exception as exc:
+                    if _is_unfilled_market_order_error(str(exc)) or _is_funds_error(str(exc)):
+                        continue
+                    print(f"   noise fallback error: {type(exc).__name__}: {exc}", flush=True)
+                    continue
+
     portfolio.save(settings.state_path)
     response: dict[str, object] = {
-        "trade": None,
-        "strategy": "smart_money",
+        "trade": noise_trades[-1] if noise_trades else None,
+        "strategy": "noise_fallback" if noise_trades else "smart_money",
+        "noise_trades": noise_trades,
         "whale_exits": whale_exit_report,
         "exits": exit_report,
         "sync": sync_report,
@@ -635,6 +685,47 @@ def _execute_sell_strategy(
             }
         )
     return exit_report
+
+
+def _noise_fallback_candidates(
+    settings: Settings,
+    portfolio: Portfolio,
+    candidates: list,
+    open_categories: dict[str, int],
+) -> list:
+    if not settings.smart_noise_fallback_enabled:
+        return []
+    open_count = sum(1 for p in portfolio.positions if p.get("status") == "open")
+    if open_count >= settings.min_open_positions:
+        return []
+    picks: list = []
+    for candidate in candidates:
+        if not candidate.token_id or not candidate.accepts_orders:
+            continue
+        if candidate.best_bid is None or candidate.best_ask is None or candidate.tick_size is None:
+            continue
+        if candidate.best_ask < settings.smart_noise_fallback_min_buy_price:
+            continue
+        if candidate.best_ask > settings.smart_noise_fallback_max_buy_price:
+            continue
+        spread = candidate.best_ask - candidate.best_bid
+        if spread < 0 or spread > settings.smart_noise_fallback_max_spread:
+            continue
+        if portfolio.has_open_position(candidate.market_id):
+            continue
+        if portfolio.has_open_token(candidate.token_id):
+            continue
+        if portfolio.has_pending_token(candidate.token_id):
+            continue
+        if portfolio.has_open_event_position(candidate):
+            continue
+        category = market_category(candidate.question, candidate.slug)
+        if category == "SPORTS" and open_categories.get("SPORTS", 0) >= settings.smart_max_sports_positions:
+            continue
+        picks.append(candidate)
+        if len(picks) >= settings.smart_noise_fallback_max_trades_per_tick:
+            break
+    return picks
 
 
 def _reverse_lookup_smart_money_markets(

@@ -108,6 +108,12 @@ class Settings:
         50.0,
     )
     smart_cash_floor_pct: float = _float_env("POLYMARKET_SMART_CASH_FLOOR_PCT", 0.0)
+    smart_noise_fallback_enabled: bool = _bool_env("POLYMARKET_SMART_NOISE_FALLBACK_ENABLED", False)
+    smart_noise_fallback_max_trades_per_tick: int = _int_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADES_PER_TICK", 2)
+    smart_noise_fallback_max_trade_usd: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADE_USD", 5.0)
+    smart_noise_fallback_min_buy_price: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_MIN_BUY_PRICE", 0.20)
+    smart_noise_fallback_max_buy_price: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_BUY_PRICE", 0.80)
+    smart_noise_fallback_max_spread: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_SPREAD", 0.04)
     smart_high_conviction_balance_fraction: float = _float_env(
         "POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION",
         0.0,
