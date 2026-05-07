@@ -1,6 +1,7 @@
 from datetime import timedelta
 import unittest
 
+from polymarket_bot.auto_tuner import compute_overrides
 from polymarket_bot.bitcoin import BtcModel, btc_signal, btc_terminal_probability, parse_btc_threshold
 from polymarket_bot.config import Settings
 from polymarket_bot.models import Candidate, utc_now
@@ -1456,6 +1457,58 @@ class StrategyTests(unittest.TestCase):
             "selection_metrics": {"profitable_wallet_count": 4, "copied_usdc": 2000},
         }
         self.assertEqual(_max_trade_for_signal(settings, strong, "smart_money"), 20.0)
+
+
+class AutoTunerTests(unittest.TestCase):
+    def test_compute_overrides_paused_below_minimum_trades(self):
+        records = [{"realized_pnl": -1.0, "consensus": 2, "exit_reason": "stop_loss"} for _ in range(5)]
+        settings = Settings(smart_auto_tune_min_trades=30)
+        self.assertEqual(compute_overrides(records, settings), {})
+
+    def test_compute_overrides_tightens_chase_when_stop_loss_dominates(self):
+        records = [
+            {"realized_pnl": -1.0, "consensus": 2, "exit_reason": "stop_loss", "category": "OTHER"}
+            for _ in range(40)
+        ]
+        settings = Settings(
+            smart_auto_tune_min_trades=30,
+            smart_max_chase_premium=0.10,
+            smart_max_relative_spread=0.30,
+        )
+        overrides = compute_overrides(records, settings)
+        self.assertIn("smart_max_chase_premium", overrides)
+        self.assertLess(overrides["smart_max_chase_premium"], 0.10)
+        self.assertIn("smart_max_relative_spread", overrides)
+        self.assertLess(overrides["smart_max_relative_spread"], 0.30)
+
+    def test_compute_overrides_raises_consensus_when_two_wallets_lose(self):
+        records = []
+        for _ in range(40):
+            records.append(
+                {
+                    "realized_pnl": -1.0,
+                    "consensus": 2,
+                    "exit_reason": "stop_loss",
+                    "category": "OTHER",
+                }
+            )
+        settings = Settings(
+            smart_auto_tune_min_trades=30,
+            smart_min_consensus=2,
+            smart_max_chase_premium=0.04,
+            smart_max_relative_spread=0.20,
+        )
+        overrides = compute_overrides(records, settings)
+        self.assertEqual(overrides.get("smart_min_consensus"), 3)
+
+    def test_compute_overrides_no_change_when_winning(self):
+        records = [
+            {"realized_pnl": 1.5, "consensus": 2, "exit_reason": "take_profit_100pct", "category": "POLITICS"}
+            for _ in range(40)
+        ]
+        settings = Settings(smart_auto_tune_min_trades=30)
+        overrides = compute_overrides(records, settings)
+        self.assertEqual(overrides, {})
 
 
 if __name__ == "__main__":

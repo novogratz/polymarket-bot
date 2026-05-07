@@ -7,6 +7,7 @@ import time
 from dataclasses import replace
 from datetime import timedelta
 
+from .auto_tuner import apply_overrides, maybe_tune
 from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
 from .config import Settings
 from .dashboard import serve
@@ -194,6 +195,19 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
 
 def smart_money_once(settings: Settings) -> dict[str, object]:
     print("▶  tick start", flush=True)
+    if settings.smart_auto_tune_enabled:
+        overrides, journal_size = maybe_tune(settings)
+        if overrides:
+            print(
+                f"   auto-tune: {len(overrides)} override(s) from {journal_size} closed trade(s): {overrides}",
+                flush=True,
+            )
+            settings = apply_overrides(settings, overrides)
+        elif journal_size < settings.smart_auto_tune_min_trades:
+            print(
+                f"   auto-tune: paused ({journal_size}/{settings.smart_auto_tune_min_trades} closed trades)",
+                flush=True,
+            )
     print("   loading markets...", flush=True)
     candidates = load_smart_candidates(settings)
     print(f"   markets: {len(candidates)} candidates", flush=True)
@@ -1314,6 +1328,7 @@ def main() -> None:
             "bootstrap-creds",
             "reset-ledger",
             "journal-stats",
+            "tune-strategy",
             "dashboard",
         ],
     )
@@ -1333,6 +1348,20 @@ def main() -> None:
         print(json.dumps(reset_ledger(settings), indent=2))
     elif args.command == "journal-stats":
         print(json.dumps(journal_stats(settings), indent=2))
+    elif args.command == "tune-strategy":
+        overrides, journal_size = maybe_tune(settings)
+        print(
+            json.dumps(
+                {
+                    "auto_tune_enabled": settings.smart_auto_tune_enabled,
+                    "min_trades_required": settings.smart_auto_tune_min_trades,
+                    "trades_seen": journal_size,
+                    "overrides": overrides,
+                    "overrides_path": str(settings.strategy_overrides_path),
+                },
+                indent=2,
+            )
+        )
     elif args.command == "trade-once":
         if not settings.live_trading_enabled:
             raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
