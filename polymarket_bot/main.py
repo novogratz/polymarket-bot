@@ -649,6 +649,16 @@ def _execute_sell_strategy(
         current_pnl_pct = (candidate.best_bid - entry_price) / entry_price
         position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", current_pnl_pct)), current_pnl_pct)
         plan = _sell_plan(position, current_pnl_pct, settings)
+        if (
+            plan is None
+            and settings.smart_resolved_exit_threshold > 0
+            and candidate.best_bid is not None
+            and candidate.best_bid >= settings.smart_resolved_exit_threshold
+        ):
+            plan = {
+                "reason": "resolved_market_exit",
+                "shares": float(position.get("shares", 0.0)),
+            }
         if plan is None and _should_exit_before_expiry(candidate, current_pnl_pct, settings):
             plan = {
                 "reason": "positive_pnl_before_expiry",
