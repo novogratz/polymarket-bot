@@ -516,39 +516,19 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     break
                 raise
 
-    if executed_trades:
-        portfolio.save(settings.state_path)
-        response_with_trades: dict[str, object] = {
-            "trade": executed_trades[-1],
-            "trades": executed_trades,
-            "orders_placed": len(executed_trades),
-            "stop_reason": stop_reason,
-            "whale_exits": whale_exit_report,
-            "exits": exit_report,
-            "sync": sync_report,
-            "pending_orders": pending_report,
-            "category_summary": open_categories,
-            "rejected_signals": rejected_signals,
-            "scan_report": report.to_dict(),
-            "summary": portfolio.summary(),
-        }
-        if settings.btc_edge_integrated:
-            try:
-                print("   running btc-edge tick...", flush=True)
-                response_with_trades["btc_edge"] = btc_edge_once(settings)
-            except Exception as exc:
-                print(f"   btc-edge tick failed: {type(exc).__name__}: {exc}", flush=True)
-                response_with_trades["btc_edge"] = {"error": f"{type(exc).__name__}: {exc}"}
-        return response_with_trades
-
     noise_trades: list[dict[str, object]] = []
     if settings.smart_noise_fallback_enabled:
         noise_picks = _noise_fallback_candidates(
             settings, portfolio, candidates, open_categories, smart_data=smart_data
         )
         if noise_picks:
+            label = (
+                "below min positions or above cash-pressure threshold"
+                if not executed_trades
+                else "smart-money fired but cash still idle"
+            )
             print(
-                f"   noise fallback: trying {len(noise_picks)} small bet(s) (no smart-money signal qualified)",
+                f"   noise fallback: trying {len(noise_picks)} small bet(s) ({label})",
                 flush=True,
             )
             for candidate in noise_picks:
@@ -601,9 +581,18 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     continue
 
     portfolio.save(settings.state_path)
+    last_smart_trade = executed_trades[-1] if executed_trades else None
+    last_noise_trade = noise_trades[-1] if noise_trades else None
     response: dict[str, object] = {
-        "trade": noise_trades[-1] if noise_trades else None,
-        "strategy": "noise_fallback" if noise_trades else "smart_money",
+        "trade": last_smart_trade or last_noise_trade,
+        "strategy": (
+            strategy
+            if executed_trades
+            else ("noise_fallback" if noise_trades else "smart_money")
+        ),
+        "trades": executed_trades,
+        "orders_placed": len(executed_trades),
+        "stop_reason": stop_reason,
         "noise_trades": noise_trades,
         "whale_exits": whale_exit_report,
         "exits": exit_report,
