@@ -70,7 +70,7 @@ HTML = """<!doctype html>
   <main>
     <section class="stats" id="stats"></section>
     <h2>Open Positions</h2>
-    <table><thead><tr><th>Market</th><th>Strategy</th><th>Outcome</th><th class="num">Entry</th><th class="num">Now</th><th class="num">Stake</th><th class="num">Unrealized PnL</th></tr></thead><tbody id="positions"></tbody></table>
+    <table><thead><tr><th>Market</th><th>Strategy</th><th>Outcome</th><th class="num">Entry</th><th class="num">Now</th><th class="num">Stake</th><th class="num">Unrealized PnL</th><th>Closes</th></tr></thead><tbody id="positions"></tbody></table>
     <h2>Closed Trades — wins &amp; losses</h2>
     <table><thead><tr><th>Closed</th><th>Market</th><th>Strategy</th><th>Outcome</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">Cost</th><th class="num">Proceeds</th><th class="num">Realized PnL</th><th class="num">Return</th><th>Reason</th></tr></thead><tbody id="closed"></tbody></table>
     <h2>Recent Bot Trades</h2>
@@ -101,10 +101,24 @@ HTML = """<!doctype html>
         ['Equity', fmtUsd.format(s.equity)], ['Cash', fmtUsd.format(s.cash)], ['Invested', fmtUsd.format(s.invested)],
         ['Open', s.open_positions], ['Trades', data.recent_trades.length], ['Unrealized PnL', fmtUsd.format(s.unrealized_pnl)]
       ].map(([k,v]) => `<div class="stat"><div class="label">${k}</div><div class="value">${v}</div></div>`).join('');
+      const fmtCloses = (iso) => {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        const diffMs = d.getTime() - Date.now();
+        const absH = Math.abs(diffMs) / 3_600_000;
+        const human = absH < 1
+          ? `${Math.round(Math.abs(diffMs) / 60_000)}m`
+          : absH < 48
+            ? `${absH.toFixed(1)}h`
+            : `${(absH / 24).toFixed(1)}d`;
+        const label = diffMs < 0 ? `expired ${human} ago` : `in ${human}`;
+        return `${d.toLocaleString()} <span style="color:var(--muted)">(${label})</span>`;
+      };
       document.getElementById('positions').innerHTML = data.positions.length ? data.positions.map(p => {
         const pnl = Number(p.unrealized_pnl || 0);
-        return `<tr>${cell(`<a href="${p.url}" target="_blank" rel="noreferrer">${p.question}</a>`, 'question')}${cell(p.strategy || (p.live ? 'live' : 'paper'))}${cell(p.outcome)}${cell(fmt.format(p.entry_price), 'num')}${cell(fmt.format(p.current_price), 'num')}${cell(fmtUsd.format(p.stake), 'num')}${cell(fmtUsd.format(pnl), `num ${pnl < 0 ? 'pnl-neg' : 'pnl-pos'}`)}</tr>`;
-      }).join('') : '<tr><td colspan="7">No open positions yet.</td></tr>';
+        return `<tr>${cell(`<a href="${p.url}" target="_blank" rel="noreferrer">${p.question}</a>`, 'question')}${cell(p.strategy || (p.live ? 'live' : 'paper'))}${cell(p.outcome)}${cell(fmt.format(p.entry_price), 'num')}${cell(fmt.format(p.current_price), 'num')}${cell(fmtUsd.format(p.stake), 'num')}${cell(fmtUsd.format(pnl), `num ${pnl < 0 ? 'pnl-neg' : 'pnl-pos'}`)}${cell(fmtCloses(p.end_date))}</tr>`;
+      }).join('') : '<tr><td colspan="8">No open positions yet.</td></tr>';
       document.getElementById('closed').innerHTML = data.closed_trades && data.closed_trades.length ? data.closed_trades.map(t => {
         const pnl = Number(t.realized_pnl || 0);
         const cost = Number(t.cost_basis || 0);

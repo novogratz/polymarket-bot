@@ -226,6 +226,7 @@ class Portfolio:
             "shares": shares,
             "initial_shares": shares,
             "unrealized_pnl": 0.0,
+            "end_date": candidate.end_date.isoformat() if candidate.end_date else None,
         }
 
     def mark_to_market(self, candidates: list[Candidate]) -> None:
@@ -249,6 +250,8 @@ class Portfolio:
             if entry_price > 0:
                 pnl_pct = (candidate.price - entry_price) / entry_price
                 position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", pnl_pct)), pnl_pct)
+            if candidate.end_date and not position.get("end_date"):
+                position["end_date"] = candidate.end_date.isoformat()
 
     def summary(self) -> dict[str, Any]:
         open_positions = [position for position in self.positions if position.get("status") == "open"]
