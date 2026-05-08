@@ -1950,5 +1950,59 @@ class JournalStatsDrawdownTests(unittest.TestCase):
             self.assertEqual(stats["max_drawdown"], -5.0)
 
 
+class JournalSuggestionsTests(unittest.TestCase):
+    def _records(self, n, exit_reason="take_profit_50", pnl=1.0, **extra):
+        base = {"realized_pnl": pnl, "exit_reason": exit_reason, "category": "POLITICS", "consensus": 3}
+        base.update(extra)
+        return [dict(base) for _ in range(n)]
+
+    def test_suggestions_empty_when_below_min_trades(self):
+        from polymarket_bot.main import _journal_suggestions
+        result = _journal_suggestions(self._records(5))
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["id"], "below_min_trades")
+        self.assertEqual(result[0]["records"], 5)
+
+    def test_suggestions_flag_excessive_stop_loss(self):
+        from polymarket_bot.main import _journal_suggestions
+        records = self._records(20, exit_reason="stop_loss", pnl=-0.5) + self._records(20, exit_reason="take_profit_50", pnl=0.5)
+        suggestions = _journal_suggestions(records)
+        ids = {s["id"] for s in suggestions}
+        self.assertIn("excessive_stop_loss", ids)
+        sl = next(s for s in suggestions if s["id"] == "excessive_stop_loss")
+        self.assertEqual(sl["param"], "MAX_CHASE_PREMIUM")
+        self.assertEqual(sl["ratio"], 0.80)
+        self.assertIn("stop_loss", sl["reason"])
+
+    def test_format_suggestions_returns_human_lines(self):
+        from polymarket_bot.main import format_suggestions
+        structured = [
+            {"id": "below_min_trades", "param": None, "ratio": None, "reason": "only 5 closed trades"},
+            {"id": "excessive_stop_loss", "param": "MAX_CHASE_PREMIUM", "ratio": 0.80, "reason": "stop_loss = 50% of 40 trades"},
+        ]
+        lines = format_suggestions(structured)
+        self.assertEqual(len(lines), 2)
+        self.assertIn("only 5 closed trades", lines[0])
+        self.assertIn("MAX_CHASE_PREMIUM", lines[1])
+        self.assertIn("0.80", lines[1])
+
+    def test_journal_stats_suggestions_field_is_structured(self):
+        import tempfile, json
+        from pathlib import Path
+        from polymarket_bot.main import journal_stats
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp) / "journal.jsonl"
+            tmp_path.write_text("\n".join(
+                json.dumps({"realized_pnl": 1.0, "exit_reason": "take_profit_50"}) for _ in range(5)
+            ) + "\n")
+            stats = journal_stats(Settings(trade_journal_path=tmp_path))
+            suggestions = stats["suggestions"]
+            self.assertTrue(suggestions)
+            self.assertIsInstance(suggestions[0], dict)
+            self.assertIn("id", suggestions[0])
+
+
 if __name__ == "__main__":
     unittest.main()

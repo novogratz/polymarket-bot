@@ -1520,12 +1520,19 @@ def journal_stats(settings: Settings) -> dict[str, object]:
     }
 
 
-def _journal_suggestions(records: list[dict[str, object]]) -> list[str]:
+def _journal_suggestions(records: list[dict[str, object]]) -> list[dict[str, object]]:
     if len(records) < 30:
-        return [
-            f"only {len(records)} closed trades — need ~30+ before any reading is statistically meaningful; suggestions paused."
-        ]
-    suggestions: list[str] = []
+        return [{
+            "id": "below_min_trades",
+            "param": None,
+            "ratio": None,
+            "records": len(records),
+            "reason": (
+                f"only {len(records)} closed trades — need ~30+ before any reading is "
+                "statistically meaningful; suggestions paused."
+            ),
+        }]
+    suggestions: list[dict[str, object]] = []
     by_category: dict[str, list[float]] = {}
     by_consensus: dict[int, list[float]] = {}
     by_exit: dict[str, list[float]] = {}
@@ -1545,32 +1552,78 @@ def _journal_suggestions(records: list[dict[str, object]]) -> list[str]:
             by_consensus.setdefault(consensus_int, []).append(pnl)
         exit_reason = str(record.get("exit_reason") or "unknown")
         by_exit.setdefault(exit_reason, []).append(pnl)
+
     for category, pnls in by_category.items():
         if len(pnls) < 10:
             continue
         avg = sum(pnls) / len(pnls)
         if avg < -0.20:
-            suggestions.append(
-                f"category {category}: {len(pnls)} trades, avg PnL ${avg:.2f} — consider penalizing or excluding."
-            )
+            suggestions.append({
+                "id": f"weak_category_{category.lower()}",
+                "param": "category_filter",
+                "ratio": None,
+                "category": category,
+                "reason": (
+                    f"category {category}: {len(pnls)} trades, avg PnL ${avg:.2f} — "
+                    "consider penalizing or excluding."
+                ),
+            })
+
     for consensus, pnls in sorted(by_consensus.items()):
         if len(pnls) < 10:
             continue
         avg = sum(pnls) / len(pnls)
         if consensus <= 2 and avg < -0.10:
-            suggestions.append(
-                f"consensus={consensus}: {len(pnls)} trades, avg PnL ${avg:.2f} — consider raising POLYMARKET_SMART_MIN_CONSENSUS."
-            )
+            suggestions.append({
+                "id": f"weak_consensus_{consensus}",
+                "param": "MIN_CONSENSUS",
+                "ratio": None,
+                "consensus": consensus,
+                "reason": (
+                    f"consensus={consensus}: {len(pnls)} trades, avg PnL ${avg:.2f} — "
+                    "consider raising POLYMARKET_SMART_MIN_CONSENSUS."
+                ),
+            })
+
     stop_pnls = by_exit.get("stop_loss", [])
     if len(stop_pnls) >= 10:
         share = len(stop_pnls) / len(records)
         if share > 0.30:
-            suggestions.append(
-                f"stop_loss exits = {share:.0%} of trades — entry filters may be too loose; consider tightening MAX_CHASE_PREMIUM or MAX_RELATIVE_SPREAD."
-            )
+            suggestions.append({
+                "id": "excessive_stop_loss",
+                "param": "MAX_CHASE_PREMIUM",
+                "ratio": 0.80,
+                "share": round(share, 3),
+                "reason": (
+                    f"stop_loss exits = {share:.0%} of {len(records)} trades — entry filters may be "
+                    "too loose; consider tightening MAX_CHASE_PREMIUM or MAX_RELATIVE_SPREAD."
+                ),
+            })
+
     if not suggestions:
-        suggestions.append("no clear underperformer across buckets with >= 10 trades each.")
+        suggestions.append({
+            "id": "all_clear",
+            "param": None,
+            "ratio": None,
+            "reason": "no clear underperformer across buckets with >= 10 trades each.",
+        })
     return suggestions
+
+
+def format_suggestions(suggestions: list[dict[str, object]]) -> list[str]:
+    """Render structured suggestions into human-readable lines for the CLI."""
+    lines: list[str] = []
+    for suggestion in suggestions:
+        reason = str(suggestion.get("reason") or "")
+        param = suggestion.get("param")
+        ratio = suggestion.get("ratio")
+        if param and ratio is not None:
+            lines.append(f"[{param} ×{ratio:.2f}] {reason}")
+        elif param:
+            lines.append(f"[{param}] {reason}")
+        else:
+            lines.append(reason)
+    return lines
 
 
 def _append_trade_journal(settings: Settings, position: dict[str, object], reason: str) -> None:
