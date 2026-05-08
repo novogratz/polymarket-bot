@@ -20,11 +20,11 @@ Use this skill when working in this repository: strategy code, filters, live com
 ## Useful commands
 
 ```bash
-python3 -B -m unittest discover -s tests
-python3 -B -m polymarket_bot.main dashboard
-python3 -B -m polymarket_bot.main journal-stats
-python3 -B -m polymarket_bot.main tune-strategy
-POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
+uv run python -B -m unittest discover -s tests
+uv run python -B -m polymarket_bot.main dashboard
+uv run python -B -m polymarket_bot.main journal-stats
+uv run python -B -m polymarket_bot.main tune-strategy
+POLYMARKET_ENABLE_LIVE_TRADING=1 uv run python -B -m polymarket_bot.main auto-loop
 ```
 
 Canonical live config: `bash scripts/run_live_70.sh` (~$90 bankroll).
@@ -85,7 +85,7 @@ Hierarchy to preserve in any strategy edit: **consensus first, execution quality
 1. Read the relevant code (`smart_money.py`, `main.py`, `auto_tuner.py`).
 2. Modify while preserving the hierarchy above.
 3. Update tests in `tests/test_strategy.py`.
-4. Run `python3 -B -m unittest discover -s tests`.
+4. Run `uv run python -B -m unittest discover -s tests`.
 5. If the change affects the live command, update `scripts/run_live_70.sh`.
 6. Update `CHANGELOG.md`, `README.md`, `CLAUDE.md`, `CODEX.md`, and the SKILL files when user-visible.
 7. Commit and push.

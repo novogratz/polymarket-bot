@@ -34,31 +34,31 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 Run tests:
 
 ```bash
-python3 -B -m unittest discover -s tests
+uv run python -B -m unittest discover -s tests
 ```
 
 Dashboard:
 
 ```bash
-python3 -B -m polymarket_bot.main dashboard
+uv run python -B -m polymarket_bot.main dashboard
 ```
 
 Trade-journal stats (per-bucket P&L, win rate, suggested tightenings):
 
 ```bash
-python3 -B -m polymarket_bot.main journal-stats
+uv run python -B -m polymarket_bot.main journal-stats
 ```
 
 Run the auto-tuner manually (writes `data/strategy_overrides.json`):
 
 ```bash
-python3 -B -m polymarket_bot.main tune-strategy
+uv run python -B -m polymarket_bot.main tune-strategy
 ```
 
 Live smart-money loop:
 
 ```bash
-POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
+POLYMARKET_ENABLE_LIVE_TRADING=1 uv run python -B -m polymarket_bot.main auto-loop
 ```
 
 ## Recommended live command

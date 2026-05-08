@@ -1,11 +1,11 @@
 .PHONY: help install dev test lint run dashboard journal tune clean
 
-PYTHON ?= python3
+UV ?= uv
 
 help:
 	@echo "Available targets:"
-	@echo "  install   Install runtime dependencies"
-	@echo "  dev       Install in editable mode with dev extras"
+	@echo "  install   Sync runtime dependencies into .venv via uv"
+	@echo "  dev       Sync runtime + dev dependencies into .venv via uv"
 	@echo "  test      Run the unit-test suite"
 	@echo "  lint      Run ruff over the codebase"
 	@echo "  run       Run the live smart-money loop (foreground)"
@@ -15,28 +15,28 @@ help:
 	@echo "  clean     Remove build artefacts and caches"
 
 install:
-	$(PYTHON) -m pip install -r requirements.txt
+	$(UV) sync
 
 dev:
-	$(PYTHON) -m pip install -e ".[dev]"
+	$(UV) sync --extra dev
 
 test:
-	$(PYTHON) -B -m unittest discover -s tests -v
+	$(UV) run python -B -m unittest discover -s tests -v
 
 lint:
-	$(PYTHON) -m ruff check polymarket_bot tests
+	$(UV) run ruff check polymarket_bot tests
 
 run:
 	bash scripts/run_live_70.sh
 
 dashboard:
-	$(PYTHON) -B -m polymarket_bot.main dashboard
+	$(UV) run python -B -m polymarket_bot.main dashboard
 
 journal:
-	$(PYTHON) -B -m polymarket_bot.main journal-stats
+	$(UV) run python -B -m polymarket_bot.main journal-stats
 
 tune:
-	$(PYTHON) -B -m polymarket_bot.main tune-strategy
+	$(UV) run python -B -m polymarket_bot.main tune-strategy
 
 clean:
 	rm -rf build dist *.egg-info

@@ -9,7 +9,7 @@ description = "Polymarket smart-money copy-trading bot with auto-tuner, trade jo
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Benoit Floc'h" }]
-requires-python = ">=3.9"
+requires-python = ">=3.9.10"
 keywords = ["polymarket", "trading", "smart-money", "copy-trading", "prediction-markets"]
 classifiers = [
     "Development Status :: 4 - Beta",
