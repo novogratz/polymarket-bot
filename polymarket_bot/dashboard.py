@@ -70,7 +70,9 @@ HTML = """<!doctype html>
   <main>
     <section class="stats" id="stats"></section>
     <h2>Open Positions</h2>
-    <table><thead><tr><th>Market</th><th>Strategy</th><th>Outcome</th><th class="num">Entry</th><th class="num">Now</th><th class="num">Stake</th><th class="num">PnL</th></tr></thead><tbody id="positions"></tbody></table>
+    <table><thead><tr><th>Market</th><th>Strategy</th><th>Outcome</th><th class="num">Entry</th><th class="num">Now</th><th class="num">Stake</th><th class="num">Unrealized PnL</th></tr></thead><tbody id="positions"></tbody></table>
+    <h2>Closed Trades — wins &amp; losses</h2>
+    <table><thead><tr><th>Closed</th><th>Market</th><th>Strategy</th><th>Outcome</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">Cost</th><th class="num">Proceeds</th><th class="num">Realized PnL</th><th class="num">Return</th><th>Reason</th></tr></thead><tbody id="closed"></tbody></table>
     <h2>Recent Bot Trades</h2>
     <table><thead><tr><th>Opened</th><th>Market</th><th>Strategy</th><th>Outcome</th><th class="num">Entry</th><th class="num">Stake</th><th>Order</th></tr></thead><tbody id="trades"></tbody></table>
     <h2>Soon Markets</h2>
@@ -103,6 +105,13 @@ HTML = """<!doctype html>
         const pnl = Number(p.unrealized_pnl || 0);
         return `<tr>${cell(`<a href="${p.url}" target="_blank" rel="noreferrer">${p.question}</a>`, 'question')}${cell(p.strategy || (p.live ? 'live' : 'paper'))}${cell(p.outcome)}${cell(fmt.format(p.entry_price), 'num')}${cell(fmt.format(p.current_price), 'num')}${cell(fmtUsd.format(p.stake), 'num')}${cell(fmtUsd.format(pnl), `num ${pnl < 0 ? 'pnl-neg' : 'pnl-pos'}`)}</tr>`;
       }).join('') : '<tr><td colspan="7">No open positions yet.</td></tr>';
+      document.getElementById('closed').innerHTML = data.closed_trades && data.closed_trades.length ? data.closed_trades.map(t => {
+        const pnl = Number(t.realized_pnl || 0);
+        const cost = Number(t.cost_basis || 0);
+        const ret = cost > 0 ? (pnl / cost) * 100 : 0;
+        const cls = pnl < 0 ? 'pnl-neg' : 'pnl-pos';
+        return `<tr>${cell(t.closed_at ? new Date(t.closed_at).toLocaleString() : '—')}${cell(`<a href="${t.url}" target="_blank" rel="noreferrer">${t.question}</a>`, 'question')}${cell(t.strategy || (t.live ? 'live' : 'paper'))}${cell(t.outcome)}${cell(fmt.format(t.entry_price), 'num')}${cell(fmt.format(t.exit_price), 'num')}${cell(fmtUsd.format(t.cost_basis), 'num')}${cell(fmtUsd.format(t.proceeds), 'num')}${cell(fmtUsd.format(pnl), `num ${cls}`)}${cell(ret.toFixed(1) + '%', `num ${cls}`)}${cell(t.reason || '—')}</tr>`;
+      }).join('') : '<tr><td colspan="11">No closed trades yet — positions will land here once an exit fires (take-profit, stop-loss, peak-protect, cohort-sell, etc.).</td></tr>';
       document.getElementById('trades').innerHTML = data.recent_trades.length ? data.recent_trades.map(p => {
         const orderId = p.order_id || (p.order_response && (p.order_response.orderID || p.order_response.orderId)) || '';
         return `<tr>${cell(new Date(p.opened_at).toLocaleString())}${cell(`<a href="${p.url}" target="_blank" rel="noreferrer">${p.question}</a>`, 'question')}${cell(p.strategy || (p.live ? 'live' : 'paper'))}${cell(p.outcome)}${cell(fmt.format(p.entry_price), 'num')}${cell(fmtUsd.format(p.stake), 'num')}${cell(orderId || '-')}</tr>`;
@@ -150,6 +159,29 @@ def snapshot(settings: Settings) -> dict[str, Any]:
         key=lambda item: str(item.get("opened_at") or ""),
         reverse=True,
     )[:20]
+
+    # Flatten every exit (partial or full) into a "closed trade" row so the
+    # dashboard can show wins / losses, P&L, and the exit reason that fired.
+    closed_trades: list[dict[str, Any]] = []
+    for position in positions:
+        for exit_record in position.get("exits") or []:
+            closed_trades.append({
+                "closed_at": exit_record.get("closed_at"),
+                "question": position.get("question"),
+                "url": position.get("url"),
+                "strategy": position.get("strategy"),
+                "live": position.get("live"),
+                "outcome": position.get("outcome"),
+                "entry_price": position.get("entry_price"),
+                "exit_price": exit_record.get("exit_price"),
+                "cost_basis": exit_record.get("cost_basis"),
+                "proceeds": exit_record.get("proceeds"),
+                "realized_pnl": exit_record.get("realized_pnl"),
+                "reason": exit_record.get("reason"),
+            })
+    closed_trades.sort(key=lambda item: str(item.get("closed_at") or ""), reverse=True)
+    closed_trades = closed_trades[:30]
+
     return {
         "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
         "live_trading_enabled": settings.live_trading_enabled,
@@ -161,6 +193,7 @@ def snapshot(settings: Settings) -> dict[str, Any]:
         "summary": portfolio.summary(),
         "positions": [position for position in positions if position.get("status") == "open"],
         "recent_trades": recent_trades,
+        "closed_trades": closed_trades,
         "candidates": [candidate.to_dict() for candidate in candidates[:40]],
     }
 
