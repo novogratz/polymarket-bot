@@ -13,9 +13,10 @@ and ``reset-ledger``.
 
 from __future__ import annotations
 
-import argparse
 import json
 import time
+
+import typer
 
 from dataclasses import replace
 from datetime import timedelta
@@ -1597,7 +1598,7 @@ def _mask(value: str | None, keep: int = 4) -> str:
     return f"{value[:keep]}...{value[-keep:]}"
 
 
-def doctor(settings: Settings) -> dict[str, object]:
+def run_doctor(settings: Settings) -> dict[str, object]:
     """Read-only health check: validates .env, auth, endpoints, local state.
 
     Posts no orders. Safe to run with or without live trading enabled.
@@ -1704,52 +1705,75 @@ def doctor(settings: Settings) -> dict[str, object]:
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Polymarket smart-money copy-trading bot")
-    parser.add_argument(
-        "command",
-        choices=[
-            "auto-loop",
-            "dashboard",
-            "doctor",
-            "journal-stats",
-            "tune-strategy",
-            "bootstrap-creds",
-            "reset-ledger",
-        ],
-    )
-    args = parser.parse_args()
+app = typer.Typer(
+    name="pmbot",
+    no_args_is_help=True,
+    add_completion=False,
+    help="Polymarket smart-money copy-trading bot.",
+)
 
+
+@app.command("auto-loop")
+def cli_auto_loop() -> None:
+    """Run the live smart-money loop. Requires POLYMARKET_ENABLE_LIVE_TRADING=1."""
     settings = Settings()
-    if args.command == "auto-loop":
-        if not settings.live_trading_enabled:
-            raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
-        smart_money_loop(settings)
-    elif args.command == "dashboard":
-        serve(settings)
-    elif args.command == "doctor":
-        doctor(settings)
-    elif args.command == "journal-stats":
-        print(json.dumps(journal_stats(settings), indent=2))
-    elif args.command == "tune-strategy":
-        overrides, journal_size = maybe_tune(settings)
-        print(
-            json.dumps(
-                {
-                    "auto_tune_enabled": settings.smart_auto_tune_enabled,
-                    "min_trades_required": settings.smart_auto_tune_min_trades,
-                    "trades_seen": journal_size,
-                    "overrides": overrides,
-                    "overrides_path": str(settings.strategy_overrides_path),
-                },
-                indent=2,
-            )
+    if not settings.live_trading_enabled:
+        typer.echo(
+            "Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.",
+            err=True,
         )
-    elif args.command == "bootstrap-creds":
-        print(json.dumps(bootstrap_creds(settings), indent=2))
-    elif args.command == "reset-ledger":
-        print(json.dumps(reset_ledger(settings), indent=2))
+        raise typer.Exit(code=1)
+    smart_money_loop(settings)
+
+
+@app.command()
+def dashboard() -> None:
+    """Serve the read-only HTML dashboard at http://127.0.0.1:8765."""
+    serve(Settings())
+
+
+@app.command()
+def doctor() -> None:
+    """Read-only health check: validates .env, auth, endpoints, local state."""
+    run_doctor(Settings())
+
+
+@app.command("journal-stats")
+def cli_journal_stats() -> None:
+    """Print aggregated trade-journal statistics as JSON."""
+    typer.echo(json.dumps(journal_stats(Settings()), indent=2))
+
+
+@app.command("tune-strategy")
+def cli_tune_strategy() -> None:
+    """Run the auto-tuner once and print the resulting overrides as JSON."""
+    settings = Settings()
+    overrides, journal_size = maybe_tune(settings)
+    typer.echo(
+        json.dumps(
+            {
+                "auto_tune_enabled": settings.smart_auto_tune_enabled,
+                "min_trades_required": settings.smart_auto_tune_min_trades,
+                "trades_seen": journal_size,
+                "overrides": overrides,
+                "overrides_path": str(settings.strategy_overrides_path),
+            },
+            indent=2,
+        )
+    )
+
+
+@app.command("bootstrap-creds")
+def cli_bootstrap_creds() -> None:
+    """Derive CLOB API credentials from the private key and save them to .env."""
+    typer.echo(json.dumps(bootstrap_creds(Settings()), indent=2))
+
+
+@app.command("reset-ledger")
+def cli_reset_ledger() -> None:
+    """Reset the local paper-trading ledger (data/paper_state.json)."""
+    typer.echo(json.dumps(reset_ledger(Settings()), indent=2))
 
 
 if __name__ == "__main__":
-    main()
+    app()

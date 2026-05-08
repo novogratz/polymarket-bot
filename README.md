@@ -43,13 +43,19 @@ Tuned for a ~$90 bankroll. Runs in the foreground; `Ctrl+C` to stop.
 ## CLI commands
 
 ```bash
-python3 -B -m polymarket_bot.main auto-loop           # live loop (what the script invokes)
-python3 -B -m polymarket_bot.main dashboard           # local dashboard at http://127.0.0.1:8765
-python3 -B -m polymarket_bot.main journal-stats       # aggregate stats from the trade journal
-python3 -B -m polymarket_bot.main tune-strategy       # run the auto-tuner manually
-python3 -B -m polymarket_bot.main bootstrap-creds     # derive CLOB credentials from the wallet
-python3 -B -m polymarket_bot.main reset-ledger        # rebuild the local ledger from live state
+uv run pmbot auto-loop           # live loop (what the script invokes)
+uv run pmbot dashboard           # local dashboard at http://127.0.0.1:8765
+uv run pmbot doctor              # read-only health check (.env, auth, endpoints, local state)
+uv run pmbot journal-stats       # aggregate stats from the trade journal
+uv run pmbot tune-strategy       # run the auto-tuner manually
+uv run pmbot bootstrap-creds     # derive CLOB credentials from the wallet
+uv run pmbot reset-ledger        # rebuild the local ledger from live state
 ```
+
+The `pmbot` console script is registered via `[project.scripts]` in
+`pyproject.toml`. After `uv tool install -e .` it can be invoked directly as
+`pmbot <command>` from any directory; `python3 -B -m polymarket_bot.main <command>`
+remains supported as a fallback.
 
 ## Winning strategy
 
@@ -150,13 +156,13 @@ The bot reads `data/trade_journal.jsonl` every tick and writes bounded overrides
 To inspect the journal:
 
 ```bash
-python3 -B -m polymarket_bot.main journal-stats
+uv run pmbot journal-stats
 ```
 
 To run the auto-tuner manually (writes the overrides file once):
 
 ```bash
-python3 -B -m polymarket_bot.main tune-strategy
+uv run pmbot tune-strategy
 ```
 
 ## Main environment variables
@@ -268,13 +274,13 @@ Relayer credentials (`RELAYER_API_KEY`, `RELAYER_API_KEY_ADDRESS`) are different
 After the bot has been running for a while:
 
 ```bash
-python3 -B -m polymarket_bot.main journal-stats
+uv run pmbot journal-stats
 ```
 
 Prints global win rate, total PnL, breakdown by category / consensus / strategy / exit reason / entry-price bucket, and tightening suggestions when the sample exceeds 30 trades.
 
 ```bash
-python3 -B -m polymarket_bot.main tune-strategy
+uv run pmbot tune-strategy
 ```
 
 Runs the tuner manually and writes `data/strategy_overrides.json`. The same logic also runs automatically every tick when `POLYMARKET_SMART_AUTO_TUNE_ENABLED=1`.
@@ -282,7 +288,7 @@ Runs the tuner manually and writes `data/strategy_overrides.json`. The same logi
 ## Dashboard
 
 ```bash
-python3 -B -m polymarket_bot.main dashboard
+uv run pmbot dashboard
 ```
 
 Open `http://127.0.0.1:8765`. Refreshes every 5 seconds: bot mode, equity, open positions, recent trades, order IDs, scanner candidates, last-tick rejection reasons.

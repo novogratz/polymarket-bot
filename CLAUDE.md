@@ -40,25 +40,25 @@ uv run python -B -m unittest discover -s tests
 Dashboard:
 
 ```bash
-uv run python -B -m polymarket_bot.main dashboard
+uv run pmbot dashboard
 ```
 
 Trade-journal stats (per-bucket P&L, win rate, suggested tightenings):
 
 ```bash
-uv run python -B -m polymarket_bot.main journal-stats
+uv run pmbot journal-stats
 ```
 
 Run the auto-tuner manually (writes `data/strategy_overrides.json`):
 
 ```bash
-uv run python -B -m polymarket_bot.main tune-strategy
+uv run pmbot tune-strategy
 ```
 
 Live smart-money loop:
 
 ```bash
-POLYMARKET_ENABLE_LIVE_TRADING=1 uv run python -B -m polymarket_bot.main auto-loop
+POLYMARKET_ENABLE_LIVE_TRADING=1 uv run pmbot auto-loop
 ```
 
 ## Recommended live command

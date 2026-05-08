@@ -31,16 +31,16 @@ run:
 	bash scripts/run_live_70.sh
 
 dashboard:
-	$(UV) run python -B -m polymarket_bot.main dashboard
+	$(UV) run pmbot dashboard
 
 doctor:
-	$(UV) run python -B -m polymarket_bot.main doctor
+	$(UV) run pmbot doctor
 
 journal:
-	$(UV) run python -B -m polymarket_bot.main journal-stats
+	$(UV) run pmbot journal-stats
 
 tune:
-	$(UV) run python -B -m polymarket_bot.main tune-strategy
+	$(UV) run pmbot tune-strategy
 
 clean:
 	rm -rf build dist *.egg-info

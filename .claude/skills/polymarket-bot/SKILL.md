@@ -21,15 +21,16 @@ Use this skill when working in this repository: strategy code, filters, live com
 
 ```bash
 uv run python -B -m unittest discover -s tests
-uv run python -B -m polymarket_bot.main dashboard
-uv run python -B -m polymarket_bot.main journal-stats
-uv run python -B -m polymarket_bot.main tune-strategy
-POLYMARKET_ENABLE_LIVE_TRADING=1 uv run python -B -m polymarket_bot.main auto-loop
+uv run pmbot dashboard
+uv run pmbot doctor
+uv run pmbot journal-stats
+uv run pmbot tune-strategy
+POLYMARKET_ENABLE_LIVE_TRADING=1 uv run pmbot auto-loop
 ```
 
 Canonical live config: `bash scripts/run_live_70.sh` (~$90 bankroll).
 
-CLI surface: 6 commands (`auto-loop`, `dashboard`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`). Everything else has been removed.
+CLI surface: 7 Typer commands (`auto-loop`, `dashboard`, `doctor`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`). The Typer app is exposed as the `pmbot` console script via `[project.scripts]`; `python -m polymarket_bot.main <cmd>` continues to work as a fallback.
 
 ## Architecture
 
