@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import math
 import re
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -15,6 +17,7 @@ from .models import Candidate, utc_now
 
 
 COINBASE_EXCHANGE_URL = "https://api.exchange.coinbase.com"
+COINBASE_FALLBACK_SPOT_URL = "https://api.coinbase.com"
 
 
 @dataclass(frozen=True)
@@ -54,13 +57,25 @@ class BtcSignal:
 
 
 class CoinbaseBtcClient:
-    def __init__(self, base_url: str = COINBASE_EXCHANGE_URL, timeout: int = 15) -> None:
+    def __init__(
+        self,
+        base_url: str = COINBASE_EXCHANGE_URL,
+        fallback_url: str = COINBASE_FALLBACK_SPOT_URL,
+        timeout: int = 15,
+        max_retries: int = 3,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
+        self.fallback_url = fallback_url.rstrip("/")
         self.timeout = timeout
+        self.max_retries = max_retries
 
     def spot(self) -> float:
-        payload = self._get_json("/products/BTC-USD/ticker")
-        return float(payload["price"])
+        try:
+            payload = self._get_json(self.base_url, "/products/BTC-USD/ticker")
+            return float(payload["price"])
+        except Exception:
+            payload = self._get_json(self.fallback_url, "/v2/prices/BTC-USD/spot")
+            return float(payload["data"]["amount"])
 
     def annualized_volatility(self, *, days: int) -> float:
         end = utc_now()
@@ -72,7 +87,10 @@ class CoinbaseBtcClient:
                 "end": end.isoformat(),
             }
         )
-        candles = self._get_json(f"/products/BTC-USD/candles?{params}")
+        try:
+            candles = self._get_json(self.base_url, f"/products/BTC-USD/candles?{params}")
+        except Exception:
+            return 0.60
         closes = [float(item[4]) for item in sorted(candles, key=lambda row: row[0]) if len(item) >= 5]
         returns = [math.log(closes[index] / closes[index - 1]) for index in range(1, len(closes)) if closes[index - 1] > 0]
         if len(returns) < 24:
@@ -87,16 +105,34 @@ class CoinbaseBtcClient:
             fetched_at=utc_now(),
         )
 
-    def _get_json(self, path: str) -> Any:
-        request = urllib.request.Request(
-            f"{self.base_url}{path}",
-            headers={
-                "Accept": "application/json",
-                "User-Agent": "polymarket-bot/0.1",
-            },
-        )
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
+    def _get_json(self, base_url: str, path: str) -> Any:
+        last_exc: Exception | None = None
+        for attempt in range(max(1, self.max_retries)):
+            try:
+                request = urllib.request.Request(
+                    f"{base_url}{path}",
+                    headers={
+                        "Accept": "application/json",
+                        "User-Agent": "polymarket-bot/0.1",
+                    },
+                )
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                last_exc = exc
+                if exc.code in (502, 503, 504, 429) and attempt + 1 < self.max_retries:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise
+            except Exception as exc:
+                last_exc = exc
+                if attempt + 1 < self.max_retries:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("coinbase client exhausted retries without response")
 
 
 def choose_btc_edge_trade(
