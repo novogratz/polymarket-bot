@@ -554,16 +554,30 @@ class StrategyTests(unittest.TestCase):
             "shares": 100.0,
             "initial_shares": 100.0,
             "peak_pnl_pct": 1.2,
-            "sell_tiers_hit": [],
+            "sell_tiers_hit": ["0.5"],
             "exits": [],
         }
         plan = _sell_plan(position, 1.05, Settings())
         self.assertEqual(plan["reason"], "take_profit_100pct")
         self.assertEqual(plan["shares"], 50.0)
 
-        protected = _sell_plan({**position, "sell_tiers_hit": ["1.0"]}, 0.35, Settings())
+        protected = _sell_plan(
+            {**position, "sell_tiers_hit": ["0.5", "1.0"]}, 0.35, Settings()
+        )
         self.assertEqual(protected["reason"], "peak_profit_protection")
         self.assertEqual(protected["shares"], 100.0)
+
+    def test_sell_plan_fires_50pct_tier_first_when_unhit(self):
+        position = {
+            "shares": 100.0,
+            "initial_shares": 100.0,
+            "peak_pnl_pct": 0.6,
+            "sell_tiers_hit": [],
+            "exits": [],
+        }
+        plan = _sell_plan(position, 0.55, Settings())
+        self.assertEqual(plan["reason"], "take_profit_50pct")
+        self.assertEqual(plan["shares"], 25.0)
 
     def test_sell_plan_stop_loss_triggers_after_min_age(self):
         old_open = (utc_now() - timedelta(hours=2)).isoformat()
