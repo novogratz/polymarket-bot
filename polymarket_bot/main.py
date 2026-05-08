@@ -1494,6 +1494,7 @@ def _position_from_live_api(item: dict[str, object]) -> dict[str, object]:
     avg_price = _float(item.get("avgPrice"))
     current_price = _float(item.get("curPrice"), avg_price)
     stake = round(_float(item.get("initialValue"), size * avg_price), 2)
+    end_date_raw = item.get("endDate") or item.get("eventEndDate") or item.get("endDateIso")
     return {
         "status": "open",
         "opened_at": utc_now().isoformat(),
@@ -1514,6 +1515,7 @@ def _position_from_live_api(item: dict[str, object]) -> dict[str, object]:
         "live": True,
         "strategy": "live_sync",
         "synced_from_polymarket": True,
+        "end_date": str(end_date_raw) if end_date_raw else None,
     }
 
 
