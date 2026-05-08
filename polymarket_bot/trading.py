@@ -41,6 +41,30 @@ def _load_clob_types():
     ) from last_error
 
 
+# Polymarket migrated from USDC.e to pUSD on 2026-04-28. py-clob-client <=0.34.6
+# still references the legacy USDC.e contract for balance lookups, so we read
+# pUSD on-chain directly via JSON-RPC as a workaround.
+PUSD_TOKEN_ADDRESS = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
+DEFAULT_POLYGON_RPC_URL = "https://polygon-bor-rpc.publicnode.com"
+
+
+def read_pusd_balance(holder: str, rpc_url: str | None = None, timeout: int = 10) -> float:
+    import requests
+
+    rpc = rpc_url or DEFAULT_POLYGON_RPC_URL
+    addr_padded = holder.lower().replace("0x", "").rjust(64, "0")
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "eth_call",
+        "params": [{"to": PUSD_TOKEN_ADDRESS, "data": "0x70a08231" + addr_padded}, "latest"],
+    }
+    response = requests.post(rpc, json=payload, timeout=timeout).json()
+    if "result" not in response:
+        raise RuntimeError(f"pUSD RPC error: {response.get('error', response)}")
+    return int(response["result"], 16) / 1_000_000
+
+
 @dataclass(frozen=True)
 class LiveTradeResult:
     order: dict[str, Any]
@@ -153,43 +177,41 @@ class TradingSession:
         return self.settings.funder_address or self.legacy_client.wallet_address
 
     def live_available_balance(self) -> float:
-        if self.sdk_client is None:
-            return 0.0
-
         target_wallet = self.wallet_address
-        print(f"🔍 Checking balance for wallet: {target_wallet}")
+        print(f"🔍 Checking pUSD balance for wallet: {target_wallet}")
 
+        rpc_url = getattr(self.settings, "polygon_rpc_url", None) or DEFAULT_POLYGON_RPC_URL
         try:
-            asset_type, balance_params = _load_clob_types()
-            balance_info = self.sdk_client.get_balance_allowance(
-                balance_params(asset_type=asset_type.COLLATERAL)
-            )
+            balance = read_pusd_balance(target_wallet, rpc_url=rpc_url)
         except Exception as e:
-            print(f"❌ Balance check failed: {str(e)}")
-            return 0.0
+            print(f"❌ pUSD on-chain balance check failed: {str(e)}")
+            balance = 0.0
 
-        if not isinstance(balance_info, dict):
-            print(f"❌ Balance check returned unexpected type: {type(balance_info)}")
-            return 0.0
+        allowance: float | None = None
+        if self.sdk_client is not None:
+            try:
+                asset_type, balance_params = _load_clob_types()
+                balance_info = self.sdk_client.get_balance_allowance(
+                    balance_params(asset_type=asset_type.COLLATERAL)
+                )
+                if isinstance(balance_info, dict):
+                    allowance = self._normalize_amount(balance_info.get("allowance"))
+                    if allowance is None and isinstance(balance_info.get("allowances"), dict):
+                        allowance_values = [
+                            normalized
+                            for value in balance_info["allowances"].values()
+                            if (normalized := self._normalize_amount(value)) is not None
+                        ]
+                        allowance = max(allowance_values) if allowance_values else None
+            except Exception as e:
+                print(f"⚠️  SDK allowance check skipped: {str(e)}")
 
-        balance = self._normalize_amount(balance_info.get("balance"))
-        allowance = self._normalize_amount(balance_info.get("allowance"))
-        if allowance is None and isinstance(balance_info.get("allowances"), dict):
-            allowance_values = [
-                normalized
-                for value in balance_info["allowances"].values()
-                if (normalized := self._normalize_amount(value)) is not None
-            ]
-            allowance = max(allowance_values) if allowance_values else None
-        
-        print(f"💰 Live Balance: {balance} USDC | Allowance: {allowance} USDC")
-        
-        values = [value for value in (balance, allowance) if value is not None]
-        available = min(values) if values else 0.0
-        if available <= 0.0 and self.settings.assumed_live_balance_usd > 0.0:
+        print(f"💰 Live Balance: {balance} pUSD | Allowance: {allowance} (legacy USDC.e via SDK)")
+
+        if balance <= 0.0 and self.settings.assumed_live_balance_usd > 0.0:
             print(f"⚠️  Using POLYMARKET_ASSUME_LIVE_BALANCE_USD={self.settings.assumed_live_balance_usd}")
             return self.settings.assumed_live_balance_usd
-        return available
+        return balance
 
     def derive_or_create_api_creds(self) -> ApiCreds:
         if self.sdk_client is not None:
