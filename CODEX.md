@@ -1,109 +1,100 @@
-# Codex Guide
+# Guide Codex
 
-Use this file as the Codex entry point for the Polymarket bot.
+Fichier d'entrée Codex pour le bot Polymarket. Voir `CLAUDE.md` pour la version Claude Code (contenu équivalent).
 
-## Safety
+## Sécurité
 
-- Never reveal `.env` values, private keys, API secrets, or passphrases.
-- Keep live trading gated by `POLYMARKET_ENABLE_LIVE_TRADING=1`.
-- Do not add random or unfiltered live trade entry.
-- Preserve `data/paper_state.json` unless the user explicitly asks to reset local state.
+- Ne jamais révéler les valeurs de `.env`, clés privées, secrets API ou passphrases.
+- Ne pas contourner `POLYMARKET_ENABLE_LIVE_TRADING=1`.
+- Ne pas implémenter de trades live aléatoires ou non filtrés. Le chemin `noise_fallback` est la seule voie de trade forcé et est plafonné à $5 par trade et 2 trades par tick.
+- Préserver `data/paper_state.json`, `data/trade_journal.jsonl` et `data/strategy_overrides.json` sauf si l'utilisateur demande un reset explicite.
+- Aucun appel LLM (Codex, Claude, autre) dans le chemin de scan ou de sélection de trade.
+- Le bot n'a pas la capacité d'écrire ni de pusher du code source de lui-même.
 
-## Project Map
+## Carte du projet
 
-- `polymarket_bot/main.py`: CLI commands and strategy loops.
-- `polymarket_bot/smart_money.py`: autonomous smart-money copy-trading filters.
-- `polymarket_bot/bitcoin.py`: optional BTC threshold edge model.
-- `polymarket_bot/trading.py`: authenticated live BUY/SELL order placement and sizing.
-- `polymarket_bot/dashboard.py`: local real-time HTML dashboard.
-- `polymarket_bot/portfolio.py`: local ledger for paper and live positions.
-- `tests/test_strategy.py`: strategy and order-building tests.
+- `polymarket_bot/main.py` : commandes CLI et boucles. Orchestration du tick, sizing, journal de trades, commandes `journal-stats` et `tune-strategy`.
+- `polymarket_bot/smart_money.py` : leaderboards, fetch parallèle des trades, regroupement par token, scoring, reverse-lookup.
+- `polymarket_bot/auto_tuner.py` : overrides bornés depuis le trade journal (défensif).
+- `polymarket_bot/bitcoin.py` : modèle BTC threshold edge (Black-Scholes via volatilité).
+- `polymarket_bot/trading.py` : ordres BUY/SELL live et calcul du stake.
+- `polymarket_bot/dashboard.py` : dashboard local sur `http://127.0.0.1:8765`.
+- `polymarket_bot/portfolio.py` : ledger local, positions, ordres pending, exits.
+- `polymarket_bot/gamma.py` : client Gamma + reverse-lookup par clob_token_ids.
+- `polymarket_bot/strategy.py` : ranking des candidats.
+- `scripts/run_live_70.sh` : runner live canonique.
+- `tests/test_strategy.py` : 49 tests.
 
-## Commands
+## Commandes
 
-Run tests:
+Tests :
 
 ```bash
 python3 -B -m unittest discover -s tests
 ```
 
-Run the dashboard:
+Dashboard :
 
 ```bash
 python3 -B -m polymarket_bot.main dashboard
 ```
 
-Run the autonomous smart-money loop:
+Stats du journal :
+
+```bash
+python3 -B -m polymarket_bot.main journal-stats
+```
+
+Auto-tuner manuel :
+
+```bash
+python3 -B -m polymarket_bot.main tune-strategy
+```
+
+Boucle smart-money autonome :
 
 ```bash
 POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
 ```
 
-Run it faster:
+## Commande live recommandée
 
 ```bash
-POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B -m polymarket_bot.main auto-loop
+bash scripts/run_live_70.sh
 ```
 
-Recommended live command:
+Voir `CLAUDE.md` pour la liste complète des paramètres et la séquence d'un tick.
 
-```bash
-POLYMARKET_ENABLE_LIVE_TRADING=1 \
-  POLYMARKET_SYNC_LIVE_POSITIONS=0 \
-  POLYMARKET_SMART_CATEGORIES=OVERALL,FINANCE,ECONOMICS,TECH,POLITICS,SPORTS,CULTURE,WEATHER \
-  POLYMARKET_SMART_DISCOVERY_KEYWORDS='election,trump,senate,congress,fed,inflation,cpi,unemployment,gdp,weather,rain,snow,hurricane,temperature,box office,movie,earnings,stock,nasdaq' \
-  POLYMARKET_SMART_ALLOW_CRYPTO=1 \
-  POLYMARKET_SMART_CRYPTO_MIN_BUY_PRICE=0.70 \
-  POLYMARKET_SMART_CRYPTO_MIN_HOURS_TO_CLOSE=0 \
-  POLYMARKET_SMART_CRYPTO_MAX_HOURS_TO_CLOSE=48 \
-  POLYMARKET_MAX_POSITION_USD=25 \
-  POLYMARKET_SMART_MAX_TRADE_USD=25 \
-  POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION=0.50 \
-  POLYMARKET_SMART_MIN_CONSENSUS=2 \
-  POLYMARKET_SMART_FALLBACK_CONSENSUS=2 \
-  POLYMARKET_SMART_TRADE_LOOKBACK_MINUTES=30 \
-  POLYMARKET_SMART_MAX_SIGNAL_AGE_MINUTES=5 \
-  POLYMARKET_SMART_MIN_TRADE_USD=1 \
-  POLYMARKET_SMART_MIN_COPIED_USDC=75 \
-  POLYMARKET_SMART_MAX_CHASE_PREMIUM=0.25 \
-  POLYMARKET_SMART_PRIORITY_CATEGORY_BONUS=8 \
-  POLYMARKET_SMART_SPORTS_SCORE_PENALTY=12 \
-  POLYMARKET_SMART_MAX_SPORTS_POSITIONS=3 \
-  POLYMARKET_SMART_SOON_HOURS=168 \
-  POLYMARKET_SMART_MAX_HOURS_TO_CLOSE=48 \
-  POLYMARKET_SMART_LEADERBOARD_LIMIT=100 \
-  POLYMARKET_SMART_MIN_HOURS_TO_CLOSE=0.01 \
-  POLYMARKET_SMART_MAX_ENTRY_SLIPPAGE=0.25 \
-  POLYMARKET_SMART_MIN_BUY_PRICE=0.01 \
-  POLYMARKET_SMART_MAX_BUY_PRICE=0.99 \
-  POLYMARKET_SMART_MAX_SPREAD=0.18 \
-  POLYMARKET_AUTO_INTERVAL_SECONDS=10 \
-  python3 -B -m polymarket_bot.main auto-loop
-```
+## Stratégie pour gagner de l'argent
 
-Each smart-money loop tick prints a `scan_report` with the selected opportunity, top considered opportunities, trader/trade counts, grouped tokens, rejection reasons, and sell exits. Opportunities include `selection_reason` and `selection_metrics`. The scan path is deterministic Python plus Polymarket APIs; do not add Codex, Claude, or LLM calls to scanning or trade selection.
+Copy-trading smart-money. Le bot attend que des wallets profitables (top leaderboard mensuel, PnL ≥$1k, volume ≥$2k, ROI ≥3%) achètent le même token dans une fenêtre courte (30 min), puis miroite ce flow.
 
-## Strategy
+### L'edge
 
-The default autonomous strategy is smart-money copy trading. It requires profitable leaderboard wallets, recent BUY consensus on the same token, size filters, spread filters, price-band filters, and duplicate-position checks before live entry. A tick may place multiple $5-capped orders across qualified signals until funds, per-tick cap, or signal exhaustion stops it.
+Les wallets en haut des leaderboards mensuels avec PnL et volume significatifs ont en moyenne un edge informationnel sur les marchés qu'ils tradent. Quand plusieurs achètent le même token simultanément, le signal collectif est plus fort qu'un wallet isolé. Le bot copie.
 
-Before buying, the bot syncs live Polymarket positions into the ledger and checks live open positions for deterministic exits: default +100%/+200%/+300% partial profit-taking, positive-PnL near-expiry exits, and peak giveback protection. Exits use SELL orders and are recorded in the local ledger.
+### Conditions d'entrée
 
-BTC edge trading is optional and separate.
+- Trades BUY récents de wallets qualifiés (PnL/volume/ROI/recency).
+- Consensus multi-wallets sur le même token.
+- Assez d'USDC copié.
+- Marché tradable : spread absolu et relatif serrés, ask dans la bande de prix, pas trop proche de l'expiration.
+- Pas de duplicate market ni event-level (sports).
+- Sizing pondéré par conviction (0.55x à 2.5x la base).
 
-## Money-Making Logic
+### Sorties
 
-The bot should try to make money by following high-quality public order flow, not by guessing or forcing trades. The smart-money strategy looks for multiple profitable leaderboard wallets buying the same token recently, then checks that the market can be entered without a bad fill.
+- Take-profit ladder +100%/+200%/+300% partiel.
+- Trailing stop armé à +25%, giveback 50%.
+- Peak-protect armé à +100%, sortie sous +40%.
+- Stop-loss -40% après 15 min en position.
+- Cohort-sell exit (active SELL detection 120 min lookback) ou cohort-silent (pas de fresh BUY).
+- Exit positif près de l'expiration.
 
-Keep these requirements intact:
+### Auto-tuner
 
-- Consensus beats single-wallet signals.
-- Tight spreads beat illiquid markets.
-- Size caps protect the account from one bad thesis.
-- Duplicate-position checks prevent accidental overexposure.
-- Profit ladders protect large unrealized gains from round-tripping to zero.
-- Live position sync beats stale local dashboard state.
-- Near-expiry and crypto micro-market filters reduce noisy forced trades.
-- Refusing to trade is correct when the signal is weak.
+Lit le trade journal à chaque tick. Pause sous 30 trades clôturés. Resserre les filtres et le sizing après les patterns perdants. Défensif uniquement.
 
-Never describe this as guaranteed profit. Describe it as an edge-seeking copy-trading system with execution and risk filters.
+### Pas un profit garanti
+
+L'edge vient de copier le flow public fort en évitant les mauvais fills. No-signal / no-trade est une position valide.

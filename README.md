@@ -38,6 +38,82 @@ python3 -B -m polymarket_bot.main tune-strategy       # lance l auto-tuner manue
 python3 -B -m polymarket_bot.main dashboard           # dashboard local http://127.0.0.1:8765
 ```
 
+## Stratégie pour gagner de l'argent
+
+### L'edge
+
+L'hypothèse : les wallets en haut des leaderboards mensuels Polymarket avec un PnL positif et un volume significatif ont en moyenne un edge informationnel ou analytique sur les marchés qu'ils tradent. Quand plusieurs de ces wallets achètent le même token dans une fenêtre courte (30 min), le signal collectif est plus fort qu'un wallet isolé. Le bot copie ce flow avec un sizing borné.
+
+Risques que la stratégie évite explicitement :
+
+- **Edge factice** : un wallet chanceux sur un trade isolé. Filtré par seuils ROI / volume / consensus multi-wallets.
+- **Mauvaise exécution** : payer le spread efface l'edge entier. Filtré par spread absolu, spread relatif, chase premium maximum.
+- **Concentration** : 6 paris sur le même évènement. Filtré par dédup par market et par event-slug pour les sports.
+- **Round-trip à zéro** : un winner qui retourne plat. Filtré par take-profit ladder + trailing stop + peak-protect.
+- **Drawdown sans sortie** : un loser qui sombre. Filtré par stop-loss après âge minimum.
+- **Cohort qui tourne** : les wallets d'entrée vendent. Filtré par cohort-sell detection active (lit les SELL trades du cohort dans la fenêtre de lookback).
+
+### Conditions d'entrée
+
+- Trades BUY récents de wallets leaderboard qui passent les planchers PnL ($1k+), volume ($2k+), ROI (3%+).
+- Consensus multi-wallets sur le même token (relâché en passes de fallback quand sous le target d'ouvertures).
+- Assez d'USDC copié pour matter, échelonné par tier de conviction.
+- Marché tradable : spreads serrés (absolu ≤8c, relatif ≤45%), ask dans 0.03–0.96, pas trop proche de l'expiration.
+- Pas de position ouverte existante sur le même marché ni sur le même token. Sports respectent un cap par évènement.
+- `POLYMARKET_ENABLE_LIVE_TRADING=1` explicite.
+
+### Sizing par conviction
+
+Chaque trade = `cash * SMART_POSITION_PCT (0.18) * conviction_multiplier`, plafonné par `SMART_MAX_POSITION_CEILING_USD ($150)`.
+
+```
+crypto micro                     -> 0.55x
+weak (<2-wallet $250)            -> 0.7x
+2-wallet $250+                   -> 0.9x
+2-wallet $1k+                    -> 1.1x
+3-wallet $250+                   -> 1.1x
+3-wallet $500+                   -> 1.3x
+4-wallet $1k+                    -> 1.6x
+4-wallet $2k+                    -> 2.0x
+5-wallet $5k+                    -> 2.5x
+```
+
+À $90 cash : signal weak ≈ $11, signal mid 4-wallet $1k ≈ $26, very-high 5-wallet $5k ≈ $40.
+
+Le `SMART_CASH_FLOOR_PCT=0.05` redistribue dynamiquement le budget de déploiement entre les opportunités restantes du tick pour viser ~95% du bankroll déployé.
+
+### Sorties (avant chaque nouvelle entrée)
+
+- **Take-profit ladder** par défaut +100% / +200% / +300%, ventes partielles.
+- **Trailing stop** armé à +25% de pic, sortie sur 50% de giveback tant que P&L positif.
+- **Peak-protect** armé à +100% de pic, sortie sur retour à +40%.
+- **Stop-loss** à -40% après 15 min en position (ne tire pas si peak-protect déjà armé).
+- **Cohort-sell exit** si un wallet d'entrée a VENDU le token dans la fenêtre lookback.
+- **Cohort-silent exit** si aucun wallet du cohort n'a réacheté.
+- **Exit positif près de l'expiration** : 20 min avant clôture si P&L ≥+5%.
+
+### Auto-tuner défensif
+
+Le bot adapte ses paramètres à partir des outcomes réels du journal :
+
+| Si | Action |
+|---|---|
+| Stop-loss > 40% des trades | Resserre `MAX_CHASE_PREMIUM` ×0.80 et `MAX_RELATIVE_SPREAD` ×0.85 |
+| Trades consensus=2 PnL moyen < -$0.30 (≥20 sample) | Monte `MIN_CONSENSUS` à 3 |
+| Sports PnL moyen < -$0.30 (≥15 sample) | Bump `SPORTS_SCORE_PENALTY` ×1.5 |
+| Win rate < 30% | Monte `MIN_COPIED_USDC` ×1.5 |
+| PnL moyen < -$0.20 | Réduit `POSITION_PCT` ×0.75 |
+
+Pause sous 30 trades clôturés pour éviter l'overfit. **Défensif uniquement** : resserre après pertes, ne relâche pas après gains. Désactiver : `POLYMARKET_SMART_AUTO_TUNE_ENABLED=0`.
+
+### Ce que la stratégie ne fait pas
+
+- Ne pas inventer une opinion sur un marché sans signal. **No-signal / no-trade** est une position valide.
+- Ne pas trader 24/7. Les heures creuses restent creuses.
+- Ne pas modifier son code source ni pusher sur git.
+- Ne pas appeler de LLM dans la boucle de trading.
+- Ne pas garantir de profit. C'est un système qui cherche un edge.
+
 ## Capacites du bot
 
 - **Smart-money copy-trading:** scan multi-categories des leaderboards Polymarket, fetch parallele des trades recents, regroupement par token, exigence de consensus multi-wallets.
