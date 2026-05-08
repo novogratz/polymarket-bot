@@ -671,17 +671,21 @@ def _execute_sell_strategy(
                 shares=plan["shares"],
                 reason=str(plan["reason"]),
             )
-        except ValueError as exc:
+        except Exception as exc:
+            message = str(exc)
+            print(f"⚠️  sell skipped on {position.get('question')}: {type(exc).__name__}: {message}", flush=True)
             exit_report.append(
                 {
                     "market_id": position.get("market_id"),
                     "outcome": position.get("outcome"),
                     "action": "skip_sell",
-                    "reason": str(exc),
+                    "reason": f"{type(exc).__name__}: {message}",
                     "pnl_pct": round(current_pnl_pct, 4),
                     "peak_pnl_pct": round(float(position.get("peak_pnl_pct", 0.0)), 4),
                 }
             )
+            if "balance is not enough" in message.lower() or "allowance" in message.lower():
+                position.setdefault("sell_blocked_reason", "active_sell_order_pending")
             continue
 
         if str(plan["reason"]).startswith("take_profit_"):
