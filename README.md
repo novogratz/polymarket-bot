@@ -83,6 +83,19 @@ Reset the dry-run ledger with `rm data/dry_run_state.json` and run the
 loop again. `POLYMARKET_DRY_RUN=1 uv run pmbot doctor` prints the swap
 and verdict so you can confirm the simulation is correctly wired.
 
+## Quiet output
+
+Set `POLYMARKET_QUIET=1` to compress each tick to two lines (`▶ tick
+start` plus a single compact JSON summary). Quiet mode suppresses the
+per-leaderboard pulls, parallel trade fetch progress, reverse-lookup
+chatter, balance-check banner, and the BUY/SELL JSON response dumps
+while still printing one-line `🚀 BUY` / `💸 SELL` records, errors, and
+warnings. Combine with dry-run for a minimal simulation feed:
+
+```bash
+POLYMARKET_DRY_RUN=1 POLYMARKET_QUIET=1 uv run pmbot auto-loop
+```
+
 ## Winning strategy
 
 ### The edge

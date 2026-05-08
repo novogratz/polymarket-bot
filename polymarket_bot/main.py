@@ -40,6 +40,12 @@ from .trading import build_client, execute_live_sell, execute_live_trade
 from .strategy import rank_markets
 
 
+def _step(settings: Settings, msg: str = "") -> None:
+    """Print a progress line unless POLYMARKET_QUIET=1 silences intermediate steps."""
+    if not settings.quiet:
+        print(msg, flush=True)
+
+
 def load_candidates(settings: Settings):
     client = GammaClient(settings.gamma_base_url)
     now = utc_now()
@@ -212,43 +218,43 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 flush=True,
             )
             settings = apply_overrides(settings, overrides)
-        elif journal_size < settings.smart_auto_tune_min_trades:
+        elif journal_size < settings.smart_auto_tune_min_trades and not settings.quiet:
             print(
                 f"   auto-tune: paused ({journal_size}/{settings.smart_auto_tune_min_trades} closed trades)",
                 flush=True,
             )
-    print("   loading markets...", flush=True)
+    _step(settings, "   loading markets...")
     candidates = load_smart_candidates(settings)
-    print(f"   markets: {len(candidates)} candidates", flush=True)
+    _step(settings, f"   markets: {len(candidates)} candidates")
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
     if settings.dry_run:
-        print("   [DRY-RUN] skipping live-position sync (using simulated ledger only)", flush=True)
+        _step(settings, "   [DRY-RUN] skipping live-position sync (using simulated ledger only)")
         sync_report = []
     elif settings.sync_live_positions:
-        print("   syncing live positions...", flush=True)
+        _step(settings, "   syncing live positions...")
         sync_report = _sync_live_positions(settings, portfolio)
-        print(f"   sync actions: {len(sync_report)}", flush=True)
+        _step(settings, f"   sync actions: {len(sync_report)}")
     else:
         sync_report = []
     portfolio.mark_to_market(candidates)
     open_count = portfolio.summary()["open_positions"]
-    print(f"   open positions: {open_count}", flush=True)
+    _step(settings, f"   open positions: {open_count}")
 
     client = build_client(settings)
     pending_report = _cancel_stale_pending_orders(client, settings, portfolio)
     if pending_report:
-        print(f"   pending orders cleared: {len(pending_report)}", flush=True)
+        _step(settings, f"   pending orders cleared: {len(pending_report)}")
     live_open_count = sum(
         1 for p in portfolio.positions if p.get("status") == "open" and p.get("live")
     )
     if settings.smart_cohort_exit_enabled and live_open_count:
-        print(f"   cohort-exit check on {live_open_count} live position(s)...", flush=True)
+        _step(settings, f"   cohort-exit check on {live_open_count} live position(s)...")
     cohort_exit_tokens, whale_exit_report = _detect_cohort_exits(settings, portfolio)
     if cohort_exit_tokens:
-        print(f"   cohort flipped on {len(cohort_exit_tokens)} token(s) -> exit", flush=True)
+        _step(settings, f"   cohort flipped on {len(cohort_exit_tokens)} token(s) -> exit")
 
     require_saved_api_creds(settings)
-    print("   running sell strategy...", flush=True)
+    _step(settings, "   running sell strategy...")
     exit_report = _execute_sell_strategy(
         client,
         settings,
@@ -258,14 +264,14 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     )
     sells = sum(1 for e in exit_report if e.get("action") == "sell")
     if sells:
-        print(f"   sells executed: {sells}", flush=True)
+        _step(settings, f"   sells executed: {sells}")
 
     try:
         live_cash = client.live_available_balance()
         portfolio.cash = round(live_cash, 2)
-        print(f"   live cash: ${portfolio.cash:.2f}", flush=True)
+        _step(settings, f"   live cash: ${portfolio.cash:.2f}")
     except Exception as exc:
-        print(f"   live cash refresh failed: {type(exc).__name__}: {exc}", flush=True)
+        print(f"   live cash refresh failed: {type(exc).__name__}: {exc}")
 
     # 2. CATEGORY DIVERSIFICATION: Count open categories
     open_categories: dict[str, int] = {}
@@ -291,7 +297,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         and not portfolio.has_open_event_position(candidate)
     ]
 
-    print(f"   smart-money scan over {len(eligible_candidates)} eligible candidate(s)...", flush=True)
+    _step(settings, f"   smart-money scan over {len(eligible_candidates)} eligible candidate(s)...")
     smart_data = fetch_smart_money_data(settings)
 
     if settings.smart_reverse_lookup_enabled:
@@ -321,10 +327,10 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 existing_tokens_eligible.add(extra.token_id)
                 added += 1
             if added:
-                print(f"   eligible after reverse-lookup: {len(eligible_candidates)} (+{added})", flush=True)
+                _step(settings, f"   eligible after reverse-lookup: {len(eligible_candidates)} (+{added})")
 
     report = analyze_smart_money_with_data(eligible_candidates, settings, smart_data)
-    print(f"   strict scan: {len(report.opportunities)} opportunity(ies)", flush=True)
+    _step(settings, f"   strict scan: {len(report.opportunities)} opportunity(ies)")
     signal = report.selected
     strategy = "smart_money"
     opportunities = list(report.opportunities)
@@ -338,7 +344,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             smart_min_consensus=max(2, settings.smart_fallback_consensus),
         )
         fallback_report = analyze_smart_money_with_data(eligible_candidates, fallback_settings, smart_data)
-        print(f"   relaxed scan: {len(fallback_report.opportunities)} opportunity(ies)", flush=True)
+        _step(settings, f"   relaxed scan: {len(fallback_report.opportunities)} opportunity(ies)")
         seen_tokens = {opp.candidate.token_id for opp in opportunities if opp.candidate.token_id}
         for opp in fallback_report.opportunities:
             token_id = opp.candidate.token_id
@@ -371,7 +377,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 ),
             )
             deep_report = analyze_smart_money_with_data(eligible_candidates, deep_settings, smart_data)
-            print(f"   deep fallback: {len(deep_report.opportunities)} opportunity(ies)", flush=True)
+            _step(settings, f"   deep fallback: {len(deep_report.opportunities)} opportunity(ies)")
             for opp in deep_report.opportunities:
                 token_id = opp.candidate.token_id
                 if token_id and token_id in seen_tokens:
@@ -576,12 +582,12 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 except ValueError as exc:
                     if _is_funds_error(str(exc)):
                         break
-                    print(f"   noise fallback skipped: {exc}", flush=True)
+                    _step(settings, f"   noise fallback skipped: {exc}")
                     continue
                 except Exception as exc:
                     if _is_unfilled_market_order_error(str(exc)) or _is_funds_error(str(exc)):
                         continue
-                    print(f"   noise fallback error: {type(exc).__name__}: {exc}", flush=True)
+                    print(f"   noise fallback error: {type(exc).__name__}: {exc}")
                     continue
 
     portfolio.save(settings.state_path)
@@ -609,10 +615,10 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     }
     if settings.btc_edge_integrated:
         try:
-            print("   running btc-edge tick...", flush=True)
+            _step(settings, "   running btc-edge tick...")
             response["btc_edge"] = btc_edge_once(settings)
         except Exception as exc:
-            print(f"   btc-edge tick failed: {type(exc).__name__}: {exc}", flush=True)
+            print(f"   btc-edge tick failed: {type(exc).__name__}: {exc}")
             response["btc_edge"] = {"error": f"{type(exc).__name__}: {exc}"}
     return response
 
@@ -834,18 +840,19 @@ def _reverse_lookup_smart_money_markets(
     top_tokens = sorted(flow_by_token.items(), key=lambda kv: kv[1], reverse=True)[
         : max(1, settings.smart_reverse_lookup_max_tokens)
     ]
-    print(
-        f"   reverse-lookup: fetching markets for {len(top_tokens)} smart-money token(s) not in scan...",
-        flush=True,
-    )
+    if not settings.quiet:
+        print(
+            f"   reverse-lookup: fetching markets for {len(top_tokens)} smart-money token(s) not in scan...",
+            flush=True,
+        )
     gamma = GammaClient(settings.gamma_base_url)
     try:
         markets = gamma.get_markets_by_clob_token_ids([token for token, _ in top_tokens])
     except Exception as exc:
-        print(f"   reverse-lookup failed: {type(exc).__name__}: {exc}", flush=True)
+        print(f"   reverse-lookup failed: {type(exc).__name__}: {exc}")
         return []
     if not markets:
-        print("   reverse-lookup: 0 markets returned by Gamma (clob_token_ids filter may be unsupported)", flush=True)
+        _step(settings, "   reverse-lookup: 0 markets returned by Gamma (clob_token_ids filter may be unsupported)")
         return []
     smart_settings = replace(
         settings,
@@ -855,10 +862,11 @@ def _reverse_lookup_smart_money_markets(
         min_volume_usd=min(settings.min_volume_usd, settings.smart_reverse_lookup_min_volume_usd),
     )
     new_candidates = rank_markets(markets, smart_settings)
-    print(
-        f"   reverse-lookup: gamma returned {len(markets)} market(s), {len(new_candidates)} survived ranking",
-        flush=True,
-    )
+    if not settings.quiet:
+        print(
+            f"   reverse-lookup: gamma returned {len(markets)} market(s), {len(new_candidates)} survived ranking",
+            flush=True,
+        )
     return new_candidates
 
 
@@ -1399,7 +1407,7 @@ def _append_trade_journal(settings: Settings, position: dict[str, object], reaso
         with path.open("a") as fh:
             fh.write(json.dumps(record) + "\n")
     except Exception as exc:
-        print(f"⚠️  trade journal write failed: {type(exc).__name__}: {exc}", flush=True)
+        print(f"⚠️  trade journal write failed: {type(exc).__name__}: {exc}")
 
 
 def _position_age_minutes(position: dict[str, object]) -> float:
@@ -1583,7 +1591,10 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                     "message": str(exc),
                 },
             }
-        print(json.dumps(result, indent=2), flush=True)
+        if settings.quiet:
+            print(json.dumps(result), flush=True)
+        else:
+            print(json.dumps(result, indent=2), flush=True)
         if settings.auto_max_ticks > 0 and tick >= settings.auto_max_ticks:
             break
         time.sleep(settings.auto_interval_seconds)

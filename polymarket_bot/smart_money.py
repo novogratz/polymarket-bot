@@ -307,7 +307,7 @@ def fetch_smart_money_data(
         return True
 
     qualified = [t for t in traders if _qualifies(t)]
-    if qualified:
+    if qualified and not settings.quiet:
         print(
             f"      pulling trades for {len(qualified)} qualified trader(s)"
             f" (concurrency={max(1, settings.smart_trade_fetch_concurrency)})...",
@@ -329,7 +329,9 @@ def fetch_smart_money_data(
             futures = {executor.submit(_pull, trader): trader for trader in qualified}
             for future in as_completed(futures):
                 traders_used += 1
-                if traders_used == 1 or traders_used % 50 == 0 or traders_used == len(qualified):
+                if not settings.quiet and (
+                    traders_used == 1 or traders_used % 50 == 0 or traders_used == len(qualified)
+                ):
                     print(
                         f"      trades fetched: {traders_used}/{len(qualified)} (running total: {len(trades)})",
                         flush=True,
@@ -338,7 +340,9 @@ def fetch_smart_money_data(
     else:
         for trader in qualified:
             traders_used += 1
-            if traders_used == 1 or traders_used % 50 == 0 or traders_used == len(qualified):
+            if not settings.quiet and (
+                traders_used == 1 or traders_used % 50 == 0 or traders_used == len(qualified)
+            ):
                 print(
                     f"      trades fetched: {traders_used}/{len(qualified)} (running total: {len(trades)})",
                     flush=True,
@@ -531,7 +535,8 @@ def _top_traders(client: DataApiClient, settings: Settings) -> list[SmartTrader]
     periods = _time_periods(settings)
     combos = [(period, category) for period in periods for category in categories]
     for index, (period, category) in enumerate(combos, 1):
-        print(f"      leaderboard {index}/{len(combos)} {period}/{category}...", flush=True)
+        if not settings.quiet:
+            print(f"      leaderboard {index}/{len(combos)} {period}/{category}...", flush=True)
         try:
             category_traders = client.leaderboard(
                 category=category,
@@ -551,7 +556,8 @@ def _top_traders(client: DataApiClient, settings: Settings) -> list[SmartTrader]
             seen.add(trader.wallet.lower())
             traders.append(trader)
             added += 1
-        print(f"         +{added} new (total {len(traders)})", flush=True)
+        if not settings.quiet:
+            print(f"         +{added} new (total {len(traders)})", flush=True)
     return traders
 
 

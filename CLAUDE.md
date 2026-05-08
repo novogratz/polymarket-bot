@@ -73,6 +73,20 @@ position sync is skipped, and state is persisted to
 `data/dry_run_state.json` + `data/dry_run_journal.jsonl` so the live
 paper-trading ledger stays untouched.
 
+Quiet mode (compresses each tick to 2 lines: `▶ tick start` + a single
+compact JSON summary; suppresses leaderboard pulls, trade fetches,
+reverse-lookup chatter, and BUY/SELL JSON dumps):
+
+```bash
+POLYMARKET_QUIET=1 uv run pmbot auto-loop
+```
+
+Combine with dry-run for a clean simulation feed:
+
+```bash
+POLYMARKET_DRY_RUN=1 POLYMARKET_QUIET=1 uv run pmbot auto-loop
+```
+
 ## Recommended live command
 
 Use the canonical script to avoid copy-paste pitfalls:

@@ -190,6 +190,7 @@ class Settings:
     )
     live_trading_enabled: bool = os.getenv("POLYMARKET_ENABLE_LIVE_TRADING", "").lower() in {"1", "true", "yes"}
     dry_run: bool = _bool_env("POLYMARKET_DRY_RUN", False)
+    quiet: bool = _bool_env("POLYMARKET_QUIET", False)
 
     def __post_init__(self) -> None:
         """Swap ledger and journal paths to dedicated dry-run files.
