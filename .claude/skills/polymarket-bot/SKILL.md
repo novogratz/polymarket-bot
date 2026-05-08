@@ -21,6 +21,9 @@ Use this skill when working in this repository: strategy code, filters, live com
 
 ```bash
 uv run python -B -m unittest discover -s tests
+uv run pmbot --version
+uv run pmbot status                                  # snapshot rapide (mode, équité, positions, journal)
+uv run pmbot positions                               # table CLI des positions ouvertes, triées par PnL desc
 uv run pmbot dashboard
 uv run pmbot doctor
 uv run pmbot journal-stats
@@ -31,7 +34,7 @@ POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop          # simulated, no SDK calls, 
 
 Canonical live config: `bash scripts/run_live_70.sh` (~$90 bankroll).
 
-CLI surface: 7 Typer commands (`auto-loop`, `dashboard`, `doctor`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`). The Typer app is exposed as the `pmbot` console script via `[project.scripts]`; `python -m polymarket_bot.main <cmd>` continues to work as a fallback.
+CLI surface: 9 Typer commands (`auto-loop`, `dashboard`, `doctor`, `status`, `positions`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`) plus the global `--version` / `-V` option. The Typer app is exposed as the `pmbot` console script via `[project.scripts]`; `python -m polymarket_bot.main <cmd>` continues to work as a fallback. `status` and `positions` are read-only — no SDK calls, no network — and automatically pick up the dry-run ledger when `POLYMARKET_DRY_RUN=1` is set. ANSI colors auto-disable when stdout is not a TTY (or when `NO_COLOR=1`); set `POLYMARKET_FORCE_COLOR=1` to keep them through pipes.
 
 ## Architecture
 

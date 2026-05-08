@@ -1217,6 +1217,180 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
     return None
 
 
+def _ledger_age_seconds(state_path) -> float | None:
+    try:
+        return max(0.0, time.time() - state_path.stat().st_mtime)
+    except (FileNotFoundError, OSError):
+        return None
+
+
+def _humanize_seconds(seconds: float) -> str:
+    if seconds < 60:
+        return f"{int(seconds)}s ago"
+    if seconds < 3600:
+        return f"{int(seconds / 60)}m ago"
+    if seconds < 86400:
+        return f"{seconds / 3600:.1f}h ago"
+    return f"{seconds / 86400:.1f}d ago"
+
+
+def _humanize_close_eta(end_iso: str | None, now=None) -> str:
+    if not end_iso:
+        return "—"
+    parsed = parse_dt(end_iso)
+    if parsed is None:
+        return "—"
+    reference = now if now is not None else utc_now()
+    delta = (parsed - reference).total_seconds()
+    if delta < 0:
+        return f"expired {_humanize_seconds(-delta)}"
+    if delta < 60:
+        return f"in {int(delta)}s"
+    if delta < 3600:
+        return f"in {int(delta / 60)}m"
+    if delta < 86400:
+        return f"in {delta / 3600:.1f}h"
+    return f"in {delta / 86400:.1f}d"
+
+
+def status_summary(settings: Settings) -> dict[str, object]:
+    """Snapshot rapide du bot : mode, ledger, journal. Read-only."""
+    portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+    summary = portfolio.summary()
+    age = _ledger_age_seconds(settings.state_path)
+    journal_records = 0
+    journal_path = settings.trade_journal_path
+    if journal_path.exists():
+        try:
+            journal_records = sum(1 for line in journal_path.read_text().splitlines() if line.strip())
+        except OSError:
+            journal_records = 0
+    if settings.dry_run:
+        mode = "dry-run"
+    elif settings.live_trading_enabled:
+        mode = "live"
+    else:
+        mode = "disabled"
+    return {
+        "mode": mode,
+        "quiet": settings.quiet,
+        "state_path": str(settings.state_path),
+        "state_exists": settings.state_path.exists(),
+        "ledger_age_seconds": age,
+        "journal_path": str(journal_path),
+        "journal_records": journal_records,
+        "cash": summary["cash"],
+        "invested": summary["invested"],
+        "unrealized_pnl": summary["unrealized_pnl"],
+        "equity": summary["equity"],
+        "open_positions": summary["open_positions"],
+    }
+
+
+def print_status(settings: Settings) -> dict[str, object]:
+    from . import _ui
+
+    snapshot = status_summary(settings)
+    mode = snapshot["mode"]
+    if mode == "live":
+        mode_label = _ui.red(_ui.bold("LIVE"))
+    elif mode == "dry-run":
+        mode_label = _ui.yellow(_ui.bold("DRY-RUN"))
+    else:
+        mode_label = _ui.dim("disabled")
+    typer.echo(f"{_ui.bold('Mode:')}        {mode_label}{' ' + _ui.dim('(quiet)') if snapshot['quiet'] else ''}")
+    typer.echo(f"{_ui.bold('Ledger:')}      {snapshot['state_path']}")
+    if snapshot["state_exists"]:
+        age = snapshot["ledger_age_seconds"]
+        age_label = _humanize_seconds(age) if age is not None else "?"
+        typer.echo(f"             last write {_ui.dim(age_label)}")
+    else:
+        typer.echo(f"             {_ui.dim('not yet created')}")
+    journal_records = snapshot["journal_records"]
+    typer.echo(f"{_ui.bold('Journal:')}     {snapshot['journal_path']} {_ui.dim(f'({journal_records} closed trades)')}")
+    typer.echo("")
+    cash = float(snapshot["cash"])
+    invested = float(snapshot["invested"])
+    unrealized = float(snapshot["unrealized_pnl"])
+    equity = float(snapshot["equity"])
+    typer.echo(f"  Cash         ${cash:>9.2f}")
+    typer.echo(f"  Invested     ${invested:>9.2f}")
+    typer.echo(f"  Unrealized   {_ui.colorize_pnl(unrealized):>17}")
+    typer.echo(f"  {_ui.bold('Equity')}       ${equity:>9.2f}")
+    typer.echo(f"  Positions    {snapshot['open_positions']:>9}")
+    return snapshot
+
+
+def format_positions_table(settings: Settings) -> str:
+    """Format les positions ouvertes en table CLI alignée. Retourne une chaîne prête à imprimer."""
+    from . import _ui
+
+    portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+    open_positions = [p for p in portfolio.positions if p.get("status") == "open"]
+    if not open_positions:
+        return _ui.dim("no open positions")
+
+    def _row_pnl(position: dict) -> float:
+        try:
+            return float(position.get("unrealized_pnl") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    rows = sorted(open_positions, key=_row_pnl, reverse=True)
+    now = utc_now()
+    headers = ("Market", "Outcome", "Stake", "Entry", "Now", "PnL", "Return", "Closes")
+    lines: list[tuple[str, str, str, str, str, str, str, str]] = []
+    for position in rows:
+        question = str(position.get("question") or position.get("slug") or position.get("market_id") or "?")
+        market = question if len(question) <= 50 else question[:47] + "..."
+        outcome = str(position.get("outcome") or "")
+        stake = f"${float(position.get('stake') or 0):.2f}"
+        entry = f"{float(position.get('entry_price') or 0):.3f}"
+        now_price = f"{float(position.get('current_price') or 0):.3f}"
+        pnl = float(position.get("unrealized_pnl") or 0.0)
+        entry_price = float(position.get("entry_price") or 0.0)
+        current = float(position.get("current_price") or 0.0)
+        ret = ((current - entry_price) / entry_price) if entry_price > 0 else 0.0
+        closes = _humanize_close_eta(position.get("end_date"), now=now)
+        lines.append((
+            market,
+            outcome,
+            stake,
+            entry,
+            now_price,
+            _ui.colorize_pnl(pnl),
+            _ui.colorize_pct(ret),
+            closes,
+        ))
+
+    def _visible_width(text: str) -> int:
+        # Strip ANSI escape sequences for column-width math.
+        import re as _re
+        return len(_re.sub(r"\x1b\[[0-9;]*m", "", text))
+
+    widths = [_visible_width(h) for h in headers]
+    for row in lines:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], _visible_width(cell))
+
+    def _pad(cell: str, width: int, *, right: bool = False) -> str:
+        gap = width - _visible_width(cell)
+        return (" " * gap + cell) if right else (cell + " " * gap)
+
+    right_align = {2, 3, 4, 5, 6}
+    header_cells = [_pad(h, widths[i], right=(i in right_align)) for i, h in enumerate(headers)]
+    out: list[str] = [_ui.bold("  ".join(header_cells))]
+    out.append(_ui.dim("  ".join("-" * w for w in widths)))
+    for row in lines:
+        cells = [_pad(c, widths[i], right=(i in right_align)) for i, c in enumerate(row)]
+        out.append("  ".join(cells))
+    return "\n".join(out)
+
+
+def print_positions(settings: Settings) -> None:
+    typer.echo(format_positions_table(settings))
+
+
 def journal_stats(settings: Settings) -> dict[str, object]:
     path = settings.trade_journal_path
     records: list[dict[str, object]] = []
@@ -1230,7 +1404,12 @@ def journal_stats(settings: Settings) -> dict[str, object]:
             except Exception:
                 continue
     if not records:
-        return {"records": 0, "message": "no closed trades yet"}
+        return {
+            "records": 0,
+            "message": "no closed trades yet",
+            "journal_path": str(path),
+            "dry_run": settings.dry_run,
+        }
 
     def pnl(record: dict[str, object]) -> float:
         try:
@@ -1308,6 +1487,8 @@ def journal_stats(settings: Settings) -> dict[str, object]:
         "by_exit_reason": group_by(records, lambda r: r.get("exit_reason")),
         "by_entry_price_bucket": group_by(records, price_bucket),
         "suggestions": _journal_suggestions(records),
+        "journal_path": str(path),
+        "dry_run": settings.dry_run,
     }
 
 
@@ -1620,57 +1801,64 @@ def run_doctor(settings: Settings) -> dict[str, object]:
     Posts no orders. Safe to run with or without live trading enabled.
     """
     from pathlib import Path
+
     from eth_account import Account
 
-    print("=== .env ===")
+    from . import _ui
+
+    print(_ui.bold("=== .env ==="))
     pk = settings.private_key or ""
     pk_ok = len(pk) == 66 and pk.startswith("0x")
-    print(f"  PRIVATE_KEY    {'OK ' if pk_ok else 'KO '} len={len(pk)} {'(0x + 64 hex)' if pk_ok else '(expected 66 chars: 0x + 64 hex)'}")
+    pk_marker = _ui.ok() if pk_ok else _ui.ko()
+    pk_detail = "(0x + 64 hex)" if pk_ok else "(expected 66 chars: 0x + 64 hex)"
+    print(f"  {pk_marker} PRIVATE_KEY    len={len(pk)} {_ui.dim(pk_detail)}")
 
     fa = settings.funder_address or ""
     fa_ok = len(fa) == 42 and fa.startswith("0x")
-    print(f"  FUNDER_ADDRESS {'OK ' if fa_ok else 'KO '} len={len(fa)} value={fa if fa_ok else '(invalid)'}")
+    fa_marker = _ui.ok() if fa_ok else _ui.ko()
+    fa_detail = fa if fa_ok else "(invalid)"
+    print(f"  {fa_marker} FUNDER_ADDRESS len={len(fa)} value={_ui.dim(fa_detail)}")
 
     api_complete = bool(settings.api_key and settings.api_secret and settings.api_passphrase)
     for name in ("api_key", "api_secret", "api_passphrase"):
         val = getattr(settings, name)
-        status = "OK " if val else "KO "
-        print(f"  {name.upper():15}{status} {_mask(val)}")
+        marker = _ui.ok() if val else _ui.ko()
+        print(f"  {marker} {name.upper():15} {_ui.dim(_mask(val))}")
 
     sig_label = {0: "EOA", 1: "Magic.link proxy", 2: "Gnosis Safe"}.get(settings.signature_type, "?")
-    print(f"  SIGNATURE_TYPE {settings.signature_type} ({sig_label})")
+    print(f"  {_ui.dim('·')} SIGNATURE_TYPE {settings.signature_type} ({sig_label})")
     if settings.live_trading_enabled:
-        print(f"  LIVE_TRADING   WARN ENABLED — bot will place real orders if auto-loop runs")
+        print(f"  {_ui.warn()} LIVE_TRADING   {_ui.bold(_ui.red('ENABLED'))} — bot will place real orders if auto-loop runs")
     else:
-        print(f"  LIVE_TRADING   OK  disabled (safe — no orders will be placed)")
+        print(f"  {_ui.ok()} LIVE_TRADING   {_ui.dim('disabled (safe — no orders will be placed)')}")
     if settings.dry_run:
-        print(f"  DRY_RUN        OK  ENABLED — simulated orders only, ledger at {settings.state_path}")
+        print(f"  {_ui.ok()} DRY_RUN        {_ui.bold(_ui.yellow('ENABLED'))} — simulated orders only, ledger at {settings.state_path}")
     print()
 
-    print("=== Auth & balance ===")
+    print(_ui.bold("=== Auth & balance ==="))
     if pk_ok:
         try:
             eoa = Account.from_key(pk).address
-            print(f"  EOA derived    {eoa}")
+            print(f"  {_ui.ok()} EOA derived    {eoa}")
         except Exception as exc:
-            print(f"  EOA derived    KO  {type(exc).__name__}: {exc}")
+            print(f"  {_ui.ko()} EOA derived    {type(exc).__name__}: {exc}")
     else:
-        print(f"  EOA derived    skipped (invalid private key)")
-    print(f"  Funder         {fa or '(missing)'}")
+        print(f"  {_ui.skip()} EOA derived    {_ui.dim('skipped (invalid private key)')}")
+    print(f"  {_ui.dim('·')} Funder         {fa or _ui.dim('(missing)')}")
 
     balance: float | None = None
     if pk_ok and fa_ok and api_complete:
         try:
             client = build_client(settings)
             balance = client.live_available_balance()
-            print(f"  USDC balance   ${balance:.4f}")
+            print(f"  {_ui.ok()} USDC balance   ${balance:.4f}")
         except Exception as exc:
-            print(f"  USDC balance   KO  {type(exc).__name__}: {str(exc)[:120]}")
+            print(f"  {_ui.ko()} USDC balance   {type(exc).__name__}: {str(exc)[:120]}")
     else:
-        print(f"  USDC balance   skipped (credentials incomplete — run bootstrap-creds)")
+        print(f"  {_ui.skip()} USDC balance   {_ui.dim('skipped (credentials incomplete — run bootstrap-creds)')}")
     print()
 
-    print("=== Endpoints ===")
+    print(_ui.bold("=== Endpoints ==="))
     endpoint_results: dict[str, str] = {}
     for label, fn in [
         ("Gamma   (markets)   ", lambda: GammaClient(settings.gamma_base_url).get_markets(limit=1)),
@@ -1684,14 +1872,14 @@ def run_doctor(settings: Settings) -> dict[str, object]:
         try:
             fn()
             elapsed_ms = (time.time() - t0) * 1000
-            print(f"  {label} OK  {elapsed_ms:.0f}ms")
+            print(f"  {_ui.ok()} {label} {_ui.dim(f'{elapsed_ms:.0f}ms')}")
             endpoint_results[label.strip()] = "ok"
         except Exception as exc:
-            print(f"  {label} KO  {type(exc).__name__}: {str(exc)[:80]}")
+            print(f"  {_ui.ko()} {label} {type(exc).__name__}: {str(exc)[:80]}")
             endpoint_results[label.strip()] = "error"
     print()
 
-    print("=== Local state ===")
+    print(_ui.bold("=== Local state ==="))
     for path_attr, label in [
         ("state_path", "paper_state.json       "),
         ("trade_journal_path", "trade_journal.jsonl    "),
@@ -1699,20 +1887,20 @@ def run_doctor(settings: Settings) -> dict[str, object]:
     ]:
         p = Path(getattr(settings, path_attr))
         if p.exists():
-            print(f"  {label} OK  exists ({p.stat().st_size} bytes) at {p}")
+            print(f"  {_ui.ok()} {label} {_ui.dim(f'exists ({p.stat().st_size} bytes) at {p}')}")
         else:
-            print(f"  {label} —   not yet created at {p}")
+            print(f"  {_ui.skip()} {label} {_ui.dim(f'not yet created at {p}')}")
     print()
 
     setup_ok = pk_ok and fa_ok and api_complete and all(v == "ok" for v in endpoint_results.values())
     if not setup_ok:
-        print("Verdict: KO  Setup incomplete — fix the items marked above.")
+        print(f"{_ui.bold('Verdict:')} {_ui.ko()} Setup incomplete — fix the items marked above.")
     elif settings.dry_run:
-        print("Verdict: OK  READY for DRY-RUN. auto-loop will simulate orders without spending any cash.")
+        print(f"{_ui.bold('Verdict:')} {_ui.ok()} {_ui.green('READY for DRY-RUN.')} auto-loop will simulate orders without spending any cash.")
     elif settings.live_trading_enabled:
-        print("Verdict: WARN READY for LIVE trading. Bot WILL place real orders if auto-loop runs.")
+        print(f"{_ui.bold('Verdict:')} {_ui.warn()} {_ui.yellow('READY for LIVE trading.')} Bot WILL place real orders if auto-loop runs.")
     else:
-        print("Verdict: OK  READY for read-only / dashboard. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to enable live trading (or POLYMARKET_DRY_RUN=1 to simulate).")
+        print(f"{_ui.bold('Verdict:')} {_ui.ok()} {_ui.green('READY for read-only / dashboard.')} Set POLYMARKET_ENABLE_LIVE_TRADING=1 to enable live trading (or POLYMARKET_DRY_RUN=1 to simulate).")
 
     return {
         "private_key_ok": pk_ok,
@@ -1732,6 +1920,28 @@ app = typer.Typer(
     add_completion=False,
     help="Polymarket smart-money copy-trading bot.",
 )
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        from . import __version__
+
+        typer.echo(f"pmbot {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _root(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show the pmbot version and exit.",
+    ),
+) -> None:
+    """Polymarket smart-money copy-trading bot."""
 
 
 @app.command("auto-loop")
@@ -1767,10 +1977,22 @@ def doctor() -> None:
     run_doctor(Settings())
 
 
+@app.command()
+def status() -> None:
+    """Snapshot rapide du bot : mode, ledger, équité, positions ouvertes."""
+    print_status(Settings())
+
+
+@app.command()
+def positions() -> None:
+    """Affiche les positions ouvertes en table CLI, triées par PnL décroissant."""
+    print_positions(Settings())
+
+
 @app.command("journal-stats")
 def cli_journal_stats() -> None:
     """Print aggregated trade-journal statistics as JSON."""
-    typer.echo(json.dumps(journal_stats(Settings()), indent=2))
+    typer.echo(json.dumps(journal_stats(Settings()), indent=2, default=str))
 
 
 @app.command("tune-strategy")
