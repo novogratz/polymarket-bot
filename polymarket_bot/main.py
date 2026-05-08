@@ -235,6 +235,12 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     _step(settings, "   loading markets...")
     candidates = load_smart_candidates(settings)
     _step(settings, f"   markets: {len(candidates)} candidates")
+    scan_counts = {
+        "strict": 0,
+        "relaxed": 0,
+        "deep": 0,
+        "candidates_total": len(candidates),
+    }
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
     if settings.dry_run:
         _step(settings, "   [DRY-RUN] skipping live-position sync (using simulated ledger only)")
@@ -340,6 +346,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
 
     report = analyze_smart_money_with_data(eligible_candidates, settings, smart_data)
     _step(settings, f"   strict scan: {len(report.opportunities)} opportunity(ies)")
+    scan_counts["strict"] = len(report.opportunities)
     signal = report.selected
     strategy = "smart_money"
     opportunities = list(report.opportunities)
@@ -354,6 +361,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         )
         fallback_report = analyze_smart_money_with_data(eligible_candidates, fallback_settings, smart_data)
         _step(settings, f"   relaxed scan: {len(fallback_report.opportunities)} opportunity(ies)")
+        scan_counts["relaxed"] = len(fallback_report.opportunities)
         seen_tokens = {opp.candidate.token_id for opp in opportunities if opp.candidate.token_id}
         for opp in fallback_report.opportunities:
             token_id = opp.candidate.token_id
@@ -387,6 +395,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             )
             deep_report = analyze_smart_money_with_data(eligible_candidates, deep_settings, smart_data)
             _step(settings, f"   deep fallback: {len(deep_report.opportunities)} opportunity(ies)")
+            scan_counts["deep"] = len(deep_report.opportunities)
             for opp in deep_report.opportunities:
                 token_id = opp.candidate.token_id
                 if token_id and token_id in seen_tokens:
@@ -421,6 +430,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 "pending_orders": pending_report,
                 "category_summary": open_categories,
                 "scan_report": report.to_dict(),
+                "scan_counts": scan_counts,
                 "summary": portfolio.summary(),
             }
 
@@ -627,6 +637,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "category_summary": open_categories,
         "rejected_signals": rejected_signals,
         "scan_report": report.to_dict(),
+        "scan_counts": scan_counts,
         "summary": portfolio.summary(),
         "auto_tune_info": auto_tune_info,
     }
@@ -1900,7 +1911,7 @@ def _build_tick_record(
         "finished_at": finished_at.isoformat(),
         "duration_s": duration_s,
         "mode": "dry_run" if settings.dry_run else "live",
-        "scan_counts": dict(tick_result.get("scan_report") or {}),
+        "scan_counts": dict(tick_result.get("scan_counts") or {}),
         "actions": _extract_tick_actions(tick_result),
         "tuner_changes": dict(tick_result.get("auto_tune_info") or {}),
         "next_tick_at": datetime.fromtimestamp(
@@ -1926,6 +1937,20 @@ def _extract_tick_actions(tick_result: dict[str, object]) -> list[dict[str, obje
                 "strategy": primary.get("strategy"),
                 "reason": signal.get("selection_reason") or "smart_money_signal",
             })
+    btc = tick_result.get("btc_edge")
+    if isinstance(btc, dict):
+        btc_trade = btc.get("trade")
+        if isinstance(btc_trade, dict):
+            signal = btc_trade.get("signal") if isinstance(btc_trade.get("signal"), dict) else {}
+            question = signal.get("question")
+            if question:
+                actions.append({
+                    "type": "buy",
+                    "market": question,
+                    "amount_usd": signal.get("stake_usd"),
+                    "strategy": "btc_edge",
+                    "reason": signal.get("selection_reason") or "btc_edge_signal",
+                })
     for noise in tick_result.get("noise_trades") or []:
         if isinstance(noise, dict):
             noise_signal = noise.get("signal") if isinstance(noise.get("signal"), dict) else {}
@@ -2164,7 +2189,11 @@ def positions() -> None:
 @app.command("journal-stats")
 def cli_journal_stats() -> None:
     """Print aggregated trade-journal statistics as JSON."""
-    typer.echo(json.dumps(journal_stats(Settings()), indent=2, default=str))
+    payload = journal_stats(Settings())
+    structured_suggestions = payload.get("suggestions") or []
+    payload["suggestions"] = format_suggestions(structured_suggestions)
+    payload["suggestions_structured"] = structured_suggestions
+    typer.echo(json.dumps(payload, indent=2, default=str))
 
 
 @app.command("tune-strategy")

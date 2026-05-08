@@ -1781,7 +1781,8 @@ class TickStateLoopTests(unittest.TestCase):
             def fake_tick(s):
                 calls.append(len(calls) + 1)
                 return {
-                    "scan_report": {"strict": 0, "relaxed": 1, "deep": 0, "candidates_total": 5},
+                    "scan_report": {"selected": None, "opportunities": [], "traders_checked": 0},
+                    "scan_counts": {"strict": 0, "relaxed": 1, "deep": 0, "candidates_total": 5},
                     "exits": [{"market_id": "mid-1", "question": "Will M1 close yes?", "outcome": "Yes", "action": "sell", "reason": "tp", "pnl_pct": 0.10}],
                     "noise_trades": [],
                     "rejected_signals": [{"market_id": "mid-skip", "question": "Skipped market?", "outcome": "Yes", "reason": "chase too high"}],
@@ -1802,6 +1803,7 @@ class TickStateLoopTests(unittest.TestCase):
             self.assertIsNotNone(last)
             self.assertEqual(last["mode"], "live")
             self.assertIn("scan_counts", last)
+            self.assertEqual(last["scan_counts"]["relaxed"], 1)
             self.assertIn("actions", last)
             self.assertIn("next_tick_at", last)
             history = tick_state.read_tick_history(settings, limit=10)
@@ -1888,6 +1890,29 @@ class TickStateLoopTests(unittest.TestCase):
     def test_extract_tick_actions_returns_empty_for_empty_tick(self):
         from polymarket_bot.main import _extract_tick_actions
         self.assertEqual(_extract_tick_actions({}), [])
+
+    def test_extract_tick_actions_includes_btc_edge_buy(self):
+        from polymarket_bot.main import _extract_tick_actions
+        actions = _extract_tick_actions({
+            "btc_edge": {
+                "trade": {
+                    "strategy": "btc_edge",
+                    "signal": {"question": "BTC > 100k?", "stake_usd": 4.0, "selection_reason": "edge=0.12"},
+                },
+            },
+        })
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0]["type"], "buy")
+        self.assertEqual(actions[0]["strategy"], "btc_edge")
+        self.assertEqual(actions[0]["market"], "BTC > 100k?")
+
+    def test_extract_tick_actions_skips_btc_edge_when_no_trade(self):
+        from polymarket_bot.main import _extract_tick_actions
+        # btc_edge_once returns {"trade": None, ...} when no signal
+        actions = _extract_tick_actions({
+            "btc_edge": {"trade": None, "no_signal": "edge below threshold"},
+        })
+        self.assertEqual(actions, [])
 
 
 class JournalStatsDrawdownTests(unittest.TestCase):
