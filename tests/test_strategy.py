@@ -1725,5 +1725,39 @@ class AutoTunerTests(unittest.TestCase):
         self.assertEqual(overrides, {})
 
 
+class SettingsDryRunTests(unittest.TestCase):
+    def test_live_mode_uses_default_paths(self):
+        s = Settings(dry_run=False)
+        self.assertEqual(str(s.state_path), "data/paper_state.json")
+        self.assertEqual(str(s.trade_journal_path), "data/trade_journal.jsonl")
+        self.assertEqual(str(s.strategy_overrides_path), "data/strategy_overrides.json")
+        self.assertEqual(str(s.tick_state_path), "data/last_tick.json")
+        self.assertEqual(str(s.tick_history_path), "data/tick_history.jsonl")
+
+    def test_dry_run_swaps_all_data_paths(self):
+        s = Settings(dry_run=True)
+        self.assertEqual(str(s.state_path), "data/dry_run_state.json")
+        self.assertEqual(str(s.trade_journal_path), "data/dry_run_journal.jsonl")
+        self.assertEqual(str(s.strategy_overrides_path), "data/dry_run_strategy_overrides.json")
+        self.assertEqual(str(s.tick_state_path), "data/dry_run_last_tick.json")
+        self.assertEqual(str(s.tick_history_path), "data/dry_run_tick_history.jsonl")
+
+    def test_dry_run_preserves_explicit_custom_paths(self):
+        from pathlib import Path
+        s = Settings(
+            dry_run=True,
+            state_path=Path("/tmp/custom_state.json"),
+            trade_journal_path=Path("/tmp/custom_journal.jsonl"),
+            strategy_overrides_path=Path("/tmp/custom_over.json"),
+            tick_state_path=Path("/tmp/custom_tick.json"),
+            tick_history_path=Path("/tmp/custom_hist.jsonl"),
+        )
+        self.assertEqual(str(s.state_path), "/tmp/custom_state.json")
+        self.assertEqual(str(s.trade_journal_path), "/tmp/custom_journal.jsonl")
+        self.assertEqual(str(s.strategy_overrides_path), "/tmp/custom_over.json")
+        self.assertEqual(str(s.tick_state_path), "/tmp/custom_tick.json")
+        self.assertEqual(str(s.tick_history_path), "/tmp/custom_hist.jsonl")
+
+
 if __name__ == "__main__":
     unittest.main()

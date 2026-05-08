@@ -54,6 +54,8 @@ class Settings:
     state_path: Path = Path(os.getenv("POLYMARKET_STATE_PATH", "data/paper_state.json"))
     trade_journal_path: Path = Path(os.getenv("POLYMARKET_TRADE_JOURNAL_PATH", "data/trade_journal.jsonl"))
     strategy_overrides_path: Path = Path(os.getenv("POLYMARKET_STRATEGY_OVERRIDES_PATH", "data/strategy_overrides.json"))
+    tick_state_path: Path = Path(os.getenv("POLYMARKET_TICK_STATE_PATH", "data/last_tick.json"))
+    tick_history_path: Path = Path(os.getenv("POLYMARKET_TICK_HISTORY_PATH", "data/tick_history.jsonl"))
     smart_auto_tune_enabled: bool = _bool_env("POLYMARKET_SMART_AUTO_TUNE_ENABLED", True)
     smart_auto_tune_min_trades: int = _int_env("POLYMARKET_SMART_AUTO_TUNE_MIN_TRADES", 30)
     scan_limit: int = _int_env("POLYMARKET_SCAN_LIMIT", 200)
@@ -193,17 +195,23 @@ class Settings:
     quiet: bool = _bool_env("POLYMARKET_QUIET", False)
 
     def __post_init__(self) -> None:
-        """Swap ledger and journal paths to dedicated dry-run files.
+        """Swap ledger, journal, overrides, and tick-state paths to dry-run files.
 
-        When POLYMARKET_DRY_RUN=1 is set, the bot writes simulated state to
-        ``data/dry_run_state.json`` and ``data/dry_run_journal.jsonl`` so the
-        live paper-trading ledger is not polluted. The swap fires whenever
-        the current value matches the paper-trading default; users who set a
-        custom ``POLYMARKET_STATE_PATH`` / ``POLYMARKET_TRADE_JOURNAL_PATH``
-        keep their explicit choice.
+        When POLYMARKET_DRY_RUN=1 is set, the bot reads/writes simulated state
+        to a parallel set of files so the live paper-trading ledger, journal,
+        auto-tuner overrides, and tick-state stream are never polluted. Each
+        swap fires only when the current value still matches the live default;
+        users who set a custom path via env keep their explicit choice.
         """
-        if self.dry_run:
-            if str(self.state_path) == "data/paper_state.json":
-                object.__setattr__(self, "state_path", Path("data/dry_run_state.json"))
-            if str(self.trade_journal_path) == "data/trade_journal.jsonl":
-                object.__setattr__(self, "trade_journal_path", Path("data/dry_run_journal.jsonl"))
+        if not self.dry_run:
+            return
+        swaps = (
+            ("state_path", "data/paper_state.json", "data/dry_run_state.json"),
+            ("trade_journal_path", "data/trade_journal.jsonl", "data/dry_run_journal.jsonl"),
+            ("strategy_overrides_path", "data/strategy_overrides.json", "data/dry_run_strategy_overrides.json"),
+            ("tick_state_path", "data/last_tick.json", "data/dry_run_last_tick.json"),
+            ("tick_history_path", "data/tick_history.jsonl", "data/dry_run_tick_history.jsonl"),
+        )
+        for attr, live_default, dry_run_value in swaps:
+            if str(getattr(self, attr)) == live_default:
+                object.__setattr__(self, attr, Path(dry_run_value))
