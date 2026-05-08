@@ -23,19 +23,12 @@ Configure pour un bankroll d'environ $90. Tourne en foreground, `Ctrl+C` pour ar
 ## Commandes CLI
 
 ```bash
-python3 -B -m polymarket_bot.main scan                # marches eligibles tries
-python3 -B -m polymarket_bot.main paper-tick          # ouvre une position simulee
-python3 -B -m polymarket_bot.main bootstrap-creds     # derive les credentials CLOB depuis le wallet
-python3 -B -m polymarket_bot.main reset-ledger        # remet le ledger local depuis le live
-python3 -B -m polymarket_bot.main smart-money-once    # un tick smart-money
-python3 -B -m polymarket_bot.main smart-money-loop    # boucle smart-money
-python3 -B -m polymarket_bot.main auto-loop           # alias smart-money-loop
-python3 -B -m polymarket_bot.main btc-edge-once       # un tick BTC edge isole
-python3 -B -m polymarket_bot.main btc-edge-loop       # boucle BTC edge
-python3 -B -m polymarket_bot.main trade-once          # un trade live brut
+python3 -B -m polymarket_bot.main auto-loop           # boucle live (ce que lance le script)
+python3 -B -m polymarket_bot.main dashboard           # dashboard local http://127.0.0.1:8765
 python3 -B -m polymarket_bot.main journal-stats       # stats agregees du journal de trades
 python3 -B -m polymarket_bot.main tune-strategy       # lance l auto-tuner manuellement
-python3 -B -m polymarket_bot.main dashboard           # dashboard local http://127.0.0.1:8765
+python3 -B -m polymarket_bot.main bootstrap-creds     # derive les credentials CLOB depuis le wallet
+python3 -B -m polymarket_bot.main reset-ledger        # remet le ledger local depuis le live
 ```
 
 ## Stratégie pour gagner de l'argent

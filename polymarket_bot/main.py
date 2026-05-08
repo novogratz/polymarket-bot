@@ -14,7 +14,6 @@ from .dashboard import serve
 from .gamma import GammaClient
 from .portfolio import Portfolio
 from .models import parse_dt, utc_now
-from .portfolio import paper_tick
 from .smart_money import (
     DataApiClient,
     analyze_smart_money,
@@ -23,7 +22,7 @@ from .smart_money import (
     market_category,
     _top_traders,
 )
-from .trading import build_client, choose_trade, execute_live_sell, execute_live_trade
+from .trading import build_client, execute_live_sell, execute_live_trade
 from .strategy import rank_markets
 
 
@@ -90,10 +89,6 @@ def load_smart_candidates(settings: Settings):
         soon_hours=settings.smart_soon_hours,
     )
     return rank_markets(list(markets_by_id.values()), smart_settings)
-
-
-def scan(settings: Settings) -> list[dict[str, object]]:
-    return [candidate.to_dict() for candidate in load_candidates(settings)]
 
 
 def reset_ledger(settings: Settings) -> dict[str, object]:
@@ -1469,48 +1464,32 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
         time.sleep(settings.auto_interval_seconds)
 
 
-def btc_edge_loop(settings: Settings) -> None:
-    strategy_loop(settings, "btc_edge", btc_edge_once)
-
-
 def smart_money_loop(settings: Settings) -> None:
     strategy_loop(settings, "smart_money", smart_money_once)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Polymarket scanner, paper dashboard, and live trader")
+    parser = argparse.ArgumentParser(description="Polymarket smart-money copy-trading bot")
     parser.add_argument(
         "command",
         choices=[
-            "scan",
-            "paper-tick",
-            "trade-once",
-            "btc-edge-once",
-            "btc-edge-loop",
-            "smart-money-once",
-            "smart-money-loop",
             "auto-loop",
-            "bootstrap-creds",
-            "reset-ledger",
+            "dashboard",
             "journal-stats",
             "tune-strategy",
-            "dashboard",
+            "bootstrap-creds",
+            "reset-ledger",
         ],
     )
-    parser.add_argument("--limit", type=int, default=20, help="Rows to print for scan/paper-tick")
     args = parser.parse_args()
 
     settings = Settings()
-    if args.command == "scan":
-        print(json.dumps(scan(settings)[: args.limit], indent=2))
-    elif args.command == "paper-tick":
-        candidates = load_candidates(settings)
-        portfolio, opened = paper_tick(candidates, settings)
-        print(json.dumps({"opened": opened, "summary": portfolio.summary()}, indent=2))
-    elif args.command == "bootstrap-creds":
-        print(json.dumps(bootstrap_creds(settings), indent=2))
-    elif args.command == "reset-ledger":
-        print(json.dumps(reset_ledger(settings), indent=2))
+    if args.command == "auto-loop":
+        if not settings.live_trading_enabled:
+            raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
+        smart_money_loop(settings)
+    elif args.command == "dashboard":
+        serve(settings)
     elif args.command == "journal-stats":
         print(json.dumps(journal_stats(settings), indent=2))
     elif args.command == "tune-strategy":
@@ -1527,49 +1506,10 @@ def main() -> None:
                 indent=2,
             )
         )
-    elif args.command == "trade-once":
-        if not settings.live_trading_enabled:
-            raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
-        candidates = load_candidates(settings)
-        portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
-        portfolio.mark_to_market(candidates)
-        client = build_client(settings)
-        if client.api_creds is None:
-            client.derive_or_create_api_creds()
-        trade_target = choose_trade(candidates, portfolio)
-        if trade_target is None:
-            print(json.dumps({"trade": None, "summary": portfolio.summary()}, indent=2))
-        else:
-            result = execute_live_trade(client, settings, trade_target, portfolio)
-            portfolio.save(settings.state_path)
-            print(json.dumps({
-                "trade": {
-                    "market_id": result.candidate.market_id,
-                    "question": result.candidate.question,
-                    "outcome": result.candidate.outcome,
-                    "order": result.order,
-                    "response": result.response,
-                },
-                "summary": portfolio.summary(),
-            }, indent=2))
-    elif args.command == "btc-edge-once":
-        if not settings.live_trading_enabled:
-            raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
-        print(json.dumps(btc_edge_once(settings), indent=2))
-    elif args.command == "btc-edge-loop":
-        if not settings.live_trading_enabled:
-            raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
-        btc_edge_loop(settings)
-    elif args.command == "smart-money-once":
-        if not settings.live_trading_enabled:
-            raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
-        print(json.dumps(smart_money_once(settings), indent=2))
-    elif args.command in {"smart-money-loop", "auto-loop"}:
-        if not settings.live_trading_enabled:
-            raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
-        smart_money_loop(settings)
-    else:
-        serve(settings)
+    elif args.command == "bootstrap-creds":
+        print(json.dumps(bootstrap_creds(settings), indent=2))
+    elif args.command == "reset-ledger":
+        print(json.dumps(reset_ledger(settings), indent=2))
 
 
 if __name__ == "__main__":

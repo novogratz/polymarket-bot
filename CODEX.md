@@ -33,29 +33,13 @@ Tests :
 python3 -B -m unittest discover -s tests
 ```
 
-Dashboard :
-
-```bash
-python3 -B -m polymarket_bot.main dashboard
-```
-
-Stats du journal :
-
-```bash
-python3 -B -m polymarket_bot.main journal-stats
-```
-
-Auto-tuner manuel :
-
-```bash
-python3 -B -m polymarket_bot.main tune-strategy
-```
-
-Boucle smart-money autonome :
+Boucle live (ce que lance `scripts/run_live_70.sh`) :
 
 ```bash
 POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
 ```
+
+Dashboard, stats du journal, auto-tuner manuel, bootstrap-creds, reset-ledger : voir `CLAUDE.md`. La CLI est limitée à 6 commandes : `auto-loop`, `dashboard`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`.
 
 ## Commande live recommandée
 
