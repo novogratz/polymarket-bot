@@ -1,3 +1,16 @@
+"""Tick orchestration, sizing helpers, trade journal, and CLI entry point.
+
+This module owns the end-to-end smart-money tick: load Gamma markets, sync
+live positions, refresh live cash, run the cohort-exit and sell strategies,
+execute the three-pass smart-money scan with reverse-lookup, place trades
+with conviction-weighted dynamic sizing, optionally run the BTC edge tick
+and the noise fallback, then persist state and stream a JSON tick result.
+
+It also exposes the package's six public CLI commands: ``auto-loop``,
+``dashboard``, ``journal-stats``, ``tune-strategy``, ``bootstrap-creds``,
+and ``reset-ledger``.
+"""
+
 from __future__ import annotations
 
 import argparse

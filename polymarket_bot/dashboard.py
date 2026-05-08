@@ -1,3 +1,11 @@
+"""Read-only local HTML dashboard.
+
+Serves an auto-refreshing summary of the bot's current ledger state, recent
+trades, scanner output, and rejection counts at ``http://127.0.0.1:8765``.
+The dashboard never places orders; it is a passive view over the same JSON
+state files the trading loop reads and writes.
+"""
+
 from __future__ import annotations
 
 import json

@@ -1,177 +1,125 @@
 # Autonomous Strategy
 
-The bot's default autonomous mode is `smart-money-loop`. It is designed to avoid random trades and only enter when there is a repeatable signal.
+The bot's default autonomous mode is `auto-loop`. It is designed to avoid random trades and only enter when there is repeatable signal evidence in the public order flow. This document describes the per-tick decision flow, the sizing model, the exit waterfall, the auto-tuner, and the dashboard surface.
 
-## Money-Making Thesis
+## Money-making thesis
 
-The core thesis is that profitable Polymarket wallets sometimes reveal information through their order flow. One good trader buying a token can be noise. Multiple profitable wallets buying the same token in a short window is a stronger signal.
+The core hypothesis: profitable Polymarket wallets sometimes reveal information through their order flow. A single trader buying a token can be noise. Multiple profitable wallets buying the same token in a short window is a stronger signal.
 
-The bot is built to monetize that signal by:
+The bot monetises that signal by:
 
-- Copying recent BUY flow from leaderboard wallets with configured positive PnL.
-- Requiring consensus across multiple wallets before entry.
-- Avoiding expensive fills by enforcing spread and price-band limits.
-- Spending available live balance across qualified opportunities in $5-capped chunks.
-- Refusing duplicate positions so it does not accidentally pyramid into the same outcome.
-- Taking profits with partial SELL orders instead of only waiting for resolution.
-- Reconciling local ledger state from live Polymarket positions.
+- Copying recent BUY flow from leaderboard wallets that pass PnL, volume, and ROI floors.
+- Requiring multi-wallet consensus on the same token before entry.
+- Filtering execution: absolute spread, relative spread, price band, freshness, chase premium.
+- Sizing each trade as a percentage of the bankroll, weighted by signal conviction.
+- Refusing duplicate positions per market, per token, and per event-slug for sports.
+- Taking profits with partial SELL orders at staged thresholds rather than waiting for resolution.
+- Exiting losers proactively via stop-loss, trailing stop, cohort-sell, and max-hold-time caps.
+- Reconciling local ledger state from live Polymarket positions every tick.
 
-The strategy does not predict every market from scratch. It follows public smart-money activity only when execution quality is acceptable.
+The strategy does not predict every market from scratch. It follows public smart-money activity, only when execution quality is acceptable.
 
-## Signal
+## Per-tick flow
 
-The smart-money strategy scans recent BUY trades from profitable Polymarket leaderboard wallets. A candidate trade is eligible only when:
+Each tick, in order:
 
-- The market is active, soon-closing, liquid enough, and tradable by the scanner.
-- At least `POLYMARKET_SMART_MIN_CONSENSUS` distinct leaderboard wallets bought the same token recently.
-- Each copied trade is at least `POLYMARKET_SMART_MIN_TRADE_USD`.
-- The candidate's ask price is inside `POLYMARKET_SMART_MIN_BUY_PRICE` and `POLYMARKET_SMART_MAX_BUY_PRICE`.
-- The order-book spread is no wider than `POLYMARKET_SMART_MAX_SPREAD`.
-- The market is not too close to expiry: `POLYMARKET_SMART_MIN_HOURS_TO_CLOSE`, default `0.25`.
-- The local ledger does not already have an open position for the same market and outcome.
+1. Auto-tune from the journal (no-op below 30 closed trades).
+2. Load Gamma markets (general scan + keyword scan).
+3. Sync live Polymarket positions into the local ledger.
+4. Refresh live USDC balance from the CLOB.
+5. Detect cohort-exit signals (active SELL by entry wallets, or cohort silence).
+6. Run the sell waterfall (see below).
+7. Execute the smart-money scan: strict → relaxed → deep fallback (one shared leaderboard+trades fetch).
+8. Reverse-lookup high-flow tokens not yet in the candidate pool; merge them in.
+9. Place trades from the opportunity list with dynamic per-slot sizing toward the cash-floor target.
+10. Run the noise-fallback lane if enabled and we are below `MIN_OPEN_POSITIONS` or holding too much cash.
+11. Run the BTC edge tick if enabled.
+12. Persist portfolio + write journal entries for newly closed positions.
+13. Print a JSON tick result; sleep `AUTO_INTERVAL_SECONDS`.
 
-Crypto up/down micro markets are treated more strictly:
+## Entry filters
 
-- `POLYMARKET_SMART_CRYPTO_MICRO_MIN_CONSENSUS=3`
-- `POLYMARKET_SMART_CRYPTO_MICRO_MAX_ENTRY_SLIPPAGE=0.05`
-- `POLYMARKET_SMART_CRYPTO_MICRO_MAX_TRADE_USD=5`
+Each candidate signal must pass:
+
+- Recent BUY trades from at least `MIN_CONSENSUS` distinct wallets (relaxed in fallback passes).
+- Cohort PnL / volume / ROI floors.
+- Total copied USDC at or above the configured floor.
+- Spread filters: absolute (`MAX_SPREAD`) and relative (`MAX_RELATIVE_SPREAD`).
+- Price band: `MIN_BUY_PRICE` ≤ ask ≤ `MAX_BUY_PRICE`.
+- Freshness: latest cohort BUY within `MAX_SIGNAL_AGE_MINUTES`.
+- Chase premium: ask not too far above the cohort average copy price.
+- No existing position on the same market, token, or sports event-slug.
 
 ## Sizing
 
-Live order size is based on available USDC balance:
+Each trade size is computed as:
 
-- Base size: `POLYMARKET_TRADE_FRACTION`, default `1.0`, of available balance.
-- Cap: `POLYMARKET_SMART_MAX_TRADE_USD`, default `$5`, and `POLYMARKET_MAX_POSITION_USD`, default `$5`.
-- Minimum: Polymarket's $1 practical minimum.
-- Quality scaling: if env caps are raised, 2-wallet signals stay small, 3-wallet signals can size up moderately, and 4+ wallet high-flow signals can use the configured cap.
-
-This is risk control, not a profit guarantee.
-
-Each tick attempts every qualified smart-money opportunity until one of these happens:
-
-- The account runs out of spendable USDC.
-- `POLYMARKET_SMART_MAX_ORDERS_PER_TICK` is reached, if configured above `0`.
-- No more qualified opportunities remain.
-- The order API rejects because funds, allowance, or minimum order constraints are no longer satisfied.
-
-Resting BUY orders are not recorded as open positions. They are saved under `pending_orders` and cancelled after `POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS`, default `45`, unless live position sync sees that they filled.
-
-## When The Bot Refuses To Trade
-
-No trade is a valid outcome. The bot should skip if:
-
-- Fewer than the required number of wallets bought the same token.
-- The best ask is too low, too high, missing, or stale.
-- The spread is wider than `POLYMARKET_SMART_MAX_SPREAD`.
-- Copied trades are too small to matter.
-- The market is not accepting orders.
-- The ledger already has the same market and outcome open.
-- Live trading is not explicitly enabled.
-
-This refusal logic is intentional. Forced trades are how the bot ends up in weak, random markets.
-
-## Starter Position Fallback
-
-The bot can take a smaller `smart_money_starter` trade when there are fewer than `POLYMARKET_MIN_OPEN_POSITIONS` open positions, but it still requires smart-money consensus.
-
-The smart-money/starter universe defaults to `POLYMARKET_SMART_SOON_HOURS=72`, which means today, tomorrow, and the next few days. It should not reach into far-out monthly contracts by default.
-
-The smart-money starter fallback is not random. It still requires:
-
-- Recent BUY flow from a profitable leaderboard wallet.
-- A matching active Polymarket token in the widened smart-money scan universe.
-- Accepting orders, valid tick size, and best bid/ask.
-- Spread under `POLYMARKET_SMART_MAX_SPREAD`.
-- Ask price inside the configured price band.
-- No duplicate open position.
-
-The fallback uses `POLYMARKET_SMART_FALLBACK_CONSENSUS`, default `2`, matching the normal `POLYMARKET_SMART_MIN_CONSENSUS` default.
-
-If that does not qualify, the bot skips. It does not force a liquidity-only trade.
-
-## Exit Strategy
-
-Before looking for new entries, each smart-money tick syncs live positions from the Polymarket Data API, then reviews open live positions and may place SELL orders.
-
-Default take-profit ladder:
-
-- `+100%`: sell `50%` of the initial shares.
-- `+200%`: sell another `25%` of the initial shares.
-- `+300%`: sell another `15%` of the initial shares.
-- Keep the remaining shares running.
-
-Default peak protection:
-
-- Once a position has reached `+100%`, track its peak.
-- If it falls back to `+40%` or lower, sell the remaining shares.
-
-Config:
-
-```bash
-POLYMARKET_SMART_TAKE_PROFIT_TIERS=1.0:0.50,2.0:0.25,3.0:0.15
-POLYMARKET_SMART_PEAK_PROTECT_TRIGGER=1.0
-POLYMARKET_SMART_PEAK_PROTECT_FLOOR=0.40
-POLYMARKET_SMART_MIN_SELL_USD=1
-POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE=20
-POLYMARKET_SMART_EXIT_MIN_PROFIT=0.05
-POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS=45
-POLYMARKET_SYNC_LIVE_POSITIONS=1
-POLYMARKET_LIVE_POSITION_MIN_VALUE_USD=1
+```
+size = available_cash * SMART_POSITION_PCT * conviction_multiplier
 ```
 
-SELL orders use the executable bid. The ledger records `exits`, remaining `shares`, remaining `stake`, and `realized_pnl`.
-If a profitable position is within `POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE`, the bot can sell the remaining shares instead of letting it run into expiry.
+with the per-slot dynamic adjustment:
 
-## Automation
-
-Run:
-
-```bash
-POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
+```
+remaining_to_deploy = total_equity * (1 - SMART_CASH_FLOOR_PCT) - current_invested
+per_slot = remaining_to_deploy / remaining_opportunities
+size = max(size, per_slot * conviction_multiplier)
 ```
 
-The loop wakes every `POLYMARKET_AUTO_INTERVAL_SECONDS` seconds. The default is 300 seconds.
+and the ceiling:
 
-For faster scans, override the interval when starting the loop:
-
-```bash
-POLYMARKET_ENABLE_LIVE_TRADING=1 POLYMARKET_AUTO_INTERVAL_SECONDS=30 python3 -B -m polymarket_bot.main auto-loop
+```
+ceiling = max(SMART_MAX_POSITION_CEILING_USD, total_equity * SMART_MAX_POSITION_CEILING_PCT)
+size = min(size, ceiling, available_cash)
 ```
 
-Each tick prints a `scan_report` with:
+Conviction multipliers:
 
-- The selected opportunity, if one qualified.
-- The top opportunities considered.
-- `selection_reason` and `selection_metrics` explaining why each opportunity qualified.
-- Trader and trade counts.
-- Eligible trade and grouped token counts.
-- Rejection reasons when nothing qualified.
-- Exit actions under `exits`, including sell reason and order response.
-- Live reconciliation actions under `sync`.
+| Signal type | Multiplier |
+|---|---|
+| Crypto micro | 0.55x |
+| Weak (<2-wallet $250 flow) | 0.7x |
+| 2-wallet $250+ | 0.9x |
+| 2-wallet $1k+ | 1.1x |
+| 3-wallet $250+ | 1.1x |
+| 3-wallet $500+ | 1.3x |
+| 4-wallet $1k+ | 1.6x |
+| 4-wallet $2k+ | 2.0x |
+| 5-wallet $5k+ | 2.5x |
 
-The scan path is deterministic Python code calling Polymarket APIs. It does not use Codex, Claude, or any LLM.
+## Exit waterfall
+
+For every open live position, in order, before any new entry is placed:
+
+1. **Stop-loss** at `-SMART_STOP_LOSS_PCT` after the position has been open at least `STOP_LOSS_MIN_AGE_MINUTES`. Skipped if peak-protect has already armed.
+2. **Peak-protect**: once peak PnL exceeded `SMART_PEAK_PROTECT_TRIGGER` (default +100%), close on giveback to `SMART_PEAK_PROTECT_FLOOR` (default +40%).
+3. **Trailing stop**: once peak PnL exceeded `SMART_TRAILING_STOP_ARM_PCT` (default +25%), close on giveback of `SMART_TRAILING_STOP_GIVEBACK_PCT` (default 50%) while still positive.
+4. **Take-profit ladder**: partial sells at +50% / +100% / +200% / +300%.
+5. **Max-hold-time**: force-close any position older than `SMART_MAX_HOLD_HOURS` (default 24h) when no other rule has fired.
+6. **Near-expiry positive exit**: close at ≥+5% within 20 minutes of market close.
+7. **Cohort-sell exit**: if any wallet from the entry cohort has actively SOLD the token within `SMART_COHORT_EXIT_LOOKBACK_MINUTES`, close.
+8. **Cohort-silent exit**: if no wallet from the entry cohort has re-bought within the lookback window, close.
+
+## Defensive auto-tuner
+
+Every tick, the auto-tuner reads `data/trade_journal.jsonl` and writes bounded overrides to `data/strategy_overrides.json`. Rules:
+
+- Stop-loss share above 40% of trades: tighten `MAX_CHASE_PREMIUM` ×0.80 and `MAX_RELATIVE_SPREAD` ×0.85.
+- Consensus=2 trades averaging worse than -$0.30 PnL (≥20 sample): raise `MIN_CONSENSUS` to 3.
+- Sports trades averaging worse than -$0.30 PnL (≥15 sample): bump `SPORTS_SCORE_PENALTY` ×1.5.
+- Win rate below 30%: raise `MIN_COPIED_USDC` ×1.5.
+- Average PnL below -$0.20: shrink `POSITION_PCT` ×0.75.
+
+Defensive only — the tuner never loosens after wins. Disabled by default below 30 closed trades to avoid overfitting on noise.
 
 ## Dashboard
 
-Run:
+`python3 -B -m polymarket_bot.main dashboard` starts a read-only HTTP server on `http://127.0.0.1:8765` that refreshes every 5 seconds. It shows:
 
-```bash
-python3 -B -m polymarket_bot.main dashboard
-```
+- Bot mode and current configuration summary.
+- Equity, cash, invested, unrealized PnL, open position count.
+- Open positions with entry price, current price, peak PnL, and exit history.
+- Recent trades with order IDs.
+- Last-tick scanner candidates and rejection breakdown.
 
-Open `http://127.0.0.1:8765`. The dashboard auto-refreshes and shows:
-
-- Live/paper mode status.
-- Equity, cash, invested capital, open positions, and unrealized PnL from the local ledger.
-- Open positions.
-- Recent bot trades and order IDs when available.
-- Recorded partial exits and realized PnL in the local ledger when the exit strategy sells.
-- Current soon-market scanner candidates.
-
-If the dashboard gets stale because positions were changed manually on Polymarket, reset the local ledger:
-
-```bash
-python3 -B -m polymarket_bot.main reset-ledger
-```
-
-This clears only local dashboard state. It does not cancel or sell live Polymarket positions. New bot-created positions are recorded automatically and show up on the next dashboard refresh.
+The dashboard is passive. It never places orders.

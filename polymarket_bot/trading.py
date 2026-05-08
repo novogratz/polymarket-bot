@@ -1,3 +1,13 @@
+"""Live trade execution.
+
+Wraps :class:`PolymarketClient` and the Polymarket CLOB SDK to compute the
+final stake per trade, place authenticated FOK market BUY orders, and
+execute partial SELLs against an open position. Sizing combines the
+percentage-based :class:`Settings` knobs with the conviction multiplier
+returned by ``main._signal_quality_multiplier`` and the high-conviction
+balance fraction.
+"""
+
 from __future__ import annotations
 
 import inspect
@@ -6,12 +16,29 @@ from importlib import import_module
 from dataclasses import dataclass
 from typing import Any
 
-from py_clob_client_v2.clob_types import AssetType, BalanceAllowanceParams
-
 from .config import Settings
 from .models import Candidate
 from .portfolio import Portfolio
 from .polymarket import ApiCreds, PolymarketClient
+
+
+def _load_clob_types():
+    """Lazy-load clob types from py-clob-client (v2 preferred, v1 fallback).
+
+    Importing at module load time would crash any environment that hasn't
+    installed the SDK (notably CI, where live trading is never invoked).
+    """
+    last_error: Exception | None = None
+    for module_name in ("py_clob_client_v2", "py_clob_client"):
+        try:
+            module = import_module(f"{module_name}.clob_types")
+            return module.AssetType, module.BalanceAllowanceParams
+        except Exception as exc:
+            last_error = exc
+            continue
+    raise RuntimeError(
+        "py-clob-client SDK is not installed; live balance lookup is unavailable"
+    ) from last_error
 
 
 @dataclass(frozen=True)
@@ -128,14 +155,14 @@ class TradingSession:
     def live_available_balance(self) -> float:
         if self.sdk_client is None:
             return 0.0
-        
+
         target_wallet = self.wallet_address
         print(f"🔍 Checking balance for wallet: {target_wallet}")
-        
+
         try:
-            # The SDK client is already initialized with the funder/proxy address
+            asset_type, balance_params = _load_clob_types()
             balance_info = self.sdk_client.get_balance_allowance(
-                BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
+                balance_params(asset_type=asset_type.COLLATERAL)
             )
         except Exception as e:
             print(f"❌ Balance check failed: {str(e)}")

@@ -1,3 +1,11 @@
+"""HTTP client for the Polymarket Gamma API.
+
+Provides a paginated active-markets endpoint used by the standard scan, and
+a chunked ``get_markets_by_clob_token_ids`` lookup used by the smart-money
+reverse-lookup so that arbitrarily large token-id lists do not blow past the
+URL length limit.
+"""
+
 from __future__ import annotations
 
 import json

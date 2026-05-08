@@ -1,3 +1,18 @@
+"""Defensive auto-tuner driven by the trade journal.
+
+Reads ``data/trade_journal.jsonl`` once per tick and computes a small set of
+bounded parameter overrides that tighten the strategy when historical
+outcomes show a clear weakness (high stop-loss share, losing 2-wallet trades,
+underperforming sports, low win rate, negative average PnL). The result is
+persisted to ``data/strategy_overrides.json`` and applied via
+``dataclasses.replace`` on top of the env-var :class:`Settings`.
+
+The tuner is intentionally one-directional: it only tightens after losses.
+Loosening based on a small biased sample would amplify noise. It also pauses
+entirely until enough closed trades have accumulated
+(``smart_auto_tune_min_trades``).
+"""
+
 from __future__ import annotations
 
 import json

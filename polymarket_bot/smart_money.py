@@ -1,3 +1,14 @@
+"""Smart-money signal engine.
+
+Fetches profitable wallets from the Polymarket leaderboards (across one or
+more time periods and categories), pulls each wallet's recent BUY trades in
+parallel, groups by asset, and produces ranked :class:`SmartMoneySignal`
+opportunities that pass spread, price-band, freshness, and consensus
+filters. Also exposes a reverse-lookup helper that fetches missing markets
+by ``clob_token_ids`` so high-flow tokens not present in the standard Gamma
+scan are not silently dropped.
+"""
+
 from __future__ import annotations
 
 import json

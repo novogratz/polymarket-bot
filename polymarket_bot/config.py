@@ -1,3 +1,13 @@
+"""Centralised configuration for the Polymarket bot.
+
+All runtime tuning lives in a single immutable :class:`Settings` dataclass
+populated from environment variables (loaded from ``.env`` at import time).
+Modules read from a ``Settings`` instance rather than reading the environment
+directly, so tests can construct a custom ``Settings`` to exercise specific
+code paths and the auto-tuner can produce a modified copy via
+``dataclasses.replace``.
+"""
+
 from __future__ import annotations
 
 import os

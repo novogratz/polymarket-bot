@@ -1,3 +1,11 @@
+"""Local persistent ledger for cash, open positions, and pending orders.
+
+The :class:`Portfolio` dataclass is loaded from and saved to
+``data/paper_state.json`` on every tick. It also owns the share-level
+accounting for live entries and exits, including partial fills, cost-basis
+tracking, peak-PnL tracking, and per-position event-key dedupe for sports.
+"""
+
 from __future__ import annotations
 
 import json

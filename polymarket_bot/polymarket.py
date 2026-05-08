@@ -1,3 +1,11 @@
+"""Authenticated Polymarket CLOB HTTP client.
+
+Implements the two-tier auth path Polymarket uses (L1 EIP-712 signed wallet
+auth and L2 HMAC API-key auth), order signing for the negative-risk and
+binary CTF exchanges, and the order placement endpoints used by the live
+trading layer.
+"""
+
 from __future__ import annotations
 
 import base64

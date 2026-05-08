@@ -1,3 +1,11 @@
+"""Candidate ranking and stake helpers.
+
+Turns Gamma market payloads into :class:`Candidate` instances, applies
+liquidity / volume / horizon filters, and computes a watchlist score based
+on tradability and urgency. The score is intentionally not an
+expected-value estimate; it only orders markets for downstream filtering.
+"""
+
 from __future__ import annotations
 
 from datetime import timedelta

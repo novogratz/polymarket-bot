@@ -1,3 +1,12 @@
+"""BTC threshold edge model.
+
+Parses Polymarket BTC above/below threshold markets, fetches BTC spot price
+and historical hourly volatility from Coinbase (with retry plus a fallback
+to the public ``api.coinbase.com`` spot endpoint), computes a
+Black-Scholes-style terminal probability, and returns a signal only when
+the modelled probability exceeds the market price by ``btc_min_edge``.
+"""
+
 from __future__ import annotations
 
 import json

@@ -1,3 +1,10 @@
+"""Shared dataclasses and parsing helpers.
+
+Hosts the :class:`Candidate` market record consumed by the strategy layer,
+plus the timezone-aware datetime parsing helpers used throughout the bot
+(Polymarket payloads mix ISO-8601 strings with and without trailing ``Z``).
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
