@@ -6,6 +6,11 @@ Modules read from a ``Settings`` instance rather than reading the environment
 directly, so tests can construct a custom ``Settings`` to exercise specific
 code paths and the auto-tuner can produce a modified copy via
 ``dataclasses.replace``.
+
+Tests set ``POLYMARKET_SKIP_DOTENV=1`` before importing this module so the
+user's ``.env`` values do not leak into ``Settings`` field defaults — those
+defaults are evaluated at class-definition time and would otherwise carry the
+user's runtime overrides into the test fixtures.
 """
 
 from __future__ import annotations
@@ -17,7 +22,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+if not os.getenv("POLYMARKET_SKIP_DOTENV"):
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
 def _float_env(name: str, default: float) -> float:

@@ -1,3 +1,13 @@
+import os
+
+# Skip .env load and strip any leaked POLYMARKET_* env vars BEFORE importing
+# polymarket_bot.config — Settings field defaults are evaluated at class
+# definition time, so any runtime override present at import would freeze into
+# the test fixtures.
+os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
+for _k in [k for k in os.environ if k.startswith("POLYMARKET_") and k != "POLYMARKET_SKIP_DOTENV"]:
+    del os.environ[_k]
+
 from datetime import timedelta
 import unittest
 
