@@ -1512,6 +1512,63 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(_max_trade_for_signal(settings, strong, "smart_money"), 20.0)
 
 
+class PortfolioDedupTests(unittest.TestCase):
+    def _make_candidate(self, *, market_id, outcome, token_id, event_slug):
+        return Candidate(
+            market_id=market_id,
+            question="Will the highest temperature in Seoul be 20C on May 9?",
+            slug="seoul-temp-may-9",
+            end_date=utc_now() + timedelta(hours=24),
+            hours_to_close=24,
+            liquidity=10000,
+            volume=20000,
+            outcome=outcome,
+            price=0.30,
+            token_id=token_id,
+            score=10,
+            url="https://polymarket.com/event/seoul-temp-may-9",
+            best_bid=0.29,
+            best_ask=0.31,
+            tick_size=0.01,
+            accepts_orders=True,
+            event_slug=event_slug,
+        )
+
+    def test_event_dedupe_blocks_no_when_yes_open_on_non_sports_market(self):
+        portfolio = Portfolio(cash=50.0, positions=[])
+        yes_candidate = self._make_candidate(
+            market_id="seoul-yes",
+            outcome="Yes",
+            token_id="tok-yes",
+            event_slug="seoul-temp-may-9",
+        )
+        portfolio.record_live_position(yes_candidate, 5.0, entry_price=0.30, order_id="o1")
+        no_candidate = self._make_candidate(
+            market_id="seoul-no",
+            outcome="No",
+            token_id="tok-no",
+            event_slug="seoul-temp-may-9",
+        )
+        self.assertTrue(portfolio.has_open_event_position(no_candidate))
+
+    def test_event_dedupe_does_not_block_unrelated_event(self):
+        portfolio = Portfolio(cash=50.0, positions=[])
+        seoul_yes = self._make_candidate(
+            market_id="seoul-yes",
+            outcome="Yes",
+            token_id="tok-yes",
+            event_slug="seoul-temp-may-9",
+        )
+        portfolio.record_live_position(seoul_yes, 5.0, entry_price=0.30, order_id="o1")
+        elon_candidate = self._make_candidate(
+            market_id="elon-tweets",
+            outcome="Yes",
+            token_id="tok-elon",
+            event_slug="elon-tweets-may-7-9",
+        )
+        self.assertFalse(portfolio.has_open_event_position(elon_candidate))
+
+
 class AutoTunerTests(unittest.TestCase):
     def test_compute_overrides_paused_below_minimum_trades(self):
         records = [{"realized_pnl": -1.0, "consensus": 2, "exit_reason": "stop_loss"} for _ in range(5)]

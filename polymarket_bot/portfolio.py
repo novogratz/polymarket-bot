@@ -70,11 +70,11 @@ class Portfolio:
         )
 
     def has_open_event_position(self, candidate: Candidate) -> bool:
-        event_key = _sports_event_key(candidate)
+        event_key = _event_key(candidate)
         if not event_key:
             return False
         return any(
-            position.get("status") == "open" and _sports_event_key(position) == event_key
+            position.get("status") == "open" and _event_key(position) == event_key
             for position in self.positions
         )
 
@@ -275,7 +275,28 @@ def paper_tick(candidates: list[Candidate], settings: Settings) -> tuple[Portfol
     return portfolio, opened
 
 
+def _event_key(item: Candidate | dict[str, Any]) -> str | None:
+    """Stable event identifier shared across YES and NO outcomes of one market.
+
+    Used by ``has_open_event_position`` to block opening both sides of the
+    same binary market - and any other position on the same event - even
+    when ``market_id`` happens to differ between the Gamma scan and a live
+    sync from the Data API.
+    """
+    if isinstance(item, Candidate):
+        event_slug = item.event_slug
+        url = item.url
+    else:
+        event_slug = str(item.get("event_slug") or "")
+        url = str(item.get("url") or "")
+    key = event_slug.strip().lower() or _event_slug_from_url(url)
+    if not key:
+        return None
+    return _normalize_key(key)
+
+
 def _sports_event_key(item: Candidate | dict[str, Any]) -> str | None:
+    """Sports-specific event key (kept for backward compatibility)."""
     if isinstance(item, Candidate):
         question = item.question
         slug = item.slug
