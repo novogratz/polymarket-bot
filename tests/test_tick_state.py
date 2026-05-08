@@ -117,3 +117,18 @@ class TickStateTests(unittest.TestCase):
             )
             history = tick_state.read_tick_history(s)
             self.assertEqual([r["tick_id"] for r in history], [2, 1])
+
+    def test_write_tick_does_not_raise_on_non_serializable_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            s = _settings_in(Path(tmp))
+            # Must not raise; files must not be created (json.dumps fails first)
+            tick_state.write_tick(s, {"bad": object()})
+            self.assertIsNone(tick_state.read_last_tick(s))
+            self.assertEqual(tick_state.read_tick_history(s), [])
+
+    def test_read_last_tick_returns_none_on_corrupt_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            s = _settings_in(Path(tmp))
+            s.tick_state_path.parent.mkdir(parents=True, exist_ok=True)
+            s.tick_state_path.write_text("{not valid json")
+            self.assertIsNone(tick_state.read_last_tick(s))
