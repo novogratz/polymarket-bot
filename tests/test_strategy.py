@@ -1759,5 +1759,100 @@ class SettingsDryRunTests(unittest.TestCase):
         self.assertEqual(str(s.tick_history_path), "/tmp/custom_hist.jsonl")
 
 
+class TickStateLoopTests(unittest.TestCase):
+    def test_strategy_loop_writes_tick_state_on_each_tick(self):
+        import tempfile
+        from pathlib import Path
+        from polymarket_bot import tick_state
+        from polymarket_bot.main import strategy_loop
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            settings = Settings(
+                auto_max_ticks=2,
+                auto_interval_seconds=0,
+                quiet=True,
+                tick_state_path=tmp_path / "last_tick.json",
+                tick_history_path=tmp_path / "tick_history.jsonl",
+            )
+
+            calls: list[int] = []
+
+            def fake_tick(s):
+                calls.append(len(calls) + 1)
+                return {
+                    "scan_report": {"strict": 0, "relaxed": 1, "deep": 0, "candidates_total": 5},
+                    "exits": [{"action": "sell", "market_question": "M1", "stake_usd": 1.0, "reason": "tp"}],
+                    "noise_trades": [],
+                    "rejected_signals": [{"market_question": "Skipped", "reason": "chase too high"}],
+                    "auto_tune_info": {"applied": False, "journal_size": 5, "overrides_active": {}},
+                    "summary": {"equity": 100.0, "cash": 50.0, "invested": 50.0},
+                    "trade": {"market_question": "M2", "stake_usd": 2.0, "strategy": "smart_money"},
+                }
+
+            strategy_loop(settings, "smart_money", fake_tick)
+
+            self.assertEqual(len(calls), 2)
+            last = tick_state.read_last_tick(settings)
+            self.assertIsNotNone(last)
+            self.assertEqual(last["mode"], "live")
+            self.assertIn("scan_counts", last)
+            self.assertIn("actions", last)
+            self.assertIn("next_tick_at", last)
+            history = tick_state.read_tick_history(settings, limit=10)
+            self.assertEqual(len(history), 2)
+            self.assertEqual(history[0]["tick_id"], 2)
+            self.assertEqual(history[1]["tick_id"], 1)
+
+    def test_strategy_loop_records_dry_run_mode(self):
+        import tempfile
+        from pathlib import Path
+        from polymarket_bot import tick_state
+        from polymarket_bot.main import strategy_loop
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            settings = Settings(
+                dry_run=True,
+                auto_max_ticks=1,
+                auto_interval_seconds=0,
+                quiet=True,
+                tick_state_path=tmp_path / "last_tick.json",
+                tick_history_path=tmp_path / "tick_history.jsonl",
+            )
+
+            def fake_tick(s):
+                return {"summary": {"equity": 0}}
+
+            strategy_loop(settings, "smart_money", fake_tick)
+            last = tick_state.read_last_tick(settings)
+            self.assertEqual(last["mode"], "dry_run")
+
+    def test_strategy_loop_records_error_ticks(self):
+        import tempfile
+        from pathlib import Path
+        from polymarket_bot import tick_state
+        from polymarket_bot.main import strategy_loop
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            settings = Settings(
+                auto_max_ticks=1,
+                auto_interval_seconds=0,
+                quiet=True,
+                tick_state_path=tmp_path / "last_tick.json",
+                tick_history_path=tmp_path / "tick_history.jsonl",
+            )
+
+            def boom(s):
+                raise RuntimeError("kaboom")
+
+            strategy_loop(settings, "smart_money", boom)
+            last = tick_state.read_last_tick(settings)
+            self.assertIsNotNone(last)
+            self.assertEqual(last["error"], {"type": "RuntimeError", "message": "kaboom"})
+            self.assertEqual(last["actions"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

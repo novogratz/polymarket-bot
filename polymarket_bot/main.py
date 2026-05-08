@@ -21,6 +21,7 @@ import typer
 from dataclasses import replace
 from datetime import timedelta
 
+from . import tick_state
 from .auto_tuner import apply_overrides, maybe_tune
 from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
 from .config import Settings
@@ -210,9 +211,17 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
 
 def smart_money_once(settings: Settings) -> dict[str, object]:
     print("▶  tick start", flush=True)
+    auto_tune_info: dict[str, object] = {
+        "applied": False,
+        "journal_size": 0,
+        "overrides_active": {},
+    }
     if settings.smart_auto_tune_enabled:
         overrides, journal_size = maybe_tune(settings)
+        auto_tune_info["journal_size"] = journal_size
+        auto_tune_info["overrides_active"] = dict(overrides)
         if overrides:
+            auto_tune_info["applied"] = True
             print(
                 f"   auto-tune: {len(overrides)} override(s) from {journal_size} closed trade(s): {overrides}",
                 flush=True,
@@ -612,6 +621,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "rejected_signals": rejected_signals,
         "scan_report": report.to_dict(),
         "summary": portfolio.summary(),
+        "auto_tune_info": auto_tune_info,
     }
     if settings.btc_edge_integrated:
         try:
@@ -1757,23 +1767,39 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
     while settings.auto_max_ticks <= 0 or tick < settings.auto_max_ticks:
         tick += 1
         started_at = utc_now()
+        error: dict[str, str] | None = None
+        tick_result: dict[str, object] = {}
         try:
-            result: dict[str, object] = {
-                "tick": tick,
-                "strategy": strategy_name,
-                "started_at": started_at.isoformat(),
-                "result": tick_fn(settings),
-            }
+            tick_result = tick_fn(settings)
         except Exception as exc:
-            result = {
-                "tick": tick,
-                "strategy": strategy_name,
-                "started_at": started_at.isoformat(),
-                "error": {
-                    "type": type(exc).__name__,
-                    "message": str(exc),
-                },
-            }
+            error = {"type": type(exc).__name__, "message": str(exc)}
+
+        finished_at = utc_now()
+        result: dict[str, object] = {
+            "tick": tick,
+            "strategy": strategy_name,
+            "started_at": started_at.isoformat(),
+        }
+        if error is None:
+            result["result"] = tick_result
+        else:
+            result["error"] = error
+
+        try:
+            tick_state.write_tick(
+                settings,
+                _build_tick_record(
+                    tick_id=tick,
+                    started_at=started_at,
+                    finished_at=finished_at,
+                    settings=settings,
+                    tick_result=tick_result,
+                    error=error,
+                ),
+            )
+        except Exception:
+            pass
+
         if settings.quiet:
             print(json.dumps(result), flush=True)
         else:
@@ -1781,6 +1807,77 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
         if settings.auto_max_ticks > 0 and tick >= settings.auto_max_ticks:
             break
         time.sleep(settings.auto_interval_seconds)
+
+
+def _build_tick_record(
+    *,
+    tick_id: int,
+    started_at,
+    finished_at,
+    settings: Settings,
+    tick_result: dict[str, object],
+    error: dict[str, str] | None,
+) -> dict[str, object]:
+    """Re-shape a tick_fn return into the tick_state record format."""
+    import datetime as _dt
+    duration_s = round((finished_at - started_at).total_seconds(), 2)
+    next_tick_at = (
+        finished_at.timestamp() + max(0, settings.auto_interval_seconds)
+    )
+    record: dict[str, object] = {
+        "tick_id": tick_id,
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "duration_s": duration_s,
+        "mode": "dry_run" if settings.dry_run else "live",
+        "scan_counts": dict(tick_result.get("scan_report") or {}),
+        "actions": _extract_tick_actions(tick_result),
+        "tuner_changes": dict(tick_result.get("auto_tune_info") or {}),
+        "next_tick_at": _dt.datetime.fromtimestamp(
+            next_tick_at, tz=_dt.timezone.utc
+        ).isoformat(),
+    }
+    if error is not None:
+        record["error"] = error
+    return record
+
+
+def _extract_tick_actions(tick_result: dict[str, object]) -> list[dict[str, object]]:
+    actions: list[dict[str, object]] = []
+    primary = tick_result.get("trade")
+    if isinstance(primary, dict) and primary.get("market_question"):
+        actions.append({
+            "type": "buy",
+            "market": primary.get("market_question"),
+            "amount_usd": primary.get("stake_usd"),
+            "strategy": primary.get("strategy"),
+            "reason": primary.get("reason") or "smart_money_signal",
+        })
+    for noise in tick_result.get("noise_trades") or []:
+        if isinstance(noise, dict):
+            actions.append({
+                "type": "buy",
+                "market": noise.get("market_question"),
+                "amount_usd": noise.get("stake_usd"),
+                "strategy": "noise_fallback",
+                "reason": "noise_fallback",
+            })
+    for exit_record in tick_result.get("exits") or []:
+        if isinstance(exit_record, dict) and exit_record.get("action") == "sell":
+            actions.append({
+                "type": "sell",
+                "market": exit_record.get("market_question"),
+                "amount_usd": exit_record.get("stake_usd") or exit_record.get("proceeds"),
+                "reason": exit_record.get("reason"),
+            })
+    for rejected in tick_result.get("rejected_signals") or []:
+        if isinstance(rejected, dict):
+            actions.append({
+                "type": "skip",
+                "market": rejected.get("market_question"),
+                "reason": rejected.get("reason"),
+            })
+    return actions
 
 
 def smart_money_loop(settings: Settings) -> None:
