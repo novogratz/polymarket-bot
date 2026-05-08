@@ -1782,12 +1782,17 @@ class TickStateLoopTests(unittest.TestCase):
                 calls.append(len(calls) + 1)
                 return {
                     "scan_report": {"strict": 0, "relaxed": 1, "deep": 0, "candidates_total": 5},
-                    "exits": [{"action": "sell", "market_question": "M1", "stake_usd": 1.0, "reason": "tp"}],
+                    "exits": [{"market_id": "mid-1", "question": "Will M1 close yes?", "outcome": "Yes", "action": "sell", "reason": "tp", "pnl_pct": 0.10}],
                     "noise_trades": [],
-                    "rejected_signals": [{"market_question": "Skipped", "reason": "chase too high"}],
+                    "rejected_signals": [{"market_id": "mid-skip", "question": "Skipped market?", "outcome": "Yes", "reason": "chase too high"}],
                     "auto_tune_info": {"applied": False, "journal_size": 5, "overrides_active": {}},
                     "summary": {"equity": 100.0, "cash": 50.0, "invested": 50.0},
-                    "trade": {"market_question": "M2", "stake_usd": 2.0, "strategy": "smart_money"},
+                    "trade": {
+                        "strategy": "smart_money",
+                        "signal": {"question": "Will M2 happen?", "stake_usd": 2.0, "selection_reason": "consensus 3"},
+                        "order": {},
+                        "response": {},
+                    },
                 }
 
             strategy_loop(settings, "smart_money", fake_tick)
@@ -1852,6 +1857,37 @@ class TickStateLoopTests(unittest.TestCase):
             self.assertIsNotNone(last)
             self.assertEqual(last["error"], {"type": "RuntimeError", "message": "kaboom"})
             self.assertEqual(last["actions"], [])
+
+    def test_extract_tick_actions_handles_real_payload_shape(self):
+        from polymarket_bot.main import _extract_tick_actions
+
+        actions = _extract_tick_actions({
+            "trade": {
+                "strategy": "smart_money",
+                "signal": {"question": "Q-buy?", "stake_usd": 3.0, "selection_reason": "x"},
+            },
+            "noise_trades": [{
+                "strategy": "noise_fallback",
+                "signal": {"question": "Q-noise?", "stake_usd": 1.0},
+            }],
+            "exits": [
+                {"market_id": "m1", "question": "Q-sell?", "outcome": "Yes", "action": "sell", "reason": "stop_loss"},
+                {"market_id": "m2", "question": "Q-skipsell?", "outcome": "Yes", "action": "skip_sell", "reason": "below floor"},
+            ],
+            "rejected_signals": [
+                {"market_id": "m3", "question": "Q-skip?", "outcome": "No", "reason": "chase 0.18"},
+            ],
+        })
+
+        types = [a["type"] for a in actions]
+        markets = [a["market"] for a in actions]
+        # Two buys (primary + noise), one sell (skip_sell is filtered), one skip
+        self.assertEqual(types, ["buy", "buy", "sell", "skip"])
+        self.assertEqual(markets, ["Q-buy?", "Q-noise?", "Q-sell?", "Q-skip?"])
+
+    def test_extract_tick_actions_returns_empty_for_empty_tick(self):
+        from polymarket_bot.main import _extract_tick_actions
+        self.assertEqual(_extract_tick_actions({}), [])
 
 
 if __name__ == "__main__":

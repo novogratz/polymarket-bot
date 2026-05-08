@@ -19,7 +19,7 @@ import time
 import typer
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from . import tick_state
 from .auto_tuner import apply_overrides, maybe_tune
@@ -433,6 +433,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
+                        "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
                         "reason": "duplicate_open_market",
                         "selection_reason": opportunity.to_dict()["selection_reason"],
@@ -443,6 +444,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
+                        "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
                         "event_slug": opportunity.candidate.event_slug,
                         "reason": "duplicate_open_sports_event",
@@ -460,6 +462,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
+                        "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
                         "reason": "sports_position_cap_reached",
                         "category": category,
@@ -499,6 +502,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     rejected_signals.append(
                         {
                             "market_id": opportunity.candidate.market_id,
+                            "question": opportunity.candidate.question,
                             "outcome": opportunity.candidate.outcome,
                             "reason": str(e),
                         }
@@ -509,6 +513,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     rejected_signals.append(
                         {
                             "market_id": opportunity.candidate.market_id,
+                            "question": opportunity.candidate.question,
                             "outcome": opportunity.candidate.outcome,
                             "reason": str(e),
                         }
@@ -525,6 +530,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     rejected_signals.append(
                         {
                             "market_id": opportunity.candidate.market_id,
+                            "question": opportunity.candidate.question,
                             "outcome": opportunity.candidate.outcome,
                             "reason": str(e),
                         }
@@ -561,6 +567,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     continue
                 try:
                     noise_signal = {
+                        "question": candidate.question,
                         "category": market_category(candidate.question, candidate.slug),
                         "selection_reason": "noise_fallback: no smart-money signal; small bet on top-scored candidate",
                         "selection_metrics": {
@@ -715,6 +722,7 @@ def _execute_sell_strategy(
             exit_report.append(
                 {
                     "market_id": position.get("market_id"),
+                    "question": position.get("question"),
                     "outcome": position.get("outcome"),
                     "action": "skip_sell",
                     "reason": f"{type(exc).__name__}: {message}",
@@ -733,6 +741,7 @@ def _execute_sell_strategy(
         exit_report.append(
             {
                 "market_id": position.get("market_id"),
+                "question": position.get("question"),
                 "outcome": position.get("outcome"),
                 "action": "sell",
                 "reason": plan["reason"],
@@ -1812,14 +1821,13 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
 def _build_tick_record(
     *,
     tick_id: int,
-    started_at,
-    finished_at,
+    started_at: datetime,
+    finished_at: datetime,
     settings: Settings,
     tick_result: dict[str, object],
     error: dict[str, str] | None,
 ) -> dict[str, object]:
     """Re-shape a tick_fn return into the tick_state record format."""
-    import datetime as _dt
     duration_s = round((finished_at - started_at).total_seconds(), 2)
     next_tick_at = (
         finished_at.timestamp() + max(0, settings.auto_interval_seconds)
@@ -1833,8 +1841,8 @@ def _build_tick_record(
         "scan_counts": dict(tick_result.get("scan_report") or {}),
         "actions": _extract_tick_actions(tick_result),
         "tuner_changes": dict(tick_result.get("auto_tune_info") or {}),
-        "next_tick_at": _dt.datetime.fromtimestamp(
-            next_tick_at, tz=_dt.timezone.utc
+        "next_tick_at": datetime.fromtimestamp(
+            next_tick_at, tz=timezone.utc
         ).isoformat(),
     }
     if error is not None:
@@ -1845,37 +1853,42 @@ def _build_tick_record(
 def _extract_tick_actions(tick_result: dict[str, object]) -> list[dict[str, object]]:
     actions: list[dict[str, object]] = []
     primary = tick_result.get("trade")
-    if isinstance(primary, dict) and primary.get("market_question"):
-        actions.append({
-            "type": "buy",
-            "market": primary.get("market_question"),
-            "amount_usd": primary.get("stake_usd"),
-            "strategy": primary.get("strategy"),
-            "reason": primary.get("reason") or "smart_money_signal",
-        })
-    for noise in tick_result.get("noise_trades") or []:
-        if isinstance(noise, dict):
+    if isinstance(primary, dict):
+        signal = primary.get("signal") if isinstance(primary.get("signal"), dict) else {}
+        question = signal.get("question") if signal else None
+        if question:
             actions.append({
                 "type": "buy",
-                "market": noise.get("market_question"),
-                "amount_usd": noise.get("stake_usd"),
-                "strategy": "noise_fallback",
-                "reason": "noise_fallback",
+                "market": question,
+                "amount_usd": signal.get("stake_usd"),
+                "strategy": primary.get("strategy"),
+                "reason": signal.get("selection_reason") or "smart_money_signal",
             })
+    for noise in tick_result.get("noise_trades") or []:
+        if isinstance(noise, dict):
+            noise_signal = noise.get("signal") if isinstance(noise.get("signal"), dict) else {}
+            question = noise_signal.get("question") or noise.get("question")
+            if question:
+                actions.append({
+                    "type": "buy",
+                    "market": question,
+                    "amount_usd": noise_signal.get("stake_usd"),
+                    "strategy": "noise_fallback",
+                    "reason": "noise_fallback",
+                })
     for exit_record in tick_result.get("exits") or []:
         if isinstance(exit_record, dict) and exit_record.get("action") == "sell":
             actions.append({
                 "type": "sell",
-                "market": exit_record.get("market_question"),
-                "amount_usd": exit_record.get("stake_usd") or exit_record.get("proceeds"),
+                "market": exit_record.get("question") or exit_record.get("market_id"),
                 "reason": exit_record.get("reason"),
             })
     for rejected in tick_result.get("rejected_signals") or []:
         if isinstance(rejected, dict):
             actions.append({
                 "type": "skip",
-                "market": rejected.get("market_question"),
-                "reason": rejected.get("reason"),
+                "market": rejected.get("question") or rejected.get("market_id"),
+                "reason": rejected.get("reason") or rejected.get("selection_reason"),
             })
     return actions
 
