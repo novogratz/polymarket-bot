@@ -68,6 +68,7 @@ class Settings:
         "hurricane,temperature,box office,movie,earnings,stock,nasdaq",
     )
     smart_time_period: str = os.getenv("POLYMARKET_SMART_TIME_PERIOD", "WEEK")
+    smart_time_periods: str = os.getenv("POLYMARKET_SMART_TIME_PERIODS", "")
     smart_leaderboard_limit: int = _int_env("POLYMARKET_SMART_LEADERBOARD_LIMIT", 25)
     smart_scan_limit: int = _int_env("POLYMARKET_SMART_SCAN_LIMIT", 1000)
     smart_soon_hours: int = _int_env("POLYMARKET_SMART_SOON_HOURS", 72)

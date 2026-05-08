@@ -530,7 +530,9 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
 
     noise_trades: list[dict[str, object]] = []
     if settings.smart_noise_fallback_enabled:
-        noise_picks = _noise_fallback_candidates(settings, portfolio, candidates, open_categories)
+        noise_picks = _noise_fallback_candidates(
+            settings, portfolio, candidates, open_categories, smart_data=smart_data
+        )
         if noise_picks:
             print(
                 f"   noise fallback: trying {len(noise_picks)} small bet(s) (no smart-money signal qualified)",
@@ -695,6 +697,7 @@ def _noise_fallback_candidates(
     portfolio: Portfolio,
     candidates: list,
     open_categories: dict[str, int],
+    smart_data=None,
 ) -> list:
     if not settings.smart_noise_fallback_enabled:
         return []
@@ -712,9 +715,30 @@ def _noise_fallback_candidates(
     )
     if not below_min and not cash_pressure:
         return []
+
+    smart_active_tokens: dict[str, float] = {}
+    if smart_data is not None and getattr(smart_data, "trades", None):
+        for trade in smart_data.trades:
+            asset = getattr(trade, "asset", None)
+            if not asset:
+                continue
+            smart_active_tokens[asset] = smart_active_tokens.get(asset, 0.0) + float(
+                getattr(trade, "usdc_size", 0.0) or 0.0
+            )
+
+    if smart_active_tokens:
+        ranked = sorted(
+            (c for c in candidates if c.token_id and c.token_id in smart_active_tokens),
+            key=lambda c: smart_active_tokens.get(c.token_id, 0.0),
+            reverse=True,
+        )
+        ordered = ranked + [c for c in candidates if c not in ranked]
+    else:
+        ordered = list(candidates)
+
     picks: list = []
     seen_market_ids: set[str] = set()
-    for candidate in candidates:
+    for candidate in ordered:
         if not candidate.token_id or not candidate.accepts_orders:
             continue
         if candidate.best_bid is None or candidate.best_ask is None or candidate.tick_size is None:

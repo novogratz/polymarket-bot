@@ -504,20 +504,34 @@ def smart_money_signals(
     return signals
 
 
+def _time_periods(settings: Settings) -> list[str]:
+    raw = settings.smart_time_periods.strip()
+    if raw:
+        periods = [item.strip().upper() for item in raw.split(",") if item.strip()]
+        if periods:
+            return periods
+    return [settings.smart_time_period.strip().upper() or "WEEK"]
+
+
 def _top_traders(client: DataApiClient, settings: Settings) -> list[SmartTrader]:
     seen: set[str] = set()
     traders: list[SmartTrader] = []
     categories = _categories(settings)
-    for index, category in enumerate(categories, 1):
-        print(f"      leaderboard {index}/{len(categories)} {category}...", flush=True)
+    periods = _time_periods(settings)
+    combos = [(period, category) for period in periods for category in categories]
+    for index, (period, category) in enumerate(combos, 1):
+        print(f"      leaderboard {index}/{len(combos)} {period}/{category}...", flush=True)
         try:
             category_traders = client.leaderboard(
                 category=category,
-                time_period=settings.smart_time_period,
+                time_period=period,
                 limit=settings.smart_leaderboard_limit,
             )
         except Exception as exc:
-            print(f"⚠️  Smart-money leaderboard category skipped: {category} {type(exc).__name__}: {exc}", flush=True)
+            print(
+                f"⚠️  Smart-money leaderboard skipped: {period}/{category} {type(exc).__name__}: {exc}",
+                flush=True,
+            )
             continue
         added = 0
         for trader in category_traders:
