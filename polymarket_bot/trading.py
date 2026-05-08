@@ -179,7 +179,9 @@ class TradingSession:
 
     def live_available_balance(self) -> float:
         target_wallet = self.wallet_address
-        print(f"🔍 Checking pUSD balance for wallet: {target_wallet}")
+        quiet = bool(getattr(self.settings, "quiet", False))
+        if not quiet:
+            print(f"🔍 Checking pUSD balance for wallet: {target_wallet}")
 
         rpc_url = getattr(self.settings, "polygon_rpc_url", None) or DEFAULT_POLYGON_RPC_URL
         try:
@@ -207,7 +209,8 @@ class TradingSession:
             except Exception as e:
                 print(f"⚠️  SDK allowance check skipped: {str(e)}")
 
-        print(f"💰 Live Balance: {balance} pUSD | Allowance: {allowance} (legacy USDC.e via SDK)")
+        if not quiet:
+            print(f"💰 Live Balance: {balance} pUSD | Allowance: {allowance} (legacy USDC.e via SDK)")
 
         if balance <= 0.0 and self.settings.assumed_live_balance_usd > 0.0:
             print(f"⚠️  Using POLYMARKET_ASSUME_LIVE_BALANCE_USD={self.settings.assumed_live_balance_usd}")
@@ -520,24 +523,32 @@ def execute_live_trade(
             f"order size {size} shares is below Polymarket minimum of {settings.min_order_shares} shares"
         )
 
-    print(f"\n🚀 MARKET BUY: {candidate.outcome} on {candidate.question}")
-    print(f"   Stake: ${stake} USDC | Max price guard: {entry_price} | Est. shares: {size}")
-    print(f"   Market: {candidate.url}")
-    if signal:
-        metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
-        print(f"   Why: {signal.get('selection_reason', 'smart-money signal passed filters')}")
+    if settings.quiet:
+        prefix = "[DRY-RUN] " if settings.dry_run else ""
         print(
-            "   Signal: "
-            f"wallets={metrics.get('profitable_wallet_count', signal.get('consensus'))} "
-            f"copied=${metrics.get('copied_usdc', signal.get('copied_usdc'))} "
-            f"avg_copy={metrics.get('avg_copy_price', signal.get('avg_copy_price'))} "
-            f"ask={metrics.get('current_ask', signal.get('best_ask'))} "
-            f"bid={metrics.get('current_bid', signal.get('best_bid'))} "
-            f"spread={metrics.get('spread')} "
-            f"wallet_pnl=${metrics.get('total_trader_pnl', signal.get('total_trader_pnl'))}"
+            f"🚀 {prefix}BUY {candidate.outcome} ${stake} @ {entry_price} | "
+            f"{candidate.question[:60]}"
         )
+    else:
+        print(f"\n🚀 MARKET BUY: {candidate.outcome} on {candidate.question}")
+        print(f"   Stake: ${stake} USDC | Max price guard: {entry_price} | Est. shares: {size}")
+        print(f"   Market: {candidate.url}")
+        if signal:
+            metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
+            print(f"   Why: {signal.get('selection_reason', 'smart-money signal passed filters')}")
+            print(
+                "   Signal: "
+                f"wallets={metrics.get('profitable_wallet_count', signal.get('consensus'))} "
+                f"copied=${metrics.get('copied_usdc', signal.get('copied_usdc'))} "
+                f"avg_copy={metrics.get('avg_copy_price', signal.get('avg_copy_price'))} "
+                f"ask={metrics.get('current_ask', signal.get('best_ask'))} "
+                f"bid={metrics.get('current_bid', signal.get('best_bid'))} "
+                f"spread={metrics.get('spread')} "
+                f"wallet_pnl=${metrics.get('total_trader_pnl', signal.get('total_trader_pnl'))}"
+            )
     if settings.dry_run:
-        print("   [DRY-RUN] Skipping SDK call, simulating matched fill.")
+        if not settings.quiet:
+            print("   [DRY-RUN] Skipping SDK call, simulating matched fill.")
         order = {"dry_run": True, "side": "BUY", "amount": stake, "price": entry_price}
         response = {
             "success": True,
@@ -548,9 +559,10 @@ def execute_live_trade(
             "dry_run": True,
         }
     else:
-        print("   Sending FOK market order...")
+        if not settings.quiet:
+            print("   Sending FOK market order...")
         order, response = client.place_market_order(candidate=candidate, amount=stake, price=entry_price, side="BUY")
-    if isinstance(response, dict) and response.get("success"):
+    if isinstance(response, dict) and response.get("success") and not settings.quiet:
         status = str(response.get("status") or "")
         label = "✅ BUY FILLED" if _is_filled_buy_response(response) else "⚠️  BUY NOT FILLED"
         print(
@@ -558,7 +570,8 @@ def execute_live_trade(
             f"status={status} order_id={response.get('orderID')} "
             f"making={response.get('makingAmount')} taking={response.get('takingAmount')}"
         )
-    print(f"📡 BUY API RESPONSE: {json.dumps(response, indent=2)}\n")
+    if not settings.quiet:
+        print(f"📡 BUY API RESPONSE: {json.dumps(response, indent=2)}\n")
 
     order_id = response.get("orderID") if isinstance(response, dict) else None
     if _is_filled_buy_response(response):
@@ -637,12 +650,20 @@ def execute_live_sell(
     if proceeds < settings.smart_min_sell_usd:
         raise ValueError(f"sell proceeds {proceeds} is below minimum ${settings.smart_min_sell_usd}")
 
-    print(
-        f"\n💸 EXECUTING EXIT: SELL {size} shares of '{candidate.outcome}' at {sell_price} "
-        f"on '{candidate.question}' (${proceeds} USDC) reason={reason}"
-    )
+    if settings.quiet:
+        prefix = "[DRY-RUN] " if settings.dry_run else ""
+        print(
+            f"💸 {prefix}SELL {size} '{candidate.outcome}' @ {sell_price} "
+            f"(${proceeds}) reason={reason}"
+        )
+    else:
+        print(
+            f"\n💸 EXECUTING EXIT: SELL {size} shares of '{candidate.outcome}' at {sell_price} "
+            f"on '{candidate.question}' (${proceeds} USDC) reason={reason}"
+        )
     if settings.dry_run:
-        print("   [DRY-RUN] Skipping SDK call, simulating matched SELL fill.")
+        if not settings.quiet:
+            print("   [DRY-RUN] Skipping SDK call, simulating matched SELL fill.")
         order = {"dry_run": True, "side": "SELL", "size": size, "price": sell_price}
         response = {
             "success": True,
@@ -654,7 +675,8 @@ def execute_live_sell(
         }
     else:
         order, response = client.place_live_order(candidate=candidate, price=sell_price, size=size, side="SELL")
-    print(f"📡 SELL RESPONSE: {json.dumps(response, indent=2)}\n")
+    if not settings.quiet:
+        print(f"📡 SELL RESPONSE: {json.dumps(response, indent=2)}\n")
     portfolio.record_live_exit(
         position,
         shares=size,
