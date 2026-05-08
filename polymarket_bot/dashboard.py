@@ -84,8 +84,16 @@ HTML = """<!doctype html>
       const response = await fetch('/api/state');
       const data = await response.json();
       document.getElementById('status').textContent = `Updated ${new Date(data.updated_at).toLocaleTimeString()} · ${data.candidates.length} candidates`;
-      document.getElementById('mode').innerHTML = data.live_trading_enabled ? '<span class="pill">live enabled</span>' : '<span class="pill off">live disabled</span>';
-      document.getElementById('balance-source').innerHTML = data.balance_source === 'live_clob' ? '<span class="pill">live balance synced</span>' : '<span class="pill off">local ledger balance</span>';
+      const modePill = data.dry_run
+        ? '<span class="pill" style="background:#f4c95d;color:#020504">DRY-RUN</span>'
+        : data.live_trading_enabled ? '<span class="pill">live enabled</span>' : '<span class="pill off">live disabled</span>';
+      document.getElementById('mode').innerHTML = modePill;
+      const balancePill = data.balance_source === 'live_clob'
+        ? '<span class="pill">live balance synced</span>'
+        : data.balance_source === 'dry_run_ledger'
+          ? '<span class="pill off">dry-run virtual cash</span>'
+          : '<span class="pill off">local ledger balance</span>';
+      document.getElementById('balance-source').innerHTML = balancePill;
       const s = data.summary;
       document.getElementById('stats').innerHTML = [
         ['Equity', fmtUsd.format(s.equity)], ['Cash', fmtUsd.format(s.cash)], ['Invested', fmtUsd.format(s.invested)],
@@ -124,14 +132,17 @@ def snapshot(settings: Settings) -> dict[str, Any]:
     )
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
     portfolio.mark_to_market(candidates)
-    balance_source = "local_ledger"
+    balance_source = "dry_run_ledger" if settings.dry_run else "local_ledger"
     live_balance_error = None
-    live_balance = _live_available_balance(settings)
-    if isinstance(live_balance, float) and live_balance > 0:
-        portfolio.cash = round(live_balance, 2)
-        balance_source = "live_clob"
-    elif isinstance(live_balance, str):
-        live_balance_error = live_balance
+    if settings.dry_run:
+        live_balance: float | str | None = None
+    else:
+        live_balance = _live_available_balance(settings)
+        if isinstance(live_balance, float) and live_balance > 0:
+            portfolio.cash = round(live_balance, 2)
+            balance_source = "live_clob"
+        elif isinstance(live_balance, str):
+            live_balance_error = live_balance
     portfolio.save(settings.state_path)
     positions = portfolio.positions
     recent_trades = sorted(
@@ -142,6 +153,8 @@ def snapshot(settings: Settings) -> dict[str, Any]:
     return {
         "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
         "live_trading_enabled": settings.live_trading_enabled,
+        "dry_run": settings.dry_run,
+        "state_path": str(settings.state_path),
         "auto_interval_seconds": settings.auto_interval_seconds,
         "balance_source": balance_source,
         "live_balance_error": live_balance_error,
