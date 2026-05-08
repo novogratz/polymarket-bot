@@ -1,84 +1,87 @@
-# Guide Codex
+# Codex Guide
 
-Fichier d'entrée Codex pour le bot Polymarket. Voir `CLAUDE.md` pour la version Claude Code (contenu équivalent).
+Codex entry point for the Polymarket bot. See also the structured skill in `.codex/skills/polymarket-bot/SKILL.md`. The Claude Code version (equivalent content) lives in `CLAUDE.md` and `.claude/skills/polymarket-bot/SKILL.md`.
 
-## Sécurité
+The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, see `.github/workflows/test.yml`).
 
-- Ne jamais révéler les valeurs de `.env`, clés privées, secrets API ou passphrases.
-- Ne pas contourner `POLYMARKET_ENABLE_LIVE_TRADING=1`.
-- Ne pas implémenter de trades live aléatoires ou non filtrés. Le chemin `noise_fallback` est la seule voie de trade forcé et est plafonné à $5 par trade et 2 trades par tick.
-- Préserver `data/paper_state.json`, `data/trade_journal.jsonl` et `data/strategy_overrides.json` sauf si l'utilisateur demande un reset explicite.
-- Aucun appel LLM (Codex, Claude, autre) dans le chemin de scan ou de sélection de trade.
-- Le bot n'a pas la capacité d'écrire ni de pusher du code source de lui-même.
+## Safety
 
-## Carte du projet
+- Never reveal `.env` values, private keys, API secrets, or passphrases.
+- Do not bypass `POLYMARKET_ENABLE_LIVE_TRADING=1`.
+- Do not implement random or unfiltered live trades. The `noise_fallback` path is the only forced-trade lane and is hard-capped at $10 per trade and 4 trades per tick.
+- Preserve `data/paper_state.json`, `data/trade_journal.jsonl`, and `data/strategy_overrides.json` unless explicitly asked to reset them.
+- No LLM call (Codex, Claude, anything else) in the scanning or trade-selection path.
+- The bot must not have the capability to write or push source code on its own.
 
-- `polymarket_bot/main.py` : commandes CLI et boucles. Orchestration du tick, sizing, journal de trades, commandes `journal-stats` et `tune-strategy`.
-- `polymarket_bot/smart_money.py` : leaderboards, fetch parallèle des trades, regroupement par token, scoring, reverse-lookup.
-- `polymarket_bot/auto_tuner.py` : overrides bornés depuis le trade journal (défensif).
-- `polymarket_bot/bitcoin.py` : modèle BTC threshold edge (Black-Scholes via volatilité).
-- `polymarket_bot/trading.py` : ordres BUY/SELL live et calcul du stake.
-- `polymarket_bot/dashboard.py` : dashboard local sur `http://127.0.0.1:8765`.
-- `polymarket_bot/portfolio.py` : ledger local, positions, ordres pending, exits.
-- `polymarket_bot/gamma.py` : client Gamma + reverse-lookup par clob_token_ids.
-- `polymarket_bot/strategy.py` : ranking des candidats.
-- `scripts/run_live_70.sh` : runner live canonique.
-- `tests/test_strategy.py` : 49 tests.
+## Project map
 
-## Commandes
+- `polymarket_bot/main.py` — CLI commands and tick orchestration. Sizing helpers, trade-journal writer, `journal-stats` and `tune-strategy` commands.
+- `polymarket_bot/smart_money.py` — leaderboards, parallel trade fetching, token grouping, scoring, reverse-lookup helper.
+- `polymarket_bot/auto_tuner.py` — bounded overrides from the trade journal (defensive only).
+- `polymarket_bot/bitcoin.py` — BTC threshold edge model (Black-Scholes-from-volatility).
+- `polymarket_bot/trading.py` — live BUY/SELL order placement and stake computation.
+- `polymarket_bot/dashboard.py` — local dashboard at `http://127.0.0.1:8765`.
+- `polymarket_bot/portfolio.py` — local ledger, positions, pending orders, exits.
+- `polymarket_bot/gamma.py` — Gamma client + reverse-lookup by clob_token_ids.
+- `polymarket_bot/strategy.py` — candidate ranking.
+- `scripts/run_live_70.sh` — canonical live runner.
+- `tests/test_strategy.py` — 52 tests.
 
-Tests :
+## Commands
+
+Tests:
 
 ```bash
 python3 -B -m unittest discover -s tests
 ```
 
-Boucle live (ce que lance `scripts/run_live_70.sh`) :
+Live loop (what `scripts/run_live_70.sh` invokes):
 
 ```bash
 POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
 ```
 
-Dashboard, stats du journal, auto-tuner manuel, bootstrap-creds, reset-ledger : voir `CLAUDE.md`. La CLI est limitée à 6 commandes : `auto-loop`, `dashboard`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`.
+Dashboard, journal stats, manual auto-tuner, bootstrap-creds, and reset-ledger: see `CLAUDE.md`. The CLI is limited to 6 commands: `auto-loop`, `dashboard`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`.
 
-## Commande live recommandée
+## Recommended live command
 
 ```bash
 bash scripts/run_live_70.sh
 ```
 
-Voir `CLAUDE.md` pour la liste complète des paramètres et la séquence d'un tick.
+See `CLAUDE.md` for the full parameter list and tick sequence.
 
-## Stratégie pour gagner de l'argent
+## Winning strategy
 
-Copy-trading smart-money. Le bot attend que des wallets profitables (top leaderboard mensuel, PnL ≥$1k, volume ≥$2k, ROI ≥3%) achètent le même token dans une fenêtre courte (30 min), puis miroite ce flow.
+Smart-money copy-trading. The bot waits for profitable wallets (top monthly leaderboard, PnL ≥ $1k, volume ≥ $2k, ROI ≥ 3%) to buy the same token in a short window (30 minutes), then mirrors that flow.
 
-### L'edge
+### The edge
 
-Les wallets en haut des leaderboards mensuels avec PnL et volume significatifs ont en moyenne un edge informationnel sur les marchés qu'ils tradent. Quand plusieurs achètent le même token simultanément, le signal collectif est plus fort qu'un wallet isolé. Le bot copie.
+Wallets at the top of monthly leaderboards with meaningful PnL and volume have, on average, an informational edge on the markets they trade. When several buy the same token simultaneously, the collective signal is stronger than any single wallet. The bot copies that flow.
 
-### Conditions d'entrée
+### Entry conditions
 
-- Trades BUY récents de wallets qualifiés (PnL/volume/ROI/recency).
-- Consensus multi-wallets sur le même token.
-- Assez d'USDC copié.
-- Marché tradable : spread absolu et relatif serrés, ask dans la bande de prix, pas trop proche de l'expiration.
-- Pas de duplicate market ni event-level (sports).
-- Sizing pondéré par conviction (0.55x à 2.5x la base).
+- Recent BUY trades from qualified wallets (PnL / volume / ROI / recency).
+- Multi-wallet consensus on the same token.
+- Enough copied USDC.
+- Tradable market: tight absolute and relative spread, ask within configured price band, not too close to expiry.
+- No duplicate per market or per event-slug (sports).
+- Conviction-weighted sizing (0.55x to 2.5x base).
 
-### Sorties
+### Exits
 
-- Take-profit ladder +100%/+200%/+300% partiel.
-- Trailing stop armé à +25%, giveback 50%.
-- Peak-protect armé à +100%, sortie sous +40%.
-- Stop-loss -40% après 15 min en position.
-- Cohort-sell exit (active SELL detection 120 min lookback) ou cohort-silent (pas de fresh BUY).
-- Exit positif près de l'expiration.
+- Take-profit ladder at +50% / +100% / +200% / +300% with partial sells.
+- Trailing stop arms at +25% peak, exits on 50% giveback while still positive.
+- Peak-protect arms at +100% peak, exits below +40%.
+- Stop-loss at -40% after 15 minutes in position.
+- Cohort-sell exit (active SELL detection in 120 min lookback) or cohort-silent (no fresh BUY).
+- Near-expiry positive-PnL exit at ≥+5% within 20 minutes of close.
+- Max-hold-time force-close at 24 hours.
 
 ### Auto-tuner
 
-Lit le trade journal à chaque tick. Pause sous 30 trades clôturés. Resserre les filtres et le sizing après les patterns perdants. Défensif uniquement.
+Reads the trade journal each tick. Paused below 30 closed trades. Tightens filters and sizing after losing patterns. **Defensive only.**
 
-### Pas un profit garanti
+### Not guaranteed profit
 
-L'edge vient de copier le flow public fort en évitant les mauvais fills. No-signal / no-trade est une position valide.
+The expected edge comes from copying strong public flow while avoiding bad execution. No-signal / no-trade is a valid position.

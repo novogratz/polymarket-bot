@@ -1,146 +1,149 @@
-# Guide Claude Code
+# Claude Code Guide
 
-Fichier d'entrée Claude Code pour le bot Polymarket.
+Claude Code entry point for the Polymarket bot. See also the structured skill in `.claude/skills/polymarket-bot/SKILL.md`.
 
-## Sécurité
+The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, see `.github/workflows/test.yml`).
 
-- Ne jamais révéler les valeurs de `.env`, clés privées, secrets API ou passphrases.
-- Ne pas contourner `POLYMARKET_ENABLE_LIVE_TRADING=1`.
-- Ne pas implémenter de trades live aléatoires ou non filtrés. Le chemin `noise_fallback` est la seule voie de trade forcé et est plafonné à $5 par trade et 2 trades par tick.
-- Préserver le ledger local `data/paper_state.json` sauf si l'utilisateur demande un reset explicite.
-- Préserver `data/trade_journal.jsonl` et `data/strategy_overrides.json` sauf si l'utilisateur demande un reset explicite.
-- Aucun appel LLM (Claude, Codex, autre) dans le chemin de scan ou de sélection de trade. Le scanner reste du Python déterministe sur les APIs Polymarket.
-- Le bot n'a pas la capacité d'écrire ni de pusher du code source de lui-même.
+## Safety
 
-## Carte du projet
+- Never reveal `.env` values, private keys, API secrets, or passphrases.
+- Do not bypass `POLYMARKET_ENABLE_LIVE_TRADING=1`.
+- Do not implement random or unfiltered live trades. The `noise_fallback` path is the only forced-trade lane and is hard-capped at $10/trade and 4 trades/tick.
+- Preserve the local ledger `data/paper_state.json` unless the user explicitly asks for a reset.
+- Preserve `data/trade_journal.jsonl` and `data/strategy_overrides.json` unless explicitly asked to reset them.
+- No LLM call (Claude, Codex, anything else) in the scanning or trade-selection path. The scanner stays deterministic Python over Polymarket APIs.
+- The bot does not have the capability to write or push source code on its own.
 
-- `polymarket_bot/main.py` : commandes CLI et boucles de stratégie. Orchestration du tick, helpers de sizing, écriture du trade journal, commandes `journal-stats` et `tune-strategy`.
-- `polymarket_bot/smart_money.py` : récupération des leaderboards, fetch parallèle des trades, regroupement de signaux, scoring, helper de reverse-lookup.
-- `polymarket_bot/auto_tuner.py` : lit le trade journal à chaque tick et calcule des overrides de stratégie bornés (défensif uniquement — resserre après pertes).
-- `polymarket_bot/bitcoin.py` : modèle BTC threshold edge (Black-Scholes via volatilité).
-- `polymarket_bot/trading.py` : placement d'ordres BUY/SELL live authentifiés et calcul final du stake.
-- `polymarket_bot/dashboard.py` : dashboard HTML temps réel local sur `http://127.0.0.1:8765`.
-- `polymarket_bot/portfolio.py` : ledger local avec cash, positions ouvertes, ordres pending et historique de sorties.
-- `polymarket_bot/gamma.py` : client Gamma (scan markets + reverse-lookup par clob_token_ids).
-- `polymarket_bot/strategy.py` : ranking des candidats depuis les payloads Gamma.
-- `polymarket_bot/models.py` : dataclasses partagées et helpers de parsing.
-- `scripts/run_live_70.sh` : runner live canonique pour bankroll ~$90.
-- `tests/test_strategy.py` : 49 tests sur scoring, sizing, plans de sortie, règles auto-tuner.
+## Project map
 
-## Workflow de développement
+- `polymarket_bot/main.py` — CLI commands and strategy loops. Tick orchestration, sizing helpers, trade-journal writer, `journal-stats` and `tune-strategy` commands.
+- `polymarket_bot/smart_money.py` — leaderboard fetching, parallel trade fetching, signal grouping, scoring, reverse-lookup helper.
+- `polymarket_bot/auto_tuner.py` — reads the trade journal each tick and computes bounded strategy overrides (defensive only — tightens after losses).
+- `polymarket_bot/bitcoin.py` — BTC threshold edge model (Black-Scholes-from-volatility).
+- `polymarket_bot/trading.py` — authenticated live BUY/SELL order placement and final stake computation.
+- `polymarket_bot/dashboard.py` — local real-time HTML dashboard at `http://127.0.0.1:8765`.
+- `polymarket_bot/portfolio.py` — local ledger with cash, open positions, pending orders, and exit records.
+- `polymarket_bot/gamma.py` — Gamma client (market scan + reverse-lookup by clob_token_ids).
+- `polymarket_bot/strategy.py` — candidate ranking from Gamma payloads.
+- `polymarket_bot/models.py` — shared dataclasses and parsing helpers.
+- `scripts/run_live_70.sh` — canonical live runner for ~$90 bankroll.
+- `tests/test_strategy.py` — 52 tests covering scoring, sizing, exit plans, auto-tuner rules.
 
-Tests :
+## Development workflow
+
+Run tests:
 
 ```bash
 python3 -B -m unittest discover -s tests
 ```
 
-Dashboard :
+Dashboard:
 
 ```bash
 python3 -B -m polymarket_bot.main dashboard
 ```
 
-Stats du trade journal (P&L par bucket, win rate, suggestions de tightening) :
+Trade-journal stats (per-bucket P&L, win rate, suggested tightenings):
 
 ```bash
 python3 -B -m polymarket_bot.main journal-stats
 ```
 
-Lancer l'auto-tuner manuellement (écrit `data/strategy_overrides.json`) :
+Run the auto-tuner manually (writes `data/strategy_overrides.json`):
 
 ```bash
 python3 -B -m polymarket_bot.main tune-strategy
 ```
 
-Boucle smart-money autonome :
+Live smart-money loop:
 
 ```bash
 POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
 ```
 
-## Commande live recommandée
+## Recommended live command
 
-Utiliser le script canonique :
+Use the canonical script to avoid copy-paste pitfalls:
 
 ```bash
 bash scripts/run_live_70.sh
 ```
 
-Le script est la source de vérité pour la config live. Réglages actuels :
+The script is the single source of truth for the live config. Current settings:
 
 - `POLYMARKET_ASSUME_LIVE_BALANCE_USD=90`, `POLYMARKET_SYNC_LIVE_POSITIONS=1`.
-- Sizing : `POSITION_PCT=0.18`, `MAX_POSITION_CEILING_USD=150`, `CASH_FLOOR_PCT=0.05` (~95% de déploiement), `MIN_OPEN_POSITIONS=7`.
-- Cohort traders : leaderboard `MONTH`, top 100, `MIN_TRADER_PNL=$1k`, `MIN_TRADER_VOLUME=$2k`, `MIN_TRADER_ROI=3%`. Fetch parallèle `TRADE_FETCH_CONCURRENCY=24`.
-- Discovery : scan Gamma standard + scan keyword + reverse-lookup des 100 tokens à plus de $50 de flow smart-money pas dans le scan initial.
-- Filtres entrée : `MIN_CONSENSUS=2`, `MIN_COPIED_USDC=$75`, `MAX_CHASE_PREMIUM=0.13`, bande de prix 0.03–0.96, spread absolu ≤8c, spread relatif ≤45%, fraîcheur signal ≤10 min.
-- 3 passes de scan par tick : strict → relaxed → deep fallback.
-- Sorties : take-profit ladder `1.0:0.50,2.0:0.25,3.0:0.15`, peak-protect armé à +100% sortie sous +40%, trailing stop armé à +25% sortie sur 50% de giveback, stop-loss à -40% (après 15 min en position), cohort-sell exit (active SELL detection sur 120 min), exit positif près de l'expiration.
-- BTC edge intégré : à la fin de chaque tick smart-money, `btc_edge_once` tourne avec cap $5 et 8% d'edge minimum sur le prix de marché.
-- Noise fallback : quand les 3 passes smart-money retournent 0 et que les positions ouvertes sont sous `MIN_OPEN_POSITIONS`, jusqu'à 2 trades $5 sur les meilleurs candidats. Tagués `noise_fallback` dans le journal.
-- Auto-tune : `SMART_AUTO_TUNE_ENABLED=1` (en pause sous 30 trades clôturés ; défensif uniquement).
+- Sizing: `POSITION_PCT=0.18`, `MAX_POSITION_CEILING_USD=150`, `MAX_POSITION_CEILING_PCT=0.30`, `CASH_FLOOR_PCT=0.05` (~95% deployment), `MIN_OPEN_POSITIONS=7`.
+- Trader cohort: leaderboard `MONTH`, top 100, `MIN_TRADER_PNL=$1k`, `MIN_TRADER_VOLUME=$2k`, `MIN_TRADER_ROI=3%`. Parallel fetch with `TRADE_FETCH_CONCURRENCY=24`.
+- Discovery: standard Gamma scan + keyword scan + reverse-lookup of the top 100 tokens with $50+ smart-money flow that aren't already in the scan.
+- Entry filters: `MIN_CONSENSUS=2`, `MIN_COPIED_USDC=$75`, `MAX_CHASE_PREMIUM=0.13`, price band 0.03–0.96, absolute spread ≤8c, relative spread ≤45%, signal staleness ≤10 min.
+- Three-pass scan per tick: strict → relaxed → deep fallback.
+- Exits: take-profit ladder `0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15`, peak-protect arming at +100% and exiting below +40%, trailing stop arming at +25% with 50% giveback, stop-loss -40% (after 15 min in position), max-hold-time 24h, cohort-sell exit (active SELL detection in 120 min lookback), near-expiry positive exit.
+- BTC edge integrated: at the end of every smart-money tick `btc_edge_once` runs with $5/trade cap and 8% minimum modeled edge over market.
+- Noise fallback: up to 4 trades at $10 each when all three smart-money scans return 0 AND (positions below `MIN_OPEN_POSITIONS` OR cash share above 35% of equity). Tagged `noise_fallback` in the journal.
+- Auto-tune: `SMART_AUTO_TUNE_ENABLED=1` (paused below 30 closed trades; defensive only).
 
-Dashboard sur `http://127.0.0.1:8765` par défaut.
+Dashboard at `http://127.0.0.1:8765` by default.
 
-## Séquence d'un tick
+## Tick sequence
 
-Chaque tick imprime la progression sur stdout puis un résumé JSON. Ordre :
+Each tick prints structured progress to stdout, followed by a JSON summary. Order:
 
-1. Auto-tune : lit le journal, calcule des overrides si ≥30 trades clôturés, applique sur les settings env.
-2. Charge les marchés Gamma (scan + scan keyword).
-3. Sync les positions live Polymarket dans le ledger.
-4. Refresh le cash USDC live depuis le CLOB.
-5. Détection cohort-exit (SELL actif des wallets d'entrée, ou pas de fresh BUY).
-6. Stratégie de sortie : take-profit ladder, trailing stop, peak-protect, stop-loss, cohort exits, near-expiry.
-7. Scan smart-money : strict → relaxed → deep fallback. Une seule fetch leaderboard+trades partagée.
-8. Reverse-lookup des tokens à fort flow pas dans les candidats actuels ; merge dans le pool éligible.
-9. Place les trades depuis la liste d'opportunités avec sizing dynamique par slot vers le cash floor.
-10. Noise fallback (si activé et sous `MIN_OPEN_POSITIONS`).
-11. Tick BTC edge (si activé).
-12. Persiste le portfolio + écrit les entrées du journal pour les positions clôturées.
-13. Imprime le JSON, dort `AUTO_INTERVAL_SECONDS`.
+1. Auto-tune: read journal, compute overrides if ≥30 closed trades, apply on top of env-var settings.
+2. Load Gamma markets (scan + keyword scan).
+3. Sync live Polymarket positions into the local ledger.
+4. Refresh live USDC cash from CLOB.
+5. Cohort-exit detection (active SELL by entry wallets, or no fresh BUYs).
+6. Sell strategy: take-profit ladder, trailing stop, peak-protect, stop-loss, cohort exits, near-expiry, max-hold-time.
+7. Smart-money scan: strict → relaxed → deep fallback. One leaderboard+trades fetch shared across all three.
+8. Reverse-lookup high-flow tokens not in current candidates; merge into the eligible pool.
+9. Place trades from the opportunity list with dynamic per-slot sizing toward the cash floor.
+10. Noise fallback if enabled and either below `MIN_OPEN_POSITIONS` or cash share above the cash-pressure threshold.
+11. BTC edge tick if enabled.
+12. Persist portfolio + write journal entries for any closed positions.
+13. Print JSON result, sleep `AUTO_INTERVAL_SECONDS`.
 
-## Stratégie pour gagner de l'argent
+## Winning strategy
 
-La stratégie par défaut est du copy-trading smart-money. Le bot n'invente pas d'opinion sur chaque marché — il attend des preuves d'order-flow public que des wallets profitables achètent le même token, puis miroite ce flow avec un sizing borné.
+The default strategy is smart-money copy-trading. The bot does not invent an opinion on every market — it waits for public order-flow evidence that profitable wallets are buying the same token, then mirrors that flow with bounded sizing.
 
-### L'edge
+### The edge
 
-L'hypothèse : les wallets qui apparaissent en haut des leaderboards mensuels Polymarket avec un PnL positif et un volume significatif ont en moyenne un edge informationnel ou analytique sur les marchés qu'ils tradent. Quand plusieurs de ces wallets achètent le même token dans une fenêtre courte (30 min), le signal collectif est plus fort qu'un wallet isolé. Le bot copie ce flow.
+Wallets at the top of monthly Polymarket leaderboards with positive PnL and meaningful volume have, on average, an informational or analytical edge on the markets they trade. When several of those wallets buy the same token in a short window (30 minutes), the collective signal is stronger than a single wallet. The bot mirrors this flow.
 
-Risques que la stratégie évite :
-- Edge factice : un wallet chanceux sur un trade isolé. Filtré par les seuils ROI / volume / consensus multi-wallets.
-- Mauvaise exécution : payer le spread et perdre l'edge entier. Filtré par spread absolu, spread relatif, chase premium maximum.
-- Concentration : 6 paris sur le même évènement. Filtré par dédup par market + dédup par event-slug pour les sports.
-- Round-trip à zéro : un winner qui retourne plat. Filtré par take-profit ladder + trailing stop + peak-protect.
-- Drawdown sans sortie : un loser qui sombre lentement. Filtré par stop-loss après âge minimum.
-- Cohort qui tourne : les wallets d'entrée vendent. Filtré par cohort-sell detection active.
+Risks the strategy avoids:
 
-### Conditions d'entrée
+- **Fake edge** — one lucky wallet on an isolated trade. Filtered by ROI / volume / multi-wallet consensus.
+- **Bad execution** — paying the spread erases the edge. Filtered by absolute and relative spread, chase premium.
+- **Concentration** — six bets on the same event. Filtered by per-market and per-event-slug dedupe.
+- **Round-trip to flat** — a winner that gives back to zero. Filtered by take-profit ladder + trailing stop + peak-protect.
+- **Drawdown without exit** — a loser bleeding slowly. Filtered by stop-loss after min-age.
+- **Cohort flip** — entry wallets selling. Filtered by active cohort-sell detection.
 
-Une entrée live exige :
-- Trades BUY récents de wallets leaderboard qui passent les planchers PnL, volume, ROI.
-- Consensus multi-wallets sur le même token (relâché en passes de fallback quand sous le target de positions ouvertes).
-- Assez d'USDC copié pour matter, échelonné par tier de conviction.
-- Marché tradable : spreads serrés (absolu et relatif), ask dans la bande de prix, pas trop proche de l'expiration.
-- Pas de position ouverte existante sur le même marché ni sur le même token. Les sports respectent un cap de concentration par évènement.
-- `POLYMARKET_ENABLE_LIVE_TRADING=1` explicite.
-- Sizing pondéré par conviction : signaux faibles près du floor, signaux très haute conviction (5+ wallets, $5k+ copié) jusqu'à 2.5× la base, plafonnés par le ceiling per-position.
+### Entry conditions
 
-### Sorties (avant chaque nouvelle entrée)
+- Recent BUY trades from leaderboard wallets that pass PnL / volume / ROI floors.
+- Multi-wallet consensus on the same token (relaxed in fallback passes when below the open-positions target).
+- Enough copied USDC, scaled by conviction tier.
+- Tradable market: tight absolute and relative spreads, ask within configured price band, not too close to expiry.
+- No existing open position on the same market or token. Sports respect a per-event concentration cap.
+- Explicit `POLYMARKET_ENABLE_LIVE_TRADING=1`.
+- Conviction-weighted sizing: weak signals near the floor; very-high-conviction signals (5+ wallets, $5k+ copied) up to 2.5× the base, capped by the per-position ceiling.
 
-- Take-profit ladder par défaut +100% / +200% / +300%, ventes partielles.
-- Trailing stop armé à +25% de pic, sortie sur 50% de giveback tant que P&L positif.
-- Peak-protect armé à +100% de pic, sortie sur retour à +40%.
-- Stop-loss à -40% après 15 min en position (ne tire pas si peak-protect déjà armé).
-- Cohort-sell exit si un wallet d'entrée a VENDU le token dans la fenêtre lookback ; cohort-silent exit si aucun wallet du cohort n'a réacheté.
-- Exit positif près de l'expiration : 20 min avant clôture si P&L ≥+5%.
+### Exits (run before every new entry)
 
-### Sizing par conviction
+- Take-profit ladder at +50% / +100% / +200% / +300% with partial sells.
+- Trailing stop arms at +25% peak, exits on 50% giveback while still positive.
+- Peak-protect arms at +100% peak, exits on giveback to +40%.
+- Stop-loss at -40% after 15 minutes in position (does not fire if peak-protect already armed).
+- Cohort-sell exit when any entry wallet has SOLD the token within the lookback window; cohort-silent exit when no cohort wallet has re-bought.
+- Near-expiry positive-PnL exit at ≥+5% within 20 minutes of close.
+- Max-hold-time force-close at 24 hours when no other reason fires.
+
+### Sizing by conviction
 
 ```
 crypto micro                     -> 0.55x
-weak (sous 2-wallet $250)        -> 0.7x
+weak (<2-wallet $250)            -> 0.7x
 2-wallet $250+                   -> 0.9x
 2-wallet $1k+                    -> 1.1x
 3-wallet $250+                   -> 1.1x
@@ -150,19 +153,20 @@ weak (sous 2-wallet $250)        -> 0.7x
 5-wallet $5k+                    -> 2.5x
 ```
 
-Le multiplicateur est appliqué sur `cash * SMART_POSITION_PCT`, plafonné par `SMART_MAX_POSITION_CEILING_USD` et `SMART_CRYPTO_MICRO_MAX_TRADE_USD`.
+The multiplier is applied to `cash * SMART_POSITION_PCT`, capped by the larger of `SMART_MAX_POSITION_CEILING_USD` or `equity * SMART_MAX_POSITION_CEILING_PCT`, and bounded by `SMART_CRYPTO_MICRO_MAX_TRADE_USD` for crypto-micros.
 
-### Auto-tuner défensif
+### Defensive auto-tuner
 
-L'auto-tuner lit le trade journal à chaque tick. À partir de 30 trades clôturés :
-- Stop-loss > 40% des trades : resserre `MAX_CHASE_PREMIUM` ×0.80 et `MAX_RELATIVE_SPREAD` ×0.85.
-- Trades consensus=2 PnL moyen < -$0.30 (≥20 sample) : monte `MIN_CONSENSUS` à 3.
-- Sports PnL moyen < -$0.30 (≥15 sample) : bump `SPORTS_SCORE_PENALTY` ×1.5.
-- Win rate < 30% : monte `MIN_COPIED_USDC` ×1.5.
-- PnL moyen < -$0.20 : réduit `POSITION_PCT` ×0.75.
+The auto-tuner reads the trade journal each tick. From 30 closed trades on:
 
-Défensif uniquement : resserre après pertes, ne relâche pas après gains. Sortir un sample biaisé par variance pour assouplir = amplifier le bruit.
+- Stop-loss > 40% of trades: tighten `MAX_CHASE_PREMIUM` ×0.80 and `MAX_RELATIVE_SPREAD` ×0.85.
+- Consensus=2 trades avg PnL < -$0.30 (≥20 sample): raise `MIN_CONSENSUS` to 3.
+- Sports avg PnL < -$0.30 (≥15 sample): bump `SPORTS_SCORE_PENALTY` ×1.5.
+- Win rate < 30%: raise `MIN_COPIED_USDC` ×1.5.
+- Avg PnL < -$0.20: reduce `POSITION_PCT` ×0.75.
 
-### Pas un profit garanti
+Defensive only: tightens after losses, never loosens after wins. Loosening based on a noise-biased sample = amplifying noise.
 
-L'edge attendu vient de copier le flow public fort en évitant les mauvais fills. Ce n'est pas du profit garanti. **No-signal / no-trade** est une position valide. Le bot n'a pas vocation à trader 24/7 ; les heures creuses restent creuses.
+### Not guaranteed profit
+
+The expected edge comes from copying strong public flow while avoiding bad execution. **This is not guaranteed profit.** No-signal / no-trade is a valid position. The bot is not meant to trade 24/7; quiet hours stay quiet.

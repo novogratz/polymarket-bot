@@ -1,5 +1,32 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Build artefacts
+build/
+dist/
+*.egg-info/
+*.egg
+wheels/
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Secrets and credentials
 .env
 .env.*
 !.env.example
@@ -7,4 +34,19 @@ __pycache__/
 *.pem
 *secret*
 *credentials*
+
+# Local runtime state
 data/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Agent / tool local state — keep skill definitions, ignore everything else
+.claude/*
+!.claude/skills/
+.codex/*
+!.codex/skills/
