@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "polymarket-bot"
-version = "0.1.0"
+version = "1.0.0"
 description = "Polymarket smart-money copy-trading bot with auto-tuner, trade journal, and BTC edge model"
 readme = "README.md"
 license = { file = "LICENSE" }
