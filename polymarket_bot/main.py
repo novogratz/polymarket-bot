@@ -985,8 +985,11 @@ def _dynamic_max_trade(
     dynamic = per_slot * quality_mult
     if is_crypto_micro:
         dynamic = min(dynamic, settings.smart_crypto_micro_max_trade_usd)
-    if settings.smart_max_position_ceiling_usd > 0:
-        dynamic = min(dynamic, settings.smart_max_position_ceiling_usd)
+    ceiling = settings.smart_max_position_ceiling_usd
+    if settings.smart_max_position_ceiling_pct > 0 and total_equity > 0:
+        ceiling = max(ceiling, total_equity * settings.smart_max_position_ceiling_pct)
+    if ceiling > 0:
+        dynamic = min(dynamic, ceiling)
     dynamic = min(dynamic, cash)
     return round(max(base, dynamic), 2)
 
@@ -1092,6 +1095,14 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
                 "tier": tier_key,
                 "shares": min(current_shares, initial_shares * fraction),
             }
+    if (
+        settings.smart_max_hold_hours > 0
+        and _position_age_minutes(position) >= settings.smart_max_hold_hours * 60
+    ):
+        return {
+            "reason": "max_hold_time_reached",
+            "shares": current_shares,
+        }
     return None
 
 

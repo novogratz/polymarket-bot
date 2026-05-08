@@ -107,6 +107,8 @@ class Settings:
         "POLYMARKET_SMART_MAX_POSITION_CEILING_USD",
         50.0,
     )
+    smart_max_position_ceiling_pct: float = _float_env("POLYMARKET_SMART_MAX_POSITION_CEILING_PCT", 0.0)
+    smart_max_hold_hours: float = _float_env("POLYMARKET_SMART_MAX_HOLD_HOURS", 0.0)
     smart_cash_floor_pct: float = _float_env("POLYMARKET_SMART_CASH_FLOOR_PCT", 0.0)
     smart_noise_fallback_enabled: bool = _bool_env("POLYMARKET_SMART_NOISE_FALLBACK_ENABLED", False)
     smart_noise_fallback_max_trades_per_tick: int = _int_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADES_PER_TICK", 2)
