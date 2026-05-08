@@ -1890,5 +1890,65 @@ class TickStateLoopTests(unittest.TestCase):
         self.assertEqual(_extract_tick_actions({}), [])
 
 
+class JournalStatsDrawdownTests(unittest.TestCase):
+    def test_max_drawdown_zero_when_only_wins(self):
+        import tempfile
+        import json
+        from pathlib import Path
+        from polymarket_bot.main import journal_stats
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp) / "journal.jsonl"
+            records = [
+                {"closed_at": "2026-01-01T00:00:00Z", "realized_pnl": 1.0},
+                {"closed_at": "2026-01-02T00:00:00Z", "realized_pnl": 2.0},
+                {"closed_at": "2026-01-03T00:00:00Z", "realized_pnl": 0.5},
+            ]
+            tmp_path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+            stats = journal_stats(Settings(trade_journal_path=tmp_path))
+            self.assertEqual(stats["max_drawdown"], 0.0)
+
+    def test_max_drawdown_captures_worst_peak_to_trough(self):
+        import tempfile
+        import json
+        from pathlib import Path
+        from polymarket_bot.main import journal_stats
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp) / "journal.jsonl"
+            # Cumulative PnL: +5, +6, +1, +3, -2, +1
+            # Peaks:           5,  6,  6, 6,  6,  6
+            # Drawdowns:       0,  0, -5, -3, -8, -5
+            # Max drawdown = -8
+            records = [
+                {"closed_at": "2026-01-01T00:00:00Z", "realized_pnl": 5.0},
+                {"closed_at": "2026-01-02T00:00:00Z", "realized_pnl": 1.0},
+                {"closed_at": "2026-01-03T00:00:00Z", "realized_pnl": -5.0},
+                {"closed_at": "2026-01-04T00:00:00Z", "realized_pnl": 2.0},
+                {"closed_at": "2026-01-05T00:00:00Z", "realized_pnl": -5.0},
+                {"closed_at": "2026-01-06T00:00:00Z", "realized_pnl": 3.0},
+            ]
+            tmp_path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+            stats = journal_stats(Settings(trade_journal_path=tmp_path))
+            self.assertEqual(stats["max_drawdown"], -8.0)
+
+    def test_max_drawdown_handles_unsorted_records(self):
+        import tempfile
+        import json
+        from pathlib import Path
+        from polymarket_bot.main import journal_stats
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp) / "journal.jsonl"
+            records = [
+                {"closed_at": "2026-01-03T00:00:00Z", "realized_pnl": -5.0},
+                {"closed_at": "2026-01-01T00:00:00Z", "realized_pnl": 5.0},
+                {"closed_at": "2026-01-02T00:00:00Z", "realized_pnl": 1.0},
+            ]
+            tmp_path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+            stats = journal_stats(Settings(trade_journal_path=tmp_path))
+            self.assertEqual(stats["max_drawdown"], -5.0)
+
+
 if __name__ == "__main__":
     unittest.main()

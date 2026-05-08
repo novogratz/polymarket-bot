@@ -1492,6 +1492,14 @@ def journal_stats(settings: Settings) -> dict[str, object]:
     wins = sum(1 for p in pnls if p > 0)
     losses = sum(1 for p in pnls if p < 0)
     flats = sum(1 for p in pnls if p == 0)
+    records_sorted = sorted(records, key=lambda r: str(r.get("closed_at") or ""))
+    running_pnl = 0.0
+    peak_pnl = 0.0
+    max_drawdown = 0.0
+    for record in records_sorted:
+        running_pnl += pnl(record)
+        peak_pnl = max(peak_pnl, running_pnl)
+        max_drawdown = min(max_drawdown, running_pnl - peak_pnl)
     return {
         "records": len(records),
         "total_pnl": round(sum(pnls), 2),
@@ -1500,6 +1508,7 @@ def journal_stats(settings: Settings) -> dict[str, object]:
         "flats": flats,
         "win_rate": round(wins / len(records), 3),
         "avg_pnl": round(sum(pnls) / len(records), 4),
+        "max_drawdown": round(max_drawdown, 2),
         "by_category": group_by(records, lambda r: r.get("category")),
         "by_consensus": group_by(records, consensus_bucket),
         "by_strategy": group_by(records, lambda r: r.get("strategy")),
