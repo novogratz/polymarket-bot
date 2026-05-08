@@ -43,6 +43,9 @@ Tuned for a ~$90 bankroll. Runs in the foreground; `Ctrl+C` to stop.
 ## CLI commands
 
 ```bash
+uv run pmbot --version           # print pmbot version and exit
+uv run pmbot status              # quick snapshot: mode, equity, open positions, journal
+uv run pmbot positions           # CLI table of open positions, sorted by PnL desc
 uv run pmbot auto-loop           # live loop (what the script invokes)
 uv run pmbot dashboard           # local dashboard at http://127.0.0.1:8765
 uv run pmbot doctor              # read-only health check (.env, auth, endpoints, local state)
@@ -56,6 +59,12 @@ The `pmbot` console script is registered via `[project.scripts]` in
 `pyproject.toml`. After `uv tool install -e .` it can be invoked directly as
 `pmbot <command>` from any directory; `python3 -B -m polymarket_bot.main <command>`
 remains supported as a fallback.
+
+`status` and `positions` are read-only and never call the SDK — they only
+read `data/paper_state.json` (or `data/dry_run_state.json` under
+`POLYMARKET_DRY_RUN=1`). Output is colorized when stdout is a TTY; set
+`NO_COLOR=1` to disable ANSI codes, or `POLYMARKET_FORCE_COLOR=1` to keep
+them when piping.
 
 ## Dry-run mode
 

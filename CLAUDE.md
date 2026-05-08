@@ -37,6 +37,18 @@ Run tests:
 uv run python -B -m unittest discover -s tests
 ```
 
+Quick CLI snapshots (read-only, no SDK calls):
+
+```bash
+uv run pmbot status              # mode, equity, open positions, journal path/count
+uv run pmbot positions           # CLI table of open positions, sorted by PnL desc
+uv run pmbot --version           # version
+```
+
+`status` and `positions` automatically read the dry-run ledger when
+`POLYMARKET_DRY_RUN=1` is set. Output is colorized on a TTY; `NO_COLOR=1`
+disables ANSI codes, `POLYMARKET_FORCE_COLOR=1` forces them through pipes.
+
 Dashboard:
 
 ```bash
