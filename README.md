@@ -57,6 +57,32 @@ The `pmbot` console script is registered via `[project.scripts]` in
 `pmbot <command>` from any directory; `python3 -B -m polymarket_bot.main <command>`
 remains supported as a fallback.
 
+## Dry-run mode
+
+To watch the smart-money loop run end-to-end on real Polymarket data
+without spending any cash, set `POLYMARKET_DRY_RUN=1` instead of
+`POLYMARKET_ENABLE_LIVE_TRADING=1`:
+
+```bash
+POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop
+```
+
+In dry-run mode the bot:
+
+- Bypasses the live-trading guard so the loop starts.
+- Short-circuits every CLOB BUY and SELL — the SDK call is skipped and a
+  `{"success": True, "status": "matched", "dry_run": True}` response is
+  injected so the rest of the pipeline (sizing, ledger writes, exits)
+  runs identically to a real fill.
+- Skips live position sync (the dry-run ledger is the source of truth).
+- Writes state to `data/dry_run_state.json` and trades to
+  `data/dry_run_journal.jsonl` so your real paper-trading ledger and
+  journal are not polluted.
+
+Reset the dry-run ledger with `rm data/dry_run_state.json` and run the
+loop again. `POLYMARKET_DRY_RUN=1 uv run pmbot doctor` prints the swap
+and verdict so you can confirm the simulation is correctly wired.
+
 ## Winning strategy
 
 ### The edge

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import time
 from importlib import import_module
 from dataclasses import dataclass
 from typing import Any
@@ -535,8 +536,20 @@ def execute_live_trade(
             f"spread={metrics.get('spread')} "
             f"wallet_pnl=${metrics.get('total_trader_pnl', signal.get('total_trader_pnl'))}"
         )
-    print("   Sending FOK market order...")
-    order, response = client.place_market_order(candidate=candidate, amount=stake, price=entry_price, side="BUY")
+    if settings.dry_run:
+        print("   [DRY-RUN] Skipping SDK call, simulating matched fill.")
+        order = {"dry_run": True, "side": "BUY", "amount": stake, "price": entry_price}
+        response = {
+            "success": True,
+            "status": "matched",
+            "orderID": f"dry-run-buy-{int(time.time() * 1000)}",
+            "makingAmount": str(stake),
+            "takingAmount": str(size),
+            "dry_run": True,
+        }
+    else:
+        print("   Sending FOK market order...")
+        order, response = client.place_market_order(candidate=candidate, amount=stake, price=entry_price, side="BUY")
     if isinstance(response, dict) and response.get("success"):
         status = str(response.get("status") or "")
         label = "✅ BUY FILLED" if _is_filled_buy_response(response) else "⚠️  BUY NOT FILLED"
@@ -628,7 +641,19 @@ def execute_live_sell(
         f"\n💸 EXECUTING EXIT: SELL {size} shares of '{candidate.outcome}' at {sell_price} "
         f"on '{candidate.question}' (${proceeds} USDC) reason={reason}"
     )
-    order, response = client.place_live_order(candidate=candidate, price=sell_price, size=size, side="SELL")
+    if settings.dry_run:
+        print("   [DRY-RUN] Skipping SDK call, simulating matched SELL fill.")
+        order = {"dry_run": True, "side": "SELL", "size": size, "price": sell_price}
+        response = {
+            "success": True,
+            "status": "matched",
+            "orderID": f"dry-run-sell-{int(time.time() * 1000)}",
+            "makingAmount": str(size),
+            "takingAmount": str(proceeds),
+            "dry_run": True,
+        }
+    else:
+        order, response = client.place_live_order(candidate=candidate, price=sell_price, size=size, side="SELL")
     print(f"📡 SELL RESPONSE: {json.dumps(response, indent=2)}\n")
     portfolio.record_live_exit(
         position,

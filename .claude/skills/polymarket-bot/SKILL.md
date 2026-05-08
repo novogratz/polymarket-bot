@@ -10,7 +10,7 @@ Use this skill when working in this repository: strategy code, filters, live com
 ## Guardrails (non-negotiable)
 
 - Never print or commit `.env` values, private keys, API secrets, or passphrases.
-- Live trading stays gated by `POLYMARKET_ENABLE_LIVE_TRADING=1`.
+- Live trading stays gated by `POLYMARKET_ENABLE_LIVE_TRADING=1`. The only sanctioned bypass is `POLYMARKET_DRY_RUN=1`, which short-circuits SDK BUY/SELL calls and writes to `data/dry_run_state.json` + `data/dry_run_journal.jsonl`.
 - No random trade entry beyond the bounded `noise_fallback` ($10/trade, 4/tick).
 - Any new live strategy must define explicit entry criteria, spread filters, sizing caps, and duplicate-position checks.
 - Update tests when strategy behavior changes.
@@ -26,6 +26,7 @@ uv run pmbot doctor
 uv run pmbot journal-stats
 uv run pmbot tune-strategy
 POLYMARKET_ENABLE_LIVE_TRADING=1 uv run pmbot auto-loop
+POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop          # simulated, no SDK calls, separate ledger
 ```
 
 Canonical live config: `bash scripts/run_live_70.sh` (~$90 bankroll).

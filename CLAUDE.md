@@ -7,7 +7,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 ## Safety
 
 - Never reveal `.env` values, private keys, API secrets, or passphrases.
-- Do not bypass `POLYMARKET_ENABLE_LIVE_TRADING=1`.
+- Do not bypass `POLYMARKET_ENABLE_LIVE_TRADING=1` (the only safe simulation toggle is `POLYMARKET_DRY_RUN=1`, which short-circuits all SDK BUY/SELL calls and writes to a separate dry-run ledger).
 - Do not implement random or unfiltered live trades. The `noise_fallback` path is the only forced-trade lane and is hard-capped at $10/trade and 4 trades/tick.
 - Preserve the local ledger `data/paper_state.json` unless the user explicitly asks for a reset.
 - Preserve `data/trade_journal.jsonl` and `data/strategy_overrides.json` unless explicitly asked to reset them.
@@ -60,6 +60,18 @@ Live smart-money loop:
 ```bash
 POLYMARKET_ENABLE_LIVE_TRADING=1 uv run pmbot auto-loop
 ```
+
+Dry-run smart-money loop (simulates orders without spending any cash;
+writes a separate ledger and journal):
+
+```bash
+POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop
+```
+
+In dry-run mode every BUY/SELL is short-circuited (no SDK call), live
+position sync is skipped, and state is persisted to
+`data/dry_run_state.json` + `data/dry_run_journal.jsonl` so the live
+paper-trading ledger stays untouched.
 
 ## Recommended live command
 

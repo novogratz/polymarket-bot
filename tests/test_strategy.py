@@ -1521,6 +1521,71 @@ class StrategyTests(unittest.TestCase):
         }
         self.assertEqual(_max_trade_for_signal(settings, strong, "smart_money"), 20.0)
 
+    def test_dry_run_swaps_ledger_and_journal_paths(self):
+        from pathlib import Path
+
+        live = Settings()
+        self.assertEqual(live.state_path, Path("data/paper_state.json"))
+        self.assertEqual(live.trade_journal_path, Path("data/trade_journal.jsonl"))
+        self.assertFalse(live.dry_run)
+
+        sim = Settings(dry_run=True)
+        self.assertEqual(sim.state_path, Path("data/dry_run_state.json"))
+        self.assertEqual(sim.trade_journal_path, Path("data/dry_run_journal.jsonl"))
+        self.assertTrue(sim.dry_run)
+
+    def test_dry_run_user_paths_are_respected(self):
+        from pathlib import Path
+
+        custom = Settings(
+            dry_run=True,
+            state_path=Path("custom/state.json"),
+            trade_journal_path=Path("custom/journal.jsonl"),
+        )
+        self.assertEqual(custom.state_path, Path("custom/state.json"))
+        self.assertEqual(custom.trade_journal_path, Path("custom/journal.jsonl"))
+
+    def test_dry_run_execute_live_trade_skips_sdk_call(self):
+        class TripwireClient:
+            def live_available_balance(self):
+                return 50.0
+
+            def place_market_order(self, **_kwargs):
+                raise AssertionError("place_market_order must not be called in dry-run mode")
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.39,
+            best_ask=0.4,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=50.0, positions=[])
+        result = execute_live_trade(
+            TripwireClient(),
+            Settings(dry_run=True, trade_fraction=0.10, min_order_shares=5.0),
+            candidate,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=1.0,
+        )
+
+        self.assertTrue(result.response.get("dry_run"))
+        self.assertEqual(result.response.get("status"), "matched")
+        self.assertEqual(len(portfolio.positions), 1)
+        self.assertEqual(portfolio.positions[0]["shares"], 5.0)
+
 
 class MarketCategoryTests(unittest.TestCase):
     def test_inflation_is_not_sports(self):

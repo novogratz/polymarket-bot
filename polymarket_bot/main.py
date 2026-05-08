@@ -116,7 +116,7 @@ def reset_ledger(settings: Settings) -> dict[str, object]:
             cash = round(live_cash, 2)
             source = "live_clob"
         portfolio.cash = cash
-        if settings.sync_live_positions and settings.funder_address:
+        if settings.sync_live_positions and settings.funder_address and not settings.dry_run:
             _sync_live_positions(settings, portfolio)
     portfolio.save(settings.state_path)
     return {
@@ -221,7 +221,10 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     candidates = load_smart_candidates(settings)
     print(f"   markets: {len(candidates)} candidates", flush=True)
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
-    if settings.sync_live_positions:
+    if settings.dry_run:
+        print("   [DRY-RUN] skipping live-position sync (using simulated ledger only)", flush=True)
+        sync_report = []
+    elif settings.sync_live_positions:
         print("   syncing live positions...", flush=True)
         sync_report = _sync_live_positions(settings, portfolio)
         print(f"   sync actions: {len(sync_report)}", flush=True)
@@ -1627,6 +1630,8 @@ def run_doctor(settings: Settings) -> dict[str, object]:
         print(f"  LIVE_TRADING   WARN ENABLED — bot will place real orders if auto-loop runs")
     else:
         print(f"  LIVE_TRADING   OK  disabled (safe — no orders will be placed)")
+    if settings.dry_run:
+        print(f"  DRY_RUN        OK  ENABLED — simulated orders only, ledger at {settings.state_path}")
     print()
 
     print("=== Auth & balance ===")
@@ -1689,16 +1694,19 @@ def run_doctor(settings: Settings) -> dict[str, object]:
     setup_ok = pk_ok and fa_ok and api_complete and all(v == "ok" for v in endpoint_results.values())
     if not setup_ok:
         print("Verdict: KO  Setup incomplete — fix the items marked above.")
+    elif settings.dry_run:
+        print("Verdict: OK  READY for DRY-RUN. auto-loop will simulate orders without spending any cash.")
     elif settings.live_trading_enabled:
         print("Verdict: WARN READY for LIVE trading. Bot WILL place real orders if auto-loop runs.")
     else:
-        print("Verdict: OK  READY for read-only / dashboard. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to enable live trading.")
+        print("Verdict: OK  READY for read-only / dashboard. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to enable live trading (or POLYMARKET_DRY_RUN=1 to simulate).")
 
     return {
         "private_key_ok": pk_ok,
         "funder_ok": fa_ok,
         "api_credentials_complete": api_complete,
         "live_trading_enabled": settings.live_trading_enabled,
+        "dry_run": settings.dry_run,
         "balance_usd": balance,
         "endpoints": endpoint_results,
         "setup_ok": setup_ok,
@@ -1715,11 +1723,19 @@ app = typer.Typer(
 
 @app.command("auto-loop")
 def cli_auto_loop() -> None:
-    """Run the live smart-money loop. Requires POLYMARKET_ENABLE_LIVE_TRADING=1."""
+    """Run the live smart-money loop. Requires POLYMARKET_ENABLE_LIVE_TRADING=1 (or POLYMARKET_DRY_RUN=1 to simulate without placing real orders)."""
     settings = Settings()
-    if not settings.live_trading_enabled:
+    if settings.dry_run:
         typer.echo(
-            "Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.",
+            "[DRY-RUN] POLYMARKET_DRY_RUN=1 set — running the smart-money loop without "
+            "placing any real orders. Ledger and journal are written to "
+            f"{settings.state_path} and {settings.trade_journal_path}.",
+            err=True,
+        )
+    elif not settings.live_trading_enabled:
+        typer.echo(
+            "Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 (or "
+            "POLYMARKET_DRY_RUN=1 to simulate) to proceed.",
             err=True,
         )
         raise typer.Exit(code=1)

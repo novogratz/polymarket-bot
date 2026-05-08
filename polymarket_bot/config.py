@@ -189,3 +189,20 @@ class Settings:
         os.getenv("RELAYER_API_KEY_ADDRESS") or os.getenv("POLYMARKET_RELAYER_API_KEY_ADDRESS") or None
     )
     live_trading_enabled: bool = os.getenv("POLYMARKET_ENABLE_LIVE_TRADING", "").lower() in {"1", "true", "yes"}
+    dry_run: bool = _bool_env("POLYMARKET_DRY_RUN", False)
+
+    def __post_init__(self) -> None:
+        """Swap ledger and journal paths to dedicated dry-run files.
+
+        When POLYMARKET_DRY_RUN=1 is set, the bot writes simulated state to
+        ``data/dry_run_state.json`` and ``data/dry_run_journal.jsonl`` so the
+        live paper-trading ledger is not polluted. The swap fires whenever
+        the current value matches the paper-trading default; users who set a
+        custom ``POLYMARKET_STATE_PATH`` / ``POLYMARKET_TRADE_JOURNAL_PATH``
+        keep their explicit choice.
+        """
+        if self.dry_run:
+            if str(self.state_path) == "data/paper_state.json":
+                object.__setattr__(self, "state_path", Path("data/dry_run_state.json"))
+            if str(self.trade_journal_path) == "data/trade_journal.jsonl":
+                object.__setattr__(self, "trade_journal_path", Path("data/dry_run_journal.jsonl"))
