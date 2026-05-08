@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint run dashboard journal tune clean
+.PHONY: help install dev test lint run dashboard doctor journal tune clean
 
 UV ?= uv
 
@@ -10,6 +10,7 @@ help:
 	@echo "  lint      Run ruff over the codebase"
 	@echo "  run       Run the live smart-money loop (foreground)"
 	@echo "  dashboard Start the local read-only dashboard"
+	@echo "  doctor    Read-only health check (.env, auth, endpoints, local state)"
 	@echo "  journal   Print aggregated trade-journal stats"
 	@echo "  tune      Run the auto-tuner once and print overrides"
 	@echo "  clean     Remove build artefacts and caches"
@@ -31,6 +32,9 @@ run:
 
 dashboard:
 	$(UV) run python -B -m polymarket_bot.main dashboard
+
+doctor:
+	$(UV) run python -B -m polymarket_bot.main doctor
 
 journal:
 	$(UV) run python -B -m polymarket_bot.main journal-stats

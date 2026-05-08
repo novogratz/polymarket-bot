@@ -75,6 +75,7 @@ class Settings:
     auto_interval_seconds: int = _int_env("POLYMARKET_AUTO_INTERVAL_SECONDS", 10)
     auto_max_ticks: int = _int_env("POLYMARKET_AUTO_MAX_TICKS", 0)
     data_api_base_url: str = os.getenv("POLYMARKET_DATA_API_URL", "https://data-api.polymarket.com")
+    polygon_rpc_url: str = os.getenv("POLYMARKET_POLYGON_RPC_URL", "https://polygon-bor-rpc.publicnode.com")
     smart_categories: str = os.getenv(
         "POLYMARKET_SMART_CATEGORIES",
         "OVERALL,FINANCE,ECONOMICS,TECH,POLITICS,SPORTS,CULTURE,WEATHER",

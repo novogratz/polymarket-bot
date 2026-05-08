@@ -1589,6 +1589,121 @@ def smart_money_loop(settings: Settings) -> None:
     strategy_loop(settings, "smart_money", smart_money_once)
 
 
+def _mask(value: str | None, keep: int = 4) -> str:
+    if not value:
+        return "(missing)"
+    if len(value) <= keep * 2:
+        return "***"
+    return f"{value[:keep]}...{value[-keep:]}"
+
+
+def doctor(settings: Settings) -> dict[str, object]:
+    """Read-only health check: validates .env, auth, endpoints, local state.
+
+    Posts no orders. Safe to run with or without live trading enabled.
+    """
+    from pathlib import Path
+    from eth_account import Account
+
+    print("=== .env ===")
+    pk = settings.private_key or ""
+    pk_ok = len(pk) == 66 and pk.startswith("0x")
+    print(f"  PRIVATE_KEY    {'OK ' if pk_ok else 'KO '} len={len(pk)} {'(0x + 64 hex)' if pk_ok else '(expected 66 chars: 0x + 64 hex)'}")
+
+    fa = settings.funder_address or ""
+    fa_ok = len(fa) == 42 and fa.startswith("0x")
+    print(f"  FUNDER_ADDRESS {'OK ' if fa_ok else 'KO '} len={len(fa)} value={fa if fa_ok else '(invalid)'}")
+
+    api_complete = bool(settings.api_key and settings.api_secret and settings.api_passphrase)
+    for name in ("api_key", "api_secret", "api_passphrase"):
+        val = getattr(settings, name)
+        status = "OK " if val else "KO "
+        print(f"  {name.upper():15}{status} {_mask(val)}")
+
+    sig_label = {0: "EOA", 1: "Magic.link proxy", 2: "Gnosis Safe"}.get(settings.signature_type, "?")
+    print(f"  SIGNATURE_TYPE {settings.signature_type} ({sig_label})")
+    if settings.live_trading_enabled:
+        print(f"  LIVE_TRADING   WARN ENABLED — bot will place real orders if auto-loop runs")
+    else:
+        print(f"  LIVE_TRADING   OK  disabled (safe — no orders will be placed)")
+    print()
+
+    print("=== Auth & balance ===")
+    if pk_ok:
+        try:
+            eoa = Account.from_key(pk).address
+            print(f"  EOA derived    {eoa}")
+        except Exception as exc:
+            print(f"  EOA derived    KO  {type(exc).__name__}: {exc}")
+    else:
+        print(f"  EOA derived    skipped (invalid private key)")
+    print(f"  Funder         {fa or '(missing)'}")
+
+    balance: float | None = None
+    if pk_ok and fa_ok and api_complete:
+        try:
+            client = build_client(settings)
+            balance = client.live_available_balance()
+            print(f"  USDC balance   ${balance:.4f}")
+        except Exception as exc:
+            print(f"  USDC balance   KO  {type(exc).__name__}: {str(exc)[:120]}")
+    else:
+        print(f"  USDC balance   skipped (credentials incomplete — run bootstrap-creds)")
+    print()
+
+    print("=== Endpoints ===")
+    endpoint_results: dict[str, str] = {}
+    for label, fn in [
+        ("Gamma   (markets)   ", lambda: GammaClient(settings.gamma_base_url).get_markets(limit=1)),
+        ("DataAPI (leaderboard)", lambda: DataApiClient(settings.data_api_base_url).leaderboard(
+            category=(settings.smart_categories.split(",")[0].strip() if settings.smart_categories else "OVERALL"),
+            time_period=settings.smart_time_period,
+            limit=1,
+        )),
+    ]:
+        t0 = time.time()
+        try:
+            fn()
+            elapsed_ms = (time.time() - t0) * 1000
+            print(f"  {label} OK  {elapsed_ms:.0f}ms")
+            endpoint_results[label.strip()] = "ok"
+        except Exception as exc:
+            print(f"  {label} KO  {type(exc).__name__}: {str(exc)[:80]}")
+            endpoint_results[label.strip()] = "error"
+    print()
+
+    print("=== Local state ===")
+    for path_attr, label in [
+        ("state_path", "paper_state.json       "),
+        ("trade_journal_path", "trade_journal.jsonl    "),
+        ("strategy_overrides_path", "strategy_overrides.json"),
+    ]:
+        p = Path(getattr(settings, path_attr))
+        if p.exists():
+            print(f"  {label} OK  exists ({p.stat().st_size} bytes) at {p}")
+        else:
+            print(f"  {label} —   not yet created at {p}")
+    print()
+
+    setup_ok = pk_ok and fa_ok and api_complete and all(v == "ok" for v in endpoint_results.values())
+    if not setup_ok:
+        print("Verdict: KO  Setup incomplete — fix the items marked above.")
+    elif settings.live_trading_enabled:
+        print("Verdict: WARN READY for LIVE trading. Bot WILL place real orders if auto-loop runs.")
+    else:
+        print("Verdict: OK  READY for read-only / dashboard. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to enable live trading.")
+
+    return {
+        "private_key_ok": pk_ok,
+        "funder_ok": fa_ok,
+        "api_credentials_complete": api_complete,
+        "live_trading_enabled": settings.live_trading_enabled,
+        "balance_usd": balance,
+        "endpoints": endpoint_results,
+        "setup_ok": setup_ok,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Polymarket smart-money copy-trading bot")
     parser.add_argument(
@@ -1596,6 +1711,7 @@ def main() -> None:
         choices=[
             "auto-loop",
             "dashboard",
+            "doctor",
             "journal-stats",
             "tune-strategy",
             "bootstrap-creds",
@@ -1611,6 +1727,8 @@ def main() -> None:
         smart_money_loop(settings)
     elif args.command == "dashboard":
         serve(settings)
+    elif args.command == "doctor":
+        doctor(settings)
     elif args.command == "journal-stats":
         print(json.dumps(journal_stats(settings), indent=2))
     elif args.command == "tune-strategy":
