@@ -699,7 +699,18 @@ def _noise_fallback_candidates(
     if not settings.smart_noise_fallback_enabled:
         return []
     open_count = sum(1 for p in portfolio.positions if p.get("status") == "open")
-    if open_count >= settings.min_open_positions:
+    summary = portfolio.summary()
+    cash = float(summary.get("cash") or 0.0)
+    invested = float(summary.get("invested") or 0.0)
+    unrealized = float(summary.get("unrealized_pnl") or 0.0)
+    equity = cash + invested + unrealized
+    cash_pct = (cash / equity) if equity > 0 else 0.0
+    below_min = open_count < settings.min_open_positions
+    cash_pressure = (
+        settings.smart_noise_fallback_cash_pressure_pct > 0
+        and cash_pct > settings.smart_noise_fallback_cash_pressure_pct
+    )
+    if not below_min and not cash_pressure:
         return []
     picks: list = []
     seen_market_ids: set[str] = set()
