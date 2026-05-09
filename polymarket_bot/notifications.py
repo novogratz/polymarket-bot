@@ -87,6 +87,7 @@ class _State:
     equity_floor_breached: bool = False
     last_daily_summary_date: str | None = None
     dedupe_seen: dict[str, float] = field(default_factory=dict)
+    drawdown_armed: bool = False  # True quand on a déjà alerté sur ce pic
 
 
 def _default_state_path() -> Path:
@@ -110,6 +111,7 @@ def _load_state(path: Path) -> _State:
         equity_floor_breached=bool(data.get("equity_floor_breached", False)),
         last_daily_summary_date=data.get("last_daily_summary_date"),
         dedupe_seen={str(k): float(v) for k, v in (data.get("dedupe_seen") or {}).items()},
+        drawdown_armed=bool(data.get("drawdown_armed", False)),
     )
 
 
@@ -132,6 +134,7 @@ def _save_state(path: Path, state: _State) -> None:
         "equity_floor_breached": state.equity_floor_breached,
         "last_daily_summary_date": state.last_daily_summary_date,
         "dedupe_seen": state.dedupe_seen,
+        "drawdown_armed": state.drawdown_armed,
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -322,6 +325,33 @@ def _handle_big_loss(payload: dict[str, Any]) -> None:
     _post(text)
 
 
+def _handle_drawdown(payload: dict[str, Any]) -> None:
+    equity = float(payload.get("equity_usd", 0))
+    if equity <= 0:
+        return
+    threshold_pct = _float_env("TELEGRAM_DRAWDOWN_PCT", 10.0)
+    path = _default_state_path()
+    state = _load_state(path)
+
+    peak = state.equity_peak_usd or equity
+    if equity > peak:
+        state.equity_peak_usd = equity
+        state.drawdown_armed = False
+        _save_state(path, state)
+        return
+    state.equity_peak_usd = peak
+
+    drawdown_pct = ((peak - equity) / peak) * 100.0
+    if drawdown_pct >= threshold_pct and not state.drawdown_armed:
+        text = (
+            f"⚠️ *Drawdown* {_md_escape(f'-{drawdown_pct:.1f}%')} from peak\n"
+            f"Equity: {_md_escape(f'${equity:.2f}')} \\(peak {_md_escape(f'${peak:.2f}')}\\)"
+        )
+        if _post(text):
+            state.drawdown_armed = True
+    _save_state(path, state)
+
+
 def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_THRESHOLDS"):
         return
@@ -329,7 +359,9 @@ def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
         _handle_big_win(payload)
     elif kind == "big_loss":
         _handle_big_loss(payload)
-    # autres kinds ajoutés dans Tasks 9, 10, 12
+    elif kind == "drawdown":
+        _handle_drawdown(payload)
+    # autres kinds ajoutés dans Tasks 10, 12
 
 
 def notify_daily_summary(snapshot: dict[str, Any]) -> None:

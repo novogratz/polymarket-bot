@@ -277,3 +277,43 @@ class TestBigWinLoss(NotificationsBaseTest):
         })
         self.assertEqual(len(sent), 1)
         self.assertIn("BIG LOSS", sent[0]["text"])
+
+
+class TestDrawdownArming(NotificationsBaseTest):
+    def _setup(self) -> list[dict]:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        os.environ["TELEGRAM_DRAWDOWN_PCT"] = "10.0"
+        sent: list[dict] = []
+        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        return sent
+
+    def test_drawdown_alerts_only_after_arming(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "state.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                # Premier appel: equity 100 → pic 100, pas de drawdown
+                notifications.notify_threshold("drawdown", {"equity_usd": 100.0})
+                self.assertEqual(len(sent), 0)
+
+                # Equity tombe à 95 (-5%): sous le seuil 10%, pas d'alerte
+                notifications.notify_threshold("drawdown", {"equity_usd": 95.0})
+                self.assertEqual(len(sent), 0)
+
+                # Equity tombe à 88 (-12%): alerte
+                notifications.notify_threshold("drawdown", {"equity_usd": 88.0})
+                self.assertEqual(len(sent), 1)
+                self.assertIn("Drawdown", sent[0]["text"])
+
+                # Encore à 85 (-15%): pas de re-alerte (déjà armé)
+                notifications.notify_threshold("drawdown", {"equity_usd": 85.0})
+                self.assertEqual(len(sent), 1)
+
+                # Remonte à 102 (nouveau pic): re-arme
+                notifications.notify_threshold("drawdown", {"equity_usd": 102.0})
+                self.assertEqual(len(sent), 1)
+
+                # Re-tombe à 89 (-12.7% du nouveau pic): re-alerte
+                notifications.notify_threshold("drawdown", {"equity_usd": 89.0})
+                self.assertEqual(len(sent), 2)
