@@ -379,6 +379,21 @@ def _handle_equity_floor(payload: dict[str, Any]) -> None:
             _save_state(path, state)
 
 
+def _handle_auto_tune_change(payload: dict[str, Any]) -> None:
+    changes = payload.get("changes") or []
+    if not changes:
+        return
+    lines = [f"\U0001f6e0 *Auto\\-tune* updated {len(changes)} params"]
+    for change in changes:
+        param = str(change.get("param", "?"))
+        old = change.get("old", "?")
+        new = change.get("new", "?")
+        lines.append(
+            f"`{param}`: {_md_escape(str(old))} → {_md_escape(str(new))}"
+        )
+    _post("\n".join(lines))
+
+
 def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_THRESHOLDS"):
         return
@@ -390,7 +405,8 @@ def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
         _handle_drawdown(payload)
     elif kind == "equity_floor":
         _handle_equity_floor(payload)
-    # autres kinds ajoutés dans Task 12
+    elif kind == "auto_tune_change":
+        _handle_auto_tune_change(payload)
 
 
 def notify_daily_summary(snapshot: dict[str, Any]) -> None:

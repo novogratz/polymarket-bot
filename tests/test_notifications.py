@@ -380,3 +380,31 @@ class TestDailySummary(NotificationsBaseTest):
                 snap_next = dict(snap, today="2026-05-10")
                 notifications.notify_daily_summary(snap_next)
                 self.assertEqual(len(sent), 2)
+
+
+class TestAutoTuneDiff(NotificationsBaseTest):
+    def _setup(self) -> list[dict]:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        sent: list[dict] = []
+        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        return sent
+
+    def test_skips_when_no_changes(self) -> None:
+        sent = self._setup()
+        notifications.notify_threshold("auto_tune_change", {"changes": []})
+        self.assertEqual(sent, [])
+
+    def test_sends_with_changes(self) -> None:
+        sent = self._setup()
+        notifications.notify_threshold("auto_tune_change", {
+            "changes": [
+                {"param": "MIN_CONSENSUS", "old": 2, "new": 3},
+                {"param": "MAX_CHASE_PREMIUM", "old": 0.13, "new": 0.104},
+            ]
+        })
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertIn("Auto\\-tune", text)
+        self.assertIn("MIN_CONSENSUS", text)
+        self.assertIn("MAX_CHASE_PREMIUM", text)
