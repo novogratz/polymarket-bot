@@ -1725,5 +1725,309 @@ class AutoTunerTests(unittest.TestCase):
         self.assertEqual(overrides, {})
 
 
+class SettingsDryRunTests(unittest.TestCase):
+    def test_live_mode_uses_default_paths(self):
+        s = Settings(dry_run=False)
+        self.assertEqual(str(s.state_path), "data/paper_state.json")
+        self.assertEqual(str(s.trade_journal_path), "data/trade_journal.jsonl")
+        self.assertEqual(str(s.strategy_overrides_path), "data/strategy_overrides.json")
+        self.assertEqual(str(s.tick_state_path), "data/last_tick.json")
+        self.assertEqual(str(s.tick_history_path), "data/tick_history.jsonl")
+
+    def test_dry_run_swaps_all_data_paths(self):
+        s = Settings(dry_run=True)
+        self.assertEqual(str(s.state_path), "data/dry_run_state.json")
+        self.assertEqual(str(s.trade_journal_path), "data/dry_run_journal.jsonl")
+        self.assertEqual(str(s.strategy_overrides_path), "data/dry_run_strategy_overrides.json")
+        self.assertEqual(str(s.tick_state_path), "data/dry_run_last_tick.json")
+        self.assertEqual(str(s.tick_history_path), "data/dry_run_tick_history.jsonl")
+
+    def test_dry_run_preserves_explicit_custom_paths(self):
+        from pathlib import Path
+        s = Settings(
+            dry_run=True,
+            state_path=Path("/tmp/custom_state.json"),
+            trade_journal_path=Path("/tmp/custom_journal.jsonl"),
+            strategy_overrides_path=Path("/tmp/custom_over.json"),
+            tick_state_path=Path("/tmp/custom_tick.json"),
+            tick_history_path=Path("/tmp/custom_hist.jsonl"),
+        )
+        self.assertEqual(str(s.state_path), "/tmp/custom_state.json")
+        self.assertEqual(str(s.trade_journal_path), "/tmp/custom_journal.jsonl")
+        self.assertEqual(str(s.strategy_overrides_path), "/tmp/custom_over.json")
+        self.assertEqual(str(s.tick_state_path), "/tmp/custom_tick.json")
+        self.assertEqual(str(s.tick_history_path), "/tmp/custom_hist.jsonl")
+
+
+class TickStateLoopTests(unittest.TestCase):
+    def test_strategy_loop_writes_tick_state_on_each_tick(self):
+        import tempfile
+        from pathlib import Path
+        from polymarket_bot import tick_state
+        from polymarket_bot.main import strategy_loop
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            settings = Settings(
+                auto_max_ticks=2,
+                auto_interval_seconds=0,
+                quiet=True,
+                tick_state_path=tmp_path / "last_tick.json",
+                tick_history_path=tmp_path / "tick_history.jsonl",
+            )
+
+            calls: list[int] = []
+
+            def fake_tick(s):
+                calls.append(len(calls) + 1)
+                return {
+                    "scan_report": {"selected": None, "opportunities": [], "traders_checked": 0},
+                    "scan_counts": {"strict": 0, "relaxed": 1, "deep": 0, "candidates_total": 5},
+                    "exits": [{"market_id": "mid-1", "question": "Will M1 close yes?", "outcome": "Yes", "action": "sell", "reason": "tp", "pnl_pct": 0.10}],
+                    "noise_trades": [],
+                    "rejected_signals": [{"market_id": "mid-skip", "question": "Skipped market?", "outcome": "Yes", "reason": "chase too high"}],
+                    "auto_tune_info": {"applied": False, "journal_size": 5, "overrides_active": {}},
+                    "summary": {"equity": 100.0, "cash": 50.0, "invested": 50.0},
+                    "trade": {
+                        "strategy": "smart_money",
+                        "signal": {"question": "Will M2 happen?", "stake_usd": 2.0, "selection_reason": "consensus 3"},
+                        "order": {},
+                        "response": {},
+                    },
+                }
+
+            strategy_loop(settings, "smart_money", fake_tick)
+
+            self.assertEqual(len(calls), 2)
+            last = tick_state.read_last_tick(settings)
+            self.assertIsNotNone(last)
+            self.assertEqual(last["mode"], "live")
+            self.assertIn("scan_counts", last)
+            self.assertEqual(last["scan_counts"]["relaxed"], 1)
+            self.assertIn("actions", last)
+            self.assertIn("next_tick_at", last)
+            history = tick_state.read_tick_history(settings, limit=10)
+            self.assertEqual(len(history), 2)
+            self.assertEqual(history[0]["tick_id"], 2)
+            self.assertEqual(history[1]["tick_id"], 1)
+
+    def test_strategy_loop_records_dry_run_mode(self):
+        import tempfile
+        from pathlib import Path
+        from polymarket_bot import tick_state
+        from polymarket_bot.main import strategy_loop
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            settings = Settings(
+                dry_run=True,
+                auto_max_ticks=1,
+                auto_interval_seconds=0,
+                quiet=True,
+                tick_state_path=tmp_path / "last_tick.json",
+                tick_history_path=tmp_path / "tick_history.jsonl",
+            )
+
+            def fake_tick(s):
+                return {"summary": {"equity": 0}}
+
+            strategy_loop(settings, "smart_money", fake_tick)
+            last = tick_state.read_last_tick(settings)
+            self.assertEqual(last["mode"], "dry_run")
+
+    def test_strategy_loop_records_error_ticks(self):
+        import tempfile
+        from pathlib import Path
+        from polymarket_bot import tick_state
+        from polymarket_bot.main import strategy_loop
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            settings = Settings(
+                auto_max_ticks=1,
+                auto_interval_seconds=0,
+                quiet=True,
+                tick_state_path=tmp_path / "last_tick.json",
+                tick_history_path=tmp_path / "tick_history.jsonl",
+            )
+
+            def boom(s):
+                raise RuntimeError("kaboom")
+
+            strategy_loop(settings, "smart_money", boom)
+            last = tick_state.read_last_tick(settings)
+            self.assertIsNotNone(last)
+            self.assertEqual(last["error"], {"type": "RuntimeError", "message": "kaboom"})
+            self.assertEqual(last["actions"], [])
+
+    def test_extract_tick_actions_handles_real_payload_shape(self):
+        from polymarket_bot.main import _extract_tick_actions
+
+        actions = _extract_tick_actions({
+            "trade": {
+                "strategy": "smart_money",
+                "signal": {"question": "Q-buy?", "stake_usd": 3.0, "selection_reason": "x"},
+            },
+            "noise_trades": [{
+                "strategy": "noise_fallback",
+                "signal": {"question": "Q-noise?", "stake_usd": 1.0},
+            }],
+            "exits": [
+                {"market_id": "m1", "question": "Q-sell?", "outcome": "Yes", "action": "sell", "reason": "stop_loss"},
+                {"market_id": "m2", "question": "Q-skipsell?", "outcome": "Yes", "action": "skip_sell", "reason": "below floor"},
+            ],
+            "rejected_signals": [
+                {"market_id": "m3", "question": "Q-skip?", "outcome": "No", "reason": "chase 0.18"},
+            ],
+        })
+
+        types = [a["type"] for a in actions]
+        markets = [a["market"] for a in actions]
+        # Two buys (primary + noise), one sell (skip_sell is filtered), one skip
+        self.assertEqual(types, ["buy", "buy", "sell", "skip"])
+        self.assertEqual(markets, ["Q-buy?", "Q-noise?", "Q-sell?", "Q-skip?"])
+
+    def test_extract_tick_actions_returns_empty_for_empty_tick(self):
+        from polymarket_bot.main import _extract_tick_actions
+        self.assertEqual(_extract_tick_actions({}), [])
+
+    def test_extract_tick_actions_includes_btc_edge_buy(self):
+        from polymarket_bot.main import _extract_tick_actions
+        actions = _extract_tick_actions({
+            "btc_edge": {
+                "trade": {
+                    "strategy": "btc_edge",
+                    "signal": {"question": "BTC > 100k?", "stake_usd": 4.0, "selection_reason": "edge=0.12"},
+                },
+            },
+        })
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0]["type"], "buy")
+        self.assertEqual(actions[0]["strategy"], "btc_edge")
+        self.assertEqual(actions[0]["market"], "BTC > 100k?")
+
+    def test_extract_tick_actions_skips_btc_edge_when_no_trade(self):
+        from polymarket_bot.main import _extract_tick_actions
+        # btc_edge_once returns {"trade": None, ...} when no signal
+        actions = _extract_tick_actions({
+            "btc_edge": {"trade": None, "no_signal": "edge below threshold"},
+        })
+        self.assertEqual(actions, [])
+
+
+class JournalStatsDrawdownTests(unittest.TestCase):
+    def test_max_drawdown_zero_when_only_wins(self):
+        import tempfile
+        import json
+        from pathlib import Path
+        from polymarket_bot.main import journal_stats
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp) / "journal.jsonl"
+            records = [
+                {"closed_at": "2026-01-01T00:00:00Z", "realized_pnl": 1.0},
+                {"closed_at": "2026-01-02T00:00:00Z", "realized_pnl": 2.0},
+                {"closed_at": "2026-01-03T00:00:00Z", "realized_pnl": 0.5},
+            ]
+            tmp_path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+            stats = journal_stats(Settings(trade_journal_path=tmp_path))
+            self.assertEqual(stats["max_drawdown"], 0.0)
+
+    def test_max_drawdown_captures_worst_peak_to_trough(self):
+        import tempfile
+        import json
+        from pathlib import Path
+        from polymarket_bot.main import journal_stats
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp) / "journal.jsonl"
+            # Cumulative PnL: +5, +6, +1, +3, -2, +1
+            # Peaks:           5,  6,  6, 6,  6,  6
+            # Drawdowns:       0,  0, -5, -3, -8, -5
+            # Max drawdown = -8
+            records = [
+                {"closed_at": "2026-01-01T00:00:00Z", "realized_pnl": 5.0},
+                {"closed_at": "2026-01-02T00:00:00Z", "realized_pnl": 1.0},
+                {"closed_at": "2026-01-03T00:00:00Z", "realized_pnl": -5.0},
+                {"closed_at": "2026-01-04T00:00:00Z", "realized_pnl": 2.0},
+                {"closed_at": "2026-01-05T00:00:00Z", "realized_pnl": -5.0},
+                {"closed_at": "2026-01-06T00:00:00Z", "realized_pnl": 3.0},
+            ]
+            tmp_path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+            stats = journal_stats(Settings(trade_journal_path=tmp_path))
+            self.assertEqual(stats["max_drawdown"], -8.0)
+
+    def test_max_drawdown_handles_unsorted_records(self):
+        import tempfile
+        import json
+        from pathlib import Path
+        from polymarket_bot.main import journal_stats
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp) / "journal.jsonl"
+            records = [
+                {"closed_at": "2026-01-03T00:00:00Z", "realized_pnl": -5.0},
+                {"closed_at": "2026-01-01T00:00:00Z", "realized_pnl": 5.0},
+                {"closed_at": "2026-01-02T00:00:00Z", "realized_pnl": 1.0},
+            ]
+            tmp_path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+            stats = journal_stats(Settings(trade_journal_path=tmp_path))
+            self.assertEqual(stats["max_drawdown"], -5.0)
+
+
+class JournalSuggestionsTests(unittest.TestCase):
+    def _records(self, n, exit_reason="take_profit_50", pnl=1.0, **extra):
+        base = {"realized_pnl": pnl, "exit_reason": exit_reason, "category": "POLITICS", "consensus": 3}
+        base.update(extra)
+        return [dict(base) for _ in range(n)]
+
+    def test_suggestions_empty_when_below_min_trades(self):
+        from polymarket_bot.main import _journal_suggestions
+        result = _journal_suggestions(self._records(5))
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["id"], "below_min_trades")
+        self.assertEqual(result[0]["records"], 5)
+
+    def test_suggestions_flag_excessive_stop_loss(self):
+        from polymarket_bot.main import _journal_suggestions
+        records = self._records(20, exit_reason="stop_loss", pnl=-0.5) + self._records(20, exit_reason="take_profit_50", pnl=0.5)
+        suggestions = _journal_suggestions(records)
+        ids = {s["id"] for s in suggestions}
+        self.assertIn("excessive_stop_loss", ids)
+        sl = next(s for s in suggestions if s["id"] == "excessive_stop_loss")
+        self.assertEqual(sl["param"], "MAX_CHASE_PREMIUM")
+        self.assertEqual(sl["ratio"], 0.80)
+        self.assertIn("stop_loss", sl["reason"])
+
+    def test_format_suggestions_returns_human_lines(self):
+        from polymarket_bot.main import format_suggestions
+        structured = [
+            {"id": "below_min_trades", "param": None, "ratio": None, "reason": "only 5 closed trades"},
+            {"id": "excessive_stop_loss", "param": "MAX_CHASE_PREMIUM", "ratio": 0.80, "reason": "stop_loss = 50% of 40 trades"},
+        ]
+        lines = format_suggestions(structured)
+        self.assertEqual(len(lines), 2)
+        self.assertIn("only 5 closed trades", lines[0])
+        self.assertIn("MAX_CHASE_PREMIUM", lines[1])
+        self.assertIn("0.80", lines[1])
+
+    def test_journal_stats_suggestions_field_is_structured(self):
+        import tempfile, json
+        from pathlib import Path
+        from polymarket_bot.main import journal_stats
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp) / "journal.jsonl"
+            tmp_path.write_text("\n".join(
+                json.dumps({"realized_pnl": 1.0, "exit_reason": "take_profit_50"}) for _ in range(5)
+            ) + "\n")
+            stats = journal_stats(Settings(trade_journal_path=tmp_path))
+            suggestions = stats["suggestions"]
+            self.assertTrue(suggestions)
+            self.assertIsInstance(suggestions[0], dict)
+            self.assertIn("id", suggestions[0])
+
+
 if __name__ == "__main__":
     unittest.main()

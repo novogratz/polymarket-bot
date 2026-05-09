@@ -19,8 +19,9 @@ import time
 import typer
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
+from . import tick_state
 from .auto_tuner import apply_overrides, maybe_tune
 from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
 from .config import Settings
@@ -210,9 +211,17 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
 
 def smart_money_once(settings: Settings) -> dict[str, object]:
     print("▶  tick start", flush=True)
+    auto_tune_info: dict[str, object] = {
+        "applied": False,
+        "journal_size": 0,
+        "overrides_active": {},
+    }
     if settings.smart_auto_tune_enabled:
         overrides, journal_size = maybe_tune(settings)
+        auto_tune_info["journal_size"] = journal_size
+        auto_tune_info["overrides_active"] = dict(overrides)
         if overrides:
+            auto_tune_info["applied"] = True
             print(
                 f"   auto-tune: {len(overrides)} override(s) from {journal_size} closed trade(s): {overrides}",
                 flush=True,
@@ -226,6 +235,12 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     _step(settings, "   loading markets...")
     candidates = load_smart_candidates(settings)
     _step(settings, f"   markets: {len(candidates)} candidates")
+    scan_counts = {
+        "strict": 0,
+        "relaxed": 0,
+        "deep": 0,
+        "candidates_total": len(candidates),
+    }
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
     if settings.dry_run:
         _step(settings, "   [DRY-RUN] skipping live-position sync (using simulated ledger only)")
@@ -331,6 +346,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
 
     report = analyze_smart_money_with_data(eligible_candidates, settings, smart_data)
     _step(settings, f"   strict scan: {len(report.opportunities)} opportunity(ies)")
+    scan_counts["strict"] = len(report.opportunities)
     signal = report.selected
     strategy = "smart_money"
     opportunities = list(report.opportunities)
@@ -345,6 +361,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         )
         fallback_report = analyze_smart_money_with_data(eligible_candidates, fallback_settings, smart_data)
         _step(settings, f"   relaxed scan: {len(fallback_report.opportunities)} opportunity(ies)")
+        scan_counts["relaxed"] = len(fallback_report.opportunities)
         seen_tokens = {opp.candidate.token_id for opp in opportunities if opp.candidate.token_id}
         for opp in fallback_report.opportunities:
             token_id = opp.candidate.token_id
@@ -378,6 +395,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             )
             deep_report = analyze_smart_money_with_data(eligible_candidates, deep_settings, smart_data)
             _step(settings, f"   deep fallback: {len(deep_report.opportunities)} opportunity(ies)")
+            scan_counts["deep"] = len(deep_report.opportunities)
             for opp in deep_report.opportunities:
                 token_id = opp.candidate.token_id
                 if token_id and token_id in seen_tokens:
@@ -412,6 +430,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 "pending_orders": pending_report,
                 "category_summary": open_categories,
                 "scan_report": report.to_dict(),
+                "scan_counts": scan_counts,
                 "summary": portfolio.summary(),
             }
 
@@ -424,6 +443,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
+                        "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
                         "reason": "duplicate_open_market",
                         "selection_reason": opportunity.to_dict()["selection_reason"],
@@ -434,6 +454,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
+                        "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
                         "event_slug": opportunity.candidate.event_slug,
                         "reason": "duplicate_open_sports_event",
@@ -451,6 +472,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
+                        "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
                         "reason": "sports_position_cap_reached",
                         "category": category,
@@ -490,6 +512,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     rejected_signals.append(
                         {
                             "market_id": opportunity.candidate.market_id,
+                            "question": opportunity.candidate.question,
                             "outcome": opportunity.candidate.outcome,
                             "reason": str(e),
                         }
@@ -500,6 +523,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     rejected_signals.append(
                         {
                             "market_id": opportunity.candidate.market_id,
+                            "question": opportunity.candidate.question,
                             "outcome": opportunity.candidate.outcome,
                             "reason": str(e),
                         }
@@ -516,6 +540,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     rejected_signals.append(
                         {
                             "market_id": opportunity.candidate.market_id,
+                            "question": opportunity.candidate.question,
                             "outcome": opportunity.candidate.outcome,
                             "reason": str(e),
                         }
@@ -552,6 +577,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     continue
                 try:
                     noise_signal = {
+                        "question": candidate.question,
                         "category": market_category(candidate.question, candidate.slug),
                         "selection_reason": "noise_fallback: no smart-money signal; small bet on top-scored candidate",
                         "selection_metrics": {
@@ -611,7 +637,9 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "category_summary": open_categories,
         "rejected_signals": rejected_signals,
         "scan_report": report.to_dict(),
+        "scan_counts": scan_counts,
         "summary": portfolio.summary(),
+        "auto_tune_info": auto_tune_info,
     }
     if settings.btc_edge_integrated:
         try:
@@ -705,6 +733,7 @@ def _execute_sell_strategy(
             exit_report.append(
                 {
                     "market_id": position.get("market_id"),
+                    "question": position.get("question"),
                     "outcome": position.get("outcome"),
                     "action": "skip_sell",
                     "reason": f"{type(exc).__name__}: {message}",
@@ -723,6 +752,7 @@ def _execute_sell_strategy(
         exit_report.append(
             {
                 "market_id": position.get("market_id"),
+                "question": position.get("question"),
                 "outcome": position.get("outcome"),
                 "action": "sell",
                 "reason": plan["reason"],
@@ -1473,6 +1503,14 @@ def journal_stats(settings: Settings) -> dict[str, object]:
     wins = sum(1 for p in pnls if p > 0)
     losses = sum(1 for p in pnls if p < 0)
     flats = sum(1 for p in pnls if p == 0)
+    records_sorted = sorted(records, key=lambda r: str(r.get("closed_at") or ""))
+    running_pnl = 0.0
+    peak_pnl = 0.0
+    max_drawdown = 0.0
+    for record in records_sorted:
+        running_pnl += pnl(record)
+        peak_pnl = max(peak_pnl, running_pnl)
+        max_drawdown = min(max_drawdown, running_pnl - peak_pnl)
     return {
         "records": len(records),
         "total_pnl": round(sum(pnls), 2),
@@ -1481,6 +1519,7 @@ def journal_stats(settings: Settings) -> dict[str, object]:
         "flats": flats,
         "win_rate": round(wins / len(records), 3),
         "avg_pnl": round(sum(pnls) / len(records), 4),
+        "max_drawdown": round(max_drawdown, 2),
         "by_category": group_by(records, lambda r: r.get("category")),
         "by_consensus": group_by(records, consensus_bucket),
         "by_strategy": group_by(records, lambda r: r.get("strategy")),
@@ -1492,12 +1531,19 @@ def journal_stats(settings: Settings) -> dict[str, object]:
     }
 
 
-def _journal_suggestions(records: list[dict[str, object]]) -> list[str]:
+def _journal_suggestions(records: list[dict[str, object]]) -> list[dict[str, object]]:
     if len(records) < 30:
-        return [
-            f"only {len(records)} closed trades — need ~30+ before any reading is statistically meaningful; suggestions paused."
-        ]
-    suggestions: list[str] = []
+        return [{
+            "id": "below_min_trades",
+            "param": None,
+            "ratio": None,
+            "records": len(records),
+            "reason": (
+                f"only {len(records)} closed trades — need ~30+ before any reading is "
+                "statistically meaningful; suggestions paused."
+            ),
+        }]
+    suggestions: list[dict[str, object]] = []
     by_category: dict[str, list[float]] = {}
     by_consensus: dict[int, list[float]] = {}
     by_exit: dict[str, list[float]] = {}
@@ -1517,32 +1563,78 @@ def _journal_suggestions(records: list[dict[str, object]]) -> list[str]:
             by_consensus.setdefault(consensus_int, []).append(pnl)
         exit_reason = str(record.get("exit_reason") or "unknown")
         by_exit.setdefault(exit_reason, []).append(pnl)
+
     for category, pnls in by_category.items():
         if len(pnls) < 10:
             continue
         avg = sum(pnls) / len(pnls)
         if avg < -0.20:
-            suggestions.append(
-                f"category {category}: {len(pnls)} trades, avg PnL ${avg:.2f} — consider penalizing or excluding."
-            )
+            suggestions.append({
+                "id": f"weak_category_{category.lower()}",
+                "param": "category_filter",
+                "ratio": None,
+                "category": category,
+                "reason": (
+                    f"category {category}: {len(pnls)} trades, avg PnL ${avg:.2f} — "
+                    "consider penalizing or excluding."
+                ),
+            })
+
     for consensus, pnls in sorted(by_consensus.items()):
         if len(pnls) < 10:
             continue
         avg = sum(pnls) / len(pnls)
         if consensus <= 2 and avg < -0.10:
-            suggestions.append(
-                f"consensus={consensus}: {len(pnls)} trades, avg PnL ${avg:.2f} — consider raising POLYMARKET_SMART_MIN_CONSENSUS."
-            )
+            suggestions.append({
+                "id": f"weak_consensus_{consensus}",
+                "param": "MIN_CONSENSUS",
+                "ratio": None,
+                "consensus": consensus,
+                "reason": (
+                    f"consensus={consensus}: {len(pnls)} trades, avg PnL ${avg:.2f} — "
+                    "consider raising POLYMARKET_SMART_MIN_CONSENSUS."
+                ),
+            })
+
     stop_pnls = by_exit.get("stop_loss", [])
     if len(stop_pnls) >= 10:
         share = len(stop_pnls) / len(records)
         if share > 0.30:
-            suggestions.append(
-                f"stop_loss exits = {share:.0%} of trades — entry filters may be too loose; consider tightening MAX_CHASE_PREMIUM or MAX_RELATIVE_SPREAD."
-            )
+            suggestions.append({
+                "id": "excessive_stop_loss",
+                "param": "MAX_CHASE_PREMIUM",
+                "ratio": 0.80,
+                "share": round(share, 3),
+                "reason": (
+                    f"stop_loss exits = {share:.0%} of {len(records)} trades — entry filters may be "
+                    "too loose; consider tightening MAX_CHASE_PREMIUM or MAX_RELATIVE_SPREAD."
+                ),
+            })
+
     if not suggestions:
-        suggestions.append("no clear underperformer across buckets with >= 10 trades each.")
+        suggestions.append({
+            "id": "all_clear",
+            "param": None,
+            "ratio": None,
+            "reason": "no clear underperformer across buckets with >= 10 trades each.",
+        })
     return suggestions
+
+
+def format_suggestions(suggestions: list[dict[str, object]]) -> list[str]:
+    """Render structured suggestions into human-readable lines for the CLI."""
+    lines: list[str] = []
+    for suggestion in suggestions:
+        reason = str(suggestion.get("reason") or "")
+        param = suggestion.get("param")
+        ratio = suggestion.get("ratio")
+        if param and ratio is not None:
+            lines.append(f"[{param} ×{ratio:.2f}] {reason}")
+        elif param:
+            lines.append(f"[{param}] {reason}")
+        else:
+            lines.append(reason)
+    return lines
 
 
 def _append_trade_journal(settings: Settings, position: dict[str, object], reason: str) -> None:
@@ -1757,23 +1849,39 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
     while settings.auto_max_ticks <= 0 or tick < settings.auto_max_ticks:
         tick += 1
         started_at = utc_now()
+        error: dict[str, str] | None = None
+        tick_result: dict[str, object] = {}
         try:
-            result: dict[str, object] = {
-                "tick": tick,
-                "strategy": strategy_name,
-                "started_at": started_at.isoformat(),
-                "result": tick_fn(settings),
-            }
+            tick_result = tick_fn(settings)
         except Exception as exc:
-            result = {
-                "tick": tick,
-                "strategy": strategy_name,
-                "started_at": started_at.isoformat(),
-                "error": {
-                    "type": type(exc).__name__,
-                    "message": str(exc),
-                },
-            }
+            error = {"type": type(exc).__name__, "message": str(exc)}
+
+        finished_at = utc_now()
+        result: dict[str, object] = {
+            "tick": tick,
+            "strategy": strategy_name,
+            "started_at": started_at.isoformat(),
+        }
+        if error is None:
+            result["result"] = tick_result
+        else:
+            result["error"] = error
+
+        try:
+            tick_state.write_tick(
+                settings,
+                _build_tick_record(
+                    tick_id=tick,
+                    started_at=started_at,
+                    finished_at=finished_at,
+                    settings=settings,
+                    tick_result=tick_result,
+                    error=error,
+                ),
+            )
+        except Exception:
+            pass
+
         if settings.quiet:
             print(json.dumps(result), flush=True)
         else:
@@ -1781,6 +1889,95 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
         if settings.auto_max_ticks > 0 and tick >= settings.auto_max_ticks:
             break
         time.sleep(settings.auto_interval_seconds)
+
+
+def _build_tick_record(
+    *,
+    tick_id: int,
+    started_at: datetime,
+    finished_at: datetime,
+    settings: Settings,
+    tick_result: dict[str, object],
+    error: dict[str, str] | None,
+) -> dict[str, object]:
+    """Re-shape a tick_fn return into the tick_state record format."""
+    duration_s = round((finished_at - started_at).total_seconds(), 2)
+    next_tick_at = (
+        finished_at.timestamp() + max(0, settings.auto_interval_seconds)
+    )
+    record: dict[str, object] = {
+        "tick_id": tick_id,
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "duration_s": duration_s,
+        "mode": "dry_run" if settings.dry_run else "live",
+        "scan_counts": dict(tick_result.get("scan_counts") or {}),
+        "actions": _extract_tick_actions(tick_result),
+        "tuner_changes": dict(tick_result.get("auto_tune_info") or {}),
+        "next_tick_at": datetime.fromtimestamp(
+            next_tick_at, tz=timezone.utc
+        ).isoformat(),
+    }
+    if error is not None:
+        record["error"] = error
+    return record
+
+
+def _extract_tick_actions(tick_result: dict[str, object]) -> list[dict[str, object]]:
+    actions: list[dict[str, object]] = []
+    primary = tick_result.get("trade")
+    if isinstance(primary, dict):
+        signal = primary.get("signal") if isinstance(primary.get("signal"), dict) else {}
+        question = signal.get("question") if signal else None
+        if question:
+            actions.append({
+                "type": "buy",
+                "market": question,
+                "amount_usd": signal.get("stake_usd"),
+                "strategy": primary.get("strategy"),
+                "reason": signal.get("selection_reason") or "smart_money_signal",
+            })
+    btc = tick_result.get("btc_edge")
+    if isinstance(btc, dict):
+        btc_trade = btc.get("trade")
+        if isinstance(btc_trade, dict):
+            signal = btc_trade.get("signal") if isinstance(btc_trade.get("signal"), dict) else {}
+            question = signal.get("question")
+            if question:
+                actions.append({
+                    "type": "buy",
+                    "market": question,
+                    "amount_usd": signal.get("stake_usd"),
+                    "strategy": "btc_edge",
+                    "reason": signal.get("selection_reason") or "btc_edge_signal",
+                })
+    for noise in tick_result.get("noise_trades") or []:
+        if isinstance(noise, dict):
+            noise_signal = noise.get("signal") if isinstance(noise.get("signal"), dict) else {}
+            question = noise_signal.get("question") or noise.get("question")
+            if question:
+                actions.append({
+                    "type": "buy",
+                    "market": question,
+                    "amount_usd": noise_signal.get("stake_usd"),
+                    "strategy": "noise_fallback",
+                    "reason": "noise_fallback",
+                })
+    for exit_record in tick_result.get("exits") or []:
+        if isinstance(exit_record, dict) and exit_record.get("action") == "sell":
+            actions.append({
+                "type": "sell",
+                "market": exit_record.get("question") or exit_record.get("market_id"),
+                "reason": exit_record.get("reason"),
+            })
+    for rejected in tick_result.get("rejected_signals") or []:
+        if isinstance(rejected, dict):
+            actions.append({
+                "type": "skip",
+                "market": rejected.get("question") or rejected.get("market_id"),
+                "reason": rejected.get("reason") or rejected.get("selection_reason"),
+            })
+    return actions
 
 
 def smart_money_loop(settings: Settings) -> None:
@@ -1992,7 +2189,11 @@ def positions() -> None:
 @app.command("journal-stats")
 def cli_journal_stats() -> None:
     """Print aggregated trade-journal statistics as JSON."""
-    typer.echo(json.dumps(journal_stats(Settings()), indent=2, default=str))
+    payload = journal_stats(Settings())
+    structured_suggestions = payload.get("suggestions") or []
+    payload["suggestions"] = format_suggestions(structured_suggestions)
+    payload["suggestions_structured"] = structured_suggestions
+    typer.echo(json.dumps(payload, indent=2, default=str))
 
 
 @app.command("tune-strategy")
