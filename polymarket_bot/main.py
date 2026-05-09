@@ -862,6 +862,8 @@ def _detect_cohort_exits(
     settings: Settings,
     portfolio: Portfolio,
 ) -> tuple[dict[str, str], list[dict[str, object]]]:
+    from concurrent.futures import ThreadPoolExecutor
+
     report: list[dict[str, object]] = []
     exit_tokens: dict[str, str] = {}
     if not settings.smart_cohort_exit_enabled or not portfolio.positions:
@@ -870,6 +872,9 @@ def _detect_cohort_exits(
     lookback = int(time.time()) - max(settings.smart_cohort_exit_lookback_minutes, 1) * 60
     min_age = max(settings.smart_cohort_exit_min_age_minutes, 0)
     min_wallets = max(settings.smart_cohort_exit_min_wallets, 1)
+
+    eligible: list[tuple[dict[str, object], str, list[str], set[str]]] = []
+    needed_calls: list[tuple[str, str]] = []
     for position in portfolio.positions:
         if position.get("status") != "open" or not position.get("live"):
             continue
@@ -885,13 +890,48 @@ def _detect_cohort_exits(
         if _position_age_minutes(position) < min_age:
             continue
         cohort_lower = {w.lower() for w in wallets}
+        eligible.append((position, token_id, wallets, cohort_lower))
+        for wallet in wallets:
+            needed_calls.append((wallet, "BUY"))
+            needed_calls.append((wallet, "SELL"))
+
+    if not eligible:
+        return exit_tokens, report
+
+    concurrency = max(1, settings.smart_trade_fetch_concurrency)
+    trades_by_call: dict[tuple[str, str], list] = {}
+    failures: dict[tuple[str, str], Exception] = {}
+
+    def _fetch(call: tuple[str, str]) -> tuple[tuple[str, str], list, Exception | None]:
+        wallet, side = call
+        try:
+            return call, data_client.trades(user=wallet, start=lookback, side=side), None
+        except Exception as exc:
+            return call, [], exc
+
+    if concurrency > 1 and len(needed_calls) > 1:
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            for call, trades, exc in executor.map(_fetch, needed_calls):
+                if exc is not None:
+                    failures[call] = exc
+                else:
+                    trades_by_call[call] = trades
+    else:
+        for call in needed_calls:
+            _, trades, exc = _fetch(call)
+            if exc is not None:
+                failures[call] = exc
+            else:
+                trades_by_call[call] = trades
+
+    for position, token_id, wallets, cohort_lower in eligible:
         recent_trades: list = []
         failed = False
         for wallet in wallets:
-            try:
-                recent_trades.extend(data_client.trades(user=wallet, start=lookback, side="BUY"))
-                recent_trades.extend(data_client.trades(user=wallet, start=lookback, side="SELL"))
-            except Exception as exc:
+            buy_call = (wallet, "BUY")
+            sell_call = (wallet, "SELL")
+            if buy_call in failures or sell_call in failures:
+                exc = failures.get(buy_call) or failures.get(sell_call)
                 report.append(
                     {
                         "question": position.get("question"),
@@ -901,6 +941,8 @@ def _detect_cohort_exits(
                 )
                 failed = True
                 break
+            recent_trades.extend(trades_by_call.get(buy_call, []))
+            recent_trades.extend(trades_by_call.get(sell_call, []))
         if failed:
             continue
         sells_by_cohort = {
