@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime
 
 
 def _color_enabled() -> bool:
@@ -96,3 +97,21 @@ def _truncate_question(text: str | None, max_len: int = 40) -> str:
     if len(text) <= max_len:
         return text
     return text[: max_len - 1] + "…"
+
+
+def _format_time_hhmm(iso_str: str | None) -> str:
+    """Extract HH:MM from an ISO 8601 timestamp; return ??:?? on parse failure.
+
+    No timezone conversion: the substring is read as-is. The bot writes
+    `started_at` via `utc_now().isoformat()`, so this prints UTC time, which
+    is the consistent convention across all bot logs.
+    """
+    if not iso_str:
+        return "??:??"
+    try:
+        # Accept "...Z" suffix as +00:00.
+        normalized = iso_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(normalized)
+    except (TypeError, ValueError):
+        return "??:??"
+    return dt.strftime("%H:%M")

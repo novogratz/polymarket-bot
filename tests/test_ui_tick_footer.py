@@ -32,5 +32,26 @@ class TruncateQuestionTests(unittest.TestCase):
         self.assertEqual(_truncate_question("hello world", max_len=5), "hell…")
 
 
+from polymarket_bot._ui import _format_time_hhmm
+
+
+class FormatTimeHhmmTests(unittest.TestCase):
+    def test_iso_with_offset(self):
+        # "2026-05-09T18:03:42+00:00" -> "18:03" (UTC, no local conversion)
+        self.assertEqual(_format_time_hhmm("2026-05-09T18:03:42+00:00"), "18:03")
+
+    def test_iso_without_offset_treated_as_utc(self):
+        self.assertEqual(_format_time_hhmm("2026-05-09T07:09:00"), "07:09")
+
+    def test_invalid_returns_question_marks(self):
+        self.assertEqual(_format_time_hhmm("not a date"), "??:??")
+
+    def test_none_returns_question_marks(self):
+        self.assertEqual(_format_time_hhmm(None), "??:??")
+
+    def test_empty_returns_question_marks(self):
+        self.assertEqual(_format_time_hhmm(""), "??:??")
+
+
 if __name__ == "__main__":
     unittest.main()
