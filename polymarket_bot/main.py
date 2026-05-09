@@ -529,6 +529,14 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 if _is_funds_error(str(e)):
                     stop_reason = str(e)
                     break
+                try:
+                    notifications.notify_error(
+                        "order_rejected",
+                        str(e)[:500],
+                        dedupe_key=f"order_rejected:{opportunity.candidate.token_id}",
+                    )
+                except Exception:
+                    pass
                 raise
 
     noise_trades: list[dict[str, object]] = []
@@ -689,6 +697,14 @@ def _execute_sell_strategy(
         except Exception as exc:
             message = str(exc)
             print(f"⚠️  sell skipped on {position.get('question')}: {type(exc).__name__}: {message}", flush=True)
+            try:
+                notifications.notify_error(
+                    "order_rejected",
+                    f"SELL skipped: {message}"[:500],
+                    dedupe_key=f"order_rejected:{position.get('token_id') or position.get('market_id') or 'unknown'}",
+                )
+            except Exception:
+                pass
             cancelled_ids: list[str] = []
             if "balance is not enough" in message.lower() or "allowance" in message.lower():
                 position["sell_blocked_reason"] = "active_sell_order_pending"
@@ -1832,6 +1848,14 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                     "message": str(exc),
                 },
             }
+            try:
+                notifications.notify_error(
+                    "tick_failed",
+                    str(exc)[:500],
+                    dedupe_key="tick_failed",
+                )
+            except Exception:
+                pass
         if settings.quiet:
             print(json.dumps(result), flush=True)
         else:
