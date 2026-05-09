@@ -94,12 +94,16 @@ and verdict so you can confirm the simulation is correctly wired.
 
 ## Quiet output
 
-Set `POLYMARKET_QUIET=1` to compress each tick to two lines (`▶ tick
-start` plus a single compact JSON summary). Quiet mode suppresses the
-per-leaderboard pulls, parallel trade fetch progress, reverse-lookup
-chatter, balance-check banner, and the BUY/SELL JSON response dumps
-while still printing one-line `🚀 BUY` / `💸 SELL` records, errors, and
-warnings. Combine with dry-run for a minimal simulation feed:
+Set `POLYMARKET_QUIET=1` to compress each tick to a one-line summary
+(`▶ tick start` plus a readable footer line, with one extra indented
+`→` line per executed BUY / SELL / NOISE / BTC trade — capped at 6,
+then `+N more action(s)`). Quiet mode suppresses the per-leaderboard
+pulls, parallel trade fetch progress, reverse-lookup chatter,
+balance-check banner, and the BUY/SELL JSON response dumps while still
+printing one-line `🚀 BUY` / `💸 SELL` records, errors, and warnings.
+The full tick payload is no longer printed in quiet mode — switch back
+to verbose if you need the raw JSON. Combine with dry-run for a
+minimal simulation feed:
 
 ```bash
 POLYMARKET_DRY_RUN=1 POLYMARKET_QUIET=1 uv run pmbot auto-loop

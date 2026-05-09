@@ -76,6 +76,8 @@ def build_state(settings: Settings) -> dict[str, Any]:
         reverse=True,
     )[:20]
 
+    # Flatten every exit (partial or full) into a "closed trade" row so the
+    # dashboard can show wins / losses, P&L, and the exit reason that fired.
     closed_trades: list[dict[str, Any]] = []
     for position in positions:
         for exit_record in position.get("exits") or []:

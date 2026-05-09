@@ -754,6 +754,7 @@ def _execute_sell_strategy(
                 "market_id": position.get("market_id"),
                 "question": position.get("question"),
                 "outcome": position.get("outcome"),
+                "question": position.get("question"),
                 "action": "sell",
                 "reason": plan["reason"],
                 "pnl_pct": round(current_pnl_pct, 4),
@@ -1883,7 +1884,8 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
             pass
 
         if settings.quiet:
-            print(json.dumps(result), flush=True)
+            from . import _ui
+            print(_ui.format_tick_footer(result, settings), flush=True)
         else:
             print(json.dumps(result, indent=2), flush=True)
         if settings.auto_max_ticks > 0 and tick >= settings.auto_max_ticks:
