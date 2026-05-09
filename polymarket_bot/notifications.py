@@ -352,6 +352,32 @@ def _handle_drawdown(payload: dict[str, Any]) -> None:
     _save_state(path, state)
 
 
+def _handle_equity_floor(payload: dict[str, Any]) -> None:
+    equity = float(payload.get("equity_usd", 0))
+    floor = _float_env("TELEGRAM_EQUITY_FLOOR_USD", 50.0)
+    if floor <= 0:
+        return
+    rearm = floor * 1.05
+    path = _default_state_path()
+    state = _load_state(path)
+    if state.equity_floor_breached:
+        if equity >= rearm:
+            state.equity_floor_breached = False
+            _save_state(path, state)
+        return
+    if equity < floor:
+        cash = float(payload.get("cash_usd", 0))
+        text = (
+            f"\U0001f6a8 *Equity floor breached* — "
+            f"{_md_escape(f'${equity:.2f}')} \\< {_md_escape(f'${floor:.2f}')}\n"
+            f"Open positions: {int(payload.get('open_positions', 0))} — "
+            f"cash: {_md_escape(f'${cash:.2f}')}"
+        )
+        if _post(text):
+            state.equity_floor_breached = True
+            _save_state(path, state)
+
+
 def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_THRESHOLDS"):
         return
@@ -361,7 +387,9 @@ def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
         _handle_big_loss(payload)
     elif kind == "drawdown":
         _handle_drawdown(payload)
-    # autres kinds ajoutés dans Tasks 10, 12
+    elif kind == "equity_floor":
+        _handle_equity_floor(payload)
+    # autres kinds ajoutés dans Task 12
 
 
 def notify_daily_summary(snapshot: dict[str, Any]) -> None:

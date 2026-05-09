@@ -317,3 +317,37 @@ class TestDrawdownArming(NotificationsBaseTest):
                 # Re-tombe à 89 (-12.7% du nouveau pic): re-alerte
                 notifications.notify_threshold("drawdown", {"equity_usd": 89.0})
                 self.assertEqual(len(sent), 2)
+
+
+class TestEquityFloor(NotificationsBaseTest):
+    def test_floor_one_shot_with_hysteresis(self) -> None:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        os.environ["TELEGRAM_EQUITY_FLOOR_USD"] = "50.0"
+        sent: list[dict] = []
+        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "state.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                # Au-dessus du seuil: rien
+                notifications.notify_threshold("equity_floor", {"equity_usd": 60.0, "open_positions": 5, "cash_usd": 10})
+                self.assertEqual(sent, [])
+                # Cassure: alerte
+                notifications.notify_threshold("equity_floor", {"equity_usd": 48.0, "open_positions": 6, "cash_usd": 12})
+                self.assertEqual(len(sent), 1)
+                self.assertIn("Equity floor", sent[0]["text"])
+                # Toujours en-dessous: pas de re-alerte
+                notifications.notify_threshold("equity_floor", {"equity_usd": 47.0, "open_positions": 6, "cash_usd": 12})
+                self.assertEqual(len(sent), 1)
+                # Remonte juste au seuil (50): pas de re-arm (hystérésis × 1.05 = 52.5)
+                notifications.notify_threshold("equity_floor", {"equity_usd": 51.0, "open_positions": 6, "cash_usd": 12})
+                self.assertEqual(len(sent), 1)
+                # Re-tombe à 48: pas de re-alerte (pas re-armé)
+                notifications.notify_threshold("equity_floor", {"equity_usd": 48.0, "open_positions": 6, "cash_usd": 12})
+                self.assertEqual(len(sent), 1)
+                # Remonte au-dessus de 52.5: re-arme
+                notifications.notify_threshold("equity_floor", {"equity_usd": 53.0, "open_positions": 6, "cash_usd": 12})
+                self.assertEqual(len(sent), 1)
+                # Re-tombe en-dessous: re-alerte
+                notifications.notify_threshold("equity_floor", {"equity_usd": 47.0, "open_positions": 6, "cash_usd": 12})
+                self.assertEqual(len(sent), 2)
