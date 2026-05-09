@@ -39,3 +39,19 @@ class TestDisabled(NotificationsBaseTest):
         notifications.notify_daily_summary({"equity": 90.0})
 
         self.assertEqual(sent, [])
+
+
+class TestMdEscape(NotificationsBaseTest):
+    def test_md_escape(self) -> None:
+        # Les 18 caractères MarkdownV2 spéciaux: _*[]()~`>#+-=|{}.!
+        raw = "Trump (2028)? +12% — risk! foo_bar [link]"
+        escaped = notifications._md_escape(raw)
+        for ch in "_*[]()~`>#+-=|{}.!":
+            if ch in raw:
+                self.assertIn("\\" + ch, escaped, f"char {ch!r} not escaped")
+        # Texte sans caractères spéciaux passe inchangé
+        self.assertEqual(notifications._md_escape("hello world"), "hello world")
+        # Texte vide
+        self.assertEqual(notifications._md_escape(""), "")
+        # Single non-special char
+        self.assertEqual(notifications._md_escape("a"), "a")

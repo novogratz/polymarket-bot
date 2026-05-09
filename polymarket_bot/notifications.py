@@ -55,6 +55,23 @@ def _flag(name: str, default: bool = True) -> bool:
     return raw.strip() in {"1", "true", "True"}
 
 
+# Caractères que MarkdownV2 exige d'échapper dans le texte standard.
+# Ref: https://core.telegram.org/bots/api#markdownv2-style
+_MD_SPECIAL_CHARS = "_*[]()~`>#+-=|{}.!"
+
+
+def _md_escape(text: str) -> str:
+    """Échappe les caractères MarkdownV2 spéciaux pour Telegram."""
+    if not text:
+        return ""
+    out: list[str] = []
+    for ch in str(text):
+        if ch in _MD_SPECIAL_CHARS:
+            out.append("\\")
+        out.append(ch)
+    return "".join(out)
+
+
 # --- API publique (stubs no-op tant que désactivé) ---
 
 
