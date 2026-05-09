@@ -351,3 +351,32 @@ class TestEquityFloor(NotificationsBaseTest):
                 # Re-tombe en-dessous: re-alerte
                 notifications.notify_threshold("equity_floor", {"equity_usd": 47.0, "open_positions": 6, "cash_usd": 12})
                 self.assertEqual(len(sent), 2)
+
+
+class TestDailySummary(NotificationsBaseTest):
+    def test_summary_sent_once_per_day(self) -> None:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        sent: list[dict] = []
+        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "state.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                snap = {
+                    "equity_usd": 92.10, "equity_pct_24h": 2.3,
+                    "cash_usd": 8.40, "open_positions": 7,
+                    "trades_24h": 18, "wins_24h": 12, "losses_24h": 6,
+                    "top_winner": {"title": "BTC EOY", "pnl_usd": 5.20},
+                    "top_loser": {"title": "NBA Finals", "pnl_usd": -3.10},
+                    "today": "2026-05-09",
+                }
+                notifications.notify_daily_summary(snap)
+                self.assertEqual(len(sent), 1)
+                self.assertIn("Daily summary", sent[0]["text"])
+                # Second appel le même jour: skip
+                notifications.notify_daily_summary(snap)
+                self.assertEqual(len(sent), 1)
+                # Lendemain: nouvel envoi
+                snap_next = dict(snap, today="2026-05-10")
+                notifications.notify_daily_summary(snap_next)
+                self.assertEqual(len(sent), 2)
