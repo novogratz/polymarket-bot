@@ -1,5 +1,7 @@
+import io
 import os
 import unittest
+from contextlib import redirect_stderr
 from typing import Callable
 from unittest import mock
 
@@ -94,3 +96,19 @@ class TestChatIdRouting(NotificationsBaseTest):
 
         self.assertEqual(len(sent), 1)
         self.assertEqual(sent[0]["chat_id"], "999")
+
+
+class TestHttpFailureSilent(NotificationsBaseTest):
+    def test_transport_exception_does_not_propagate(self) -> None:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+
+        def boom(_payload: dict) -> bool:
+            raise TimeoutError("boom")
+
+        notifications.set_transport_for_test(boom)
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            ok = notifications._post("ping")
+        self.assertFalse(ok)
+        self.assertIn("[notif] failed", buf.getvalue())
