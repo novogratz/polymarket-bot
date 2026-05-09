@@ -182,6 +182,8 @@ def btc_signal(candidate: Candidate, settings: Settings, model: BtcModel) -> Btc
     hours = max((candidate.end_date - utc_now()).total_seconds() / 3600.0, 0.0)
     if hours <= 0:
         return None
+    if hours < settings.btc_min_hours_to_close:
+        return None
 
     probability = btc_terminal_probability(
         spot=model.spot,
