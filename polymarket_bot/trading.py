@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import inspect
 import json
+import sys
 import time
 from importlib import import_module
 from dataclasses import dataclass
 from typing import Any
 
+from . import notifications
 from .config import Settings
 from .models import Candidate
 from .portfolio import Portfolio
@@ -587,6 +589,43 @@ def execute_live_trade(
                 position["strategy"] = strategy
             if signal is not None:
                 position["signal"] = signal
+        try:
+            title = candidate.question or ""
+            signal_payload: dict[str, Any] = {}
+            if isinstance(signal, dict):
+                metrics = (
+                    signal.get("selection_metrics", {})
+                    if isinstance(signal.get("selection_metrics"), dict)
+                    else {}
+                )
+                wallets = (
+                    metrics.get("profitable_wallet_count")
+                    or signal.get("consensus")
+                    or 0
+                )
+                copied = (
+                    metrics.get("copied_usdc")
+                    or signal.get("copied_usdc")
+                    or 0
+                )
+                signal_payload = {
+                    "wallets": int(float(wallets or 0)),
+                    "copied_usdc": float(copied or 0),
+                    "tag": strategy,
+                }
+            elif strategy:
+                signal_payload = {"tag": strategy}
+            market_url = candidate.url or None
+            notifications.notify_trade_buy(
+                market_title=title,
+                token_id=str(candidate.token_id or ""),
+                price=float(entry_price),
+                size_usd=float(stake),
+                signal=signal_payload,
+                market_url=market_url,
+            )
+        except Exception as exc:
+            print(f"[notif] trade_buy hook failed: {exc}", file=sys.stderr, flush=True)
     return LiveTradeResult(order=order, response=response, candidate=candidate)
 
 
