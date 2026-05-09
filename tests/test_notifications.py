@@ -186,3 +186,58 @@ class TestDedupWindow(NotificationsBaseTest):
                 with patch("time.time", return_value=base + 403):
                     notifications.notify_error("misc", "anything")
                 self.assertEqual(len(sent), 5)
+
+
+class TestTradeFormats(NotificationsBaseTest):
+    def _setup_enabled(self) -> list[dict]:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        sent: list[dict] = []
+        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        return sent
+
+    def test_buy_format_contains_key_fields(self) -> None:
+        sent = self._setup_enabled()
+        notifications.notify_trade_buy(
+            market_title="Trump 2028 nominee",
+            token_id="0xabc",
+            price=0.42,
+            size_usd=14.20,
+            signal={"wallets": 4, "copied_usdc": 2100.0},
+            market_url="https://polymarket.com/event/foo",
+        )
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertIn("BUY", text)
+        self.assertIn("14\\.20", text)  # MarkdownV2 escape du point
+        self.assertIn("0\\.42", text)
+        self.assertIn("Trump 2028 nominee", text)
+        self.assertIn("4 wallets", text)
+
+    def test_sell_format_contains_pnl(self) -> None:
+        sent = self._setup_enabled()
+        notifications.notify_trade_sell(
+            market_title="Bitcoin EOY",
+            token_id="0xabc",
+            price=0.51,
+            size_usd=18.50,
+            realized_pnl_usd=4.30,
+            realized_pnl_pct=30.3,
+            reason="take_profit_ladder",
+            held_seconds=8040,
+        )
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertIn("SELL", text)
+        self.assertIn("take_profit_ladder", text)
+        self.assertIn("Bitcoin EOY", text)
+        self.assertIn("\\+\\$4\\.30", text)
+
+    def test_trades_disabled_flag_skips(self) -> None:
+        sent = self._setup_enabled()
+        os.environ["TELEGRAM_ALERT_TRADES"] = "0"
+        notifications.notify_trade_buy(
+            market_title="x", token_id="t", price=0.5, size_usd=1.0,
+            signal={"wallets": 1, "copied_usdc": 100},
+        )
+        self.assertEqual(sent, [])

@@ -182,6 +182,19 @@ def _post(text: str) -> bool:
 # --- API publique (stubs no-op tant que désactivé) ---
 
 
+def _fmt_held(seconds: int | None) -> str:
+    if not seconds or seconds <= 0:
+        return ""
+    h, rem = divmod(seconds, 3600)
+    m, _ = divmod(rem, 60)
+    if h >= 24:
+        d, h = divmod(h, 24)
+        return f"{d}d {h}h"
+    if h:
+        return f"{h}h{m:02d}m"
+    return f"{m}m"
+
+
 def notify_trade_buy(
     *,
     market_title: str,
@@ -193,7 +206,30 @@ def notify_trade_buy(
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
         return
-    # Implémentation détaillée dans une tâche ultérieure.
+    wallets = int(signal.get("wallets", 0))
+    copied = float(signal.get("copied_usdc", 0))
+    tag = signal.get("tag")  # ex. "btc_edge", "noise_fallback"
+
+    if tag:
+        signal_line = f"Tag: `{tag}`"
+    elif wallets > 0:
+        copied_str = f"${copied/1000:.1f}k" if copied >= 1000 else f"${copied:.0f}"
+        signal_line = (
+            f"Smart\\-money: {wallets} wallets, "
+            f"{_md_escape(copied_str)} copied"
+        )
+    else:
+        signal_line = ""
+
+    lines = [
+        f"\U0001f7e2 *BUY* `${_md_escape(f'{size_usd:.2f}')}` @ `{_md_escape(f'{price:.2f}')}`",
+        f"*{_md_escape(market_title)}*",
+    ]
+    if signal_line:
+        lines.append(signal_line)
+    if market_url:
+        lines.append(f"[market]({market_url})")
+    _post("\n".join(lines))
 
 
 def notify_trade_sell(
@@ -209,7 +245,21 @@ def notify_trade_sell(
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
         return
-    # Implémentation détaillée dans une tâche ultérieure.
+    sign = "+" if realized_pnl_usd >= 0 else "-"
+    pnl_abs = abs(realized_pnl_usd)
+    pnl_str = f"{_md_escape(sign)}\\${_md_escape(f'{pnl_abs:.2f}')}"
+    pct_str = ""
+    if realized_pnl_pct is not None:
+        sign_pct = "+" if realized_pnl_pct >= 0 else "-"
+        pct_str = f" \\({_md_escape(f'{sign_pct}{abs(realized_pnl_pct):.1f}%')}\\)"
+    held_str = _fmt_held(held_seconds)
+    held_line = f" — held {_md_escape(held_str)}" if held_str else ""
+    lines = [
+        f"\U0001f534 *SELL* `${_md_escape(f'{size_usd:.2f}')}` @ `{_md_escape(f'{price:.2f}')}` — `{reason}`",
+        f"*{_md_escape(market_title)}*",
+        f"PnL: *{pnl_str}*{pct_str}{held_line}",
+    ]
+    _post("\n".join(lines))
 
 
 def notify_error(category: str, message: str, *, dedupe_key: str | None = None) -> None:
