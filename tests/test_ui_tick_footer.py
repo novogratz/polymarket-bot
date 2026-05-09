@@ -238,5 +238,36 @@ class FormatActionLineTests(unittest.TestCase):
         self.assertIn("…", line)
 
 
+from polymarket_bot._ui import _format_error_line
+
+
+class FormatErrorLineTests(unittest.TestCase):
+    def setUp(self):
+        os.environ["NO_COLOR"] = "1"
+
+    def tearDown(self):
+        os.environ.pop("NO_COLOR", None)
+
+    def test_full_error(self):
+        payload = {
+            "tick": 42,
+            "started_at": "2026-05-09T18:03:42+00:00",
+            "error": {"type": "ConnectionError", "message": "Read timed out"},
+        }
+        line = _format_error_line(payload)
+        self.assertIn("✗", line)
+        self.assertIn("#42", line)
+        self.assertIn("18:03", line)
+        self.assertIn("ConnectionError", line)
+        self.assertIn("Read timed out", line)
+
+    def test_partial_error(self):
+        payload = {"tick": 1, "started_at": "", "error": {}}
+        line = _format_error_line(payload)
+        self.assertIn("#1", line)
+        self.assertIn("??:??", line)
+        self.assertIn("error", line)
+
+
 if __name__ == "__main__":
     unittest.main()

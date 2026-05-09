@@ -208,3 +208,13 @@ def _format_btc(action: dict) -> str:
     edge_pct = action.get("edge_pct")
     edge_str = f"edge {float(edge_pct) * 100:.1f}%" if isinstance(edge_pct, (int, float)) else "edge ?"
     return f"  → {bold('BTC')} {side} {strike_str}  {size_str}  ({edge_str})"
+
+
+def _format_error_line(payload: dict) -> str:
+    """One-line error summary for a failed tick (used in quiet mode footer)."""
+    tick = payload.get("tick", "?")
+    time_str = _format_time_hhmm(payload.get("started_at"))
+    err = payload.get("error") or {}
+    err_type = err.get("type") or "?"
+    err_msg = err.get("message") or "(no message)"
+    return f"{red(CROSS)} #{tick} {time_str} error: {err_type}: {err_msg}"
