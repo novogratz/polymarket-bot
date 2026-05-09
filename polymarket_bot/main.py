@@ -1776,7 +1776,8 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                 },
             }
         if settings.quiet:
-            print(json.dumps(result), flush=True)
+            from . import _ui
+            print(_ui.format_tick_footer(result, settings), flush=True)
         else:
             print(json.dumps(result, indent=2), flush=True)
         if settings.auto_max_ticks > 0 and tick >= settings.auto_max_ticks:
