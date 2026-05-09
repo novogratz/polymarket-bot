@@ -283,10 +283,53 @@ def notify_error(category: str, message: str, *, dedupe_key: str | None = None) 
     _save_state(path, state)
 
 
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+def _handle_big_win(payload: dict[str, Any]) -> None:
+    threshold = _float_env("TELEGRAM_BIG_WIN_USD", 10.0)
+    pnl = float(payload.get("pnl_usd", 0))
+    if pnl < threshold:
+        return
+    reason = str(payload.get("reason", ""))
+    title = str(payload.get("market_title", ""))
+    held_str = _fmt_held(payload.get("held_seconds"))
+    held_line = f" after {_md_escape(held_str)}" if held_str else ""
+    text = (
+        f"\U0001f4b0 *BIG WIN* {_md_escape(f'+${pnl:.2f}')} on *{_md_escape(title)}*\n"
+        f"Exit: `{reason}`{held_line}"
+    )
+    _post(text)
+
+
+def _handle_big_loss(payload: dict[str, Any]) -> None:
+    threshold = _float_env("TELEGRAM_BIG_LOSS_USD", 5.0)
+    pnl = float(payload.get("pnl_usd", 0))
+    if pnl > -threshold:
+        return
+    reason = str(payload.get("reason", ""))
+    title = str(payload.get("market_title", ""))
+    held_str = _fmt_held(payload.get("held_seconds"))
+    held_line = f" after {_md_escape(held_str)}" if held_str else ""
+    text = (
+        f"\U0001f4b8 *BIG LOSS* {_md_escape(f'-${abs(pnl):.2f}')} on *{_md_escape(title)}*\n"
+        f"Exit: `{reason}`{held_line}"
+    )
+    _post(text)
+
+
 def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_THRESHOLDS"):
         return
-    # Implémentation détaillée dans une tâche ultérieure.
+    if kind == "big_win":
+        _handle_big_win(payload)
+    elif kind == "big_loss":
+        _handle_big_loss(payload)
+    # autres kinds ajoutés dans Tasks 9, 10, 12
 
 
 def notify_daily_summary(snapshot: dict[str, Any]) -> None:

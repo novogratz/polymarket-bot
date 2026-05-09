@@ -241,3 +241,39 @@ class TestTradeFormats(NotificationsBaseTest):
             signal={"wallets": 1, "copied_usdc": 100},
         )
         self.assertEqual(sent, [])
+
+
+class TestBigWinLoss(NotificationsBaseTest):
+    def _setup_enabled(self) -> list[dict]:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        os.environ["TELEGRAM_BIG_WIN_USD"] = "10.0"
+        os.environ["TELEGRAM_BIG_LOSS_USD"] = "5.0"
+        sent: list[dict] = []
+        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        return sent
+
+    def test_big_win_above_threshold(self) -> None:
+        sent = self._setup_enabled()
+        notifications.notify_threshold("big_win", {
+            "market_title": "BTC EOY", "pnl_usd": 12.40, "reason": "peak_protect",
+            "held_seconds": 100000,
+        })
+        self.assertEqual(len(sent), 1)
+        self.assertIn("BIG WIN", sent[0]["text"])
+        self.assertIn("12\\.40", sent[0]["text"])
+
+    def test_big_win_below_threshold_skips(self) -> None:
+        sent = self._setup_enabled()
+        notifications.notify_threshold("big_win", {
+            "market_title": "x", "pnl_usd": 5.0, "reason": "tp",
+        })
+        self.assertEqual(sent, [])
+
+    def test_big_loss_below_negative_threshold(self) -> None:
+        sent = self._setup_enabled()
+        notifications.notify_threshold("big_loss", {
+            "market_title": "x", "pnl_usd": -7.0, "reason": "stop_loss",
+        })
+        self.assertEqual(len(sent), 1)
+        self.assertIn("BIG LOSS", sent[0]["text"])
