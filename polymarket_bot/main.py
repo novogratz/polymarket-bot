@@ -674,18 +674,35 @@ def _execute_sell_strategy(
         except Exception as exc:
             message = str(exc)
             print(f"⚠️  sell skipped on {position.get('question')}: {type(exc).__name__}: {message}", flush=True)
+            cancelled_ids: list[str] = []
+            if "balance is not enough" in message.lower() or "allowance" in message.lower():
+                position["sell_blocked_reason"] = "active_sell_order_pending"
+                token_id_str = str(position.get("token_id") or "")
+                if token_id_str:
+                    try:
+                        cancelled_ids = client.cancel_active_orders_for_token(token_id_str)
+                    except Exception as cancel_exc:
+                        print(
+                            f"⚠️  cancel attempt failed for {position.get('question')}: {type(cancel_exc).__name__}: {cancel_exc}",
+                            flush=True,
+                        )
+                    if cancelled_ids:
+                        print(
+                            f"   cancelled {len(cancelled_ids)} resting order(s) on {position.get('question')}; will retry sell next tick",
+                            flush=True,
+                        )
+                        position.pop("sell_blocked_reason", None)
             exit_report.append(
                 {
                     "market_id": position.get("market_id"),
                     "outcome": position.get("outcome"),
                     "action": "skip_sell",
                     "reason": f"{type(exc).__name__}: {message}",
+                    "cancelled_orders": cancelled_ids,
                     "pnl_pct": round(current_pnl_pct, 4),
                     "peak_pnl_pct": round(float(position.get("peak_pnl_pct", 0.0)), 4),
                 }
             )
-            if "balance is not enough" in message.lower() or "allowance" in message.lower():
-                position.setdefault("sell_blocked_reason", "active_sell_order_pending")
             continue
 
         if str(plan["reason"]).startswith("take_profit_"):

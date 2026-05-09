@@ -322,6 +322,43 @@ class TradingSession:
                 return method(order_payload_cls(orderID=order_id))
         raise ValueError("installed Polymarket client does not support order cancellation")
 
+    def cancel_active_orders_for_token(self, token_id: str) -> list[str]:
+        """List active CLOB orders, cancel any on the given token, return cancelled ids."""
+        cancelled: list[str] = []
+        if not token_id:
+            return cancelled
+        try:
+            orders = self.legacy_client.get_orders()
+        except Exception as exc:
+            print(f"⚠️  cancel_active_orders_for_token: get_orders failed: {type(exc).__name__}: {exc}", flush=True)
+            return cancelled
+        if not isinstance(orders, list):
+            return cancelled
+        target = str(token_id)
+        for order in orders:
+            if not isinstance(order, dict):
+                continue
+            order_token = str(
+                order.get("asset_id")
+                or order.get("asset")
+                or order.get("token_id")
+                or order.get("tokenId")
+                or ""
+            )
+            if order_token != target:
+                continue
+            order_id = str(
+                order.get("id") or order.get("orderID") or order.get("order_id") or ""
+            )
+            if not order_id:
+                continue
+            try:
+                self.cancel_order(order_id)
+                cancelled.append(order_id)
+            except Exception as exc:
+                print(f"⚠️  cancel_active_orders_for_token: cancel {order_id} failed: {type(exc).__name__}: {exc}", flush=True)
+        return cancelled
+
     @staticmethod
     def _normalize_amount(value: Any) -> float | None:
         if value is None or value == "":
