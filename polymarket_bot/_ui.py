@@ -218,3 +218,43 @@ def _format_error_line(payload: dict) -> str:
     err_type = err.get("type") or "?"
     err_msg = err.get("message") or "(no message)"
     return f"{red(CROSS)} #{tick} {time_str} error: {err_type}: {err_msg}"
+
+
+def format_tick_footer(payload: dict, settings) -> str:
+    """Build the human-readable footer for one tick (used in POLYMARKET_QUIET).
+
+    `payload` is the dict written by `strategy_loop` around `smart_money_once`:
+    {tick, strategy, started_at, result | error}. `settings` is the bot
+    Settings object (currently unused; reserved for future toggles).
+    """
+    if "error" in payload:
+        return _format_error_line(payload)
+
+    lines = [_format_summary_line(payload)]
+    actions = _collect_actions(payload.get("result") or {})
+    max_actions = 6
+    visible = actions[:max_actions]
+    hidden = max(0, len(actions) - max_actions)
+    for action in visible:
+        lines.append(_format_action_line(action))
+    if hidden:
+        lines.append(f"  … +{hidden} more action(s)")
+    return "\n".join(lines)
+
+
+def _collect_actions(result: dict) -> list[dict]:
+    actions: list[dict] = []
+    trade = result.get("trade")
+    if isinstance(trade, dict) and trade.get("strategy") and result.get("strategy") != "noise_fallback":
+        actions.append({"kind": "buy", **trade})
+    for noise in result.get("noise_trades") or []:
+        if isinstance(noise, dict):
+            actions.append({"kind": "noise", **noise})
+    for exit_record in result.get("exits") or []:
+        if isinstance(exit_record, dict) and exit_record.get("action") == "sell":
+            actions.append({"kind": "sell", **exit_record})
+    btc = result.get("btc_edge") or {}
+    for btc_trade in btc.get("trades") or []:
+        if isinstance(btc_trade, dict):
+            actions.append({"kind": "btc", **btc_trade})
+    return actions

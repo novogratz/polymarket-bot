@@ -269,5 +269,152 @@ class FormatErrorLineTests(unittest.TestCase):
         self.assertIn("error", line)
 
 
+from types import SimpleNamespace
+
+from polymarket_bot._ui import format_tick_footer
+
+
+class FormatTickFooterTests(unittest.TestCase):
+    def setUp(self):
+        os.environ["NO_COLOR"] = "1"
+        self.settings = SimpleNamespace()  # format_tick_footer ne lit rien sur settings pour l'instant
+
+    def tearDown(self):
+        os.environ.pop("NO_COLOR", None)
+
+    def _payload(self, **result_overrides):
+        base = {
+            "tick": 42,
+            "started_at": "2026-05-09T18:03:42+00:00",
+            "result": {
+                "summary": {"cash": 5.10, "equity": 89.43, "unrealized_pnl": 3.40, "open_positions": 8},
+                "scan_report": {"opportunities": []},
+                "exits": [],
+                "noise_trades": [],
+            },
+        }
+        base["result"].update(result_overrides)
+        return base
+
+    def test_silent_tick_one_line(self):
+        out = format_tick_footer(self._payload(), self.settings)
+        self.assertEqual(out.count("\n"), 0)
+        self.assertIn("#42", out)
+        self.assertIn("scan: 0 opps", out)
+
+    def test_tick_with_buy_two_lines(self):
+        payload = self._payload(
+            trade={
+                "strategy": "smart_money",
+                "signal": {"question": "Trump wins NH", "outcome": "YES", "best_ask": 0.42, "consensus": 3, "copied_usdc": 1234.5},
+                "order": {"size_usdc": 7.40},
+            }
+        )
+        out = format_tick_footer(payload, self.settings)
+        lines = out.split("\n")
+        self.assertEqual(len(lines), 2)
+        self.assertIn("→ BUY", lines[1])
+        self.assertIn("Trump wins NH", lines[1])
+
+    def test_tick_with_sell_from_exits(self):
+        payload = self._payload(
+            exits=[
+                {
+                    "action": "sell",
+                    "outcome": "YES",
+                    "question": "BTC > $90k by Friday",
+                    "reason": "take_profit_50pct",
+                    "pnl_pct": 0.52,
+                    "order": {"size_usdc": 4.10, "price": 0.61},
+                }
+            ]
+        )
+        out = format_tick_footer(payload, self.settings)
+        self.assertIn("→ SELL", out)
+        self.assertIn("take_profit_50pct", out)
+
+    def test_skip_sell_excluded(self):
+        payload = self._payload(
+            exits=[
+                {"action": "skip_sell", "reason": "spread_too_wide", "outcome": "YES"},
+            ]
+        )
+        out = format_tick_footer(payload, self.settings)
+        self.assertNotIn("→ SELL", out)
+        self.assertEqual(out.count("\n"), 0)
+
+    def test_noise_trade_listed(self):
+        payload = self._payload(
+            noise_trades=[
+                {
+                    "strategy": "noise_fallback",
+                    "signal": {"question": "Random market", "outcome": "YES", "best_ask": 0.41},
+                    "order": {"size_usdc": 10.00},
+                }
+            ]
+        )
+        out = format_tick_footer(payload, self.settings)
+        self.assertIn("→ NOISE", out)
+
+    def test_btc_edge_with_trade(self):
+        payload = self._payload(
+            btc_edge={
+                "trades": [{"side": "short", "strike": 99000, "size_usdc": 5.00, "edge_pct": 0.092}],
+            }
+        )
+        out = format_tick_footer(payload, self.settings)
+        self.assertIn("→ BTC", out)
+        self.assertIn("99000", out)
+
+    def test_btc_edge_without_trade_silent(self):
+        payload = self._payload(btc_edge={"trades": []})
+        out = format_tick_footer(payload, self.settings)
+        self.assertNotIn("→ BTC", out)
+
+    def test_btc_edge_error_silent(self):
+        payload = self._payload(btc_edge={"error": "ValueError: foo"})
+        out = format_tick_footer(payload, self.settings)
+        self.assertNotIn("→ BTC", out)
+
+    def test_more_than_six_actions_collapsed(self):
+        exits = [
+            {
+                "action": "sell",
+                "outcome": "YES",
+                "question": f"market #{i}",
+                "reason": "take_profit_50pct",
+                "pnl_pct": 0.5,
+                "order": {"size_usdc": 1.0, "price": 0.5},
+            }
+            for i in range(8)
+        ]
+        payload = self._payload(exits=exits)
+        out = format_tick_footer(payload, self.settings)
+        self.assertEqual(out.count("→ SELL"), 6)
+        self.assertIn("+2 more action", out)
+
+    def test_error_payload(self):
+        payload = {
+            "tick": 7,
+            "started_at": "2026-05-09T18:03:42+00:00",
+            "error": {"type": "ConnectionError", "message": "Read timed out"},
+        }
+        out = format_tick_footer(payload, self.settings)
+        self.assertEqual(out.count("\n"), 0)
+        self.assertIn("✗", out)
+        self.assertIn("ConnectionError", out)
+
+    def test_no_color_strips_ansi(self):
+        payload = self._payload(
+            trade={
+                "strategy": "smart_money",
+                "signal": {"question": "Q", "outcome": "YES", "best_ask": 0.5, "consensus": 2, "copied_usdc": 500.0},
+                "order": {"size_usdc": 1.0},
+            }
+        )
+        out = format_tick_footer(payload, self.settings)
+        self.assertNotIn("\033[", out)
+
+
 if __name__ == "__main__":
     unittest.main()
