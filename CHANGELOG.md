@@ -2,6 +2,39 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-05-08
+
+Performance and reliability release on top of 1.0.0. Adds the +25% take-profit tier, parallelises the cohort-exit check, and fixes two production bugs (counter-trades on the same binary market, tick crashes on sell errors).
+
+### Added
+
+- `+25%` take-profit tier (sells 15% of initial shares) so positions that peak in the 25-50% range and round-trip to flat still book realised P&L. Default ladder is now `0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15`.
+- Resolved-market exit (`POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD`, default 0.97) — force-closes positions when the live bid is at or above the threshold so terminal-price winners no longer pin capital until the 24h max-hold cap.
+- `cancel_active_orders_for_token` on the trading session — when a SELL is rejected with "balance is not enough", the bot now lists active CLOB orders, cancels the resting one on that token, and retries on the next tick. Removes the death-loop where stuck sells caused tick crashes.
+- Cash-pressure trigger on the noise fallback: the lane now also fires when cash share of equity exceeds `POLYMARKET_SMART_NOISE_FALLBACK_CASH_PRESSURE_PCT` (default 0.25), even when open-position count is above `MIN_OPEN_POSITIONS`. Prevents idle cash piling up during dry hours.
+
+### Changed
+
+- Cohort-exit check parallelised through the same `ThreadPoolExecutor` used by the smart-money trade fetch (default 24 workers). Tick latency dropped from 20-30 seconds to 8-12 seconds with 30+ open positions.
+- Tick interval lowered from 20 seconds to 10 seconds now that cohort-exit is no longer the bottleneck. Faster cash redeployment after sells, more opportunities to catch fresh signals.
+- Noise fallback throughput: `MAX_TRADES_PER_TICK` raised from 4 to 8 and `MAX_TRADE_USD` from $10 to $15. Idle cash now drains in 2-3 ticks instead of 7+.
+- Noise fallback selection now ranks candidates by total smart-money flow on the token (informed noise) instead of generic Gamma top-scorers.
+- Multi-period leaderboard fetch (`POLYMARKET_SMART_TIME_PERIODS=MONTH,ALL`) — long-term consistent winners join the cohort alongside recent monthly leaders.
+
+### Fixed
+
+- **Counter-trade on the same binary market** — the previous `has_open_position(market_id)` dedupe failed when a position synced from the Data API used `conditionId` as `market_id` while a fresh candidate from the Gamma scan used Gamma's market id. The bot was opening YES and NO of the same market. Fixed by switching the event-level dedupe (`has_open_event_position`) to use `event_slug` for all markets, not just sports. `event_slug` is consistent across both APIs.
+- **Tick crashes on sell-side API errors** — `_execute_sell_strategy` only caught `ValueError`, so any other exception (notably `PolyApiException` for "balance is not enough" / 4xx) bubbled up and killed the entire tick. Now catches `Exception`, logs the failure to the exit report, and continues with the next position.
+- **Noise fallback gated on smart-money idle** — the early return in `smart_money_once` skipped the noise lane whenever any smart-money trade had executed in the same tick. Now noise fallback runs unconditionally if enabled, with the per-iteration safety checks preventing duplicates of what smart-money just bought.
+- **Reverse-lookup HTTP 414** — Gamma's `/markets?clob_token_ids=...` was being called with 100 token-ids in one URL, blowing past the URL length limit. Now chunked at 20 ids per request with response dedupe.
+- **Coinbase 503 killing the BTC edge tick** — added retry with exponential backoff and a fallback to the public `api.coinbase.com/v2/prices/BTC-USD/spot` endpoint when the exchange API degrades.
+
+### CI
+
+- `requirements.txt` and `pyproject.toml` switched from the unpublished `py-clob-client-v2` to the actually-PyPI-available `py-clob-client>=0.21.0`.
+- Top-level SDK import in `trading.py` made lazy via `_load_clob_types()`, so tests load cleanly even if the SDK isn't on the PATH.
+- The lint job is now advisory (`continue-on-error`) so ruff warnings don't block CI.
+
 ## [1.0.0] - 2026-05-08
 
 First stable release. The strategy, sizing, exits, journal, auto-tuner, BTC edge, and noise fallback are now in production shape and have been validated on a real live bankroll. CI is green on Python 3.10 / 3.11 / 3.12.

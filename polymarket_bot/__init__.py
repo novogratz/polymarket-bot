@@ -21,4 +21,4 @@ APIs. No LLM call is made during scanning or trade selection.
 
 __all__ = ["__version__"]
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
