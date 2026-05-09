@@ -126,5 +126,117 @@ class FormatSummaryLineTests(unittest.TestCase):
         self.assertIn("-2.50", line)
 
 
+from polymarket_bot._ui import _format_action_line
+
+
+class FormatActionLineTests(unittest.TestCase):
+    def setUp(self):
+        os.environ["NO_COLOR"] = "1"
+
+    def tearDown(self):
+        os.environ.pop("NO_COLOR", None)
+
+    def test_buy_with_signal(self):
+        action = {
+            "kind": "buy",
+            "strategy": "smart_money",
+            "signal": {
+                "question": "Trump wins NH",
+                "outcome": "YES",
+                "consensus": 3,
+                "copied_usdc": 1234.5,
+                "best_ask": 0.42,
+            },
+            "order": {"size_usdc": 7.40},
+        }
+        line = _format_action_line(action)
+        self.assertTrue(line.lstrip().startswith("→ BUY"))
+        self.assertIn("YES", line)
+        self.assertIn("Trump wins NH", line)
+        self.assertIn("$7.40", line)
+        self.assertIn("0.42", line)
+        self.assertIn("smart_money", line)
+        self.assertIn("3 wallets", line)
+
+    def test_buy_falls_back_when_size_missing(self):
+        action = {
+            "kind": "buy",
+            "strategy": "smart_money",
+            "signal": {"question": "Q", "outcome": "YES", "best_ask": 0.5},
+            "order": {},
+        }
+        line = _format_action_line(action)
+        self.assertTrue(line.lstrip().startswith("→ BUY"))
+        self.assertIn("$?", line)
+
+    def test_sell_with_question_and_pnl(self):
+        action = {
+            "kind": "sell",
+            "outcome": "YES",
+            "question": "BTC > $90k by Friday",
+            "reason": "take_profit_50pct",
+            "pnl_pct": 0.52,
+            "order": {"size_usdc": 4.10, "price": 0.61},
+        }
+        line = _format_action_line(action)
+        self.assertTrue(line.lstrip().startswith("→ SELL"))
+        self.assertIn("BTC > $90k by Friday", line)
+        self.assertIn("take_profit_50pct", line)
+        self.assertIn("+52", line)
+        self.assertIn("$4.10", line)
+        self.assertIn("0.61", line)
+
+    def test_sell_negative_pnl(self):
+        action = {
+            "kind": "sell",
+            "outcome": "YES",
+            "question": "Lakers beat Suns",
+            "reason": "stop_loss",
+            "pnl_pct": -0.40,
+            "order": {"size_usdc": 2.00, "price": 0.18},
+        }
+        line = _format_action_line(action)
+        self.assertIn("stop_loss", line)
+        self.assertIn("-40", line)
+
+    def test_noise_trade(self):
+        action = {
+            "kind": "noise",
+            "signal": {"question": "Random market", "outcome": "YES", "best_ask": 0.41},
+            "order": {"size_usdc": 10.00},
+        }
+        line = _format_action_line(action)
+        self.assertTrue(line.lstrip().startswith("→ NOISE"))
+        self.assertIn("Random market", line)
+        self.assertIn("$10.00", line)
+        self.assertIn("0.41", line)
+
+    def test_btc_edge_with_trade(self):
+        action = {
+            "kind": "btc",
+            "side": "short",
+            "strike": 99000,
+            "size_usdc": 5.00,
+            "edge_pct": 0.092,
+        }
+        line = _format_action_line(action)
+        self.assertTrue(line.lstrip().startswith("→ BTC"))
+        self.assertIn("short", line)
+        self.assertIn("99000", line)
+        self.assertIn("$5.00", line)
+        self.assertIn("9.2", line)
+
+    def test_long_question_truncated(self):
+        long_q = "x" * 80
+        action = {
+            "kind": "buy",
+            "strategy": "smart_money",
+            "signal": {"question": long_q, "outcome": "YES", "best_ask": 0.5},
+            "order": {"size_usdc": 1.00},
+        }
+        line = _format_action_line(action)
+        self.assertIn("…", line)
+
+
 if __name__ == "__main__":
     unittest.main()

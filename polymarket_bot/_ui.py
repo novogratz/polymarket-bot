@@ -141,3 +141,70 @@ def _format_time_hhmm(iso_str: str | None) -> str:
     except (TypeError, ValueError):
         return "??:??"
     return dt.strftime("%H:%M")
+
+
+def _format_action_line(action: dict) -> str:
+    """Format a single tick action into one indented line.
+
+    `action` is a dict with a `kind` key in {buy, sell, noise, btc} and the
+    payload-specific fields populated by `format_tick_footer` from the raw
+    tick payload.
+    """
+    kind = action.get("kind")
+    if kind == "buy":
+        return _format_buy_or_noise(action, verb="BUY", color=cyan)
+    if kind == "noise":
+        return _format_buy_or_noise(action, verb="NOISE", color=cyan)
+    if kind == "sell":
+        return _format_sell(action)
+    if kind == "btc":
+        return _format_btc(action)
+    return f"  → {kind or '?'}"
+
+
+def _format_buy_or_noise(action: dict, *, verb: str, color) -> str:
+    signal = action.get("signal") or {}
+    outcome = str(signal.get("outcome") or "?")
+    question = _truncate_question(signal.get("question"))
+    order = action.get("order") or {}
+    size_usdc = order.get("size_usdc")
+    price = signal.get("best_ask")
+    size_str = f"${float(size_usdc):.2f}" if isinstance(size_usdc, (int, float)) else "$?"
+    price_str = f"{float(price):.2f}" if isinstance(price, (int, float)) else "?"
+    context_bits = []
+    strategy = action.get("strategy")
+    if strategy:
+        context_bits.append(str(strategy))
+    consensus = signal.get("consensus")
+    copied = signal.get("copied_usdc")
+    if consensus and copied:
+        context_bits.append(f"{int(consensus)} wallets / ${float(copied) / 1000:.1f}k copied")
+    elif consensus:
+        context_bits.append(f"{int(consensus)} wallets")
+    context = f" ({', '.join(context_bits)})" if context_bits else ""
+    return f"  → {color(verb)} {outcome}  {question}  {size_str} @ {price_str}{context}"
+
+
+def _format_sell(action: dict) -> str:
+    outcome = str(action.get("outcome") or "?")
+    question = _truncate_question(action.get("question"))
+    order = action.get("order") or {}
+    size_usdc = order.get("size_usdc")
+    price = order.get("price")
+    size_str = f"${float(size_usdc):.2f}" if isinstance(size_usdc, (int, float)) else "$?"
+    price_str = f"{float(price):.2f}" if isinstance(price, (int, float)) else "?"
+    reason = str(action.get("reason") or "?")
+    pnl_pct = action.get("pnl_pct")
+    pnl_str = f", {colorize_pct(float(pnl_pct))}" if isinstance(pnl_pct, (int, float)) else ""
+    return f"  → {yellow('SELL')} {outcome}  {question}  {size_str} @ {price_str}  ({reason}{pnl_str})"
+
+
+def _format_btc(action: dict) -> str:
+    side = str(action.get("side") or "?")
+    strike = action.get("strike")
+    strike_str = f"{int(strike)}" if isinstance(strike, (int, float)) else "?"
+    size_usdc = action.get("size_usdc")
+    size_str = f"${float(size_usdc):.2f}" if isinstance(size_usdc, (int, float)) else "$?"
+    edge_pct = action.get("edge_pct")
+    edge_str = f"edge {float(edge_pct) * 100:.1f}%" if isinstance(edge_pct, (int, float)) else "edge ?"
+    return f"  → {bold('BTC')} {side} {strike_str}  {size_str}  ({edge_str})"
