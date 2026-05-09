@@ -8,12 +8,15 @@ tracking, peak-PnL tracking, and per-position event-key dedupe for sports.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import notifications
 from .config import Settings
 from .models import Candidate, utc_now
 
@@ -199,6 +202,53 @@ class Portfolio:
             position["closed_at"] = exit_record["closed_at"]
         elif entry_price > 0:
             position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", 0.0)), (exit_price - entry_price) / entry_price)
+        try:
+            held_seconds: int | None = None
+            opened_at = position.get("opened_at")
+            if opened_at:
+                try:
+                    opened_dt = dt.datetime.fromisoformat(
+                        str(opened_at).replace("Z", "+00:00")
+                    )
+                    closed_at_str = exit_record.get("closed_at")
+                    if closed_at_str:
+                        closed_dt = dt.datetime.fromisoformat(
+                            str(closed_at_str).replace("Z", "+00:00")
+                        )
+                        held_seconds = int((closed_dt - opened_dt).total_seconds())
+                except (ValueError, TypeError):
+                    held_seconds = None
+            pnl_pct: float | None = None
+            if cost_basis > 0:
+                pnl_pct = realized_pnl / cost_basis * 100.0
+            title = ""
+            for key in ("title", "market_title", "question", "name"):
+                val = position.get(key)
+                if val:
+                    title = str(val)
+                    break
+            notifications.notify_trade_sell(
+                market_title=title,
+                token_id=str(position.get("token_id", "") or ""),
+                price=float(exit_price),
+                size_usd=float(proceeds),
+                realized_pnl_usd=float(realized_pnl),
+                realized_pnl_pct=pnl_pct,
+                reason=str(reason or ""),
+                held_seconds=held_seconds,
+            )
+            kind = "big_win" if realized_pnl > 0 else "big_loss"
+            notifications.notify_threshold(
+                kind,
+                {
+                    "market_title": title,
+                    "pnl_usd": float(realized_pnl),
+                    "reason": str(reason or ""),
+                    "held_seconds": held_seconds,
+                },
+            )
+        except Exception as exc:
+            print(f"[notif] trade_sell hook failed: {exc}", file=sys.stderr, flush=True)
         return exit_record
 
     def _build_position(

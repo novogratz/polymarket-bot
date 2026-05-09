@@ -13,15 +13,19 @@ and ``reset-ledger``.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
+import os
+import sys
 import time
 
 import typer
 
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-from . import tick_state
+from . import notifications, tick_state
 from .auto_tuner import apply_overrides, maybe_tune
 from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
 from .config import Settings
@@ -549,6 +553,14 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 if _is_funds_error(str(e)):
                     stop_reason = str(e)
                     break
+                try:
+                    notifications.notify_error(
+                        "order_rejected",
+                        str(e)[:500],
+                        dedupe_key=f"order_rejected:{opportunity.candidate.token_id}",
+                    )
+                except Exception:
+                    pass
                 raise
 
     noise_trades: list[dict[str, object]] = []
@@ -712,6 +724,14 @@ def _execute_sell_strategy(
         except Exception as exc:
             message = str(exc)
             print(f"⚠️  sell skipped on {position.get('question')}: {type(exc).__name__}: {message}", flush=True)
+            try:
+                notifications.notify_error(
+                    "order_rejected",
+                    f"SELL skipped: {message}"[:500],
+                    dedupe_key=f"order_rejected:{position.get('token_id') or position.get('market_id') or 'unknown'}",
+                )
+            except Exception:
+                pass
             cancelled_ids: list[str] = []
             if "balance is not enough" in message.lower() or "allowance" in message.lower():
                 position["sell_blocked_reason"] = "active_sell_order_pending"
@@ -1638,6 +1658,59 @@ def format_suggestions(suggestions: list[dict[str, object]]) -> list[str]:
     return lines
 
 
+def _journal_stats_last_24h(
+    path: Path,
+) -> tuple[int, int, int, dict | None, dict | None, float]:
+    """Lit le journal et retourne (trades, wins, losses, top_winner, top_loser, pct_24h).
+
+    ``pct_24h`` est un best-effort basé sur la somme des PnL réalisés des 24 dernières
+    heures. Sans source d'equity historique fiable disponible localement, retourne 0.0.
+    """
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)
+    trades: list[dict] = []
+    try:
+        with path.open(encoding="utf-8") as fp:
+            for line in fp:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts_raw = rec.get("closed_at") or rec.get("ts")
+                if not ts_raw:
+                    continue
+                try:
+                    ts = dt.datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=dt.timezone.utc)
+                if ts >= cutoff:
+                    trades.append(rec)
+    except (FileNotFoundError, OSError):
+        return 0, 0, 0, None, None, 0.0
+
+    if not trades:
+        return 0, 0, 0, None, None, 0.0
+
+    wins = sum(1 for r in trades if float(r.get("realized_pnl", 0)) > 0)
+    losses = sum(1 for r in trades if float(r.get("realized_pnl", 0)) < 0)
+    top_w_rec = max(trades, key=lambda r: float(r.get("realized_pnl", 0)))
+    top_l_rec = min(trades, key=lambda r: float(r.get("realized_pnl", 0)))
+
+    def _shape(r: dict) -> dict | None:
+        pnl = float(r.get("realized_pnl", 0))
+        title = r.get("title") or r.get("market_title") or r.get("question") or ""
+        return {"title": str(title), "pnl_usd": pnl}
+
+    top_w = _shape(top_w_rec) if float(top_w_rec.get("realized_pnl", 0)) > 0 else None
+    top_l = _shape(top_l_rec) if float(top_l_rec.get("realized_pnl", 0)) < 0 else None
+
+    return len(trades), wins, losses, top_w, top_l, 0.0
+
+
 def _append_trade_journal(settings: Settings, position: dict[str, object], reason: str) -> None:
     path = settings.trade_journal_path
     try:
@@ -1856,6 +1929,14 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
             tick_result = tick_fn(settings)
         except Exception as exc:
             error = {"type": type(exc).__name__, "message": str(exc)}
+            try:
+                notifications.notify_error(
+                    "tick_failed",
+                    str(exc)[:500],
+                    dedupe_key="tick_failed",
+                )
+            except Exception:
+                pass
 
         finished_at = utc_now()
         result: dict[str, object] = {
@@ -1888,6 +1969,52 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
             print(_ui.format_tick_footer(result, settings), flush=True)
         else:
             print(json.dumps(result, indent=2), flush=True)
+
+        # Hooks post-tick best-effort: drawdown, equity floor, résumé quotidien.
+        try:
+            tick_payload = result.get("result")
+            summary_snap = (
+                tick_payload.get("summary")
+                if isinstance(tick_payload, dict)
+                else None
+            )
+            if not isinstance(summary_snap, dict):
+                summary_snap = {}
+            equity_val = float(summary_snap.get("equity", 0) or 0)
+            cash_val = float(summary_snap.get("cash", 0) or 0)
+            open_positions_count = int(summary_snap.get("open_positions", 0) or 0)
+            notifications.notify_threshold("drawdown", {"equity_usd": equity_val})
+            notifications.notify_threshold(
+                "equity_floor",
+                {
+                    "equity_usd": equity_val,
+                    "open_positions": open_positions_count,
+                    "cash_usd": cash_val,
+                },
+            )
+            target_hour = int(os.environ.get("TELEGRAM_DAILY_SUMMARY_HOUR", "9"))
+            now_local = dt.datetime.now()
+            if now_local.hour >= target_hour:
+                trades_24h, wins_24h, losses_24h, top_w, top_l, pct_24h = (
+                    _journal_stats_last_24h(settings.trade_journal_path)
+                )
+                notifications.notify_daily_summary(
+                    {
+                        "today": now_local.date().isoformat(),
+                        "equity_usd": equity_val,
+                        "equity_pct_24h": pct_24h,
+                        "cash_usd": cash_val,
+                        "open_positions": open_positions_count,
+                        "trades_24h": trades_24h,
+                        "wins_24h": wins_24h,
+                        "losses_24h": losses_24h,
+                        "top_winner": top_w,
+                        "top_loser": top_l,
+                    }
+                )
+        except Exception as exc:
+            print(f"[notif] post-tick hook failed: {exc}", file=sys.stderr, flush=True)
+
         if settings.auto_max_ticks > 0 and tick >= settings.auto_max_ticks:
             break
         time.sleep(settings.auto_interval_seconds)
