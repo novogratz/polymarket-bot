@@ -1512,6 +1512,35 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(_max_trade_for_signal(settings, strong, "smart_money"), 20.0)
 
 
+class MarketCategoryTests(unittest.TestCase):
+    def test_inflation_is_not_sports(self):
+        self.assertEqual(
+            market_category(
+                "Will annual inflation increase by 3.9% in April?",
+                "will-annual-inflation-increase-by-3pt9-in-april",
+            ),
+            "ECONOMICS",
+        )
+
+    def test_actual_nfl_market_is_sports(self):
+        self.assertEqual(
+            market_category("Will the NFL Cowboys win on Sunday?", "nfl-cowboys-sun"),
+            "SPORTS",
+        )
+
+    def test_soccer_fc_market_is_sports(self):
+        self.assertEqual(
+            market_category("Will Liverpool FC win on 2026-05-09?", "liverpool-fc-may-9"),
+            "SPORTS",
+        )
+
+    def test_btc_market_is_finance_not_sports(self):
+        self.assertEqual(
+            market_category("Will Bitcoin be above $100,000 today?", "btc-above-100k"),
+            "FINANCE",
+        )
+
+
 class PortfolioDedupTests(unittest.TestCase):
     def _make_candidate(self, *, market_id, outcome, token_id, event_slug):
         return Candidate(
