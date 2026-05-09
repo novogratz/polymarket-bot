@@ -4,8 +4,16 @@ from __future__ import annotations
 
 import os
 import unittest
+from types import SimpleNamespace
 
-from polymarket_bot._ui import _truncate_question
+from polymarket_bot._ui import (
+    _format_action_line,
+    _format_error_line,
+    _format_summary_line,
+    _format_time_hhmm,
+    _truncate_question,
+    format_tick_footer,
+)
 
 
 class TruncateQuestionTests(unittest.TestCase):
@@ -32,9 +40,6 @@ class TruncateQuestionTests(unittest.TestCase):
         self.assertEqual(_truncate_question("hello world", max_len=5), "hell…")
 
 
-from polymarket_bot._ui import _format_time_hhmm
-
-
 class FormatTimeHhmmTests(unittest.TestCase):
     def test_iso_with_offset(self):
         # "2026-05-09T18:03:42+00:00" -> "18:03" (UTC, no local conversion)
@@ -51,9 +56,6 @@ class FormatTimeHhmmTests(unittest.TestCase):
 
     def test_empty_returns_question_marks(self):
         self.assertEqual(_format_time_hhmm(""), "??:??")
-
-
-from polymarket_bot._ui import _format_summary_line
 
 
 class FormatSummaryLineTests(unittest.TestCase):
@@ -124,9 +126,6 @@ class FormatSummaryLineTests(unittest.TestCase):
         payload["result"]["summary"]["unrealized_pnl"] = -2.50
         line = _format_summary_line(payload)
         self.assertIn("-2.50", line)
-
-
-from polymarket_bot._ui import _format_action_line
 
 
 class FormatActionLineTests(unittest.TestCase):
@@ -238,9 +237,6 @@ class FormatActionLineTests(unittest.TestCase):
         self.assertIn("…", line)
 
 
-from polymarket_bot._ui import _format_error_line
-
-
 class FormatErrorLineTests(unittest.TestCase):
     def setUp(self):
         os.environ["NO_COLOR"] = "1"
@@ -267,11 +263,6 @@ class FormatErrorLineTests(unittest.TestCase):
         self.assertIn("#1", line)
         self.assertIn("??:??", line)
         self.assertIn("error", line)
-
-
-from types import SimpleNamespace
-
-from polymarket_bot._ui import format_tick_footer
 
 
 class FormatTickFooterTests(unittest.TestCase):
