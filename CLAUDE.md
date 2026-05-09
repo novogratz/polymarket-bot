@@ -77,7 +77,7 @@ The script is the single source of truth for the live config. Current settings:
 - Discovery: standard Gamma scan + keyword scan + reverse-lookup of the top 100 tokens with $50+ smart-money flow that aren't already in the scan.
 - Entry filters: `MIN_CONSENSUS=2`, `MIN_COPIED_USDC=$75`, `MAX_CHASE_PREMIUM=0.13`, price band 0.03–0.96, absolute spread ≤8c, relative spread ≤45%, signal staleness ≤10 min.
 - Three-pass scan per tick: strict → relaxed → deep fallback.
-- Exits: take-profit ladder `0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15`, peak-protect arming at +100% and exiting below +40%, trailing stop arming at +25% with 50% giveback, stop-loss -40% (after 15 min in position), max-hold-time 24h, cohort-sell exit (active SELL detection in 120 min lookback), near-expiry positive exit.
+- Exits: take-profit ladder `0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15`, peak-protect arming at +100% and exiting below +40%, trailing stop arming at +25% with 50% giveback, stop-loss -40% (after 15 min in position), resolved-market exit when bid ≥ 0.97, max-hold-time 24h, cohort-sell exit (active SELL detection in 120 min lookback, parallel fetch), near-expiry positive exit. SELLs that are rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
 - BTC edge integrated: at the end of every smart-money tick `btc_edge_once` runs with $5/trade cap and 8% minimum modeled edge over market.
 - Noise fallback: up to 4 trades at $10 each when all three smart-money scans return 0 AND (positions below `MIN_OPEN_POSITIONS` OR cash share above 35% of equity). Tagged `noise_fallback` in the journal.
 - Auto-tune: `SMART_AUTO_TUNE_ENABLED=1` (paused below 30 closed trades; defensive only).
@@ -131,7 +131,7 @@ Risks the strategy avoids:
 
 ### Exits (run before every new entry)
 
-- Take-profit ladder at +50% / +100% / +200% / +300% with partial sells.
+- Take-profit ladder at +25% / +50% / +100% / +200% / +300% with partial sells (15% / 25% / 50% / 25% / 15%).
 - Trailing stop arms at +25% peak, exits on 50% giveback while still positive.
 - Peak-protect arms at +100% peak, exits on giveback to +40%.
 - Stop-loss at -40% after 15 minutes in position (does not fire if peak-protect already armed).

@@ -70,7 +70,7 @@ Wallets at the top of monthly leaderboards with meaningful PnL and volume have, 
 
 ### Exits
 
-- Take-profit ladder at +50% / +100% / +200% / +300% with partial sells.
+- Take-profit ladder at +25% / +50% / +100% / +200% / +300% with partial sells (15% / 25% / 50% / 25% / 15%).
 - Trailing stop arms at +25% peak, exits on 50% giveback while still positive.
 - Peak-protect arms at +100% peak, exits below +40%.
 - Stop-loss at -40% after 15 minutes in position.

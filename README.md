@@ -97,7 +97,7 @@ At $90 cash: weak signal ~$11, 4-wallet $1k flow signal ~$26, 5-wallet $5k+ ~$40
 
 ### Exits (before every new entry)
 
-- **Take-profit ladder** at +50% / +100% / +200% / +300% with partial sells (25% / 50% / 25% / 15%).
+- **Take-profit ladder** at +25% / +50% / +100% / +200% / +300% with partial sells (15% / 25% / 50% / 25% / 15%).
 - **Trailing stop** arms at +25% peak, exits on 50% giveback while still positive.
 - **Peak-protect** arms at +100% peak, exits on giveback to +40%.
 - **Stop-loss** at -40% after the position has been open for at least 15 minutes.
@@ -135,7 +135,7 @@ Paused below 30 closed trades to avoid overfitting. **Defensive only**: tightens
 - **Three-pass scan per tick** — strict, relaxed (consensus floor relaxed), deep fallback (consensus=1 with looser filters). One leaderboard+trades fetch shared across all three passes.
 - **Percentage sizing** — each trade = `cash * SMART_POSITION_PCT * conviction_multiplier`, with absolute ceiling, equity-pct ceiling, cash floor, and dynamic redistribution of remaining budget across remaining opportunities.
 - **Conviction multipliers** — weak 0.7x, mid 0.9x, strong-3-wallet 1.1–1.3x, high-4-wallet 1.6–2.0x, very-high-5-wallet+ 2.5x, crypto-micro 0.55x.
-- **Multi-level exits** — partial take-profit ladder, trailing stop (arms +25%, 50% giveback), peak-protect (+100% arm, exits below +40%), stop-loss -40% (after 15 min), cohort-sell active SELL detection (120 min lookback), cohort-silent (no fresh BUY), near-expiry positive exit, max-hold 24h.
+- **Multi-level exits** — partial take-profit ladder (+25% / +50% / +100% / +200% / +300%), trailing stop (arms +25%, 50% giveback), peak-protect (+100% arm, exits below +40%), stop-loss -40% (after 15 min), resolved-market exit (bid ≥ 0.97), cohort-sell active SELL detection (120 min lookback), cohort-silent (no fresh BUY), near-expiry positive exit, max-hold 24h. When a SELL is rejected with "balance is not enough", the bot auto-cancels the resting CLOB order on that token and retries on the next tick.
 - **Trade journal** — every closed position writes a JSON line to `data/trade_journal.jsonl` with full entry signal metadata, exit reason, and realized PnL.
 - **Defensive auto-tuner** — every tick, reads the journal and applies bounded overrides to `data/strategy_overrides.json` when filters are too loose. Paused below 30 closed trades. Defensive only: tightens after losses, never loosens after wins.
 - **BTC edge integrated** — after every smart-money tick, the Black-Scholes-from-volatility model in `bitcoin.py` runs. If model edge over market price exceeds `BTC_MIN_EDGE` (default 8%), a small $5 trade is placed. Disciplined — not "buy 0.95 it's free money."
@@ -210,12 +210,12 @@ POLYMARKET_MIN_OPEN_POSITIONS=7
 POLYMARKET_SMART_DEEP_FALLBACK_ENABLED=1
 POLYMARKET_SMART_DEEP_FALLBACK_MIN_COPIED_USDC=25
 POLYMARKET_SMART_NOISE_FALLBACK_ENABLED=1
-POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADES_PER_TICK=4
-POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADE_USD=10
-POLYMARKET_SMART_NOISE_FALLBACK_CASH_PRESSURE_PCT=0.35
+POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADES_PER_TICK=8
+POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADE_USD=15
+POLYMARKET_SMART_NOISE_FALLBACK_CASH_PRESSURE_PCT=0.25
 
 # Exits
-POLYMARKET_SMART_TAKE_PROFIT_TIERS=0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15
+POLYMARKET_SMART_TAKE_PROFIT_TIERS=0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15
 POLYMARKET_SMART_PEAK_PROTECT_TRIGGER=1.0
 POLYMARKET_SMART_PEAK_PROTECT_FLOOR=0.40
 POLYMARKET_SMART_TRAILING_STOP_ARM_PCT=0.25
@@ -245,7 +245,7 @@ POLYMARKET_TRADE_JOURNAL_PATH=data/trade_journal.jsonl
 POLYMARKET_STRATEGY_OVERRIDES_PATH=data/strategy_overrides.json
 
 # Loop
-POLYMARKET_AUTO_INTERVAL_SECONDS=20
+POLYMARKET_AUTO_INTERVAL_SECONDS=10
 POLYMARKET_SYNC_LIVE_POSITIONS=1
 ```
 

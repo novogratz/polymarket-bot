@@ -94,11 +94,14 @@ For every open live position, in order, before any new entry is placed:
 1. **Stop-loss** at `-SMART_STOP_LOSS_PCT` after the position has been open at least `STOP_LOSS_MIN_AGE_MINUTES`. Skipped if peak-protect has already armed.
 2. **Peak-protect**: once peak PnL exceeded `SMART_PEAK_PROTECT_TRIGGER` (default +100%), close on giveback to `SMART_PEAK_PROTECT_FLOOR` (default +40%).
 3. **Trailing stop**: once peak PnL exceeded `SMART_TRAILING_STOP_ARM_PCT` (default +25%), close on giveback of `SMART_TRAILING_STOP_GIVEBACK_PCT` (default 50%) while still positive.
-4. **Take-profit ladder**: partial sells at +50% / +100% / +200% / +300%.
-5. **Max-hold-time**: force-close any position older than `SMART_MAX_HOLD_HOURS` (default 24h) when no other rule has fired.
-6. **Near-expiry positive exit**: close at ≥+5% within 20 minutes of market close.
-7. **Cohort-sell exit**: if any wallet from the entry cohort has actively SOLD the token within `SMART_COHORT_EXIT_LOOKBACK_MINUTES`, close.
-8. **Cohort-silent exit**: if no wallet from the entry cohort has re-bought within the lookback window, close.
+4. **Take-profit ladder**: partial sells at +25% / +50% / +100% / +200% / +300% (15% / 25% / 50% / 25% / 15% of initial shares).
+5. **Resolved-market exit**: when the live bid is at or above `SMART_RESOLVED_EXIT_THRESHOLD` (default 0.97), force-close all remaining shares so terminal-price winners do not pin capital.
+6. **Max-hold-time**: force-close any position older than `SMART_MAX_HOLD_HOURS` (default 24h) when no other rule has fired.
+7. **Near-expiry positive exit**: close at ≥+5% within 20 minutes of market close.
+8. **Cohort-sell exit**: if any wallet from the entry cohort has actively SOLD the token within `SMART_COHORT_EXIT_LOOKBACK_MINUTES`, close. The cohort-trade fetch is parallelised across the configured concurrency.
+9. **Cohort-silent exit**: if no wallet from the entry cohort has re-bought within the lookback window, close.
+
+When a SELL is rejected by the CLOB with "balance is not enough" (a previous resting sell on the same token is still active), the bot calls `cancel_active_orders_for_token` to cancel that resting order and retries the sell on the next tick.
 
 ## Defensive auto-tuner
 

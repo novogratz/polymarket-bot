@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-05-08
+
+Documentation refresh release. All Markdown files (`README.md`, `CLAUDE.md`, `CODEX.md`, `AGENTS.md`, `docs/AUTONOMOUS_STRATEGY.md`, and the structured `.claude/` and `.codex/` skill files) are now in sync with the live `scripts/run_live_70.sh` configuration and the multi-level exit waterfall introduced in 1.1.0.
+
+### Changed
+
+- README env-var examples updated to the current live values: `AUTO_INTERVAL_SECONDS=10`, `NOISE_FALLBACK_MAX_TRADES_PER_TICK=8`, `NOISE_FALLBACK_MAX_TRADE_USD=15`, `NOISE_FALLBACK_CASH_PRESSURE_PCT=0.25`, and the +25% take-profit tier added to the default ladder (`0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15`).
+- Take-profit ladder description updated everywhere (README, CLAUDE.md, CODEX.md, AUTONOMOUS_STRATEGY.md) to list five tiers: +25% / +50% / +100% / +200% / +300% with partial sells of 15% / 25% / 50% / 25% / 15%.
+- Multi-level exits sections now mention the resolved-market exit (force-close at bid ≥ 0.97) and the auto-cancel-resting-order behaviour on `balance is not enough` SELL rejections.
+- `docs/AUTONOMOUS_STRATEGY.md` exit waterfall renumbered to 9 steps to include the resolved-market exit and the parallelised cohort-trade fetch.
+
+### Notes
+
+No code changes in this release. The runtime, tests (54), and live config script are byte-identical to 1.1.0.
+
 ## [1.1.0] - 2026-05-08
 
 Performance and reliability release on top of 1.0.0. Adds the +25% take-profit tier, parallelises the cohort-exit check, and fixes two production bugs (counter-trades on the same binary market, tick crashes on sell errors).
