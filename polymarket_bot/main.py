@@ -724,6 +724,7 @@ def _execute_sell_strategy(
             {
                 "market_id": position.get("market_id"),
                 "outcome": position.get("outcome"),
+                "question": position.get("question"),
                 "action": "sell",
                 "reason": plan["reason"],
                 "pnl_pct": round(current_pnl_pct, 4),
