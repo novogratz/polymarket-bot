@@ -99,6 +99,32 @@ def _truncate_question(text: str | None, max_len: int = 40) -> str:
     return text[: max_len - 1] + "…"
 
 
+def _format_summary_line(payload: dict) -> str:
+    """One-line summary of a tick payload (used in quiet mode footer)."""
+    tick = payload.get("tick", "?")
+    time_str = _format_time_hhmm(payload.get("started_at"))
+    result = payload.get("result") or {}
+    scan_report = result.get("scan_report") or {}
+    opps = scan_report.get("opportunities") or []
+    scan_part = f"scan: {len(opps)} opps"
+
+    summary = result.get("summary")
+    if isinstance(summary, dict):
+        cash = float(summary.get("cash") or 0.0)
+        equity = float(summary.get("equity") or 0.0)
+        pnl = float(summary.get("unrealized_pnl") or 0.0)
+        positions = int(summary.get("open_positions") or 0)
+        snapshot = (
+            f"cash ${cash:.2f} / equity ${equity:.2f} "
+            f"/ {colorize_pnl(pnl)} / {positions} pos"
+        )
+    else:
+        status = result.get("status")
+        snapshot = f"({status})" if status else "(no summary)"
+
+    return f"{green(CHECK)} #{tick} {time_str} | {scan_part} | {snapshot}"
+
+
 def _format_time_hhmm(iso_str: str | None) -> str:
     """Extract HH:MM from an ISO 8601 timestamp; return ??:?? on parse failure.
 
