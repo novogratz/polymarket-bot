@@ -1,5 +1,6 @@
 import os
 import unittest
+from typing import Callable
 from unittest import mock
 
 from polymarket_bot import notifications
@@ -55,3 +56,41 @@ class TestMdEscape(NotificationsBaseTest):
         self.assertEqual(notifications._md_escape(""), "")
         # Single non-special char
         self.assertEqual(notifications._md_escape("a"), "a")
+
+
+class TestChatIdRouting(NotificationsBaseTest):
+    def _capture(self) -> tuple[Callable, list[dict]]:
+        sent: list[dict] = []
+        def transport(payload: dict) -> bool:
+            sent.append(payload)
+            return True
+        return transport, sent
+
+    def test_routes_to_live_chat_when_not_dry_run(self) -> None:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        os.environ["TELEGRAM_CHAT_ID_DRY_RUN"] = "999"
+        transport, sent = self._capture()
+        notifications.set_transport_for_test(transport)
+
+        self.assertTrue(notifications.is_enabled())
+        notifications._post("hello")
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0]["chat_id"], "111")
+        self.assertEqual(sent[0]["text"], "hello")
+        self.assertEqual(sent[0]["parse_mode"], "MarkdownV2")
+
+    def test_routes_to_dry_run_chat_when_dry_run(self) -> None:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        os.environ["TELEGRAM_CHAT_ID_DRY_RUN"] = "999"
+        os.environ["POLYMARKET_DRY_RUN"] = "1"
+        transport, sent = self._capture()
+        notifications.set_transport_for_test(transport)
+
+        self.assertTrue(notifications.is_enabled())
+        notifications._post("hi")
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0]["chat_id"], "999")

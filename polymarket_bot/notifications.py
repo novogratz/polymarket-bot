@@ -7,8 +7,14 @@ remontée — toute erreur est loggée sur stdout puis ignorée.
 
 from __future__ import annotations
 
+import json
 import os
+import sys
+import urllib.error
+import urllib.request
 from typing import Any, Callable
+
+_HTTP_TIMEOUT_SEC = 5.0
 
 # Transport: callable qui prend un dict payload (chat_id, text, parse_mode)
 # et retourne True si l'envoi a réussi. Injectable pour les tests.
@@ -70,6 +76,45 @@ def _md_escape(text: str) -> str:
             out.append("\\")
         out.append(ch)
     return "".join(out)
+
+
+def _default_transport(payload: dict[str, Any]) -> bool:
+    """Transport par défaut: POST sur api.telegram.org via urllib."""
+    token = _bot_token()
+    if not token:
+        return False
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json"}, method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
+            return 200 <= resp.status < 300
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        print(f"[notif] failed: {exc}", file=sys.stderr, flush=True)
+        return False
+
+
+def _get_transport() -> Transport:
+    return _transport_override if _transport_override is not None else _default_transport
+
+
+def _post(text: str) -> bool:
+    """Envoi best-effort. Retourne False sur erreur, jamais d'exception."""
+    if not is_enabled():
+        return False
+    payload = {
+        "chat_id": _chat_id(),
+        "text": text,
+        "parse_mode": "MarkdownV2",
+        "disable_web_page_preview": True,
+    }
+    try:
+        return bool(_get_transport()(payload))
+    except Exception as exc:
+        print(f"[notif] failed: {exc}", file=sys.stderr, flush=True)
+        return False
 
 
 # --- API publique (stubs no-op tant que désactivé) ---
