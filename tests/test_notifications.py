@@ -2,11 +2,13 @@ import io
 import json
 import os
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
 from typing import Callable
 from unittest import mock
+from unittest.mock import patch
 
 from polymarket_bot import notifications
 
@@ -150,3 +152,37 @@ class TestStatePersistence(NotificationsBaseTest):
             self.assertFalse(state.equity_floor_breached)
             self.assertIsNone(state.last_daily_summary_date)
             self.assertEqual(state.dedupe_seen, {})
+
+
+class TestDedupWindow(NotificationsBaseTest):
+    def test_dedup_skips_repeats_within_window(self) -> None:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        os.environ["TELEGRAM_DEDUPE_WINDOW_SEC"] = "300"
+
+        sent: list[dict] = []
+        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+
+        with tempfile.TemporaryDirectory() as td:
+            state_path = Path(td) / "state.json"
+            with patch.object(notifications, "_default_state_path", return_value=state_path):
+                base = 1_000_000.0
+                with patch("time.time", return_value=base):
+                    notifications.notify_error("order_rejected", "balance low", dedupe_key="t1")
+                with patch("time.time", return_value=base + 100):
+                    notifications.notify_error("order_rejected", "balance low", dedupe_key="t1")
+                self.assertEqual(len(sent), 1, "second call within window must be skipped")
+
+                with patch("time.time", return_value=base + 400):
+                    notifications.notify_error("order_rejected", "balance low", dedupe_key="t1")
+                self.assertEqual(len(sent), 2)
+
+                with patch("time.time", return_value=base + 401):
+                    notifications.notify_error("order_rejected", "msg2", dedupe_key="t2")
+                self.assertEqual(len(sent), 3)
+
+                with patch("time.time", return_value=base + 402):
+                    notifications.notify_error("misc", "anything")
+                with patch("time.time", return_value=base + 403):
+                    notifications.notify_error("misc", "anything")
+                self.assertEqual(len(sent), 5)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -112,6 +113,19 @@ def _load_state(path: Path) -> _State:
     )
 
 
+def _dedupe_window_sec() -> float:
+    try:
+        return float(os.environ.get("TELEGRAM_DEDUPE_WINDOW_SEC", "300"))
+    except ValueError:
+        return 300.0
+
+
+def _prune_dedupe(state: _State, now: float, window: float) -> None:
+    """Supprime les entrées plus anciennes que window × 4."""
+    cutoff = now - (window * 4)
+    state.dedupe_seen = {k: v for k, v in state.dedupe_seen.items() if v >= cutoff}
+
+
 def _save_state(path: Path, state: _State) -> None:
     payload = {
         "equity_peak_usd": state.equity_peak_usd,
@@ -201,7 +215,22 @@ def notify_trade_sell(
 def notify_error(category: str, message: str, *, dedupe_key: str | None = None) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_ERRORS"):
         return
-    # Implémentation détaillée dans une tâche ultérieure.
+    path = _default_state_path()
+    state = _load_state(path)
+    now = time.time()
+    window = _dedupe_window_sec()
+    if dedupe_key:
+        last = state.dedupe_seen.get(dedupe_key)
+        if last is not None and (now - last) < window:
+            return
+        state.dedupe_seen[dedupe_key] = now
+    _prune_dedupe(state, now, window)
+    text = (
+        f"❌ *{_md_escape(category)}*\n"
+        f"{_md_escape(message)}"
+    )
+    _post(text)
+    _save_state(path, state)
 
 
 def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
