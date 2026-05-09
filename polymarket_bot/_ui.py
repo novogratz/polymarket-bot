@@ -87,3 +87,12 @@ def colorize_pct(value: float) -> str:
     if value < 0:
         return red(text)
     return text
+
+
+def _truncate_question(text: str | None, max_len: int = 40) -> str:
+    """Truncate a market question for one-line display, ending with … if cut."""
+    if not text:
+        return "—"
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
