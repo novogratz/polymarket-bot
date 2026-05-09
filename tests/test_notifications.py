@@ -1,7 +1,10 @@
 import io
+import json
 import os
+import tempfile
 import unittest
 from contextlib import redirect_stderr
+from pathlib import Path
 from typing import Callable
 from unittest import mock
 
@@ -112,3 +115,38 @@ class TestHttpFailureSilent(NotificationsBaseTest):
             ok = notifications._post("ping")
         self.assertFalse(ok)
         self.assertIn("[notif] failed", buf.getvalue())
+
+
+class TestStatePersistence(NotificationsBaseTest):
+    def test_state_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "notif_state.json"
+            state = notifications._State(
+                equity_peak_usd=92.10,
+                equity_floor_breached=False,
+                last_daily_summary_date="2026-05-09",
+                dedupe_seen={"order_rejected:0xtoken": 1715250400.0},
+            )
+            notifications._save_state(path, state)
+            loaded = notifications._load_state(path)
+            self.assertEqual(loaded.equity_peak_usd, 92.10)
+            self.assertFalse(loaded.equity_floor_breached)
+            self.assertEqual(loaded.last_daily_summary_date, "2026-05-09")
+            self.assertEqual(loaded.dedupe_seen.get("order_rejected:0xtoken"), 1715250400.0)
+
+    def test_state_path_routing(self) -> None:
+        os.environ["POLYMARKET_DRY_RUN"] = "1"
+        self.assertEqual(
+            notifications._default_state_path().name, "dry_run_notifications_state.json"
+        )
+        os.environ.pop("POLYMARKET_DRY_RUN", None)
+        self.assertEqual(notifications._default_state_path().name, "notifications_state.json")
+
+    def test_load_missing_returns_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "missing.json"
+            state = notifications._load_state(path)
+            self.assertIsNone(state.equity_peak_usd)
+            self.assertFalse(state.equity_floor_breached)
+            self.assertIsNone(state.last_daily_summary_date)
+            self.assertEqual(state.dedupe_seen, {})

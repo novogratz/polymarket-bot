@@ -12,6 +12,8 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 _HTTP_TIMEOUT_SEC = 5.0
@@ -76,6 +78,52 @@ def _md_escape(text: str) -> str:
             out.append("\\")
         out.append(ch)
     return "".join(out)
+
+
+@dataclass
+class _State:
+    equity_peak_usd: float | None = None
+    equity_floor_breached: bool = False
+    last_daily_summary_date: str | None = None
+    dedupe_seen: dict[str, float] = field(default_factory=dict)
+
+
+def _default_state_path() -> Path:
+    if _is_dry_run():
+        return Path("data/dry_run_notifications_state.json")
+    return Path("data/notifications_state.json")
+
+
+def _load_state(path: Path) -> _State:
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return _State()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        print(f"[notif] state file corrupt at {path}, resetting", file=sys.stderr, flush=True)
+        return _State()
+    return _State(
+        equity_peak_usd=data.get("equity_peak_usd"),
+        equity_floor_breached=bool(data.get("equity_floor_breached", False)),
+        last_daily_summary_date=data.get("last_daily_summary_date"),
+        dedupe_seen={str(k): float(v) for k, v in (data.get("dedupe_seen") or {}).items()},
+    )
+
+
+def _save_state(path: Path, state: _State) -> None:
+    payload = {
+        "equity_peak_usd": state.equity_peak_usd,
+        "equity_floor_breached": state.equity_floor_breached,
+        "last_daily_summary_date": state.last_daily_summary_date,
+        "dedupe_seen": state.dedupe_seen,
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except OSError as exc:
+        print(f"[notif] failed to save state: {exc}", file=sys.stderr, flush=True)
 
 
 def _default_transport(payload: dict[str, Any]) -> bool:
