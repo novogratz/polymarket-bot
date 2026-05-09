@@ -16,10 +16,12 @@ entirely until enough closed trades have accumulated
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from . import notifications
 from .config import Settings
 from .models import utc_now
 
@@ -111,11 +113,37 @@ def maybe_tune(settings: Settings) -> tuple[dict[str, Any], int]:
         "overrides": overrides,
     }
     path = settings.strategy_overrides_path
+
+    # Lecture des overrides précédents pour le diff de notification.
+    # Doit se faire AVANT l'écriture, sinon le diff serait toujours vide.
+    previous_overrides: dict[str, Any] = {}
+    try:
+        previous_overrides = (json.loads(path.read_text(encoding="utf-8")) or {}).get(
+            "overrides", {}
+        )
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        previous_overrides = {}
+
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=2))
     except Exception:
         pass
+
+    changes: list[dict[str, Any]] = []
+    all_keys = set(previous_overrides) | set(overrides)
+    for key in sorted(all_keys):
+        old = previous_overrides.get(key)
+        new = overrides.get(key)
+        if old != new:
+            changes.append({"param": key, "old": old, "new": new})
+
+    if changes:
+        try:
+            notifications.notify_threshold("auto_tune_change", {"changes": changes})
+        except Exception as exc:
+            print(f"[notif] auto_tune hook failed: {exc}", file=sys.stderr, flush=True)
+
     return overrides, len(records)
 
 
