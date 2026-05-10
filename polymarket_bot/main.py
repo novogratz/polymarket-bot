@@ -108,12 +108,17 @@ def load_btc_candidates(settings: Settings):
     return rank_markets(list(markets_by_id.values()), settings)
 
 
+def _smart_entry_horizon_hours(settings: Settings) -> float:
+    horizon_hours = float(settings.smart_soon_hours)
+    if settings.smart_max_hours_to_close > 0:
+        horizon_hours = min(horizon_hours, settings.smart_max_hours_to_close)
+    return min(horizon_hours, 168.0)
+
+
 def load_smart_candidates(settings: Settings):
     client = GammaClient(settings.gamma_base_url)
     now = utc_now()
-    horizon_hours = settings.smart_soon_hours
-    if settings.smart_max_hours_to_close > 0:
-        horizon_hours = min(horizon_hours, settings.smart_max_hours_to_close)
+    horizon_hours = _smart_entry_horizon_hours(settings)
     horizon = now + timedelta(hours=horizon_hours)
     batches = []
     for kwargs in (
@@ -157,7 +162,7 @@ def load_smart_candidates(settings: Settings):
     smart_settings = replace(
         settings,
         scan_limit=settings.smart_scan_limit,
-        soon_hours=settings.smart_soon_hours,
+        soon_hours=horizon_hours,
     )
     return rank_markets(list(markets_by_id.values()), smart_settings)
 
@@ -1000,7 +1005,7 @@ def _reverse_lookup_smart_money_markets(
     smart_settings = replace(
         settings,
         scan_limit=settings.smart_scan_limit,
-        soon_hours=settings.smart_soon_hours,
+        soon_hours=_smart_entry_horizon_hours(settings),
         min_liquidity_usd=min(settings.min_liquidity_usd, settings.smart_reverse_lookup_min_liquidity_usd),
         min_volume_usd=min(settings.min_volume_usd, settings.smart_reverse_lookup_min_volume_usd),
     )

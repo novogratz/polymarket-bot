@@ -1209,6 +1209,77 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(signals, [])
         self.assertEqual(details["rejected"]["too_far_to_expiry"], 1)
 
+    def test_smart_money_rejects_unknown_expiry(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will the market resolve Yes?",
+            slug="unknown-expiry-market",
+            end_date=None,
+            hours_to_close=None,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.5,
+            token_id="yes-token",
+            score=10,
+            url="https://polymarket.com/event/unknown-expiry-market",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "yes-token", "BUY", 0.49, 100, 49, 1, "Unknown market", "Yes", "market"),
+            SmartTrade("0x2", "yes-token", "BUY", 0.50, 100, 50, 1, "Unknown market", "Yes", "market"),
+        ]
+
+        signals, details = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(smart_min_trade_usd=1),
+            include_details=True,
+        )
+
+        self.assertEqual(signals, [])
+        self.assertEqual(details["rejected"]["unknown_expiry"], 1)
+
+    def test_smart_money_entry_horizon_caps_to_one_week(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will the next-month market resolve Yes?",
+            slug="next-month-market",
+            end_date=utc_now() + timedelta(hours=200),
+            hours_to_close=200,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.5,
+            token_id="yes-token",
+            score=10,
+            url="https://polymarket.com/event/next-month-market",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "yes-token", "BUY", 0.49, 100, 49, 1, "Next month", "Yes", "market"),
+            SmartTrade("0x2", "yes-token", "BUY", 0.50, 100, 50, 1, "Next month", "Yes", "market"),
+        ]
+
+        signals, details = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(
+                smart_max_hours_to_close=720,
+                smart_min_trade_usd=1,
+            ),
+            include_details=True,
+        )
+
+        self.assertEqual(signals, [])
+        self.assertEqual(details["rejected"]["too_far_to_expiry"], 1)
+
     def test_smart_money_prefers_shorter_market_when_quality_matches(self):
         near = Candidate(
             market_id="1",

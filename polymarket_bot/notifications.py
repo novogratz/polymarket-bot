@@ -563,46 +563,37 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     realized_today = float(snapshot.get("realized_today_usd", 0.0) or 0.0)
     trades_today = int(snapshot.get("trades_today", 0) or 0)
     open_positions = snapshot.get("open_positions") if isinstance(snapshot.get("open_positions"), list) else []
-    recent_trades = snapshot.get("recent_trades") if isinstance(snapshot.get("recent_trades"), list) else []
-    winners = _sort_by_pnl(
-        [("open", position) for position in open_positions if _pnl_for_position(position) >= 0]
-        + [("closed", trade) for trade in recent_trades if _pnl_for_trade(trade) >= 0],
-        lambda item: _pnl_for_position(item[1]) if item[0] == "open" else _pnl_for_trade(item[1]),
-        reverse=True,
-    )
-    losers = _sort_by_pnl(
-        [("open", position) for position in open_positions if _pnl_for_position(position) < 0]
-        + [("closed", trade) for trade in recent_trades if _pnl_for_trade(trade) < 0],
-        lambda item: _pnl_for_position(item[1]) if item[0] == "open" else _pnl_for_trade(item[1]),
-        reverse=False,
-    )
 
     sections: list[list[str]] = [
         [
             f"\U0001f4ca *Director review* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
-            f"*Equity* {_md_escape(_fmt_money(equity))} | *Cash* {_md_escape(_fmt_money(cash))} | *Invested* {_md_escape(_fmt_money(invested))}",
-            f"*PnL* unrealized {_pnl_icon(unrealized)} {_md_escape(_fmt_money(unrealized, signed=True))} | today {_pnl_icon(realized_today)} {_md_escape(_fmt_money(realized_today, signed=True))} | all\\-time {_pnl_icon(realized_total)} {_md_escape(_fmt_money(realized_total, signed=True))}",
-            f"*Activity* {trades_today} closed trades | {len(open_positions)} open positions",
+            f"*Equity* {_md_escape(_fmt_money(equity))}",
+            f"*Cash* {_md_escape(_fmt_money(cash))}",
+            f"*Invested* {_md_escape(_fmt_money(invested))}",
+            f"*PnL unrealized* {_pnl_icon(unrealized)} {_md_escape(_fmt_money(unrealized, signed=True))}",
+            f"*PnL today* {_pnl_icon(realized_today)} {_md_escape(_fmt_money(realized_today, signed=True))}",
+            f"*PnL all\\-time* {_pnl_icon(realized_total)} {_md_escape(_fmt_money(realized_total, signed=True))}",
+            f"*Closed trades today* {trades_today}",
+            f"*Open positions* {len(open_positions)}",
         ]
     ]
-    if winners:
-        section = ["✅ *Top winners*"]
-        for kind, item in winners[:5]:
-            section.append(_line_for_open_position(item) if kind == "open" else _line_for_closed_trade(item))
-        sections.append(section)
-    if losers:
-        section = ["❌ *Top losers*"]
-        for kind, item in losers[:5]:
-            section.append(_line_for_open_position(item) if kind == "open" else _line_for_closed_trade(item))
-        sections.append(section)
+
+    current_len = sum(len("\n".join(s)) for s in sections) + 20
+
     if open_positions:
         section = ["\U0001f4cc *Open book*"]
-        section.extend(_line_for_open_position(position) for position in open_positions)
+        added = 0
+        for position in open_positions:
+            line = _line_for_open_position(position)
+            if current_len + len(line) > 3900:
+                section.append(f"_… and {len(open_positions) - added} more positions_")
+                break
+            section.append(line)
+            current_len += len(line) + 1
+            added += 1
         sections.append(section)
 
     text = "\n\n".join("\n".join(section) for section in sections)
-    if len(text) > 3900:
-        text = text[:3850] + "\n…truncated"
-    if _post(text):
-        state.last_portfolio_update_ts = now
-        _save_state(path, state)
+    _post(text)
+    state.last_portfolio_update_ts = now
+    _save_state(path, state)

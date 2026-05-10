@@ -428,14 +428,14 @@ def smart_money_signals(
             rejected["no_matching_candidate_or_quote"] = rejected.get("no_matching_candidate_or_quote", 0) + 1
             continue
         matched_tokens += 1
-        if candidate.hours_to_close is not None and candidate.hours_to_close < settings.smart_min_hours_to_close:
+        max_hours_to_close = _entry_max_hours_to_close(settings)
+        if candidate.hours_to_close is None:
+            rejected["unknown_expiry"] = rejected.get("unknown_expiry", 0) + 1
+            continue
+        if candidate.hours_to_close < settings.smart_min_hours_to_close:
             rejected["too_close_to_expiry"] = rejected.get("too_close_to_expiry", 0) + 1
             continue
-        if (
-            settings.smart_max_hours_to_close > 0
-            and candidate.hours_to_close is not None
-            and candidate.hours_to_close > settings.smart_max_hours_to_close
-        ):
+        if max_hours_to_close > 0 and candidate.hours_to_close > max_hours_to_close:
             rejected["too_far_to_expiry"] = rejected.get("too_far_to_expiry", 0) + 1
             continue
         if not candidate.accepts_orders or candidate.tick_size is None:
@@ -517,6 +517,18 @@ def smart_money_signals(
             "rejected": rejected,
         }
     return signals
+
+
+def _entry_max_hours_to_close(settings: Settings) -> float:
+    caps = [
+        cap
+        for cap in (
+            float(settings.smart_max_hours_to_close or 0.0),
+            168.0,
+        )
+        if cap > 0
+    ]
+    return min(caps) if caps else 0.0
 
 
 def _time_periods(settings: Settings) -> list[str]:
