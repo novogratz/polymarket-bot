@@ -178,6 +178,7 @@ HTML = r"""<!doctype html>
       currentTab: localStorage.getItem('pmbot_dashboard_tab') || 'live',
       state: null,
       refreshIntervalsMs: { state: 5000, live: 5000, stats: 15000, tune: 15000 },
+      pageReloadMs: 30 * 60 * 1000,
       timers: {},
     };
 
@@ -239,7 +240,7 @@ HTML = r"""<!doctype html>
       document.getElementById('balance-pill').innerHTML = bp;
       document.getElementById('updated').textContent = 'updated ' + new Date(state.updated_at).toLocaleTimeString();
       document.getElementById('ledger-info').textContent = state.state_path;
-      document.getElementById('refresh-info').textContent = 'auto-refresh ' + (PMBOT.refreshIntervalsMs[PMBOT.currentTab] || 5000)/1000 + 's';
+      document.getElementById('refresh-info').textContent = 'auto-refresh ' + (PMBOT.refreshIntervalsMs[PMBOT.currentTab] || 5000)/1000 + 's · reload 30m';
     }
 
     function renderStatsBar(state) {
@@ -638,6 +639,7 @@ HTML = r"""<!doctype html>
       updateClock();
       setInterval(updateClock, 1000);
       setInterval(refreshState, PMBOT.refreshIntervalsMs.state);
+      setInterval(() => window.location.reload(), PMBOT.pageReloadMs);
     });
   </script>
 </body>

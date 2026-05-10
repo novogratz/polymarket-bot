@@ -581,6 +581,59 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(portfolio.positions, [])
         self.assertEqual(portfolio.pending_orders or [], [])
 
+    def test_live_trade_retries_smaller_fok_after_unfilled_error(self):
+        class FakeClient:
+            def __init__(self):
+                self.amounts = []
+
+            def live_available_balance(self):
+                return 50.0
+
+            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
+                self.amounts.append(amount)
+                if len(self.amounts) == 1:
+                    raise RuntimeError("order couldn't be fully filled. FOK orders are fully filled or killed.")
+                return {"price": price, "amount": amount, "side": side}, {
+                    "success": True,
+                    "status": "matched",
+                    "orderID": "order-filled-smaller",
+                    "makingAmount": str(amount),
+                }
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.49,
+            best_ask=0.5,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        client = FakeClient()
+        portfolio = Portfolio(cash=50.0, positions=[])
+
+        result = execute_live_trade(
+            client,
+            Settings(trade_fraction=1.0, min_order_shares=5.0),
+            candidate,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=25.0,
+        )
+
+        self.assertEqual(client.amounts, [25.0, 12.5])
+        self.assertEqual(result.order["amount"], 12.5)
+        self.assertEqual(portfolio.positions[0]["stake"], 12.5)
+
     def test_fok_unfilled_error_is_skippable(self):
         message = (
             "PolyApiException[status_code=400, error_message={'error': "

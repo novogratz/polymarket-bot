@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from polymarket_bot.config import Settings
 from polymarket_bot import dashboard
+from polymarket_bot.dashboard_html import HTML
 from polymarket_bot import tick_state
 
 
@@ -114,3 +115,10 @@ class BuildStateTests(unittest.TestCase):
             self.assertIn("candidates", payload)
             self.assertIn("dry_run", payload)
             self.assertIn("balance_source", payload)
+
+
+class DashboardHtmlTests(unittest.TestCase):
+    def test_page_reload_is_scheduled_every_thirty_minutes(self):
+        self.assertIn("pageReloadMs: 30 * 60 * 1000", HTML)
+        self.assertIn("window.location.reload()", HTML)
+        self.assertIn("reload 30m", HTML)

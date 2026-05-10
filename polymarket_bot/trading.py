@@ -579,9 +579,15 @@ def execute_live_trade(
             "dry_run": True,
         }
     else:
-        if not settings.quiet:
-            print("   Sending FOK market order...")
-        order, response = client.place_market_order(candidate=candidate, amount=stake, price=entry_price, side="BUY")
+        order, response, stake = _place_fok_buy_with_retries(
+            client,
+            candidate=candidate,
+            stake=stake,
+            entry_price=entry_price,
+            side="BUY",
+            minimum_stake=max(minimum, min_share_stake),
+            quiet=settings.quiet,
+        )
     if isinstance(response, dict) and response.get("success") and not settings.quiet:
         status = str(response.get("status") or "")
         label = "✅ BUY FILLED" if _is_filled_buy_response(response) else "⚠️  BUY NOT FILLED"
@@ -648,6 +654,71 @@ def execute_live_trade(
         except Exception as exc:
             print(f"[notif] trade_buy hook failed: {exc}", file=sys.stderr, flush=True)
     return LiveTradeResult(order=order, response=response, candidate=candidate)
+
+
+def _place_fok_buy_with_retries(
+    client: Any,
+    *,
+    candidate: Candidate,
+    stake: float,
+    entry_price: float,
+    side: str,
+    minimum_stake: float,
+    quiet: bool,
+) -> tuple[dict[str, Any], Any, float]:
+    attempts: list[float] = []
+    for amount in (stake, stake * 0.5, stake * 0.25, minimum_stake):
+        rounded = round(amount, 2)
+        if rounded < round(minimum_stake, 2):
+            continue
+        if rounded not in attempts:
+            attempts.append(rounded)
+    if not attempts:
+        attempts.append(round(stake, 2))
+
+    last_error: Exception | None = None
+    last_order: dict[str, Any] = {}
+    last_response: Any = {}
+    for index, amount in enumerate(attempts):
+        if not quiet:
+            suffix = "" if index == 0 else f" retry ${amount}"
+            print(f"   Sending FOK market order{suffix}...")
+        try:
+            order, response = client.place_market_order(
+                candidate=candidate,
+                amount=amount,
+                price=entry_price,
+                side=side,
+            )
+        except Exception as exc:
+            if not _is_unfilled_fok_error(str(exc)) or index == len(attempts) - 1:
+                raise
+            last_error = exc
+            if not quiet:
+                print(f"   FOK not fully filled at ${amount}; retrying smaller...")
+            continue
+        last_order = order
+        last_response = response
+        if _is_filled_buy_response(response) or index == len(attempts) - 1:
+            return order, response, amount
+        if not quiet:
+            print(f"   FOK returned unfilled at ${amount}; retrying smaller...")
+
+    if last_error is not None:
+        raise last_error
+    return last_order, last_response, attempts[-1]
+
+
+def _is_unfilled_fok_error(message: str) -> bool:
+    lowered = message.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "fully filled or killed",
+            "couldn't be fully filled",
+            "could not be fully filled",
+        )
+    )
 
 
 def _is_filled_buy_response(response: Any) -> bool:
