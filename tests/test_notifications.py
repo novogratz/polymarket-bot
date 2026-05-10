@@ -264,6 +264,13 @@ class TestTradeFormats(NotificationsBaseTest):
                             "realized_pnl": 0.75,
                             "strategy": "btc_edge",
                             "exit_reason": "positive_pnl_before_expiry",
+                        },
+                        {
+                            "question": "Will team lose?",
+                            "outcome": "No",
+                            "realized_pnl": -0.50,
+                            "strategy": "noise_fallback",
+                            "exit_reason": "stop_loss",
                         }
                     ],
                     "open_positions": [
@@ -275,6 +282,15 @@ class TestTradeFormats(NotificationsBaseTest):
                             "current_price": 0.52,
                             "unrealized_pnl": 4.50,
                             "strategy": "btc_edge",
+                        },
+                        {
+                            "question": "Will ETH be above $4,000?",
+                            "outcome": "Yes",
+                            "stake": 10.0,
+                            "entry_price": 0.60,
+                            "current_price": 0.50,
+                            "unrealized_pnl": -1.67,
+                            "strategy": "smart_money",
                         }
                     ],
                 })
@@ -286,10 +302,13 @@ class TestTradeFormats(NotificationsBaseTest):
         self.assertIn("\\+$5\\.00", text)
         self.assertIn("Realized today", text)
         self.assertIn("Realized all\\-time", text)
-        self.assertIn("Recent closed trades", text)
-        self.assertIn("Open positions", text)
+        self.assertIn("\n\n*Winning positions / trades*", text)
+        self.assertIn("\n\n*Losing positions / trades*", text)
+        self.assertIn("\n\n*All open positions*", text)
         self.assertIn("Bitcoin Up or Down", text)
+        self.assertIn("Will team lose?", text)
         self.assertIn("Will BTC be above $100,000?", text)
+        self.assertIn("Will ETH be above $4,000?", text)
 
 
 class TestBigWinLoss(NotificationsBaseTest):

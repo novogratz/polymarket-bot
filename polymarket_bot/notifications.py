@@ -514,6 +514,20 @@ def _line_for_closed_trade(trade: dict[str, Any]) -> str:
     )
 
 
+def _pnl_for_position(position: dict[str, Any]) -> float:
+    try:
+        return float(position.get("unrealized_pnl") or 0.0) + float(position.get("realized_pnl") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _pnl_for_trade(trade: dict[str, Any]) -> float:
+    try:
+        return float(trade.get("realized_pnl") or trade.get("pnl_usd") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_PORTFOLIO_UPDATES"):
         return
@@ -535,24 +549,36 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     trades_today = int(snapshot.get("trades_today", 0) or 0)
     open_positions = snapshot.get("open_positions") if isinstance(snapshot.get("open_positions"), list) else []
     recent_trades = snapshot.get("recent_trades") if isinstance(snapshot.get("recent_trades"), list) else []
+    winning_trades = [trade for trade in recent_trades if _pnl_for_trade(trade) >= 0]
+    losing_trades = [trade for trade in recent_trades if _pnl_for_trade(trade) < 0]
+    winning_positions = [position for position in open_positions if _pnl_for_position(position) >= 0]
+    losing_positions = [position for position in open_positions if _pnl_for_position(position) < 0]
 
-    lines = [
-        f"\U0001f4ca *30m portfolio update* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
-        f"Equity: *{_md_escape(_fmt_money(equity))}* — Cash {_md_escape(_fmt_money(cash))} — Invested {_md_escape(_fmt_money(invested))}",
-        f"Unrealized: *{_md_escape(_fmt_money(unrealized, signed=True))}*",
-        f"Realized today: *{_md_escape(_fmt_money(realized_today, signed=True))}* \\({trades_today} trades\\)",
-        f"Realized all\\-time: *{_md_escape(_fmt_money(realized_total, signed=True))}*",
+    sections: list[list[str]] = [
+        [
+            f"\U0001f4ca *30m portfolio update* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
+            f"Equity: *{_md_escape(_fmt_money(equity))}* — Cash {_md_escape(_fmt_money(cash))} — Invested {_md_escape(_fmt_money(invested))}",
+            f"Unrealized: *{_md_escape(_fmt_money(unrealized, signed=True))}*",
+            f"Realized today: *{_md_escape(_fmt_money(realized_today, signed=True))}* \\({trades_today} trades\\)",
+            f"Realized all\\-time: *{_md_escape(_fmt_money(realized_total, signed=True))}*",
+        ]
     ]
-    if recent_trades:
-        lines.append("*Recent closed trades*")
-        lines.extend(_line_for_closed_trade(trade) for trade in recent_trades[:10])
+    if winning_trades or winning_positions:
+        section = ["*Winning positions / trades*"]
+        section.extend(_line_for_open_position(position) for position in winning_positions[:8])
+        section.extend(_line_for_closed_trade(trade) for trade in winning_trades[:8])
+        sections.append(section)
+    if losing_trades or losing_positions:
+        section = ["*Losing positions / trades*"]
+        section.extend(_line_for_open_position(position) for position in losing_positions[:8])
+        section.extend(_line_for_closed_trade(trade) for trade in losing_trades[:8])
+        sections.append(section)
     if open_positions:
-        lines.append("*Open positions*")
-        lines.extend(_line_for_open_position(position) for position in open_positions[:12])
-        if len(open_positions) > 12:
-            lines.append(f"…and {len(open_positions) - 12} more open positions")
+        section = ["*All open positions*"]
+        section.extend(_line_for_open_position(position) for position in open_positions)
+        sections.append(section)
 
-    text = "\n".join(lines)
+    text = "\n\n".join("\n".join(section) for section in sections)
     if len(text) > 3900:
         text = text[:3850] + "\n…truncated"
     if _post(text):
