@@ -136,7 +136,7 @@ class Settings:
     smart_recycle_profit_min_age_minutes: int = _int_env("POLYMARKET_SMART_RECYCLE_PROFIT_MIN_AGE_MINUTES", 60)
     smart_lock_gain_price: float = _float_env("POLYMARKET_SMART_LOCK_GAIN_PRICE", 0.95)
     smart_lock_gain_min_pnl_pct: float = _float_env("POLYMARKET_SMART_LOCK_GAIN_MIN_PNL_PCT", 0.20)
-    smart_resolved_exit_threshold: float = _float_env("POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD", 0.98)
+    smart_resolved_exit_threshold: float = _float_env("POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD", 0.9899)
     smart_cash_floor_pct: float = _float_env("POLYMARKET_SMART_CASH_FLOOR_PCT", 0.02)
     smart_cash_pressure_enabled: bool = _bool_env("POLYMARKET_SMART_CASH_PRESSURE_ENABLED", True)
     smart_cash_pressure_min_cash_pct: float = _float_env("POLYMARKET_SMART_CASH_PRESSURE_MIN_CASH_PCT", 0.20)

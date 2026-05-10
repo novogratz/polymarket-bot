@@ -95,6 +95,7 @@ class _State:
     dedupe_seen: dict[str, float] = field(default_factory=dict)
     drawdown_armed: bool = False  # True quand on a déjà alerté sur ce pic
     last_post_ts: float = 0.0
+    big_win_progress_notified: dict[str, float] = field(default_factory=dict)  # token_id -> timestamp
 
 
 def _default_state_path() -> Path:
@@ -125,6 +126,7 @@ def _load_state(path: Path) -> _State:
         dedupe_seen={str(k): float(v) for k, v in (data.get("dedupe_seen") or {}).items()},
         drawdown_armed=bool(data.get("drawdown_armed", False)),
         last_post_ts=float(data.get("last_post_ts", 0.0)),
+        big_win_progress_notified={str(k): float(v) for k, v in (data.get("big_win_progress_notified") or {}).items()},
     )
 
 
@@ -154,6 +156,7 @@ def _save_state(path: Path, state: _State) -> None:
         "dedupe_seen": state.dedupe_seen,
         "drawdown_armed": state.drawdown_armed,
         "last_post_ts": state.last_post_ts,
+        "big_win_progress_notified": state.big_win_progress_notified,
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -388,6 +391,33 @@ def _float_env(name: str, default: float) -> float:
         return default
 
 
+def _handle_big_win_in_progress(payload: dict[str, Any]) -> None:
+    threshold = _float_env("TELEGRAM_BIG_WIN_IN_PROGRESS_PCT", 20.0)
+    pnl_pct = float(payload.get("pnl_pct", 0))
+    if pnl_pct < threshold:
+        return
+    token_id = str(payload.get("token_id", ""))
+    if not token_id:
+        return
+    path = _default_state_path()
+    state = _load_state(path)
+    now = time.time()
+    dedup_window = _dedupe_window_sec() * 3
+    last_notified = state.big_win_progress_notified.get(token_id, 0.0)
+    if now - last_notified < dedup_window:
+        return
+    title = str(payload.get("market_title", ""))
+    bid = float(payload.get("bid", 0))
+    title_str = f" on *{_md_escape(title)}*" if title else ""
+    text = (
+        f"\U0001f4c8 *BIG WIN IN PROGRESS* {_md_escape(f'+{pnl_pct:.1f}%')}{title_str}\n"
+        f"Bid: {_md_escape(f'{bid:.3f}')}"
+    )
+    if _post(text):
+        state.big_win_progress_notified[token_id] = now
+        _save_state(path, state)
+
+
 def _handle_big_win(payload: dict[str, Any]) -> None:
     threshold = _float_env("TELEGRAM_BIG_WIN_USD", 10.0)
     pnl = float(payload.get("pnl_usd", 0))
@@ -497,6 +527,8 @@ def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
         return
     if kind == "big_win":
         _handle_big_win(payload)
+    elif kind == "big_win_in_progress":
+        _handle_big_win_in_progress(payload)
     elif kind == "big_loss":
         _handle_big_loss(payload)
     elif kind == "drawdown":

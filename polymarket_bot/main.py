@@ -2261,7 +2261,14 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
             position["status"] = "closed"
             position["closed_at"] = utc_now().isoformat()
             position["sync_closed"] = True
-            report.append({"action": "closed_stale_local_position", "token_id": token_id})
+            total_pnl = round(
+                float(position.get("unrealized_pnl") or 0.0)
+                + float(position.get("realized_pnl") or 0.0),
+                2,
+            )
+            position["realized_pnl"] = total_pnl
+            _append_trade_journal(settings, position, "live_sync_closed")
+            report.append({"action": "closed_stale_local_position", "token_id": token_id, "total_pnl": total_pnl})
 
     to_notify: list[dict[str, object]] = []
     for token_id, item in active_by_token.items():
@@ -2470,6 +2477,25 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                     }
                 )
             notifications.notify_portfolio_update(_portfolio_update_snapshot(settings))
+            # Check open positions for BIG WIN IN PROGRESS
+            portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+            for position in portfolio.positions:
+                if position.get("status") != "open":
+                    continue
+                entry_price = float(position.get("entry_price", 0.0))
+                current_price = float(position.get("current_price", 0.0))
+                if entry_price <= 0 or current_price <= 0:
+                    continue
+                pnl_pct = (current_price - entry_price) / entry_price * 100.0
+                notifications.notify_threshold(
+                    "big_win_in_progress",
+                    {
+                        "pnl_pct": pnl_pct,
+                        "token_id": str(position.get("token_id", "")),
+                        "market_title": str(position.get("question", "")),
+                        "bid": current_price,
+                    },
+                )
         except Exception as exc:
             print(f"[notif] post-tick hook failed: {exc}", file=sys.stderr, flush=True)
 
