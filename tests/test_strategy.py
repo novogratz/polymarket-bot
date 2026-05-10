@@ -636,6 +636,26 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(plan["reason"], "max_hold_time_reached")
         self.assertEqual(plan["shares"], 100.0)
 
+    def test_sell_plan_accepts_naive_opened_at_as_utc(self):
+        old_open = (utc_now() - timedelta(hours=30)).replace(tzinfo=None).isoformat()
+        position = {
+            "shares": 100.0,
+            "initial_shares": 100.0,
+            "peak_pnl_pct": 0.10,
+            "sell_tiers_hit": [],
+            "exits": [],
+            "opened_at": old_open,
+        }
+        settings = Settings(
+            smart_max_hold_hours=24,
+            smart_take_profit_tiers="1.0:0.50",
+            smart_stop_loss_pct=0.0,
+            smart_trailing_stop_arm_pct=0.0,
+        )
+        plan = _sell_plan(position, 0.05, settings)
+        self.assertEqual(plan["reason"], "max_hold_time_reached")
+        self.assertEqual(plan["shares"], 100.0)
+
     def test_sell_plan_max_hold_disabled_by_default(self):
         old_open = (utc_now() - timedelta(hours=30)).isoformat()
         position = {
