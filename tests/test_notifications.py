@@ -300,6 +300,42 @@ class TestTradeFormats(NotificationsBaseTest):
                             "current_price": 0.50,
                             "unrealized_pnl": -1.67,
                             "strategy": "smart_money",
+                        },
+                        {
+                            "question": "Small position 3",
+                            "outcome": "Yes",
+                            "stake": 9.0,
+                            "entry_price": 0.50,
+                            "current_price": 0.51,
+                            "unrealized_pnl": 0.18,
+                            "strategy": "smart_money",
+                        },
+                        {
+                            "question": "Small position 4",
+                            "outcome": "Yes",
+                            "stake": 8.0,
+                            "entry_price": 0.50,
+                            "current_price": 0.51,
+                            "unrealized_pnl": 0.16,
+                            "strategy": "smart_money",
+                        },
+                        {
+                            "question": "Small position 5",
+                            "outcome": "Yes",
+                            "stake": 7.0,
+                            "entry_price": 0.50,
+                            "current_price": 0.51,
+                            "unrealized_pnl": 0.14,
+                            "strategy": "smart_money",
+                        },
+                        {
+                            "question": "Small position 6 hidden",
+                            "outcome": "Yes",
+                            "stake": 6.0,
+                            "entry_price": 0.50,
+                            "current_price": 0.51,
+                            "unrealized_pnl": 0.12,
+                            "strategy": "smart_money",
                         }
                     ],
                 })
@@ -324,6 +360,9 @@ class TestTradeFormats(NotificationsBaseTest):
         self.assertIn("Will big position win?", text)
         self.assertIn("Will BTC be above $100,000?", text)
         self.assertIn("Will ETH be above $4,000?", text)
+        self.assertIn("Small position 5", text)
+        self.assertNotIn("Small position 6 hidden", text)
+        self.assertIn("_… and 1 smaller positions hidden_", text)
         self.assertIn("*Big trades \\> $50*\n\n", text)
         self.assertIn("*Smaller trades*\n\n", text)
 

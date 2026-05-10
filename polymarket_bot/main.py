@@ -763,6 +763,43 @@ def _execute_sell_strategy(
             }
         if plan is None:
             continue
+        planned_shares = float(plan.get("shares") or 0.0)
+        if 0 < planned_shares < settings.min_order_shares:
+            position["sell_blocked_reason"] = "below_minimum_sell_shares"
+            exit_report.append(
+                {
+                    "market_id": position.get("market_id"),
+                    "question": position.get("question"),
+                    "outcome": position.get("outcome"),
+                    "action": "skip_sell",
+                    "reason": "below_minimum_sell_shares",
+                    "shares": round(planned_shares, 6),
+                    "min_order_shares": settings.min_order_shares,
+                    "pnl_pct": round(current_pnl_pct, 4),
+                    "peak_pnl_pct": round(float(position.get("peak_pnl_pct", 0.0)), 4),
+                }
+            )
+            continue
+        executable_shares = min(planned_shares, float(position.get("shares") or 0.0))
+        sell_price = round(max(float(candidate.best_bid or 0.0), float(candidate.tick_size or 0.0)), 3)
+        expected_proceeds = round(executable_shares * sell_price, 2)
+        if 0 < expected_proceeds < settings.smart_min_sell_usd:
+            position["sell_blocked_reason"] = "below_minimum_sell_usd"
+            exit_report.append(
+                {
+                    "market_id": position.get("market_id"),
+                    "question": position.get("question"),
+                    "outcome": position.get("outcome"),
+                    "action": "skip_sell",
+                    "reason": "below_minimum_sell_usd",
+                    "shares": round(executable_shares, 6),
+                    "expected_proceeds": expected_proceeds,
+                    "min_sell_usd": settings.smart_min_sell_usd,
+                    "pnl_pct": round(current_pnl_pct, 4),
+                    "peak_pnl_pct": round(float(position.get("peak_pnl_pct", 0.0)), 4),
+                }
+            )
+            continue
 
         try:
             result = execute_live_sell(
@@ -777,14 +814,18 @@ def _execute_sell_strategy(
         except Exception as exc:
             message = str(exc)
             print(f"⚠️  sell skipped on {position.get('question')}: {type(exc).__name__}: {message}", flush=True)
-            try:
-                notifications.notify_error(
-                    "order_rejected",
-                    f"SELL skipped: {message}"[:500],
-                    dedupe_key=f"order_rejected:{position.get('token_id') or position.get('market_id') or 'unknown'}",
-                )
-            except Exception:
-                pass
+            below_minimum_sell = "below polymarket minimum" in message.lower() or "below minimum" in message.lower()
+            if below_minimum_sell:
+                position["sell_blocked_reason"] = "below_minimum_sell_shares"
+            else:
+                try:
+                    notifications.notify_error(
+                        "order_rejected",
+                        f"SELL skipped: {message}"[:500],
+                        dedupe_key=f"order_rejected:{position.get('token_id') or position.get('market_id') or 'unknown'}",
+                    )
+                except Exception:
+                    pass
             cancelled_ids: list[str] = []
             if "balance is not enough" in message.lower() or "allowance" in message.lower():
                 position["sell_blocked_reason"] = "active_sell_order_pending"

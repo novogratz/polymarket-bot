@@ -591,15 +591,17 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
         section = ["\U0001f4cc *Open book*"]
         added = 0
         groups = [
-            ("*Big trades \\> $50*", [p for p in open_positions if _stake_for_position(p) > 50.0]),
-            ("*Smaller trades*", [p for p in open_positions if _stake_for_position(p) <= 50.0]),
+            ("*Big trades \\> $50*", [p for p in open_positions if _stake_for_position(p) > 50.0], None),
+            ("*Smaller trades*", [p for p in open_positions if _stake_for_position(p) <= 50.0], 5),
         ]
-        for heading, positions in groups:
+        for heading, positions, limit in groups:
             if not positions:
                 continue
+            positions_sorted = sorted(positions, key=_stake_for_position, reverse=True)
+            positions_to_show = positions_sorted[:limit] if limit is not None else positions_sorted
             section.append("")
             section.append(heading)
-            for position in sorted(positions, key=_stake_for_position, reverse=True):
+            for position in positions_to_show:
                 line = _line_for_open_position(position)
                 if current_len + len(line) > 3900:
                     section.append("")
@@ -609,6 +611,10 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
                 section.append(line)
                 current_len += len(line) + 2
                 added += 1
+            hidden = len(positions_sorted) - len(positions_to_show)
+            if hidden > 0:
+                section.append("")
+                section.append(f"_… and {hidden} smaller positions hidden_")
             if added >= len(open_positions):
                 break
         sections.append(section)

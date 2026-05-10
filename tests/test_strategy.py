@@ -22,6 +22,7 @@ from polymarket_bot.strategy import rank_markets, stake_for_candidate
 from polymarket_bot.trading import _is_filled_buy_response, execute_live_sell, execute_live_trade
 from polymarket_bot.main import (
     _dynamic_max_trade,
+    _execute_sell_strategy,
     _is_unfilled_market_order_error,
     _max_trade_for_signal,
     _noise_fallback_candidates,
@@ -615,6 +616,102 @@ class StrategyTests(unittest.TestCase):
         )
 
         self.assertIsNone(candidate)
+
+    def test_sell_strategy_skips_below_minimum_dust_without_order(self):
+        class TripwireClient:
+            def place_live_order(self, **_kwargs):
+                raise AssertionError("dust sell should not reach trading client")
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.99,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.99,
+            best_ask=1.0,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        position = {
+            "status": "open",
+            "live": True,
+            "market_id": "1",
+            "outcome": "Yes",
+            "token_id": "token",
+            "entry_price": 0.40,
+            "stake": 0.30,
+            "shares": 0.75,
+            "initial_shares": 0.75,
+        }
+        portfolio = Portfolio(cash=0.0, positions=[position])
+
+        report = _execute_sell_strategy(
+            TripwireClient(),
+            Settings(min_order_shares=5.0, smart_resolved_exit_threshold=0.98),
+            portfolio,
+            [candidate],
+        )
+
+        self.assertEqual(report[0]["action"], "skip_sell")
+        self.assertEqual(report[0]["reason"], "below_minimum_sell_shares")
+        self.assertEqual(position["sell_blocked_reason"], "below_minimum_sell_shares")
+
+    def test_sell_strategy_skips_below_minimum_proceeds_without_alert(self):
+        class TripwireClient:
+            def place_live_order(self, **_kwargs):
+                raise AssertionError("dust sell should not reach trading client")
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.18,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.18,
+            best_ask=0.19,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        position = {
+            "status": "open",
+            "live": True,
+            "market_id": "1",
+            "outcome": "Yes",
+            "token_id": "token",
+            "entry_price": 0.17,
+            "stake": 0.50,
+            "shares": 5.0,
+            "initial_shares": 5.0,
+        }
+        portfolio = Portfolio(cash=0.0, positions=[position])
+
+        report = _execute_sell_strategy(
+            TripwireClient(),
+            Settings(min_order_shares=5.0, smart_min_sell_usd=1.0, smart_resolved_exit_threshold=0.0),
+            portfolio,
+            [candidate],
+            cohort_exit_tokens={"token": "cohort_sold"},
+        )
+
+        self.assertEqual(report[0]["action"], "skip_sell")
+        self.assertEqual(report[0]["reason"], "below_minimum_sell_usd")
+        self.assertEqual(report[0]["expected_proceeds"], 0.9)
+        self.assertEqual(position["sell_blocked_reason"], "below_minimum_sell_usd")
 
     def test_sell_plan_max_hold_time_force_exits_stale_positions(self):
         old_open = (utc_now() - timedelta(hours=30)).isoformat()
