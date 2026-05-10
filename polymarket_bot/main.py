@@ -1418,7 +1418,7 @@ def _dynamic_max_trade(
     remaining_slots: int,
 ) -> float:
     base = _max_trade_for_signal(settings, signal, strategy, available_cash=portfolio.cash)
-    if settings.smart_cash_floor_pct <= 0 or settings.smart_cash_floor_pct >= 1:
+    if settings.smart_cash_floor_pct >= 1:
         return base
     summary = portfolio.summary()
     cash = float(summary.get("cash") or 0.0)
@@ -1427,7 +1427,7 @@ def _dynamic_max_trade(
     total_equity = cash + invested + unrealized
     if total_equity <= 0:
         return base
-    target_deployed = total_equity * (1.0 - settings.smart_cash_floor_pct)
+    target_deployed = total_equity * (1.0 - max(0.0, settings.smart_cash_floor_pct))
     remaining_to_deploy = max(0.0, target_deployed - invested)
     if remaining_to_deploy <= 0 or remaining_slots <= 0:
         return base
@@ -1441,7 +1441,7 @@ def _dynamic_max_trade(
         ceiling = max(ceiling, total_equity * settings.smart_max_position_ceiling_pct)
     if ceiling > 0:
         dynamic = min(dynamic, ceiling)
-    cap = _absolute_trade_cap(settings, strategy)
+    cap = _trade_cap_for_signal(settings, signal, strategy, total_equity)
     if cap > 0:
         dynamic = min(dynamic, cap)
     dynamic = min(dynamic, cash)
@@ -1455,6 +1455,37 @@ def _absolute_trade_cap(settings: Settings, strategy: str) -> float:
     return min(caps) if caps else 0.0
 
 
+def _trade_cap_for_signal(
+    settings: Settings,
+    signal: dict[str, object],
+    strategy: str,
+    total_equity: float,
+) -> float:
+    cap = _absolute_trade_cap(settings, strategy)
+    if (
+        strategy.startswith("smart_money")
+        and _is_high_conviction_smart_signal(signal)
+        and settings.smart_high_conviction_balance_fraction > 0
+        and total_equity > 0
+    ):
+        high_cap = total_equity * settings.smart_high_conviction_balance_fraction
+        cap = max(cap, high_cap) if cap > 0 else high_cap
+    return cap
+
+
+def _is_high_conviction_smart_signal(signal: dict[str, object]) -> bool:
+    metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
+    consensus = float(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0.0)
+    copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
+    total_trader_pnl = float(metrics.get("total_trader_pnl") or signal.get("total_trader_pnl") or 0.0)
+    value_discount_pct = float(metrics.get("value_discount_pct") or 0.0)
+    if consensus >= 5 and copied_usdc >= 5000:
+        return True
+    if consensus >= 4 and copied_usdc >= 10000 and value_discount_pct >= -0.05:
+        return True
+    return consensus >= 3 and copied_usdc >= 15000 and total_trader_pnl >= 250000 and value_discount_pct >= 0
+
+
 def _max_trade_for_signal(
     settings: Settings,
     signal: dict[str, object],
@@ -1465,7 +1496,8 @@ def _max_trade_for_signal(
     metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
     consensus = int(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0)
     copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
-    absolute_cap = _absolute_trade_cap(settings, strategy)
+    total_equity = available_cash or 0.0
+    absolute_cap = _trade_cap_for_signal(settings, signal, strategy, total_equity)
 
     if (
         settings.smart_position_pct > 0

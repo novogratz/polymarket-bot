@@ -210,12 +210,12 @@ class StrategyTests(unittest.TestCase):
             accepts_orders=True,
         )
         signal = {
-            "consensus": 4,
-            "copied_usdc": 2000,
+            "consensus": 5,
+            "copied_usdc": 10000,
             "avg_copy_price": 0.5,
             "selection_metrics": {
-                "profitable_wallet_count": 4,
-                "copied_usdc": 2000,
+                "profitable_wallet_count": 5,
+                "copied_usdc": 10000,
                 "avg_copy_price": 0.5,
                 "value_score": 0,
                 "value_discount_pct": 0,
@@ -236,8 +236,8 @@ class StrategyTests(unittest.TestCase):
             signal=signal,
         )
 
-        self.assertEqual(result.order["amount"], 10.0)
-        self.assertEqual(portfolio.positions[0]["stake"], 10.0)
+        self.assertEqual(result.order["amount"], 50.0)
+        self.assertEqual(portfolio.positions[0]["stake"], 50.0)
 
     def test_live_trade_rejects_second_position_in_same_sports_event(self):
         class FakeClient:
@@ -2220,7 +2220,7 @@ class StrategyTests(unittest.TestCase):
 
         self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=2), 96.0)
 
-    def test_percentage_sizing_never_exceeds_absolute_trade_cap(self):
+    def test_percentage_sizing_never_exceeds_absolute_trade_cap_for_normal_signal(self):
         settings = Settings(
             smart_position_pct=0.50,
             max_position_usd=25.0,
@@ -2229,13 +2229,32 @@ class StrategyTests(unittest.TestCase):
             smart_max_position_ceiling_pct=0.80,
         )
         signal = {
-            "consensus": 5,
-            "selection_metrics": {"profitable_wallet_count": 5, "copied_usdc": 10000},
+            "consensus": 4,
+            "selection_metrics": {"profitable_wallet_count": 4, "copied_usdc": 2000},
         }
         portfolio = Portfolio(cash=250.0, positions=[])
 
         self.assertEqual(_max_trade_for_signal(settings, signal, "smart_money", available_cash=250.0), 25.0)
         self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=1), 25.0)
+
+    def test_high_conviction_dynamic_sizing_can_exceed_normal_trade_cap(self):
+        settings = Settings(
+            smart_position_pct=0.50,
+            smart_high_conviction_balance_fraction=0.60,
+            max_position_usd=25.0,
+            smart_max_trade_usd=25.0,
+            smart_max_position_ceiling_usd=150.0,
+            smart_max_position_ceiling_pct=0.80,
+            smart_cash_floor_pct=0.0,
+        )
+        signal = {
+            "consensus": 5,
+            "selection_metrics": {"profitable_wallet_count": 5, "copied_usdc": 10000},
+        }
+        portfolio = Portfolio(cash=250.0, positions=[])
+
+        self.assertEqual(_max_trade_for_signal(settings, signal, "smart_money", available_cash=250.0), 150.0)
+        self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=1), 150.0)
 
 
 class MarketCategoryTests(unittest.TestCase):

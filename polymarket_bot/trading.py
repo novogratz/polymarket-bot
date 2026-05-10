@@ -509,7 +509,10 @@ def execute_live_trade(
             maximum = min(maximum, live_balance)
         absolute_caps = [cap for cap in (settings.max_position_usd, settings.smart_max_trade_usd) if cap > 0]
         if absolute_caps:
-            maximum = min(maximum, min(absolute_caps))
+            absolute_cap = min(absolute_caps)
+            if _is_high_conviction_signal(signal) and settings.smart_high_conviction_balance_fraction > 0:
+                absolute_cap = max(absolute_cap, live_balance * settings.smart_high_conviction_balance_fraction)
+            maximum = min(maximum, absolute_cap)
     
     # Use the needed amount, but capped by available balance and max per trade
     stake = min(needed_usd, live_balance, maximum)
@@ -664,13 +667,13 @@ def _is_high_conviction_signal(signal: dict[str, Any]) -> bool:
     total_trader_pnl = float(metrics.get("total_trader_pnl") or signal.get("total_trader_pnl") or 0.0)
     value_score = float(metrics.get("value_score") or 0.0)
     value_discount_pct = float(metrics.get("value_discount_pct") or 0.0)
-    if consensus >= 4 and copied_usdc >= 1000:
+    if consensus >= 5 and copied_usdc >= 5000:
         return True
-    if consensus >= 3 and copied_usdc >= 5000:
+    if consensus >= 4 and copied_usdc >= 10000 and value_discount_pct >= -0.05:
         return True
-    if consensus >= 2 and copied_usdc >= 1000 and total_trader_pnl >= 250000 and value_discount_pct >= -0.10:
+    if consensus >= 3 and copied_usdc >= 15000 and total_trader_pnl >= 250000 and value_discount_pct >= 0:
         return True
-    return consensus >= 2 and copied_usdc >= 250 and value_score >= 10 and value_discount_pct >= 0
+    return consensus >= 3 and copied_usdc >= 5000 and value_score >= 10 and value_discount_pct >= 0
 
 
 def execute_live_sell(
