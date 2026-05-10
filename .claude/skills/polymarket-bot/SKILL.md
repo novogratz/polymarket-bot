@@ -10,7 +10,7 @@ Use this skill when working in this repository: strategy code, filters, live com
 ## Guardrails (non-negotiable)
 
 - Never print or commit `.env` values, private keys, API secrets, or passphrases.
-- Live trading stays gated by `POLYMARKET_ENABLE_LIVE_TRADING=1`.
+- Live trading stays gated by `POLYMARKET_ENABLE_LIVE_TRADING=1`. The only sanctioned bypass is `POLYMARKET_DRY_RUN=1`, which short-circuits SDK BUY/SELL calls and writes to `data/dry_run_state.json` + `data/dry_run_journal.jsonl`.
 - No random trade entry beyond the bounded `noise_fallback` ($10/trade, 4/tick).
 - Any new live strategy must define explicit entry criteria, spread filters, sizing caps, and duplicate-position checks.
 - Update tests when strategy behavior changes.
@@ -20,16 +20,21 @@ Use this skill when working in this repository: strategy code, filters, live com
 ## Useful commands
 
 ```bash
-python3 -B -m unittest discover -s tests
-python3 -B -m polymarket_bot.main dashboard
-python3 -B -m polymarket_bot.main journal-stats
-python3 -B -m polymarket_bot.main tune-strategy
-POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
+uv run python -B -m unittest discover -s tests
+uv run pmbot --version
+uv run pmbot status                                  # snapshot rapide (mode, équité, positions, journal)
+uv run pmbot positions                               # table CLI des positions ouvertes, triées par PnL desc
+uv run pmbot dashboard
+uv run pmbot doctor
+uv run pmbot journal-stats
+uv run pmbot tune-strategy
+POLYMARKET_ENABLE_LIVE_TRADING=1 uv run pmbot auto-loop
+POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop          # simulated, no SDK calls, separate ledger
 ```
 
 Canonical live config: `bash scripts/run_live_70.sh` (~$90 bankroll).
 
-CLI surface: 6 commands (`auto-loop`, `dashboard`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`). Everything else has been removed.
+CLI surface: 9 Typer commands (`auto-loop`, `dashboard`, `doctor`, `status`, `positions`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`) plus the global `--version` / `-V` option. The Typer app is exposed as the `pmbot` console script via `[project.scripts]`; `python -m polymarket_bot.main <cmd>` continues to work as a fallback. `status` and `positions` are read-only — no SDK calls, no network — and automatically pick up the dry-run ledger when `POLYMARKET_DRY_RUN=1` is set. ANSI colors auto-disable when stdout is not a TTY (or when `NO_COLOR=1`); set `POLYMARKET_FORCE_COLOR=1` to keep them through pipes.
 
 ## Architecture
 
@@ -85,7 +90,7 @@ Hierarchy to preserve in any strategy edit: **consensus first, execution quality
 1. Read the relevant code (`smart_money.py`, `main.py`, `auto_tuner.py`).
 2. Modify while preserving the hierarchy above.
 3. Update tests in `tests/test_strategy.py`.
-4. Run `python3 -B -m unittest discover -s tests`.
+4. Run `uv run python -B -m unittest discover -s tests`.
 5. If the change affects the live command, update `scripts/run_live_70.sh`.
 6. Update `CHANGELOG.md`, `README.md`, `CLAUDE.md`, `CODEX.md`, and the SKILL files when user-visible.
 7. Commit and push.

@@ -103,4 +103,4 @@ export POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD=0.97
 
 export POLYMARKET_AUTO_INTERVAL_SECONDS=10
 
-exec python3 -B -m polymarket_bot.main auto-loop
+exec uv run pmbot auto-loop

@@ -6,6 +6,11 @@ Modules read from a ``Settings`` instance rather than reading the environment
 directly, so tests can construct a custom ``Settings`` to exercise specific
 code paths and the auto-tuner can produce a modified copy via
 ``dataclasses.replace``.
+
+Tests set ``POLYMARKET_SKIP_DOTENV=1`` before importing this module so the
+user's ``.env`` values do not leak into ``Settings`` field defaults — those
+defaults are evaluated at class-definition time and would otherwise carry the
+user's runtime overrides into the test fixtures.
 """
 
 from __future__ import annotations
@@ -17,7 +22,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+if not os.getenv("POLYMARKET_SKIP_DOTENV"):
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
 def _float_env(name: str, default: float) -> float:
@@ -48,6 +54,8 @@ class Settings:
     state_path: Path = Path(os.getenv("POLYMARKET_STATE_PATH", "data/paper_state.json"))
     trade_journal_path: Path = Path(os.getenv("POLYMARKET_TRADE_JOURNAL_PATH", "data/trade_journal.jsonl"))
     strategy_overrides_path: Path = Path(os.getenv("POLYMARKET_STRATEGY_OVERRIDES_PATH", "data/strategy_overrides.json"))
+    tick_state_path: Path = Path(os.getenv("POLYMARKET_TICK_STATE_PATH", "data/last_tick.json"))
+    tick_history_path: Path = Path(os.getenv("POLYMARKET_TICK_HISTORY_PATH", "data/tick_history.jsonl"))
     smart_auto_tune_enabled: bool = _bool_env("POLYMARKET_SMART_AUTO_TUNE_ENABLED", True)
     smart_auto_tune_min_trades: int = _int_env("POLYMARKET_SMART_AUTO_TUNE_MIN_TRADES", 30)
     scan_limit: int = _int_env("POLYMARKET_SCAN_LIMIT", 200)
@@ -69,6 +77,7 @@ class Settings:
     auto_interval_seconds: int = _int_env("POLYMARKET_AUTO_INTERVAL_SECONDS", 10)
     auto_max_ticks: int = _int_env("POLYMARKET_AUTO_MAX_TICKS", 0)
     data_api_base_url: str = os.getenv("POLYMARKET_DATA_API_URL", "https://data-api.polymarket.com")
+    polygon_rpc_url: str = os.getenv("POLYMARKET_POLYGON_RPC_URL", "https://polygon-bor-rpc.publicnode.com")
     smart_categories: str = os.getenv(
         "POLYMARKET_SMART_CATEGORIES",
         "OVERALL,FINANCE,ECONOMICS,TECH,POLITICS,SPORTS,CULTURE,WEATHER",
@@ -182,3 +191,27 @@ class Settings:
         os.getenv("RELAYER_API_KEY_ADDRESS") or os.getenv("POLYMARKET_RELAYER_API_KEY_ADDRESS") or None
     )
     live_trading_enabled: bool = os.getenv("POLYMARKET_ENABLE_LIVE_TRADING", "").lower() in {"1", "true", "yes"}
+    dry_run: bool = _bool_env("POLYMARKET_DRY_RUN", False)
+    quiet: bool = _bool_env("POLYMARKET_QUIET", False)
+
+    def __post_init__(self) -> None:
+        """Swap ledger, journal, overrides, and tick-state paths to dry-run files.
+
+        When POLYMARKET_DRY_RUN=1 is set, the bot reads/writes simulated state
+        to a parallel set of files so the live paper-trading ledger, journal,
+        auto-tuner overrides, and tick-state stream are never polluted. Each
+        swap fires only when the current value still matches the live default;
+        users who set a custom path via env keep their explicit choice.
+        """
+        if not self.dry_run:
+            return
+        swaps = (
+            ("state_path", "data/paper_state.json", "data/dry_run_state.json"),
+            ("trade_journal_path", "data/trade_journal.jsonl", "data/dry_run_journal.jsonl"),
+            ("strategy_overrides_path", "data/strategy_overrides.json", "data/dry_run_strategy_overrides.json"),
+            ("tick_state_path", "data/last_tick.json", "data/dry_run_last_tick.json"),
+            ("tick_history_path", "data/tick_history.jsonl", "data/dry_run_tick_history.jsonl"),
+        )
+        for attr, live_default, dry_run_value in swaps:
+            if str(getattr(self, attr)) == live_default:
+                object.__setattr__(self, attr, Path(dry_run_value))

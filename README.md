@@ -43,12 +43,70 @@ Tuned for a ~$90 bankroll. Runs in the foreground; `Ctrl+C` to stop.
 ## CLI commands
 
 ```bash
-python3 -B -m polymarket_bot.main auto-loop           # live loop (what the script invokes)
-python3 -B -m polymarket_bot.main dashboard           # local dashboard at http://127.0.0.1:8765
-python3 -B -m polymarket_bot.main journal-stats       # aggregate stats from the trade journal
-python3 -B -m polymarket_bot.main tune-strategy       # run the auto-tuner manually
-python3 -B -m polymarket_bot.main bootstrap-creds     # derive CLOB credentials from the wallet
-python3 -B -m polymarket_bot.main reset-ledger        # rebuild the local ledger from live state
+uv run pmbot --version           # print pmbot version and exit
+uv run pmbot status              # quick snapshot: mode, equity, open positions, journal
+uv run pmbot positions           # CLI table of open positions, sorted by PnL desc
+uv run pmbot auto-loop           # live loop (what the script invokes)
+uv run pmbot dashboard           # local dashboard at http://127.0.0.1:8765
+uv run pmbot doctor              # read-only health check (.env, auth, endpoints, local state)
+uv run pmbot journal-stats       # aggregate stats from the trade journal
+uv run pmbot tune-strategy       # run the auto-tuner manually
+uv run pmbot bootstrap-creds     # derive CLOB credentials from the wallet
+uv run pmbot reset-ledger        # rebuild the local ledger from live state
+```
+
+The `pmbot` console script is registered via `[project.scripts]` in
+`pyproject.toml`. After `uv tool install -e .` it can be invoked directly as
+`pmbot <command>` from any directory; `python3 -B -m polymarket_bot.main <command>`
+remains supported as a fallback.
+
+`status` and `positions` are read-only and never call the SDK — they only
+read `data/paper_state.json` (or `data/dry_run_state.json` under
+`POLYMARKET_DRY_RUN=1`). Output is colorized when stdout is a TTY; set
+`NO_COLOR=1` to disable ANSI codes, or `POLYMARKET_FORCE_COLOR=1` to keep
+them when piping.
+
+## Dry-run mode
+
+To watch the smart-money loop run end-to-end on real Polymarket data
+without spending any cash, set `POLYMARKET_DRY_RUN=1` instead of
+`POLYMARKET_ENABLE_LIVE_TRADING=1`:
+
+```bash
+POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop
+```
+
+In dry-run mode the bot:
+
+- Bypasses the live-trading guard so the loop starts.
+- Short-circuits every CLOB BUY and SELL — the SDK call is skipped and a
+  `{"success": True, "status": "matched", "dry_run": True}` response is
+  injected so the rest of the pipeline (sizing, ledger writes, exits)
+  runs identically to a real fill.
+- Skips live position sync (the dry-run ledger is the source of truth).
+- Writes state to `data/dry_run_state.json` and trades to
+  `data/dry_run_journal.jsonl` so your real paper-trading ledger and
+  journal are not polluted.
+
+Reset the dry-run ledger with `rm data/dry_run_state.json` and run the
+loop again. `POLYMARKET_DRY_RUN=1 uv run pmbot doctor` prints the swap
+and verdict so you can confirm the simulation is correctly wired.
+
+## Quiet output
+
+Set `POLYMARKET_QUIET=1` to compress each tick to a one-line summary
+(`▶ tick start` plus a readable footer line, with one extra indented
+`→` line per executed BUY / SELL / NOISE / BTC trade — capped at 6,
+then `+N more action(s)`). Quiet mode suppresses the per-leaderboard
+pulls, parallel trade fetch progress, reverse-lookup chatter,
+balance-check banner, and the BUY/SELL JSON response dumps while still
+printing one-line `🚀 BUY` / `💸 SELL` records, errors, and warnings.
+The full tick payload is no longer printed in quiet mode — switch back
+to verbose if you need the raw JSON. Combine with dry-run for a
+minimal simulation feed:
+
+```bash
+POLYMARKET_DRY_RUN=1 POLYMARKET_QUIET=1 uv run pmbot auto-loop
 ```
 
 ## Winning strategy
@@ -150,13 +208,13 @@ The bot reads `data/trade_journal.jsonl` every tick and writes bounded overrides
 To inspect the journal:
 
 ```bash
-python3 -B -m polymarket_bot.main journal-stats
+uv run pmbot journal-stats
 ```
 
 To run the auto-tuner manually (writes the overrides file once):
 
 ```bash
-python3 -B -m polymarket_bot.main tune-strategy
+uv run pmbot tune-strategy
 ```
 
 ## Main environment variables
@@ -268,13 +326,13 @@ Relayer credentials (`RELAYER_API_KEY`, `RELAYER_API_KEY_ADDRESS`) are different
 After the bot has been running for a while:
 
 ```bash
-python3 -B -m polymarket_bot.main journal-stats
+uv run pmbot journal-stats
 ```
 
 Prints global win rate, total PnL, breakdown by category / consensus / strategy / exit reason / entry-price bucket, and tightening suggestions when the sample exceeds 30 trades.
 
 ```bash
-python3 -B -m polymarket_bot.main tune-strategy
+uv run pmbot tune-strategy
 ```
 
 Runs the tuner manually and writes `data/strategy_overrides.json`. The same logic also runs automatically every tick when `POLYMARKET_SMART_AUTO_TUNE_ENABLED=1`.
@@ -282,7 +340,7 @@ Runs the tuner manually and writes `data/strategy_overrides.json`. The same logi
 ## Dashboard
 
 ```bash
-python3 -B -m polymarket_bot.main dashboard
+uv run pmbot dashboard
 ```
 
 Open `http://127.0.0.1:8765`. Refreshes every 5 seconds: bot mode, equity, open positions, recent trades, order IDs, scanner candidates, last-tick rejection reasons.

@@ -12,10 +12,13 @@ from __future__ import annotations
 
 import inspect
 import json
+import sys
+import time
 from importlib import import_module
 from dataclasses import dataclass
 from typing import Any
 
+from . import notifications
 from .config import Settings
 from .models import Candidate
 from .portfolio import Portfolio
@@ -39,6 +42,30 @@ def _load_clob_types():
     raise RuntimeError(
         "py-clob-client SDK is not installed; live balance lookup is unavailable"
     ) from last_error
+
+
+# Polymarket migrated from USDC.e to pUSD on 2026-04-28. py-clob-client <=0.34.6
+# still references the legacy USDC.e contract for balance lookups, so we read
+# pUSD on-chain directly via JSON-RPC as a workaround.
+PUSD_TOKEN_ADDRESS = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
+DEFAULT_POLYGON_RPC_URL = "https://polygon-bor-rpc.publicnode.com"
+
+
+def read_pusd_balance(holder: str, rpc_url: str | None = None, timeout: int = 10) -> float:
+    import requests
+
+    rpc = rpc_url or DEFAULT_POLYGON_RPC_URL
+    addr_padded = holder.lower().replace("0x", "").rjust(64, "0")
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "eth_call",
+        "params": [{"to": PUSD_TOKEN_ADDRESS, "data": "0x70a08231" + addr_padded}, "latest"],
+    }
+    response = requests.post(rpc, json=payload, timeout=timeout).json()
+    if "result" not in response:
+        raise RuntimeError(f"pUSD RPC error: {response.get('error', response)}")
+    return int(response["result"], 16) / 1_000_000
 
 
 @dataclass(frozen=True)
@@ -153,43 +180,44 @@ class TradingSession:
         return self.settings.funder_address or self.legacy_client.wallet_address
 
     def live_available_balance(self) -> float:
-        if self.sdk_client is None:
-            return 0.0
-
         target_wallet = self.wallet_address
-        print(f"🔍 Checking balance for wallet: {target_wallet}")
+        quiet = bool(getattr(self.settings, "quiet", False))
+        if not quiet:
+            print(f"🔍 Checking pUSD balance for wallet: {target_wallet}")
 
+        rpc_url = getattr(self.settings, "polygon_rpc_url", None) or DEFAULT_POLYGON_RPC_URL
         try:
-            asset_type, balance_params = _load_clob_types()
-            balance_info = self.sdk_client.get_balance_allowance(
-                balance_params(asset_type=asset_type.COLLATERAL)
-            )
+            balance = read_pusd_balance(target_wallet, rpc_url=rpc_url)
         except Exception as e:
-            print(f"❌ Balance check failed: {str(e)}")
-            return 0.0
+            print(f"❌ pUSD on-chain balance check failed: {str(e)}")
+            balance = 0.0
 
-        if not isinstance(balance_info, dict):
-            print(f"❌ Balance check returned unexpected type: {type(balance_info)}")
-            return 0.0
+        allowance: float | None = None
+        if self.sdk_client is not None:
+            try:
+                asset_type, balance_params = _load_clob_types()
+                balance_info = self.sdk_client.get_balance_allowance(
+                    balance_params(asset_type=asset_type.COLLATERAL)
+                )
+                if isinstance(balance_info, dict):
+                    allowance = self._normalize_amount(balance_info.get("allowance"))
+                    if allowance is None and isinstance(balance_info.get("allowances"), dict):
+                        allowance_values = [
+                            normalized
+                            for value in balance_info["allowances"].values()
+                            if (normalized := self._normalize_amount(value)) is not None
+                        ]
+                        allowance = max(allowance_values) if allowance_values else None
+            except Exception as e:
+                print(f"⚠️  SDK allowance check skipped: {str(e)}")
 
-        balance = self._normalize_amount(balance_info.get("balance"))
-        allowance = self._normalize_amount(balance_info.get("allowance"))
-        if allowance is None and isinstance(balance_info.get("allowances"), dict):
-            allowance_values = [
-                normalized
-                for value in balance_info["allowances"].values()
-                if (normalized := self._normalize_amount(value)) is not None
-            ]
-            allowance = max(allowance_values) if allowance_values else None
-        
-        print(f"💰 Live Balance: {balance} USDC | Allowance: {allowance} USDC")
-        
-        values = [value for value in (balance, allowance) if value is not None]
-        available = min(values) if values else 0.0
-        if available <= 0.0 and self.settings.assumed_live_balance_usd > 0.0:
+        if not quiet:
+            print(f"💰 Live Balance: {balance} pUSD | Allowance: {allowance} (legacy USDC.e via SDK)")
+
+        if balance <= 0.0 and self.settings.assumed_live_balance_usd > 0.0:
             print(f"⚠️  Using POLYMARKET_ASSUME_LIVE_BALANCE_USD={self.settings.assumed_live_balance_usd}")
             return self.settings.assumed_live_balance_usd
-        return available
+        return balance
 
     def derive_or_create_api_creds(self) -> ApiCreds:
         if self.sdk_client is not None:
@@ -497,25 +525,46 @@ def execute_live_trade(
             f"order size {size} shares is below Polymarket minimum of {settings.min_order_shares} shares"
         )
 
-    print(f"\n🚀 MARKET BUY: {candidate.outcome} on {candidate.question}")
-    print(f"   Stake: ${stake} USDC | Max price guard: {entry_price} | Est. shares: {size}")
-    print(f"   Market: {candidate.url}")
-    if signal:
-        metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
-        print(f"   Why: {signal.get('selection_reason', 'smart-money signal passed filters')}")
+    if settings.quiet:
+        prefix = "[DRY-RUN] " if settings.dry_run else ""
         print(
-            "   Signal: "
-            f"wallets={metrics.get('profitable_wallet_count', signal.get('consensus'))} "
-            f"copied=${metrics.get('copied_usdc', signal.get('copied_usdc'))} "
-            f"avg_copy={metrics.get('avg_copy_price', signal.get('avg_copy_price'))} "
-            f"ask={metrics.get('current_ask', signal.get('best_ask'))} "
-            f"bid={metrics.get('current_bid', signal.get('best_bid'))} "
-            f"spread={metrics.get('spread')} "
-            f"wallet_pnl=${metrics.get('total_trader_pnl', signal.get('total_trader_pnl'))}"
+            f"🚀 {prefix}BUY {candidate.outcome} ${stake} @ {entry_price} | "
+            f"{candidate.question[:60]}"
         )
-    print("   Sending FOK market order...")
-    order, response = client.place_market_order(candidate=candidate, amount=stake, price=entry_price, side="BUY")
-    if isinstance(response, dict) and response.get("success"):
+    else:
+        print(f"\n🚀 MARKET BUY: {candidate.outcome} on {candidate.question}")
+        print(f"   Stake: ${stake} USDC | Max price guard: {entry_price} | Est. shares: {size}")
+        print(f"   Market: {candidate.url}")
+        if signal:
+            metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
+            print(f"   Why: {signal.get('selection_reason', 'smart-money signal passed filters')}")
+            print(
+                "   Signal: "
+                f"wallets={metrics.get('profitable_wallet_count', signal.get('consensus'))} "
+                f"copied=${metrics.get('copied_usdc', signal.get('copied_usdc'))} "
+                f"avg_copy={metrics.get('avg_copy_price', signal.get('avg_copy_price'))} "
+                f"ask={metrics.get('current_ask', signal.get('best_ask'))} "
+                f"bid={metrics.get('current_bid', signal.get('best_bid'))} "
+                f"spread={metrics.get('spread')} "
+                f"wallet_pnl=${metrics.get('total_trader_pnl', signal.get('total_trader_pnl'))}"
+            )
+    if settings.dry_run:
+        if not settings.quiet:
+            print("   [DRY-RUN] Skipping SDK call, simulating matched fill.")
+        order = {"dry_run": True, "side": "BUY", "amount": stake, "price": entry_price}
+        response = {
+            "success": True,
+            "status": "matched",
+            "orderID": f"dry-run-buy-{int(time.time() * 1000)}",
+            "makingAmount": str(stake),
+            "takingAmount": str(size),
+            "dry_run": True,
+        }
+    else:
+        if not settings.quiet:
+            print("   Sending FOK market order...")
+        order, response = client.place_market_order(candidate=candidate, amount=stake, price=entry_price, side="BUY")
+    if isinstance(response, dict) and response.get("success") and not settings.quiet:
         status = str(response.get("status") or "")
         label = "✅ BUY FILLED" if _is_filled_buy_response(response) else "⚠️  BUY NOT FILLED"
         print(
@@ -523,7 +572,8 @@ def execute_live_trade(
             f"status={status} order_id={response.get('orderID')} "
             f"making={response.get('makingAmount')} taking={response.get('takingAmount')}"
         )
-    print(f"📡 BUY API RESPONSE: {json.dumps(response, indent=2)}\n")
+    if not settings.quiet:
+        print(f"📡 BUY API RESPONSE: {json.dumps(response, indent=2)}\n")
 
     order_id = response.get("orderID") if isinstance(response, dict) else None
     if _is_filled_buy_response(response):
@@ -539,6 +589,43 @@ def execute_live_trade(
                 position["strategy"] = strategy
             if signal is not None:
                 position["signal"] = signal
+        try:
+            title = candidate.question or ""
+            signal_payload: dict[str, Any] = {}
+            if isinstance(signal, dict):
+                metrics = (
+                    signal.get("selection_metrics", {})
+                    if isinstance(signal.get("selection_metrics"), dict)
+                    else {}
+                )
+                wallets = (
+                    metrics.get("profitable_wallet_count")
+                    or signal.get("consensus")
+                    or 0
+                )
+                copied = (
+                    metrics.get("copied_usdc")
+                    or signal.get("copied_usdc")
+                    or 0
+                )
+                signal_payload = {
+                    "wallets": int(float(wallets or 0)),
+                    "copied_usdc": float(copied or 0),
+                    "tag": strategy,
+                }
+            elif strategy:
+                signal_payload = {"tag": strategy}
+            market_url = candidate.url or None
+            notifications.notify_trade_buy(
+                market_title=title,
+                token_id=str(candidate.token_id or ""),
+                price=float(entry_price),
+                size_usd=float(stake),
+                signal=signal_payload,
+                market_url=market_url,
+            )
+        except Exception as exc:
+            print(f"[notif] trade_buy hook failed: {exc}", file=sys.stderr, flush=True)
     return LiveTradeResult(order=order, response=response, candidate=candidate)
 
 
@@ -602,12 +689,33 @@ def execute_live_sell(
     if proceeds < settings.smart_min_sell_usd:
         raise ValueError(f"sell proceeds {proceeds} is below minimum ${settings.smart_min_sell_usd}")
 
-    print(
-        f"\n💸 EXECUTING EXIT: SELL {size} shares of '{candidate.outcome}' at {sell_price} "
-        f"on '{candidate.question}' (${proceeds} USDC) reason={reason}"
-    )
-    order, response = client.place_live_order(candidate=candidate, price=sell_price, size=size, side="SELL")
-    print(f"📡 SELL RESPONSE: {json.dumps(response, indent=2)}\n")
+    if settings.quiet:
+        prefix = "[DRY-RUN] " if settings.dry_run else ""
+        print(
+            f"💸 {prefix}SELL {size} '{candidate.outcome}' @ {sell_price} "
+            f"(${proceeds}) reason={reason}"
+        )
+    else:
+        print(
+            f"\n💸 EXECUTING EXIT: SELL {size} shares of '{candidate.outcome}' at {sell_price} "
+            f"on '{candidate.question}' (${proceeds} USDC) reason={reason}"
+        )
+    if settings.dry_run:
+        if not settings.quiet:
+            print("   [DRY-RUN] Skipping SDK call, simulating matched SELL fill.")
+        order = {"dry_run": True, "side": "SELL", "size": size, "price": sell_price}
+        response = {
+            "success": True,
+            "status": "matched",
+            "orderID": f"dry-run-sell-{int(time.time() * 1000)}",
+            "makingAmount": str(size),
+            "takingAmount": str(proceeds),
+            "dry_run": True,
+        }
+    else:
+        order, response = client.place_live_order(candidate=candidate, price=sell_price, size=size, side="SELL")
+    if not settings.quiet:
+        print(f"📡 SELL RESPONSE: {json.dumps(response, indent=2)}\n")
     portfolio.record_live_exit(
         position,
         shares=size,

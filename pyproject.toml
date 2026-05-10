@@ -9,7 +9,7 @@ description = "Polymarket smart-money copy-trading bot with auto-tuner, trade jo
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Benoit Floc'h" }]
-requires-python = ">=3.9"
+requires-python = ">=3.9.10"
 keywords = ["polymarket", "trading", "smart-money", "copy-trading", "prediction-markets"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -27,6 +27,7 @@ dependencies = [
     "eth-account>=0.13.7",
     "python-dotenv>=1.0.1",
     "py-clob-client>=0.21.0",
+    "typer>=0.12",
 ]
 
 [project.optional-dependencies]
@@ -35,7 +36,7 @@ dev = [
 ]
 
 [project.scripts]
-polymarket-bot = "polymarket_bot.main:main"
+pmbot = "polymarket_bot.main:app"
 
 [project.urls]
 Repository = "https://github.com/novogratz/polymarket-bot"

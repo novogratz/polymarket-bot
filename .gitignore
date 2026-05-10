@@ -38,6 +38,11 @@ env/
 # Local runtime state
 data/
 
+# Worktrees and brainstorm session artefacts
+.worktree/
+.superpowers/
+docs/superpowers/
+
 # Editor / IDE
 .vscode/
 .idea/

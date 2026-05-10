@@ -13,13 +13,19 @@ and ``reset-ledger``.
 
 from __future__ import annotations
 
-import argparse
+import datetime as dt
 import json
+import os
+import sys
 import time
 
-from dataclasses import replace
-from datetime import timedelta
+import typer
 
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from . import notifications, tick_state
 from .auto_tuner import apply_overrides, maybe_tune
 from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
 from .config import Settings
@@ -37,6 +43,12 @@ from .smart_money import (
 )
 from .trading import build_client, execute_live_sell, execute_live_trade
 from .strategy import rank_markets
+
+
+def _step(settings: Settings, msg: str = "") -> None:
+    """Print a progress line unless POLYMARKET_QUIET=1 silences intermediate steps."""
+    if not settings.quiet:
+        print(msg, flush=True)
 
 
 def load_candidates(settings: Settings):
@@ -161,7 +173,7 @@ def reset_ledger(settings: Settings) -> dict[str, object]:
             cash = round(live_cash, 2)
             source = "live_clob"
         portfolio.cash = cash
-        if settings.sync_live_positions and settings.funder_address:
+        if settings.sync_live_positions and settings.funder_address and not settings.dry_run:
             _sync_live_positions(settings, portfolio)
     portfolio.save(settings.state_path)
     return {
@@ -249,48 +261,65 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
 
 def smart_money_once(settings: Settings) -> dict[str, object]:
     print("▶  tick start", flush=True)
+    auto_tune_info: dict[str, object] = {
+        "applied": False,
+        "journal_size": 0,
+        "overrides_active": {},
+    }
     if settings.smart_auto_tune_enabled:
         overrides, journal_size = maybe_tune(settings)
+        auto_tune_info["journal_size"] = journal_size
+        auto_tune_info["overrides_active"] = dict(overrides)
         if overrides:
+            auto_tune_info["applied"] = True
             print(
                 f"   auto-tune: {len(overrides)} override(s) from {journal_size} closed trade(s): {overrides}",
                 flush=True,
             )
             settings = apply_overrides(settings, overrides)
-        elif journal_size < settings.smart_auto_tune_min_trades:
+        elif journal_size < settings.smart_auto_tune_min_trades and not settings.quiet:
             print(
                 f"   auto-tune: paused ({journal_size}/{settings.smart_auto_tune_min_trades} closed trades)",
                 flush=True,
             )
-    print("   loading markets...", flush=True)
+    _step(settings, "   loading markets...")
     candidates = load_smart_candidates(settings)
-    print(f"   markets: {len(candidates)} candidates", flush=True)
+    _step(settings, f"   markets: {len(candidates)} candidates")
+    scan_counts = {
+        "strict": 0,
+        "relaxed": 0,
+        "deep": 0,
+        "candidates_total": len(candidates),
+    }
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
-    if settings.sync_live_positions:
-        print("   syncing live positions...", flush=True)
+    if settings.dry_run:
+        _step(settings, "   [DRY-RUN] skipping live-position sync (using simulated ledger only)")
+        sync_report = []
+    elif settings.sync_live_positions:
+        _step(settings, "   syncing live positions...")
         sync_report = _sync_live_positions(settings, portfolio)
-        print(f"   sync actions: {len(sync_report)}", flush=True)
+        _step(settings, f"   sync actions: {len(sync_report)}")
     else:
         sync_report = []
     portfolio.mark_to_market(candidates)
     open_count = portfolio.summary()["open_positions"]
-    print(f"   open positions: {open_count}", flush=True)
+    _step(settings, f"   open positions: {open_count}")
 
     client = build_client(settings)
     pending_report = _cancel_stale_pending_orders(client, settings, portfolio)
     if pending_report:
-        print(f"   pending orders cleared: {len(pending_report)}", flush=True)
+        _step(settings, f"   pending orders cleared: {len(pending_report)}")
     live_open_count = sum(
         1 for p in portfolio.positions if p.get("status") == "open" and p.get("live")
     )
     if settings.smart_cohort_exit_enabled and live_open_count:
-        print(f"   cohort-exit check on {live_open_count} live position(s)...", flush=True)
+        _step(settings, f"   cohort-exit check on {live_open_count} live position(s)...")
     cohort_exit_tokens, whale_exit_report = _detect_cohort_exits(settings, portfolio)
     if cohort_exit_tokens:
-        print(f"   cohort flipped on {len(cohort_exit_tokens)} token(s) -> exit", flush=True)
+        _step(settings, f"   cohort flipped on {len(cohort_exit_tokens)} token(s) -> exit")
 
     require_saved_api_creds(settings)
-    print("   running sell strategy...", flush=True)
+    _step(settings, "   running sell strategy...")
     exit_report = _execute_sell_strategy(
         client,
         settings,
@@ -300,14 +329,14 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     )
     sells = sum(1 for e in exit_report if e.get("action") == "sell")
     if sells:
-        print(f"   sells executed: {sells}", flush=True)
+        _step(settings, f"   sells executed: {sells}")
 
     try:
         live_cash = client.live_available_balance()
         portfolio.cash = round(live_cash, 2)
-        print(f"   live cash: ${portfolio.cash:.2f}", flush=True)
+        _step(settings, f"   live cash: ${portfolio.cash:.2f}")
     except Exception as exc:
-        print(f"   live cash refresh failed: {type(exc).__name__}: {exc}", flush=True)
+        print(f"   live cash refresh failed: {type(exc).__name__}: {exc}")
 
     # 2. CATEGORY DIVERSIFICATION: Count open categories
     open_categories: dict[str, int] = {}
@@ -333,7 +362,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         and not portfolio.has_open_event_position(candidate)
     ]
 
-    print(f"   smart-money scan over {len(eligible_candidates)} eligible candidate(s)...", flush=True)
+    _step(settings, f"   smart-money scan over {len(eligible_candidates)} eligible candidate(s)...")
     smart_data = fetch_smart_money_data(settings)
 
     if settings.smart_reverse_lookup_enabled:
@@ -363,10 +392,11 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 existing_tokens_eligible.add(extra.token_id)
                 added += 1
             if added:
-                print(f"   eligible after reverse-lookup: {len(eligible_candidates)} (+{added})", flush=True)
+                _step(settings, f"   eligible after reverse-lookup: {len(eligible_candidates)} (+{added})")
 
     report = analyze_smart_money_with_data(eligible_candidates, settings, smart_data)
-    print(f"   strict scan: {len(report.opportunities)} opportunity(ies)", flush=True)
+    _step(settings, f"   strict scan: {len(report.opportunities)} opportunity(ies)")
+    scan_counts["strict"] = len(report.opportunities)
     signal = report.selected
     strategy = "smart_money"
     opportunities = list(report.opportunities)
@@ -380,7 +410,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             smart_min_consensus=max(2, settings.smart_fallback_consensus),
         )
         fallback_report = analyze_smart_money_with_data(eligible_candidates, fallback_settings, smart_data)
-        print(f"   relaxed scan: {len(fallback_report.opportunities)} opportunity(ies)", flush=True)
+        _step(settings, f"   relaxed scan: {len(fallback_report.opportunities)} opportunity(ies)")
+        scan_counts["relaxed"] = len(fallback_report.opportunities)
         seen_tokens = {opp.candidate.token_id for opp in opportunities if opp.candidate.token_id}
         for opp in fallback_report.opportunities:
             token_id = opp.candidate.token_id
@@ -413,7 +444,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 ),
             )
             deep_report = analyze_smart_money_with_data(eligible_candidates, deep_settings, smart_data)
-            print(f"   deep fallback: {len(deep_report.opportunities)} opportunity(ies)", flush=True)
+            _step(settings, f"   deep fallback: {len(deep_report.opportunities)} opportunity(ies)")
+            scan_counts["deep"] = len(deep_report.opportunities)
             for opp in deep_report.opportunities:
                 token_id = opp.candidate.token_id
                 if token_id and token_id in seen_tokens:
@@ -448,6 +480,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 "pending_orders": pending_report,
                 "category_summary": open_categories,
                 "scan_report": report.to_dict(),
+                "scan_counts": scan_counts,
                 "summary": portfolio.summary(),
             }
 
@@ -460,6 +493,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
+                        "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
                         "reason": "duplicate_open_market",
                         "selection_reason": opportunity.to_dict()["selection_reason"],
@@ -470,6 +504,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
+                        "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
                         "event_slug": opportunity.candidate.event_slug,
                         "reason": "duplicate_open_sports_event",
@@ -487,6 +522,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
+                        "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
                         "reason": "sports_position_cap_reached",
                         "category": category,
@@ -526,6 +562,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     rejected_signals.append(
                         {
                             "market_id": opportunity.candidate.market_id,
+                            "question": opportunity.candidate.question,
                             "outcome": opportunity.candidate.outcome,
                             "reason": str(e),
                         }
@@ -536,6 +573,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     rejected_signals.append(
                         {
                             "market_id": opportunity.candidate.market_id,
+                            "question": opportunity.candidate.question,
                             "outcome": opportunity.candidate.outcome,
                             "reason": str(e),
                         }
@@ -552,6 +590,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     rejected_signals.append(
                         {
                             "market_id": opportunity.candidate.market_id,
+                            "question": opportunity.candidate.question,
                             "outcome": opportunity.candidate.outcome,
                             "reason": str(e),
                         }
@@ -560,6 +599,14 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 if _is_funds_error(str(e)):
                     stop_reason = str(e)
                     break
+                try:
+                    notifications.notify_error(
+                        "order_rejected",
+                        str(e)[:500],
+                        dedupe_key=f"order_rejected:{opportunity.candidate.token_id}",
+                    )
+                except Exception:
+                    pass
                 raise
 
     noise_trades: list[dict[str, object]] = []
@@ -588,6 +635,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     continue
                 try:
                     noise_signal = {
+                        "question": candidate.question,
                         "category": market_category(candidate.question, candidate.slug),
                         "selection_reason": "noise_fallback: no smart-money signal; small bet on top-scored candidate",
                         "selection_metrics": {
@@ -618,12 +666,12 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 except ValueError as exc:
                     if _is_funds_error(str(exc)):
                         break
-                    print(f"   noise fallback skipped: {exc}", flush=True)
+                    _step(settings, f"   noise fallback skipped: {exc}")
                     continue
                 except Exception as exc:
                     if _is_unfilled_market_order_error(str(exc)) or _is_funds_error(str(exc)):
                         continue
-                    print(f"   noise fallback error: {type(exc).__name__}: {exc}", flush=True)
+                    print(f"   noise fallback error: {type(exc).__name__}: {exc}")
                     continue
 
     portfolio.save(settings.state_path)
@@ -647,14 +695,16 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "category_summary": open_categories,
         "rejected_signals": rejected_signals,
         "scan_report": report.to_dict(),
+        "scan_counts": scan_counts,
         "summary": portfolio.summary(),
+        "auto_tune_info": auto_tune_info,
     }
     if settings.btc_edge_integrated:
         try:
-            print("   running btc-edge tick...", flush=True)
+            _step(settings, "   running btc-edge tick...")
             response["btc_edge"] = btc_edge_once(settings)
         except Exception as exc:
-            print(f"   btc-edge tick failed: {type(exc).__name__}: {exc}", flush=True)
+            print(f"   btc-edge tick failed: {type(exc).__name__}: {exc}")
             response["btc_edge"] = {"error": f"{type(exc).__name__}: {exc}"}
     return response
 
@@ -720,6 +770,14 @@ def _execute_sell_strategy(
         except Exception as exc:
             message = str(exc)
             print(f"⚠️  sell skipped on {position.get('question')}: {type(exc).__name__}: {message}", flush=True)
+            try:
+                notifications.notify_error(
+                    "order_rejected",
+                    f"SELL skipped: {message}"[:500],
+                    dedupe_key=f"order_rejected:{position.get('token_id') or position.get('market_id') or 'unknown'}",
+                )
+            except Exception:
+                pass
             cancelled_ids: list[str] = []
             if "balance is not enough" in message.lower() or "allowance" in message.lower():
                 position["sell_blocked_reason"] = "active_sell_order_pending"
@@ -741,6 +799,7 @@ def _execute_sell_strategy(
             exit_report.append(
                 {
                     "market_id": position.get("market_id"),
+                    "question": position.get("question"),
                     "outcome": position.get("outcome"),
                     "action": "skip_sell",
                     "reason": f"{type(exc).__name__}: {message}",
@@ -759,7 +818,9 @@ def _execute_sell_strategy(
         exit_report.append(
             {
                 "market_id": position.get("market_id"),
+                "question": position.get("question"),
                 "outcome": position.get("outcome"),
+                "question": position.get("question"),
                 "action": "sell",
                 "reason": plan["reason"],
                 "pnl_pct": round(current_pnl_pct, 4),
@@ -876,18 +937,19 @@ def _reverse_lookup_smart_money_markets(
     top_tokens = sorted(flow_by_token.items(), key=lambda kv: kv[1], reverse=True)[
         : max(1, settings.smart_reverse_lookup_max_tokens)
     ]
-    print(
-        f"   reverse-lookup: fetching markets for {len(top_tokens)} smart-money token(s) not in scan...",
-        flush=True,
-    )
+    if not settings.quiet:
+        print(
+            f"   reverse-lookup: fetching markets for {len(top_tokens)} smart-money token(s) not in scan...",
+            flush=True,
+        )
     gamma = GammaClient(settings.gamma_base_url)
     try:
         markets = gamma.get_markets_by_clob_token_ids([token for token, _ in top_tokens])
     except Exception as exc:
-        print(f"   reverse-lookup failed: {type(exc).__name__}: {exc}", flush=True)
+        print(f"   reverse-lookup failed: {type(exc).__name__}: {exc}")
         return []
     if not markets:
-        print("   reverse-lookup: 0 markets returned by Gamma (clob_token_ids filter may be unsupported)", flush=True)
+        _step(settings, "   reverse-lookup: 0 markets returned by Gamma (clob_token_ids filter may be unsupported)")
         return []
     smart_settings = replace(
         settings,
@@ -897,10 +959,11 @@ def _reverse_lookup_smart_money_markets(
         min_volume_usd=min(settings.min_volume_usd, settings.smart_reverse_lookup_min_volume_usd),
     )
     new_candidates = rank_markets(markets, smart_settings)
-    print(
-        f"   reverse-lookup: gamma returned {len(markets)} market(s), {len(new_candidates)} survived ranking",
-        flush=True,
-    )
+    if not settings.quiet:
+        print(
+            f"   reverse-lookup: gamma returned {len(markets)} market(s), {len(new_candidates)} survived ranking",
+            flush=True,
+        )
     return new_candidates
 
 
@@ -1251,6 +1314,180 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
     return None
 
 
+def _ledger_age_seconds(state_path) -> float | None:
+    try:
+        return max(0.0, time.time() - state_path.stat().st_mtime)
+    except (FileNotFoundError, OSError):
+        return None
+
+
+def _humanize_seconds(seconds: float) -> str:
+    if seconds < 60:
+        return f"{int(seconds)}s ago"
+    if seconds < 3600:
+        return f"{int(seconds / 60)}m ago"
+    if seconds < 86400:
+        return f"{seconds / 3600:.1f}h ago"
+    return f"{seconds / 86400:.1f}d ago"
+
+
+def _humanize_close_eta(end_iso: str | None, now=None) -> str:
+    if not end_iso:
+        return "—"
+    parsed = parse_dt(end_iso)
+    if parsed is None:
+        return "—"
+    reference = now if now is not None else utc_now()
+    delta = (parsed - reference).total_seconds()
+    if delta < 0:
+        return f"expired {_humanize_seconds(-delta)}"
+    if delta < 60:
+        return f"in {int(delta)}s"
+    if delta < 3600:
+        return f"in {int(delta / 60)}m"
+    if delta < 86400:
+        return f"in {delta / 3600:.1f}h"
+    return f"in {delta / 86400:.1f}d"
+
+
+def status_summary(settings: Settings) -> dict[str, object]:
+    """Snapshot rapide du bot : mode, ledger, journal. Read-only."""
+    portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+    summary = portfolio.summary()
+    age = _ledger_age_seconds(settings.state_path)
+    journal_records = 0
+    journal_path = settings.trade_journal_path
+    if journal_path.exists():
+        try:
+            journal_records = sum(1 for line in journal_path.read_text().splitlines() if line.strip())
+        except OSError:
+            journal_records = 0
+    if settings.dry_run:
+        mode = "dry-run"
+    elif settings.live_trading_enabled:
+        mode = "live"
+    else:
+        mode = "disabled"
+    return {
+        "mode": mode,
+        "quiet": settings.quiet,
+        "state_path": str(settings.state_path),
+        "state_exists": settings.state_path.exists(),
+        "ledger_age_seconds": age,
+        "journal_path": str(journal_path),
+        "journal_records": journal_records,
+        "cash": summary["cash"],
+        "invested": summary["invested"],
+        "unrealized_pnl": summary["unrealized_pnl"],
+        "equity": summary["equity"],
+        "open_positions": summary["open_positions"],
+    }
+
+
+def print_status(settings: Settings) -> dict[str, object]:
+    from . import _ui
+
+    snapshot = status_summary(settings)
+    mode = snapshot["mode"]
+    if mode == "live":
+        mode_label = _ui.red(_ui.bold("LIVE"))
+    elif mode == "dry-run":
+        mode_label = _ui.yellow(_ui.bold("DRY-RUN"))
+    else:
+        mode_label = _ui.dim("disabled")
+    typer.echo(f"{_ui.bold('Mode:')}        {mode_label}{' ' + _ui.dim('(quiet)') if snapshot['quiet'] else ''}")
+    typer.echo(f"{_ui.bold('Ledger:')}      {snapshot['state_path']}")
+    if snapshot["state_exists"]:
+        age = snapshot["ledger_age_seconds"]
+        age_label = _humanize_seconds(age) if age is not None else "?"
+        typer.echo(f"             last write {_ui.dim(age_label)}")
+    else:
+        typer.echo(f"             {_ui.dim('not yet created')}")
+    journal_records = snapshot["journal_records"]
+    typer.echo(f"{_ui.bold('Journal:')}     {snapshot['journal_path']} {_ui.dim(f'({journal_records} closed trades)')}")
+    typer.echo("")
+    cash = float(snapshot["cash"])
+    invested = float(snapshot["invested"])
+    unrealized = float(snapshot["unrealized_pnl"])
+    equity = float(snapshot["equity"])
+    typer.echo(f"  Cash         ${cash:>9.2f}")
+    typer.echo(f"  Invested     ${invested:>9.2f}")
+    typer.echo(f"  Unrealized   {_ui.colorize_pnl(unrealized):>17}")
+    typer.echo(f"  {_ui.bold('Equity')}       ${equity:>9.2f}")
+    typer.echo(f"  Positions    {snapshot['open_positions']:>9}")
+    return snapshot
+
+
+def format_positions_table(settings: Settings) -> str:
+    """Format les positions ouvertes en table CLI alignée. Retourne une chaîne prête à imprimer."""
+    from . import _ui
+
+    portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+    open_positions = [p for p in portfolio.positions if p.get("status") == "open"]
+    if not open_positions:
+        return _ui.dim("no open positions")
+
+    def _row_pnl(position: dict) -> float:
+        try:
+            return float(position.get("unrealized_pnl") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    rows = sorted(open_positions, key=_row_pnl, reverse=True)
+    now = utc_now()
+    headers = ("Market", "Outcome", "Stake", "Entry", "Now", "PnL", "Return", "Closes")
+    lines: list[tuple[str, str, str, str, str, str, str, str]] = []
+    for position in rows:
+        question = str(position.get("question") or position.get("slug") or position.get("market_id") or "?")
+        market = question if len(question) <= 50 else question[:47] + "..."
+        outcome = str(position.get("outcome") or "")
+        stake = f"${float(position.get('stake') or 0):.2f}"
+        entry = f"{float(position.get('entry_price') or 0):.3f}"
+        now_price = f"{float(position.get('current_price') or 0):.3f}"
+        pnl = float(position.get("unrealized_pnl") or 0.0)
+        entry_price = float(position.get("entry_price") or 0.0)
+        current = float(position.get("current_price") or 0.0)
+        ret = ((current - entry_price) / entry_price) if entry_price > 0 else 0.0
+        closes = _humanize_close_eta(position.get("end_date"), now=now)
+        lines.append((
+            market,
+            outcome,
+            stake,
+            entry,
+            now_price,
+            _ui.colorize_pnl(pnl),
+            _ui.colorize_pct(ret),
+            closes,
+        ))
+
+    def _visible_width(text: str) -> int:
+        # Strip ANSI escape sequences for column-width math.
+        import re as _re
+        return len(_re.sub(r"\x1b\[[0-9;]*m", "", text))
+
+    widths = [_visible_width(h) for h in headers]
+    for row in lines:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], _visible_width(cell))
+
+    def _pad(cell: str, width: int, *, right: bool = False) -> str:
+        gap = width - _visible_width(cell)
+        return (" " * gap + cell) if right else (cell + " " * gap)
+
+    right_align = {2, 3, 4, 5, 6}
+    header_cells = [_pad(h, widths[i], right=(i in right_align)) for i, h in enumerate(headers)]
+    out: list[str] = [_ui.bold("  ".join(header_cells))]
+    out.append(_ui.dim("  ".join("-" * w for w in widths)))
+    for row in lines:
+        cells = [_pad(c, widths[i], right=(i in right_align)) for i, c in enumerate(row)]
+        out.append("  ".join(cells))
+    return "\n".join(out)
+
+
+def print_positions(settings: Settings) -> None:
+    typer.echo(format_positions_table(settings))
+
+
 def journal_stats(settings: Settings) -> dict[str, object]:
     path = settings.trade_journal_path
     records: list[dict[str, object]] = []
@@ -1264,7 +1501,12 @@ def journal_stats(settings: Settings) -> dict[str, object]:
             except Exception:
                 continue
     if not records:
-        return {"records": 0, "message": "no closed trades yet"}
+        return {
+            "records": 0,
+            "message": "no closed trades yet",
+            "journal_path": str(path),
+            "dry_run": settings.dry_run,
+        }
 
     def pnl(record: dict[str, object]) -> float:
         try:
@@ -1328,6 +1570,14 @@ def journal_stats(settings: Settings) -> dict[str, object]:
     wins = sum(1 for p in pnls if p > 0)
     losses = sum(1 for p in pnls if p < 0)
     flats = sum(1 for p in pnls if p == 0)
+    records_sorted = sorted(records, key=lambda r: str(r.get("closed_at") or ""))
+    running_pnl = 0.0
+    peak_pnl = 0.0
+    max_drawdown = 0.0
+    for record in records_sorted:
+        running_pnl += pnl(record)
+        peak_pnl = max(peak_pnl, running_pnl)
+        max_drawdown = min(max_drawdown, running_pnl - peak_pnl)
     return {
         "records": len(records),
         "total_pnl": round(sum(pnls), 2),
@@ -1336,21 +1586,31 @@ def journal_stats(settings: Settings) -> dict[str, object]:
         "flats": flats,
         "win_rate": round(wins / len(records), 3),
         "avg_pnl": round(sum(pnls) / len(records), 4),
+        "max_drawdown": round(max_drawdown, 2),
         "by_category": group_by(records, lambda r: r.get("category")),
         "by_consensus": group_by(records, consensus_bucket),
         "by_strategy": group_by(records, lambda r: r.get("strategy")),
         "by_exit_reason": group_by(records, lambda r: r.get("exit_reason")),
         "by_entry_price_bucket": group_by(records, price_bucket),
         "suggestions": _journal_suggestions(records),
+        "journal_path": str(path),
+        "dry_run": settings.dry_run,
     }
 
 
-def _journal_suggestions(records: list[dict[str, object]]) -> list[str]:
+def _journal_suggestions(records: list[dict[str, object]]) -> list[dict[str, object]]:
     if len(records) < 30:
-        return [
-            f"only {len(records)} closed trades — need ~30+ before any reading is statistically meaningful; suggestions paused."
-        ]
-    suggestions: list[str] = []
+        return [{
+            "id": "below_min_trades",
+            "param": None,
+            "ratio": None,
+            "records": len(records),
+            "reason": (
+                f"only {len(records)} closed trades — need ~30+ before any reading is "
+                "statistically meaningful; suggestions paused."
+            ),
+        }]
+    suggestions: list[dict[str, object]] = []
     by_category: dict[str, list[float]] = {}
     by_consensus: dict[int, list[float]] = {}
     by_exit: dict[str, list[float]] = {}
@@ -1370,32 +1630,131 @@ def _journal_suggestions(records: list[dict[str, object]]) -> list[str]:
             by_consensus.setdefault(consensus_int, []).append(pnl)
         exit_reason = str(record.get("exit_reason") or "unknown")
         by_exit.setdefault(exit_reason, []).append(pnl)
+
     for category, pnls in by_category.items():
         if len(pnls) < 10:
             continue
         avg = sum(pnls) / len(pnls)
         if avg < -0.20:
-            suggestions.append(
-                f"category {category}: {len(pnls)} trades, avg PnL ${avg:.2f} — consider penalizing or excluding."
-            )
+            suggestions.append({
+                "id": f"weak_category_{category.lower()}",
+                "param": "category_filter",
+                "ratio": None,
+                "category": category,
+                "reason": (
+                    f"category {category}: {len(pnls)} trades, avg PnL ${avg:.2f} — "
+                    "consider penalizing or excluding."
+                ),
+            })
+
     for consensus, pnls in sorted(by_consensus.items()):
         if len(pnls) < 10:
             continue
         avg = sum(pnls) / len(pnls)
         if consensus <= 2 and avg < -0.10:
-            suggestions.append(
-                f"consensus={consensus}: {len(pnls)} trades, avg PnL ${avg:.2f} — consider raising POLYMARKET_SMART_MIN_CONSENSUS."
-            )
+            suggestions.append({
+                "id": f"weak_consensus_{consensus}",
+                "param": "MIN_CONSENSUS",
+                "ratio": None,
+                "consensus": consensus,
+                "reason": (
+                    f"consensus={consensus}: {len(pnls)} trades, avg PnL ${avg:.2f} — "
+                    "consider raising POLYMARKET_SMART_MIN_CONSENSUS."
+                ),
+            })
+
     stop_pnls = by_exit.get("stop_loss", [])
     if len(stop_pnls) >= 10:
         share = len(stop_pnls) / len(records)
         if share > 0.30:
-            suggestions.append(
-                f"stop_loss exits = {share:.0%} of trades — entry filters may be too loose; consider tightening MAX_CHASE_PREMIUM or MAX_RELATIVE_SPREAD."
-            )
+            suggestions.append({
+                "id": "excessive_stop_loss",
+                "param": "MAX_CHASE_PREMIUM",
+                "ratio": 0.80,
+                "share": round(share, 3),
+                "reason": (
+                    f"stop_loss exits = {share:.0%} of {len(records)} trades — entry filters may be "
+                    "too loose; consider tightening MAX_CHASE_PREMIUM or MAX_RELATIVE_SPREAD."
+                ),
+            })
+
     if not suggestions:
-        suggestions.append("no clear underperformer across buckets with >= 10 trades each.")
+        suggestions.append({
+            "id": "all_clear",
+            "param": None,
+            "ratio": None,
+            "reason": "no clear underperformer across buckets with >= 10 trades each.",
+        })
     return suggestions
+
+
+def format_suggestions(suggestions: list[dict[str, object]]) -> list[str]:
+    """Render structured suggestions into human-readable lines for the CLI."""
+    lines: list[str] = []
+    for suggestion in suggestions:
+        reason = str(suggestion.get("reason") or "")
+        param = suggestion.get("param")
+        ratio = suggestion.get("ratio")
+        if param and ratio is not None:
+            lines.append(f"[{param} ×{ratio:.2f}] {reason}")
+        elif param:
+            lines.append(f"[{param}] {reason}")
+        else:
+            lines.append(reason)
+    return lines
+
+
+def _journal_stats_last_24h(
+    path: Path,
+) -> tuple[int, int, int, dict | None, dict | None, float]:
+    """Lit le journal et retourne (trades, wins, losses, top_winner, top_loser, pct_24h).
+
+    ``pct_24h`` est un best-effort basé sur la somme des PnL réalisés des 24 dernières
+    heures. Sans source d'equity historique fiable disponible localement, retourne 0.0.
+    """
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)
+    trades: list[dict] = []
+    try:
+        with path.open(encoding="utf-8") as fp:
+            for line in fp:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts_raw = rec.get("closed_at") or rec.get("ts")
+                if not ts_raw:
+                    continue
+                try:
+                    ts = dt.datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=dt.timezone.utc)
+                if ts >= cutoff:
+                    trades.append(rec)
+    except (FileNotFoundError, OSError):
+        return 0, 0, 0, None, None, 0.0
+
+    if not trades:
+        return 0, 0, 0, None, None, 0.0
+
+    wins = sum(1 for r in trades if float(r.get("realized_pnl", 0)) > 0)
+    losses = sum(1 for r in trades if float(r.get("realized_pnl", 0)) < 0)
+    top_w_rec = max(trades, key=lambda r: float(r.get("realized_pnl", 0)))
+    top_l_rec = min(trades, key=lambda r: float(r.get("realized_pnl", 0)))
+
+    def _shape(r: dict) -> dict | None:
+        pnl = float(r.get("realized_pnl", 0))
+        title = r.get("title") or r.get("market_title") or r.get("question") or ""
+        return {"title": str(title), "pnl_usd": pnl}
+
+    top_w = _shape(top_w_rec) if float(top_w_rec.get("realized_pnl", 0)) > 0 else None
+    top_l = _shape(top_l_rec) if float(top_l_rec.get("realized_pnl", 0)) < 0 else None
+
+    return len(trades), wins, losses, top_w, top_l, 0.0
 
 
 def _append_trade_journal(settings: Settings, position: dict[str, object], reason: str) -> None:
@@ -1441,7 +1800,7 @@ def _append_trade_journal(settings: Settings, position: dict[str, object], reaso
         with path.open("a") as fh:
             fh.write(json.dumps(record) + "\n")
     except Exception as exc:
-        print(f"⚠️  trade journal write failed: {type(exc).__name__}: {exc}", flush=True)
+        print(f"⚠️  trade journal write failed: {type(exc).__name__}: {exc}")
 
 
 def _position_age_minutes(position: dict[str, object]) -> float:
@@ -1528,6 +1887,7 @@ def _position_from_live_api(item: dict[str, object]) -> dict[str, object]:
     avg_price = _float(item.get("avgPrice"))
     current_price = _float(item.get("curPrice"), avg_price)
     stake = round(_float(item.get("initialValue"), size * avg_price), 2)
+    end_date_raw = item.get("endDate") or item.get("eventEndDate") or item.get("endDateIso")
     return {
         "status": "open",
         "opened_at": utc_now().isoformat(),
@@ -1548,6 +1908,7 @@ def _position_from_live_api(item: dict[str, object]) -> dict[str, object]:
         "live": True,
         "strategy": "live_sync",
         "synced_from_polymarket": True,
+        "end_date": str(end_date_raw) if end_date_raw else None,
     }
 
 
@@ -1608,76 +1969,438 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
     while settings.auto_max_ticks <= 0 or tick < settings.auto_max_ticks:
         tick += 1
         started_at = utc_now()
+        error: dict[str, str] | None = None
+        tick_result: dict[str, object] = {}
         try:
-            result: dict[str, object] = {
-                "tick": tick,
-                "strategy": strategy_name,
-                "started_at": started_at.isoformat(),
-                "result": tick_fn(settings),
-            }
+            tick_result = tick_fn(settings)
         except Exception as exc:
-            result = {
-                "tick": tick,
-                "strategy": strategy_name,
-                "started_at": started_at.isoformat(),
-                "error": {
-                    "type": type(exc).__name__,
-                    "message": str(exc),
+            error = {"type": type(exc).__name__, "message": str(exc)}
+            try:
+                notifications.notify_error(
+                    "tick_failed",
+                    str(exc)[:500],
+                    dedupe_key="tick_failed",
+                )
+            except Exception:
+                pass
+
+        finished_at = utc_now()
+        result: dict[str, object] = {
+            "tick": tick,
+            "strategy": strategy_name,
+            "started_at": started_at.isoformat(),
+        }
+        if error is None:
+            result["result"] = tick_result
+        else:
+            result["error"] = error
+
+        try:
+            tick_state.write_tick(
+                settings,
+                _build_tick_record(
+                    tick_id=tick,
+                    started_at=started_at,
+                    finished_at=finished_at,
+                    settings=settings,
+                    tick_result=tick_result,
+                    error=error,
+                ),
+            )
+        except Exception:
+            pass
+
+        if settings.quiet:
+            from . import _ui
+            print(_ui.format_tick_footer(result, settings), flush=True)
+        else:
+            print(json.dumps(result, indent=2), flush=True)
+
+        # Hooks post-tick best-effort: drawdown, equity floor, résumé quotidien.
+        try:
+            tick_payload = result.get("result")
+            summary_snap = (
+                tick_payload.get("summary")
+                if isinstance(tick_payload, dict)
+                else None
+            )
+            if not isinstance(summary_snap, dict):
+                summary_snap = {}
+            equity_val = float(summary_snap.get("equity", 0) or 0)
+            cash_val = float(summary_snap.get("cash", 0) or 0)
+            open_positions_count = int(summary_snap.get("open_positions", 0) or 0)
+            notifications.notify_threshold("drawdown", {"equity_usd": equity_val})
+            notifications.notify_threshold(
+                "equity_floor",
+                {
+                    "equity_usd": equity_val,
+                    "open_positions": open_positions_count,
+                    "cash_usd": cash_val,
                 },
-            }
-        print(json.dumps(result, indent=2), flush=True)
+            )
+            target_hour = int(os.environ.get("TELEGRAM_DAILY_SUMMARY_HOUR", "9"))
+            now_local = dt.datetime.now()
+            if now_local.hour >= target_hour:
+                trades_24h, wins_24h, losses_24h, top_w, top_l, pct_24h = (
+                    _journal_stats_last_24h(settings.trade_journal_path)
+                )
+                notifications.notify_daily_summary(
+                    {
+                        "today": now_local.date().isoformat(),
+                        "equity_usd": equity_val,
+                        "equity_pct_24h": pct_24h,
+                        "cash_usd": cash_val,
+                        "open_positions": open_positions_count,
+                        "trades_24h": trades_24h,
+                        "wins_24h": wins_24h,
+                        "losses_24h": losses_24h,
+                        "top_winner": top_w,
+                        "top_loser": top_l,
+                    }
+                )
+        except Exception as exc:
+            print(f"[notif] post-tick hook failed: {exc}", file=sys.stderr, flush=True)
+
         if settings.auto_max_ticks > 0 and tick >= settings.auto_max_ticks:
             break
         time.sleep(settings.auto_interval_seconds)
+
+
+def _build_tick_record(
+    *,
+    tick_id: int,
+    started_at: datetime,
+    finished_at: datetime,
+    settings: Settings,
+    tick_result: dict[str, object],
+    error: dict[str, str] | None,
+) -> dict[str, object]:
+    """Re-shape a tick_fn return into the tick_state record format."""
+    duration_s = round((finished_at - started_at).total_seconds(), 2)
+    next_tick_at = (
+        finished_at.timestamp() + max(0, settings.auto_interval_seconds)
+    )
+    record: dict[str, object] = {
+        "tick_id": tick_id,
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "duration_s": duration_s,
+        "mode": "dry_run" if settings.dry_run else "live",
+        "scan_counts": dict(tick_result.get("scan_counts") or {}),
+        "actions": _extract_tick_actions(tick_result),
+        "tuner_changes": dict(tick_result.get("auto_tune_info") or {}),
+        "next_tick_at": datetime.fromtimestamp(
+            next_tick_at, tz=timezone.utc
+        ).isoformat(),
+    }
+    if error is not None:
+        record["error"] = error
+    return record
+
+
+def _extract_tick_actions(tick_result: dict[str, object]) -> list[dict[str, object]]:
+    actions: list[dict[str, object]] = []
+    primary = tick_result.get("trade")
+    if isinstance(primary, dict):
+        signal = primary.get("signal") if isinstance(primary.get("signal"), dict) else {}
+        question = signal.get("question") if signal else None
+        if question:
+            actions.append({
+                "type": "buy",
+                "market": question,
+                "amount_usd": signal.get("stake_usd"),
+                "strategy": primary.get("strategy"),
+                "reason": signal.get("selection_reason") or "smart_money_signal",
+            })
+    btc = tick_result.get("btc_edge")
+    if isinstance(btc, dict):
+        btc_trade = btc.get("trade")
+        if isinstance(btc_trade, dict):
+            signal = btc_trade.get("signal") if isinstance(btc_trade.get("signal"), dict) else {}
+            question = signal.get("question")
+            if question:
+                actions.append({
+                    "type": "buy",
+                    "market": question,
+                    "amount_usd": signal.get("stake_usd"),
+                    "strategy": "btc_edge",
+                    "reason": signal.get("selection_reason") or "btc_edge_signal",
+                })
+    for noise in tick_result.get("noise_trades") or []:
+        if isinstance(noise, dict):
+            noise_signal = noise.get("signal") if isinstance(noise.get("signal"), dict) else {}
+            question = noise_signal.get("question") or noise.get("question")
+            if question:
+                actions.append({
+                    "type": "buy",
+                    "market": question,
+                    "amount_usd": noise_signal.get("stake_usd"),
+                    "strategy": "noise_fallback",
+                    "reason": "noise_fallback",
+                })
+    for exit_record in tick_result.get("exits") or []:
+        if isinstance(exit_record, dict) and exit_record.get("action") == "sell":
+            actions.append({
+                "type": "sell",
+                "market": exit_record.get("question") or exit_record.get("market_id"),
+                "reason": exit_record.get("reason"),
+            })
+    for rejected in tick_result.get("rejected_signals") or []:
+        if isinstance(rejected, dict):
+            actions.append({
+                "type": "skip",
+                "market": rejected.get("question") or rejected.get("market_id"),
+                "reason": rejected.get("reason") or rejected.get("selection_reason"),
+            })
+    return actions
 
 
 def smart_money_loop(settings: Settings) -> None:
     strategy_loop(settings, "smart_money", smart_money_once)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Polymarket smart-money copy-trading bot")
-    parser.add_argument(
-        "command",
-        choices=[
-            "auto-loop",
-            "dashboard",
-            "journal-stats",
-            "tune-strategy",
-            "bootstrap-creds",
-            "reset-ledger",
-        ],
-    )
-    args = parser.parse_args()
+def _mask(value: str | None, keep: int = 4) -> str:
+    if not value:
+        return "(missing)"
+    if len(value) <= keep * 2:
+        return "***"
+    return f"{value[:keep]}...{value[-keep:]}"
 
+
+def run_doctor(settings: Settings) -> dict[str, object]:
+    """Read-only health check: validates .env, auth, endpoints, local state.
+
+    Posts no orders. Safe to run with or without live trading enabled.
+    """
+    from pathlib import Path
+
+    from eth_account import Account
+
+    from . import _ui
+
+    print(_ui.bold("=== .env ==="))
+    pk = settings.private_key or ""
+    pk_ok = len(pk) == 66 and pk.startswith("0x")
+    pk_marker = _ui.ok() if pk_ok else _ui.ko()
+    pk_detail = "(0x + 64 hex)" if pk_ok else "(expected 66 chars: 0x + 64 hex)"
+    print(f"  {pk_marker} PRIVATE_KEY    len={len(pk)} {_ui.dim(pk_detail)}")
+
+    fa = settings.funder_address or ""
+    fa_ok = len(fa) == 42 and fa.startswith("0x")
+    fa_marker = _ui.ok() if fa_ok else _ui.ko()
+    fa_detail = fa if fa_ok else "(invalid)"
+    print(f"  {fa_marker} FUNDER_ADDRESS len={len(fa)} value={_ui.dim(fa_detail)}")
+
+    api_complete = bool(settings.api_key and settings.api_secret and settings.api_passphrase)
+    for name in ("api_key", "api_secret", "api_passphrase"):
+        val = getattr(settings, name)
+        marker = _ui.ok() if val else _ui.ko()
+        print(f"  {marker} {name.upper():15} {_ui.dim(_mask(val))}")
+
+    sig_label = {0: "EOA", 1: "Magic.link proxy", 2: "Gnosis Safe"}.get(settings.signature_type, "?")
+    print(f"  {_ui.dim('·')} SIGNATURE_TYPE {settings.signature_type} ({sig_label})")
+    if settings.live_trading_enabled:
+        print(f"  {_ui.warn()} LIVE_TRADING   {_ui.bold(_ui.red('ENABLED'))} — bot will place real orders if auto-loop runs")
+    else:
+        print(f"  {_ui.ok()} LIVE_TRADING   {_ui.dim('disabled (safe — no orders will be placed)')}")
+    if settings.dry_run:
+        print(f"  {_ui.ok()} DRY_RUN        {_ui.bold(_ui.yellow('ENABLED'))} — simulated orders only, ledger at {settings.state_path}")
+    print()
+
+    print(_ui.bold("=== Auth & balance ==="))
+    if pk_ok:
+        try:
+            eoa = Account.from_key(pk).address
+            print(f"  {_ui.ok()} EOA derived    {eoa}")
+        except Exception as exc:
+            print(f"  {_ui.ko()} EOA derived    {type(exc).__name__}: {exc}")
+    else:
+        print(f"  {_ui.skip()} EOA derived    {_ui.dim('skipped (invalid private key)')}")
+    print(f"  {_ui.dim('·')} Funder         {fa or _ui.dim('(missing)')}")
+
+    balance: float | None = None
+    if pk_ok and fa_ok and api_complete:
+        try:
+            client = build_client(settings)
+            balance = client.live_available_balance()
+            print(f"  {_ui.ok()} USDC balance   ${balance:.4f}")
+        except Exception as exc:
+            print(f"  {_ui.ko()} USDC balance   {type(exc).__name__}: {str(exc)[:120]}")
+    else:
+        print(f"  {_ui.skip()} USDC balance   {_ui.dim('skipped (credentials incomplete — run bootstrap-creds)')}")
+    print()
+
+    print(_ui.bold("=== Endpoints ==="))
+    endpoint_results: dict[str, str] = {}
+    for label, fn in [
+        ("Gamma   (markets)   ", lambda: GammaClient(settings.gamma_base_url).get_markets(limit=1)),
+        ("DataAPI (leaderboard)", lambda: DataApiClient(settings.data_api_base_url).leaderboard(
+            category=(settings.smart_categories.split(",")[0].strip() if settings.smart_categories else "OVERALL"),
+            time_period=settings.smart_time_period,
+            limit=1,
+        )),
+    ]:
+        t0 = time.time()
+        try:
+            fn()
+            elapsed_ms = (time.time() - t0) * 1000
+            print(f"  {_ui.ok()} {label} {_ui.dim(f'{elapsed_ms:.0f}ms')}")
+            endpoint_results[label.strip()] = "ok"
+        except Exception as exc:
+            print(f"  {_ui.ko()} {label} {type(exc).__name__}: {str(exc)[:80]}")
+            endpoint_results[label.strip()] = "error"
+    print()
+
+    print(_ui.bold("=== Local state ==="))
+    for path_attr, label in [
+        ("state_path", "paper_state.json       "),
+        ("trade_journal_path", "trade_journal.jsonl    "),
+        ("strategy_overrides_path", "strategy_overrides.json"),
+    ]:
+        p = Path(getattr(settings, path_attr))
+        if p.exists():
+            print(f"  {_ui.ok()} {label} {_ui.dim(f'exists ({p.stat().st_size} bytes) at {p}')}")
+        else:
+            print(f"  {_ui.skip()} {label} {_ui.dim(f'not yet created at {p}')}")
+    print()
+
+    setup_ok = pk_ok and fa_ok and api_complete and all(v == "ok" for v in endpoint_results.values())
+    if not setup_ok:
+        print(f"{_ui.bold('Verdict:')} {_ui.ko()} Setup incomplete — fix the items marked above.")
+    elif settings.dry_run:
+        print(f"{_ui.bold('Verdict:')} {_ui.ok()} {_ui.green('READY for DRY-RUN.')} auto-loop will simulate orders without spending any cash.")
+    elif settings.live_trading_enabled:
+        print(f"{_ui.bold('Verdict:')} {_ui.warn()} {_ui.yellow('READY for LIVE trading.')} Bot WILL place real orders if auto-loop runs.")
+    else:
+        print(f"{_ui.bold('Verdict:')} {_ui.ok()} {_ui.green('READY for read-only / dashboard.')} Set POLYMARKET_ENABLE_LIVE_TRADING=1 to enable live trading (or POLYMARKET_DRY_RUN=1 to simulate).")
+
+    return {
+        "private_key_ok": pk_ok,
+        "funder_ok": fa_ok,
+        "api_credentials_complete": api_complete,
+        "live_trading_enabled": settings.live_trading_enabled,
+        "dry_run": settings.dry_run,
+        "balance_usd": balance,
+        "endpoints": endpoint_results,
+        "setup_ok": setup_ok,
+    }
+
+
+app = typer.Typer(
+    name="pmbot",
+    no_args_is_help=True,
+    add_completion=False,
+    help="Polymarket smart-money copy-trading bot.",
+)
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        from . import __version__
+
+        typer.echo(f"pmbot {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _root(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show the pmbot version and exit.",
+    ),
+) -> None:
+    """Polymarket smart-money copy-trading bot."""
+
+
+@app.command("auto-loop")
+def cli_auto_loop() -> None:
+    """Run the live smart-money loop. Requires POLYMARKET_ENABLE_LIVE_TRADING=1 (or POLYMARKET_DRY_RUN=1 to simulate without placing real orders)."""
     settings = Settings()
-    if args.command == "auto-loop":
-        if not settings.live_trading_enabled:
-            raise SystemExit("Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 to proceed.")
-        smart_money_loop(settings)
-    elif args.command == "dashboard":
-        serve(settings)
-    elif args.command == "journal-stats":
-        print(json.dumps(journal_stats(settings), indent=2))
-    elif args.command == "tune-strategy":
-        overrides, journal_size = maybe_tune(settings)
-        print(
-            json.dumps(
-                {
-                    "auto_tune_enabled": settings.smart_auto_tune_enabled,
-                    "min_trades_required": settings.smart_auto_tune_min_trades,
-                    "trades_seen": journal_size,
-                    "overrides": overrides,
-                    "overrides_path": str(settings.strategy_overrides_path),
-                },
-                indent=2,
-            )
+    if settings.dry_run:
+        typer.echo(
+            "[DRY-RUN] POLYMARKET_DRY_RUN=1 set — running the smart-money loop without "
+            "placing any real orders. Ledger and journal are written to "
+            f"{settings.state_path} and {settings.trade_journal_path}.",
+            err=True,
         )
-    elif args.command == "bootstrap-creds":
-        print(json.dumps(bootstrap_creds(settings), indent=2))
-    elif args.command == "reset-ledger":
-        print(json.dumps(reset_ledger(settings), indent=2))
+    elif not settings.live_trading_enabled:
+        typer.echo(
+            "Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 (or "
+            "POLYMARKET_DRY_RUN=1 to simulate) to proceed.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    smart_money_loop(settings)
+
+
+@app.command()
+def dashboard() -> None:
+    """Serve the read-only HTML dashboard at http://127.0.0.1:8765."""
+    serve(Settings())
+
+
+@app.command()
+def doctor() -> None:
+    """Read-only health check: validates .env, auth, endpoints, local state."""
+    run_doctor(Settings())
+
+
+@app.command()
+def status() -> None:
+    """Snapshot rapide du bot : mode, ledger, équité, positions ouvertes."""
+    print_status(Settings())
+
+
+@app.command()
+def positions() -> None:
+    """Affiche les positions ouvertes en table CLI, triées par PnL décroissant."""
+    print_positions(Settings())
+
+
+@app.command("journal-stats")
+def cli_journal_stats() -> None:
+    """Print aggregated trade-journal statistics as JSON."""
+    payload = journal_stats(Settings())
+    structured_suggestions = payload.get("suggestions") or []
+    payload["suggestions"] = format_suggestions(structured_suggestions)
+    payload["suggestions_structured"] = structured_suggestions
+    typer.echo(json.dumps(payload, indent=2, default=str))
+
+
+@app.command("tune-strategy")
+def cli_tune_strategy() -> None:
+    """Run the auto-tuner once and print the resulting overrides as JSON."""
+    settings = Settings()
+    overrides, journal_size = maybe_tune(settings)
+    typer.echo(
+        json.dumps(
+            {
+                "auto_tune_enabled": settings.smart_auto_tune_enabled,
+                "min_trades_required": settings.smart_auto_tune_min_trades,
+                "trades_seen": journal_size,
+                "overrides": overrides,
+                "overrides_path": str(settings.strategy_overrides_path),
+            },
+            indent=2,
+        )
+    )
+
+
+@app.command("bootstrap-creds")
+def cli_bootstrap_creds() -> None:
+    """Derive CLOB API credentials from the private key and save them to .env."""
+    typer.echo(json.dumps(bootstrap_creds(Settings()), indent=2))
+
+
+@app.command("reset-ledger")
+def cli_reset_ledger() -> None:
+    """Reset the local paper-trading ledger (data/paper_state.json)."""
+    typer.echo(json.dumps(reset_ledger(Settings()), indent=2))
 
 
 if __name__ == "__main__":
-    main()
+    app()

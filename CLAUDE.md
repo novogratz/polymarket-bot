@@ -7,7 +7,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 ## Safety
 
 - Never reveal `.env` values, private keys, API secrets, or passphrases.
-- Do not bypass `POLYMARKET_ENABLE_LIVE_TRADING=1`.
+- Do not bypass `POLYMARKET_ENABLE_LIVE_TRADING=1` (the only safe simulation toggle is `POLYMARKET_DRY_RUN=1`, which short-circuits all SDK BUY/SELL calls and writes to a separate dry-run ledger).
 - Do not implement random or unfiltered live trades. The `noise_fallback` path is the only forced-trade lane and is hard-capped at $10/trade and 4 trades/tick.
 - Preserve the local ledger `data/paper_state.json` unless the user explicitly asks for a reset.
 - Preserve `data/trade_journal.jsonl` and `data/strategy_overrides.json` unless explicitly asked to reset them.
@@ -34,31 +34,71 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 Run tests:
 
 ```bash
-python3 -B -m unittest discover -s tests
+uv run python -B -m unittest discover -s tests
 ```
+
+Quick CLI snapshots (read-only, no SDK calls):
+
+```bash
+uv run pmbot status              # mode, equity, open positions, journal path/count
+uv run pmbot positions           # CLI table of open positions, sorted by PnL desc
+uv run pmbot --version           # version
+```
+
+`status` and `positions` automatically read the dry-run ledger when
+`POLYMARKET_DRY_RUN=1` is set. Output is colorized on a TTY; `NO_COLOR=1`
+disables ANSI codes, `POLYMARKET_FORCE_COLOR=1` forces them through pipes.
 
 Dashboard:
 
 ```bash
-python3 -B -m polymarket_bot.main dashboard
+uv run pmbot dashboard
 ```
 
 Trade-journal stats (per-bucket P&L, win rate, suggested tightenings):
 
 ```bash
-python3 -B -m polymarket_bot.main journal-stats
+uv run pmbot journal-stats
 ```
 
 Run the auto-tuner manually (writes `data/strategy_overrides.json`):
 
 ```bash
-python3 -B -m polymarket_bot.main tune-strategy
+uv run pmbot tune-strategy
 ```
 
 Live smart-money loop:
 
 ```bash
-POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
+POLYMARKET_ENABLE_LIVE_TRADING=1 uv run pmbot auto-loop
+```
+
+Dry-run smart-money loop (simulates orders without spending any cash;
+writes a separate ledger and journal):
+
+```bash
+POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop
+```
+
+In dry-run mode every BUY/SELL is short-circuited (no SDK call), live
+position sync is skipped, and state is persisted to
+`data/dry_run_state.json` + `data/dry_run_journal.jsonl` so the live
+paper-trading ledger stays untouched.
+
+Quiet mode (compresses each tick to a one-line readable footer plus
+optional `→ BUY/SELL/NOISE/BTC` lines for executed actions, capped at 6;
+suppresses leaderboard pulls, trade fetches, reverse-lookup chatter, and
+BUY/SELL JSON dumps; the full tick payload is no longer printed in this
+mode):
+
+```bash
+POLYMARKET_QUIET=1 uv run pmbot auto-loop
+```
+
+Combine with dry-run for a clean simulation feed:
+
+```bash
+POLYMARKET_DRY_RUN=1 POLYMARKET_QUIET=1 uv run pmbot auto-loop
 ```
 
 ## Recommended live command
