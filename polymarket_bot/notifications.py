@@ -436,31 +436,31 @@ def notify_daily_summary(snapshot: dict[str, Any]) -> None:
     win_rate = (wins / trades * 100) if trades > 0 else 0.0
 
     lines = [
-        f"\U0001f4ca *Executive daily summary* — {_md_escape(today)}",
-        f"*Portfolio:* Equity {_md_escape(f'${equity:.2f}')} \\({pct_icon} {pct_str} 24h\\) — Cash {_md_escape(f'${cash:.2f}')} — Open {positions}",
-        f"*Closed trades:* {trades} \\(✅ {wins}W / ❌ {losses}L\\) — Win rate {_md_escape(f'{win_rate:.0f}%')}",
+        f"\U0001f4ca *Director daily review* — {_md_escape(today)}",
+        f"*Equity* {_md_escape(f'${equity:.2f}')} \\({pct_icon} {pct_str} 24h\\) | *Cash* {_md_escape(f'${cash:.2f}')} | *Open* {positions}",
+        f"*Activity* {trades} closed trades | ✅ {wins}W / ❌ {losses}L | Win rate {_md_escape(f'{win_rate:.0f}%')}",
     ]
     if "unrealized_pnl_usd" in snapshot:
         value = float(snapshot.get("unrealized_pnl_usd") or 0.0)
-        lines.append(f"*Unrealized PnL:* {_pnl_icon(value)} *{_md_escape(_fmt_money(value, signed=True))}*")
+        lines.append(f"*PnL* unrealized {_pnl_icon(value)} {_md_escape(_fmt_money(value, signed=True))}")
     if "realized_total_usd" in snapshot:
         value = float(snapshot.get("realized_total_usd") or 0.0)
-        lines.append(f"*Realized all\\-time:* {_pnl_icon(value)} *{_md_escape(_fmt_money(value, signed=True))}*")
+        lines.append(f"*All\\-time realized* {_pnl_icon(value)} {_md_escape(_fmt_money(value, signed=True))}")
     if "realized_today_usd" in snapshot:
         value = float(snapshot.get("realized_today_usd") or 0.0)
-        lines.append(f"*Realized today:* {_pnl_icon(value)} *{_md_escape(_fmt_money(value, signed=True))}*")
+        lines.append(f"*Today realized* {_pnl_icon(value)} {_md_escape(_fmt_money(value, signed=True))}")
     top_w = snapshot.get("top_winner")
     if isinstance(top_w, dict) and top_w:
         pnl_w = float(top_w.get("pnl_usd", 0))
         lines.append(
-            f"*Best closed trade:* ✅ *{_md_escape(f'+${pnl_w:.2f}')}* "
+            f"✅ *Best* {_md_escape(f'+${pnl_w:.2f}')} "
             f"on {_md_escape(str(top_w.get('title', '')))}"
         )
     top_l = snapshot.get("top_loser")
     if isinstance(top_l, dict) and top_l:
         pnl_l = float(top_l.get("pnl_usd", 0))
         lines.append(
-            f"*Worst closed trade:* ❌ *{_md_escape(f'-${abs(pnl_l):.2f}')}* "
+            f"❌ *Worst* {_md_escape(f'-${abs(pnl_l):.2f}')} "
             f"on {_md_escape(str(top_l.get('title', '')))}"
         )
     if _post("\n".join(lines)):

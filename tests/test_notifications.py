@@ -443,7 +443,11 @@ class TestDailySummary(NotificationsBaseTest):
                 }
                 notifications.notify_daily_summary(snap)
                 self.assertEqual(len(sent), 1)
-                self.assertIn("Daily summary", sent[0]["text"])
+                self.assertIn("Director daily review", sent[0]["text"])
+                self.assertIn("*Equity*", sent[0]["text"])
+                self.assertIn("*Activity*", sent[0]["text"])
+                self.assertIn("✅ *Best*", sent[0]["text"])
+                self.assertIn("❌ *Worst*", sent[0]["text"])
                 # Second appel le même jour: skip
                 notifications.notify_daily_summary(snap)
                 self.assertEqual(len(sent), 1)
