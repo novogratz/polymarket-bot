@@ -24,6 +24,7 @@ from polymarket_bot.main import (
     _dynamic_max_trade,
     _is_unfilled_market_order_error,
     _max_trade_for_signal,
+    _noise_fallback_candidates,
     _sell_plan,
     _smart_discovery_keywords,
     load_btc_candidates,
@@ -1503,6 +1504,42 @@ class StrategyTests(unittest.TestCase):
 
         self.assertEqual(len(signals), 1)
         self.assertEqual(signals[0].candidate.token_id, "eth-token")
+
+    def test_noise_fallback_profile_stays_small_and_capped(self):
+        candidates = [
+            Candidate(
+                market_id=str(i),
+                question=f"Will team {i} win?",
+                slug=f"team-{i}",
+                end_date=utc_now() + timedelta(hours=6),
+                hours_to_close=6,
+                liquidity=10000,
+                volume=50000,
+                outcome="Yes",
+                price=0.5,
+                token_id=f"token-{i}",
+                score=10 - i,
+                url=f"https://polymarket.com/event/team-{i}",
+                best_bid=0.49,
+                best_ask=0.50,
+                tick_size=0.01,
+                accepts_orders=True,
+            )
+            for i in range(4)
+        ]
+        settings = Settings(
+            smart_noise_fallback_enabled=True,
+            smart_noise_fallback_max_trades_per_tick=2,
+            smart_noise_fallback_max_trade_usd=3,
+            smart_noise_fallback_cash_pressure_pct=0.30,
+            min_open_positions=12,
+        )
+        portfolio = Portfolio(cash=100.0, positions=[])
+
+        picks = _noise_fallback_candidates(settings, portfolio, candidates, open_categories={})
+
+        self.assertEqual([pick.token_id for pick in picks], ["token-0", "token-1"])
+        self.assertEqual(settings.smart_noise_fallback_max_trade_usd, 3)
 
     def test_crypto_allowed_requires_high_buy_price(self):
         candidate = Candidate(
