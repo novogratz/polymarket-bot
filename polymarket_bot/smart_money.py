@@ -62,6 +62,7 @@ class SmartMoneySignal:
     category_bonus: float = 0.0
     latest_trade_age_minutes: float | None = None
     fresh_bonus: float = 0.0
+    fast_market_bonus: float = 0.0
 
     @property
     def score(self) -> float:
@@ -72,6 +73,7 @@ class SmartMoneySignal:
             + min(self.copied_usdc / 10.0, 25.0)
             + pnl_bonus
             + _short_horizon_bonus(self.candidate.hours_to_close)
+            + self.fast_market_bonus
             + value
             + self.category_bonus
             + self.fresh_bonus
@@ -135,6 +137,7 @@ class SmartMoneySignal:
                     round(self.latest_trade_age_minutes, 2) if self.latest_trade_age_minutes is not None else None
                 ),
                 "fresh_bonus": round(self.fresh_bonus, 4),
+                "fast_market_bonus": round(self.fast_market_bonus, 4),
             },
             "url": self.candidate.url,
         }
@@ -507,6 +510,7 @@ def smart_money_signals(
                 category_bonus=_category_bonus(category, settings),
                 latest_trade_age_minutes=latest_trade_age_minutes,
                 fresh_bonus=_fresh_signal_bonus(latest_trade_age_minutes, settings),
+                fast_market_bonus=_fast_market_bonus(candidate.hours_to_close, category, min_consensus, settings),
             )
         )
     if include_details:
@@ -686,6 +690,16 @@ def _short_horizon_bonus(hours_to_close: float | None) -> float:
     if hours_to_close <= 72:
         return 1.0
     return -min((hours_to_close - 72.0) / 24.0, 5.0)
+
+
+def _fast_market_bonus(hours_to_close: float | None, category: str, min_consensus: int, settings: Settings) -> float:
+    if hours_to_close is None or hours_to_close <= 0:
+        return 0.0
+    if settings.smart_fast_market_score_bonus <= 0 or hours_to_close > settings.smart_fast_market_max_hours:
+        return 0.0
+    if category == "SPORTS" and hours_to_close < 0.5:
+        return 0.0
+    return settings.smart_fast_market_score_bonus if min_consensus >= 2 else 0.0
 
 
 def _value_pct(avg_copy_price: float, current_ask: float | None) -> float:

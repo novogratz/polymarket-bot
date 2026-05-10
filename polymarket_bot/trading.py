@@ -501,6 +501,9 @@ def execute_live_trade(
         if _is_high_conviction_signal(signal) and settings.smart_high_conviction_balance_fraction > 0:
             maximum = max(maximum, live_balance * settings.smart_high_conviction_balance_fraction)
             maximum = min(maximum, live_balance)
+        absolute_caps = [cap for cap in (settings.max_position_usd, settings.smart_max_trade_usd) if cap > 0]
+        if absolute_caps:
+            maximum = min(maximum, min(absolute_caps))
     
     # Use the needed amount, but capped by available balance and max per trade
     stake = min(needed_usd, live_balance, maximum)

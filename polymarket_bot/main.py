@@ -31,7 +31,7 @@ from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
 from .config import Settings
 from .dashboard import serve
 from .gamma import GammaClient
-from .portfolio import Portfolio
+from .portfolio import Portfolio, _event_key
 from .models import Candidate, parse_dt, utc_now
 from .smart_money import (
     DataApiClient,
@@ -292,6 +292,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     _step(settings, f"   markets: {len(candidates)} candidates")
     scan_counts = {
         "strict": 0,
+        "cash_pressure": 0,
         "relaxed": 0,
         "deep": 0,
         "candidates_total": len(candidates),
@@ -361,10 +362,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         and candidate.best_ask is not None
         and candidate.best_bid is not None
         and candidate.tick_size is not None
-        and not portfolio.has_open_position(candidate.market_id)
-        and not portfolio.has_open_token(candidate.token_id)
-        and not portfolio.has_pending_token(candidate.token_id)
-        and not portfolio.has_open_event_position(candidate)
+        and _candidate_entry_block_reason(settings, portfolio, candidate, open_categories) is None
     ]
 
     _step(settings, f"   smart-money scan over {len(eligible_candidates)} eligible candidate(s)...")
@@ -385,13 +383,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     or extra.tick_size is None
                 ):
                     continue
-                if portfolio.has_open_position(extra.market_id):
-                    continue
-                if portfolio.has_open_token(extra.token_id):
-                    continue
-                if portfolio.has_pending_token(extra.token_id):
-                    continue
-                if portfolio.has_open_event_position(extra):
+                if _candidate_entry_block_reason(settings, portfolio, extra, open_categories) is not None:
                     continue
                 eligible_candidates.append(extra)
                 existing_tokens_eligible.add(extra.token_id)
@@ -405,6 +397,29 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     signal = report.selected
     strategy = "smart_money"
     opportunities = list(report.opportunities)
+    pressure_report = None
+    if _smart_cash_pressure_active(settings, portfolio):
+        pressure_settings = replace(
+            settings,
+            smart_min_consensus=max(2, settings.smart_min_consensus),
+            smart_min_copied_usdc=min(settings.smart_min_copied_usdc, settings.smart_cash_pressure_min_copied_usdc),
+            smart_max_signal_age_minutes=max(
+                settings.smart_max_signal_age_minutes,
+                settings.smart_cash_pressure_max_signal_age_minutes,
+            ),
+            smart_max_relative_spread=max(
+                settings.smart_max_relative_spread,
+                settings.smart_cash_pressure_max_relative_spread,
+            ),
+        )
+        pressure_report = analyze_smart_money_with_data(eligible_candidates, pressure_settings, smart_data)
+        _step(settings, f"   cash-pressure smart scan: {len(pressure_report.opportunities)} opportunity(ies)")
+        scan_counts["cash_pressure"] = len(pressure_report.opportunities)
+        _merge_opportunities(opportunities, pressure_report.opportunities)
+        if signal is None and pressure_report.selected is not None:
+            report = pressure_report
+            signal = pressure_report.selected
+            strategy = "smart_money_cash_pressure"
     if open_count + len(opportunities) < settings.min_open_positions:
         print(
             f"   below min open positions ({open_count + len(opportunities)} < {settings.min_open_positions}); running relaxed scan (reusing leaderboard+trades)...",
@@ -417,14 +432,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         fallback_report = analyze_smart_money_with_data(eligible_candidates, fallback_settings, smart_data)
         _step(settings, f"   relaxed scan: {len(fallback_report.opportunities)} opportunity(ies)")
         scan_counts["relaxed"] = len(fallback_report.opportunities)
-        seen_tokens = {opp.candidate.token_id for opp in opportunities if opp.candidate.token_id}
-        for opp in fallback_report.opportunities:
-            token_id = opp.candidate.token_id
-            if token_id and token_id in seen_tokens:
-                continue
-            opportunities.append(opp)
-            if token_id:
-                seen_tokens.add(token_id)
+        _merge_opportunities(opportunities, fallback_report.opportunities)
         if signal is None and fallback_report.selected is not None:
             report = fallback_report
             signal = fallback_report.selected
@@ -451,13 +459,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             deep_report = analyze_smart_money_with_data(eligible_candidates, deep_settings, smart_data)
             _step(settings, f"   deep fallback: {len(deep_report.opportunities)} opportunity(ies)")
             scan_counts["deep"] = len(deep_report.opportunities)
-            for opp in deep_report.opportunities:
-                token_id = opp.candidate.token_id
-                if token_id and token_id in seen_tokens:
-                    continue
-                opportunities.append(opp)
-                if token_id:
-                    seen_tokens.add(token_id)
+            _merge_opportunities(opportunities, deep_report.opportunities)
             if signal is None and deep_report.selected is not None:
                 report = deep_report
                 signal = deep_report.selected
@@ -490,55 +492,55 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             }
 
         for slot_index, opportunity in enumerate(opportunities):
-            remaining_slots = max(1, len(opportunities) - slot_index)
             if settings.smart_max_orders_per_tick > 0 and len(executed_trades) >= settings.smart_max_orders_per_tick:
                 stop_reason = "max_orders_per_tick_reached"
                 break
-            if portfolio.has_open_position(opportunity.candidate.market_id):
+            opportunity_payload = opportunity.to_dict()
+            category = str(opportunity_payload.get("category") or "OTHER")
+            block_reason = _candidate_entry_block_reason(settings, portfolio, opportunity.candidate, open_categories)
+            if block_reason == "duplicate_open_market":
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
                         "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
-                        "reason": "duplicate_open_market",
-                        "selection_reason": opportunity.to_dict()["selection_reason"],
+                        "reason": block_reason,
+                        "selection_reason": opportunity_payload["selection_reason"],
                     }
                 )
                 continue
-            if portfolio.has_open_event_position(opportunity.candidate):
+            if block_reason is not None:
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
                         "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
                         "event_slug": opportunity.candidate.event_slug,
-                        "reason": "duplicate_open_sports_event",
-                        "selection_reason": opportunity.to_dict()["selection_reason"],
-                    }
-                )
-                continue
-            opportunity_payload = opportunity.to_dict()
-            category = str(opportunity_payload.get("category") or "OTHER")
-            if (
-                category == "SPORTS"
-                and settings.smart_max_sports_positions >= 0
-                and open_categories.get("SPORTS", 0) >= settings.smart_max_sports_positions
-            ):
-                rejected_signals.append(
-                    {
-                        "market_id": opportunity.candidate.market_id,
-                        "question": opportunity.candidate.question,
-                        "outcome": opportunity.candidate.outcome,
-                        "reason": "sports_position_cap_reached",
-                        "category": category,
+                        "reason": block_reason,
                         "selection_reason": opportunity_payload["selection_reason"],
                     }
                 )
                 continue
             print(f"🧠 SELECTED: {opportunity_payload['selection_reason']}")
+            remaining_slots = _remaining_deployment_slots(settings, portfolio, len(executed_trades))
             max_trade_usd = _dynamic_max_trade(
                 settings, opportunity_payload, strategy, portfolio, remaining_slots
             )
+            event_remaining_cap = _non_sports_event_remaining_cap(settings, portfolio, opportunity.candidate)
+            if event_remaining_cap is not None:
+                if event_remaining_cap < 1.0:
+                    rejected_signals.append(
+                        {
+                            "market_id": opportunity.candidate.market_id,
+                            "question": opportunity.candidate.question,
+                            "outcome": opportunity.candidate.outcome,
+                            "reason": "non_sports_event_cap_reached",
+                            "category": category,
+                            "selection_reason": opportunity_payload["selection_reason"],
+                        }
+                    )
+                    continue
+                max_trade_usd = min(max_trade_usd, event_remaining_cap)
             try:
                 result = execute_live_trade(
                     client,
@@ -699,6 +701,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "pending_orders": pending_report,
         "category_summary": open_categories,
         "rejected_signals": rejected_signals,
+        "rejection_summary": _rejection_summary(rejected_signals, report, pressure_report),
         "scan_report": report.to_dict(),
         "scan_counts": scan_counts,
         "summary": portfolio.summary(),
@@ -739,6 +742,7 @@ def _execute_sell_strategy(
         if entry_price <= 0:
             continue
         current_pnl_pct = (candidate.best_bid - entry_price) / entry_price
+        position["current_price"] = candidate.best_bid
         position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", current_pnl_pct)), current_pnl_pct)
         plan = _sell_plan(position, current_pnl_pct, settings)
         if (
@@ -891,10 +895,15 @@ def _terminal_candidate_from_synced_position(
     fallback, 99-100c winners can sit open because the normal sell loop has no
     Gamma ``best_bid`` to evaluate.
     """
-    if settings.smart_resolved_exit_threshold <= 0:
+    thresholds = [
+        value
+        for value in (settings.smart_resolved_exit_threshold, settings.smart_lock_gain_price)
+        if value > 0
+    ]
+    if not thresholds:
         return None
     current_price = _float(position.get("current_price"))
-    if current_price < settings.smart_resolved_exit_threshold:
+    if current_price < min(thresholds):
         return None
     token_id = str(position.get("token_id") or "")
     if not token_id:
@@ -1002,6 +1011,148 @@ def _noise_fallback_candidates(
         if len(picks) >= settings.smart_noise_fallback_max_trades_per_tick:
             break
     return picks
+
+
+def _merge_opportunities(target: list, additions: list) -> None:
+    seen_tokens = {opp.candidate.token_id for opp in target if opp.candidate.token_id}
+    for opp in additions:
+        token_id = opp.candidate.token_id
+        if token_id and token_id in seen_tokens:
+            continue
+        target.append(opp)
+        if token_id:
+            seen_tokens.add(token_id)
+    target.sort(key=lambda opp: opp.score, reverse=True)
+
+
+def _smart_cash_pressure_active(settings: Settings, portfolio: Portfolio) -> bool:
+    if not settings.smart_cash_pressure_enabled:
+        return False
+    summary = portfolio.summary()
+    cash = float(summary.get("cash") or 0.0)
+    invested = float(summary.get("invested") or 0.0)
+    unrealized = float(summary.get("unrealized_pnl") or 0.0)
+    equity = cash + invested + unrealized
+    if equity <= 0:
+        return False
+    open_count = int(summary.get("open_positions") or 0)
+    cash_pct = cash / equity
+    return open_count < settings.min_open_positions or cash_pct >= settings.smart_cash_pressure_min_cash_pct
+
+
+def _remaining_deployment_slots(settings: Settings, portfolio: Portfolio, executed_this_tick: int) -> int:
+    open_count = int(portfolio.summary().get("open_positions") or 0)
+    target_slots = max(settings.min_open_positions - open_count - executed_this_tick, 1)
+    if settings.smart_max_orders_per_tick > 0:
+        remaining_orders = max(settings.smart_max_orders_per_tick - executed_this_tick, 1)
+        return max(1, min(target_slots, remaining_orders))
+    return target_slots
+
+
+def _candidate_entry_block_reason(
+    settings: Settings,
+    portfolio: Portfolio,
+    candidate: Candidate,
+    open_categories: dict[str, int],
+) -> str | None:
+    if portfolio.has_open_position(candidate.market_id):
+        return "duplicate_open_market"
+    if portfolio.has_open_token(candidate.token_id):
+        return "duplicate_open_token"
+    if portfolio.has_pending_token(candidate.token_id):
+        return "pending_order_same_token"
+    if portfolio.has_open_event_position(candidate):
+        return "duplicate_open_sports_event"
+    category = market_category(candidate.question, candidate.slug)
+    if (
+        category == "SPORTS"
+        and settings.smart_max_sports_positions >= 0
+        and open_categories.get("SPORTS", 0) >= settings.smart_max_sports_positions
+    ):
+        return "sports_position_cap_reached"
+    if _non_sports_event_remaining_cap(settings, portfolio, candidate) == 0.0:
+        return "non_sports_event_cap_reached"
+    cooldown = _reentry_cooldown_reason(settings, portfolio, candidate)
+    if cooldown:
+        return cooldown
+    return None
+
+
+def _non_sports_event_remaining_cap(
+    settings: Settings,
+    portfolio: Portfolio,
+    candidate: Candidate,
+) -> float | None:
+    cap = settings.smart_non_sports_event_cap_usd
+    if cap <= 0:
+        return None
+    category = market_category(candidate.question, candidate.slug)
+    if category == "SPORTS":
+        return None
+    event_key = _event_key(candidate)
+    if not event_key:
+        return None
+    exposure = 0.0
+    for position in portfolio.positions:
+        if position.get("status") != "open":
+            continue
+        if _event_key(position) != event_key:
+            continue
+        signal = position.get("signal") if isinstance(position.get("signal"), dict) else {}
+        position_category = str(signal.get("category") or "").upper()
+        if not position_category:
+            position_category = market_category(str(position.get("question") or ""), str(position.get("slug") or ""))
+        if position_category == "SPORTS":
+            continue
+        exposure += float(position.get("stake") or 0.0)
+    return round(max(0.0, cap - exposure), 2)
+
+
+def _reentry_cooldown_reason(settings: Settings, portfolio: Portfolio, candidate: Candidate) -> str | None:
+    token_id = str(candidate.token_id or "")
+    event_key = _event_key(candidate)
+    if not token_id and not event_key:
+        return None
+    now = utc_now()
+    for position in portfolio.positions:
+        if position.get("status") != "closed":
+            continue
+        same_token = token_id and str(position.get("token_id") or "") == token_id
+        same_event = event_key and _event_key(position) == event_key
+        if not same_token and not same_event:
+            continue
+        closed_at = parse_dt(str(position.get("closed_at") or ""))
+        if closed_at is None:
+            continue
+        realized_pnl = float(position.get("realized_pnl") or 0.0)
+        cooldown_minutes = (
+            settings.smart_profitable_reentry_cooldown_minutes
+            if realized_pnl > 0
+            else settings.smart_reentry_cooldown_minutes
+        )
+        if cooldown_minutes <= 0:
+            continue
+        age_minutes = (now - closed_at).total_seconds() / 60.0
+        if 0 <= age_minutes < cooldown_minutes:
+            return "recent_profitable_exit_cooldown" if realized_pnl > 0 else "recent_exit_cooldown"
+    return None
+
+
+def _rejection_summary(
+    rejected_signals: list[dict[str, object]],
+    report,
+    pressure_report=None,
+) -> dict[str, int]:
+    summary: dict[str, int] = {}
+    for item in rejected_signals:
+        reason = str(item.get("reason") or "unknown")
+        summary[reason] = summary.get(reason, 0) + 1
+    for source in (report, pressure_report):
+        if source is None:
+            continue
+        for reason, count in dict(getattr(source, "rejected", {}) or {}).items():
+            summary[f"scan_{reason}"] = summary.get(f"scan_{reason}", 0) + int(count)
+    return summary
 
 
 def _reverse_lookup_smart_money_markets(
@@ -1382,6 +1533,16 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
     if peak_pnl_pct >= settings.smart_peak_protect_trigger and current_pnl_pct <= settings.smart_peak_protect_floor:
         return {
             "reason": "peak_profit_protection",
+            "shares": current_shares,
+        }
+    current_price = float(position.get("current_price") or 0.0)
+    if (
+        settings.smart_lock_gain_price > 0
+        and current_price >= settings.smart_lock_gain_price
+        and current_pnl_pct >= settings.smart_lock_gain_min_pnl_pct
+    ):
+        return {
+            "reason": "lock_gain_near_resolution",
             "shares": current_shares,
         }
 
@@ -2307,6 +2468,7 @@ def _build_tick_record(
         "mode": "dry_run" if settings.dry_run else "live",
         "scan_counts": dict(tick_result.get("scan_counts") or {}),
         "actions": _extract_tick_actions(tick_result),
+        "rejection_summary": dict(tick_result.get("rejection_summary") or {}),
         "tuner_changes": dict(tick_result.get("auto_tune_info") or {}),
         "next_tick_at": datetime.fromtimestamp(
             next_tick_at, tz=timezone.utc

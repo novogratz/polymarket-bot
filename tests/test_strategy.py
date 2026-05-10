@@ -22,6 +22,7 @@ from polymarket_bot.strategy import rank_markets, stake_for_candidate
 from polymarket_bot.trading import _is_filled_buy_response, execute_live_sell, execute_live_trade
 from polymarket_bot.main import (
     _dynamic_max_trade,
+    _candidate_entry_block_reason,
     _execute_sell_strategy,
     _is_unfilled_market_order_error,
     _max_trade_for_signal,
@@ -235,8 +236,8 @@ class StrategyTests(unittest.TestCase):
             signal=signal,
         )
 
-        self.assertEqual(result.order["amount"], 50.0)
-        self.assertEqual(portfolio.positions[0]["stake"], 50.0)
+        self.assertEqual(result.order["amount"], 10.0)
+        self.assertEqual(portfolio.positions[0]["stake"], 10.0)
 
     def test_live_trade_rejects_second_position_in_same_sports_event(self):
         class FakeClient:
@@ -414,8 +415,8 @@ class StrategyTests(unittest.TestCase):
             signal=signal,
         )
 
-        self.assertEqual(result.order["amount"], 50.0)
-        self.assertEqual(portfolio.positions[0]["stake"], 50.0)
+        self.assertEqual(result.order["amount"], 10.0)
+        self.assertEqual(portfolio.positions[0]["stake"], 10.0)
 
     def test_live_trade_does_not_record_resting_buy_order(self):
         class FakeClient:
@@ -613,7 +614,7 @@ class StrategyTests(unittest.TestCase):
     def test_terminal_synced_position_waits_below_threshold(self):
         candidate = _terminal_candidate_from_synced_position(
             {"token_id": "token", "current_price": 0.97},
-            Settings(smart_resolved_exit_threshold=0.98),
+            Settings(smart_resolved_exit_threshold=0.98, smart_lock_gain_price=0.0),
         )
 
         self.assertIsNone(candidate)
@@ -825,6 +826,25 @@ class StrategyTests(unittest.TestCase):
         plan = _sell_plan(position, 0.55, Settings())
         self.assertEqual(plan["reason"], "take_profit_50pct")
         self.assertEqual(plan["shares"], 25.0)
+
+    def test_sell_plan_locks_near_resolution_gain_before_partial_tiers(self):
+        position = {
+            "shares": 100.0,
+            "initial_shares": 100.0,
+            "current_price": 0.97,
+            "peak_pnl_pct": 0.30,
+            "sell_tiers_hit": [],
+            "exits": [],
+        }
+        settings = Settings(
+            smart_lock_gain_price=0.95,
+            smart_lock_gain_min_pnl_pct=0.20,
+            smart_take_profit_tiers="0.5:0.25,1.0:0.50",
+            smart_trailing_stop_arm_pct=0.0,
+        )
+        plan = _sell_plan(position, 0.30, settings)
+        self.assertEqual(plan["reason"], "lock_gain_near_resolution")
+        self.assertEqual(plan["shares"], 100.0)
 
     def test_sell_plan_stop_loss_triggers_after_min_age(self):
         old_open = (utc_now() - timedelta(hours=2)).isoformat()
@@ -2166,7 +2186,7 @@ class PortfolioDedupTests(unittest.TestCase):
             event_slug=event_slug,
         )
 
-    def test_event_dedupe_blocks_no_when_yes_open_on_non_sports_market(self):
+    def test_event_dedupe_allows_non_sports_same_event_until_cap(self):
         portfolio = Portfolio(cash=50.0, positions=[])
         yes_candidate = self._make_candidate(
             market_id="seoul-yes",
@@ -2181,7 +2201,17 @@ class PortfolioDedupTests(unittest.TestCase):
             token_id="tok-no",
             event_slug="seoul-temp-may-9",
         )
-        self.assertTrue(portfolio.has_open_event_position(no_candidate))
+        self.assertFalse(portfolio.has_open_event_position(no_candidate))
+        self.assertIsNone(_candidate_entry_block_reason(Settings(), portfolio, no_candidate, {}))
+        self.assertEqual(
+            _candidate_entry_block_reason(
+                Settings(smart_non_sports_event_cap_usd=4.0),
+                portfolio,
+                no_candidate,
+                {},
+            ),
+            "non_sports_event_cap_reached",
+        )
 
     def test_event_dedupe_does_not_block_unrelated_event(self):
         portfolio = Portfolio(cash=50.0, positions=[])

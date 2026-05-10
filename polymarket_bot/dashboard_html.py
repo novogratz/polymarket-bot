@@ -288,8 +288,15 @@ HTML = r"""<!doctype html>
 
       const sc = last.scan_counts || {};
       card.appendChild(el('div', {class:'scan'},
-        'scan: strict ' + (sc.strict ?? 0) + ' → relaxed ' + (sc.relaxed ?? 0) + ' → deep ' + (sc.deep ?? 0)
+        'scan: strict ' + (sc.strict ?? 0) + ' → cash ' + (sc.cash_pressure ?? 0)
+        + ' → relaxed ' + (sc.relaxed ?? 0) + ' → deep ' + (sc.deep ?? 0)
         + ' (candidates: ' + (sc.candidates_total ?? 0) + ')'));
+      const rej = last.rejection_summary || {};
+      const rejEntries = Object.entries(rej).sort((a,b) => Number(b[1])-Number(a[1])).slice(0, 5);
+      if (rejEntries.length) {
+        card.appendChild(el('div', {class:'scan'},
+          'top rejects: ' + rejEntries.map(([k,v]) => k + ' ' + v).join(' · ')));
+      }
 
       const acts = last.actions || [];
       if (acts.length === 0) {

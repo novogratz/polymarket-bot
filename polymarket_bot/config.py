@@ -133,8 +133,29 @@ class Settings:
     smart_max_hold_hours: float = _float_env("POLYMARKET_SMART_MAX_HOLD_HOURS", 0.0)
     smart_recycle_profit_pct: float = _float_env("POLYMARKET_SMART_RECYCLE_PROFIT_PCT", 0.0)
     smart_recycle_profit_min_age_minutes: int = _int_env("POLYMARKET_SMART_RECYCLE_PROFIT_MIN_AGE_MINUTES", 60)
+    smart_lock_gain_price: float = _float_env("POLYMARKET_SMART_LOCK_GAIN_PRICE", 0.95)
+    smart_lock_gain_min_pnl_pct: float = _float_env("POLYMARKET_SMART_LOCK_GAIN_MIN_PNL_PCT", 0.20)
     smart_resolved_exit_threshold: float = _float_env("POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD", 0.98)
     smart_cash_floor_pct: float = _float_env("POLYMARKET_SMART_CASH_FLOOR_PCT", 0.02)
+    smart_cash_pressure_enabled: bool = _bool_env("POLYMARKET_SMART_CASH_PRESSURE_ENABLED", True)
+    smart_cash_pressure_min_cash_pct: float = _float_env("POLYMARKET_SMART_CASH_PRESSURE_MIN_CASH_PCT", 0.20)
+    smart_cash_pressure_min_copied_usdc: float = _float_env("POLYMARKET_SMART_CASH_PRESSURE_MIN_COPIED_USDC", 3.0)
+    smart_cash_pressure_max_signal_age_minutes: int = _int_env(
+        "POLYMARKET_SMART_CASH_PRESSURE_MAX_SIGNAL_AGE_MINUTES",
+        2880,
+    )
+    smart_cash_pressure_max_relative_spread: float = _float_env(
+        "POLYMARKET_SMART_CASH_PRESSURE_MAX_RELATIVE_SPREAD",
+        0.75,
+    )
+    smart_non_sports_event_cap_usd: float = _float_env("POLYMARKET_SMART_NON_SPORTS_EVENT_CAP_USD", 50.0)
+    smart_reentry_cooldown_minutes: int = _int_env("POLYMARKET_SMART_REENTRY_COOLDOWN_MINUTES", 60)
+    smart_profitable_reentry_cooldown_minutes: int = _int_env(
+        "POLYMARKET_SMART_PROFITABLE_REENTRY_COOLDOWN_MINUTES",
+        10,
+    )
+    smart_fast_market_max_hours: float = _float_env("POLYMARKET_SMART_FAST_MARKET_MAX_HOURS", 48.0)
+    smart_fast_market_score_bonus: float = _float_env("POLYMARKET_SMART_FAST_MARKET_SCORE_BONUS", 4.0)
     smart_noise_fallback_enabled: bool = _bool_env("POLYMARKET_SMART_NOISE_FALLBACK_ENABLED", False)
     smart_noise_fallback_max_trades_per_tick: int = _int_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADES_PER_TICK", 4)
     smart_noise_fallback_max_trade_usd: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADE_USD", 10.0)

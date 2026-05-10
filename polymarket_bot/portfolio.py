@@ -73,11 +73,11 @@ class Portfolio:
         )
 
     def has_open_event_position(self, candidate: Candidate) -> bool:
-        event_key = _event_key(candidate)
+        event_key = _sports_event_key(candidate)
         if not event_key:
             return False
         return any(
-            position.get("status") == "open" and _event_key(position) == event_key
+            position.get("status") == "open" and _sports_event_key(position) == event_key
             for position in self.positions
         )
 
