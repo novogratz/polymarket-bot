@@ -908,6 +908,10 @@ class StrategyTests(unittest.TestCase):
                 Settings(funder_address="0xfunder"),
                 portfolio,
             )
+            report_again = main_module._sync_live_positions(
+                Settings(funder_address="0xfunder"),
+                portfolio,
+            )
         finally:
             main_module.DataApiClient = original_client
             main_module.notifications._reset_for_tests()
@@ -915,10 +919,12 @@ class StrategyTests(unittest.TestCase):
             os.environ.pop("TELEGRAM_CHAT_ID_LIVE", None)
 
         self.assertEqual(report[0]["action"], "imported_live_position")
+        self.assertEqual(report_again[0]["action"], "updated_live_position")
         self.assertEqual(len(sent), 1)
         self.assertIn("BUY", sent[0]["text"])
         self.assertIn("Pick: *Yes*", sent[0]["text"])
         self.assertIn("Tag: `live_sync`", sent[0]["text"])
+        self.assertTrue(portfolio.positions[0].get("telegram_buy_notified"))
 
     def test_smart_money_requires_consensus(self):
         candidate = Candidate(

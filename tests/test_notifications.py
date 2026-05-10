@@ -244,6 +244,53 @@ class TestTradeFormats(NotificationsBaseTest):
         )
         self.assertEqual(sent, [])
 
+    def test_portfolio_update_contains_realized_unrealized_and_trade_lists(self) -> None:
+        sent = self._setup_enabled()
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch("polymarket_bot.notifications._default_state_path", return_value=Path(td) / "state.json"):
+                notifications.notify_portfolio_update({
+                    "timestamp": "2026-05-10 10:30",
+                    "equity_usd": 220.0,
+                    "cash_usd": 50.0,
+                    "invested_usd": 165.0,
+                    "unrealized_pnl_usd": 5.0,
+                    "realized_today_usd": 1.25,
+                    "realized_total_usd": -3.50,
+                    "trades_today": 2,
+                    "recent_trades": [
+                        {
+                            "question": "Bitcoin Up or Down",
+                            "outcome": "Up",
+                            "realized_pnl": 0.75,
+                            "strategy": "btc_edge",
+                            "exit_reason": "positive_pnl_before_expiry",
+                        }
+                    ],
+                    "open_positions": [
+                        {
+                            "question": "Will BTC be above $100,000?",
+                            "outcome": "Yes",
+                            "stake": 15.0,
+                            "entry_price": 0.40,
+                            "current_price": 0.52,
+                            "unrealized_pnl": 4.50,
+                            "strategy": "btc_edge",
+                        }
+                    ],
+                })
+
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertIn("30m portfolio update", text)
+        self.assertIn("Unrealized", text)
+        self.assertIn("\\+$5\\.00", text)
+        self.assertIn("Realized today", text)
+        self.assertIn("Realized all\\-time", text)
+        self.assertIn("Recent closed trades", text)
+        self.assertIn("Open positions", text)
+        self.assertIn("Bitcoin Up or Down", text)
+        self.assertIn("Will BTC be above $100,000?", text)
+
 
 class TestBigWinLoss(NotificationsBaseTest):
     def _setup_enabled(self) -> list[dict]:

@@ -87,6 +87,7 @@ class _State:
     equity_peak_usd: float | None = None
     equity_floor_breached: bool = False
     last_daily_summary_date: str | None = None
+    last_portfolio_update_ts: float | None = None
     dedupe_seen: dict[str, float] = field(default_factory=dict)
     drawdown_armed: bool = False  # True quand on a déjà alerté sur ce pic
 
@@ -111,6 +112,7 @@ def _load_state(path: Path) -> _State:
         equity_peak_usd=data.get("equity_peak_usd"),
         equity_floor_breached=bool(data.get("equity_floor_breached", False)),
         last_daily_summary_date=data.get("last_daily_summary_date"),
+        last_portfolio_update_ts=data.get("last_portfolio_update_ts"),
         dedupe_seen={str(k): float(v) for k, v in (data.get("dedupe_seen") or {}).items()},
         drawdown_armed=bool(data.get("drawdown_armed", False)),
     )
@@ -134,6 +136,7 @@ def _save_state(path: Path, state: _State) -> None:
         "equity_peak_usd": state.equity_peak_usd,
         "equity_floor_breached": state.equity_floor_breached,
         "last_daily_summary_date": state.last_daily_summary_date,
+        "last_portfolio_update_ts": state.last_portfolio_update_ts,
         "dedupe_seen": state.dedupe_seen,
         "drawdown_armed": state.drawdown_armed,
     }
@@ -437,6 +440,12 @@ def notify_daily_summary(snapshot: dict[str, Any]) -> None:
         f"Cash: {_md_escape(f'${cash:.2f}')} — Positions: {positions}",
         f"Trades 24h: {trades} \\({wins}W / {losses}L\\) — Win rate {_md_escape(f'{win_rate:.0f}%')}",
     ]
+    if "unrealized_pnl_usd" in snapshot:
+        lines.append(f"Unrealized: *{_md_escape(_fmt_money(float(snapshot.get('unrealized_pnl_usd') or 0.0), signed=True))}*")
+    if "realized_total_usd" in snapshot:
+        lines.append(f"Realized all\\-time: *{_md_escape(_fmt_money(float(snapshot.get('realized_total_usd') or 0.0), signed=True))}*")
+    if "realized_today_usd" in snapshot:
+        lines.append(f"Realized today: *{_md_escape(_fmt_money(float(snapshot.get('realized_today_usd') or 0.0), signed=True))}*")
     top_w = snapshot.get("top_winner")
     if isinstance(top_w, dict) and top_w:
         pnl_w = float(top_w.get("pnl_usd", 0))
@@ -453,4 +462,99 @@ def notify_daily_summary(snapshot: dict[str, Any]) -> None:
         )
     if _post("\n".join(lines)):
         state.last_daily_summary_date = today
+        _save_state(path, state)
+
+
+def _fmt_money(value: float, *, signed: bool = False) -> str:
+    sign = ""
+    if signed:
+        sign = "+" if value >= 0 else "-"
+    return f"{sign}${abs(value):.2f}" if signed else f"${value:.2f}"
+
+
+def _fmt_price(value: Any) -> str:
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return "?"
+
+
+def _short(text: Any, limit: int = 72) -> str:
+    raw = str(text or "")
+    if len(raw) <= limit:
+        return raw
+    return raw[: limit - 1] + "…"
+
+
+def _line_for_open_position(position: dict[str, Any]) -> str:
+    title = _short(position.get("question") or position.get("slug") or position.get("market_id") or "?", 58)
+    outcome = _short(position.get("outcome") or "?", 18)
+    stake = float(position.get("stake") or 0.0)
+    pnl = float(position.get("unrealized_pnl") or 0.0)
+    entry = _fmt_price(position.get("entry_price"))
+    current = _fmt_price(position.get("current_price"))
+    strategy = str(position.get("strategy") or "?")
+    return (
+        f"• {_md_escape(title)} — *{_md_escape(outcome)}* "
+        f"`{_md_escape(_fmt_money(stake))}` {_md_escape(entry)}→{_md_escape(current)} "
+        f"uPnL *{_md_escape(_fmt_money(pnl, signed=True))}* `{_md_escape(strategy)}`"
+    )
+
+
+def _line_for_closed_trade(trade: dict[str, Any]) -> str:
+    title = _short(trade.get("question") or trade.get("title") or trade.get("market_title") or "?", 58)
+    outcome = _short(trade.get("outcome") or "?", 18)
+    pnl = float(trade.get("realized_pnl") or trade.get("pnl_usd") or 0.0)
+    strategy = str(trade.get("strategy") or "?")
+    reason = str(trade.get("exit_reason") or trade.get("reason") or "")
+    suffix = f" `{_md_escape(reason)}`" if reason else ""
+    return (
+        f"• {_md_escape(title)} — *{_md_escape(outcome)}* "
+        f"rPnL *{_md_escape(_fmt_money(pnl, signed=True))}* `{_md_escape(strategy)}`{suffix}"
+    )
+
+
+def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
+    if not is_enabled() or not _flag("TELEGRAM_ALERT_PORTFOLIO_UPDATES"):
+        return
+    interval_min = _float_env("TELEGRAM_PORTFOLIO_UPDATE_MINUTES", 30.0)
+    if interval_min <= 0:
+        interval_min = 30.0
+    path = _default_state_path()
+    state = _load_state(path)
+    now = time.time()
+    if state.last_portfolio_update_ts is not None and (now - state.last_portfolio_update_ts) < interval_min * 60.0:
+        return
+
+    equity = float(snapshot.get("equity_usd", 0.0) or 0.0)
+    cash = float(snapshot.get("cash_usd", 0.0) or 0.0)
+    invested = float(snapshot.get("invested_usd", 0.0) or 0.0)
+    unrealized = float(snapshot.get("unrealized_pnl_usd", 0.0) or 0.0)
+    realized_total = float(snapshot.get("realized_total_usd", 0.0) or 0.0)
+    realized_today = float(snapshot.get("realized_today_usd", 0.0) or 0.0)
+    trades_today = int(snapshot.get("trades_today", 0) or 0)
+    open_positions = snapshot.get("open_positions") if isinstance(snapshot.get("open_positions"), list) else []
+    recent_trades = snapshot.get("recent_trades") if isinstance(snapshot.get("recent_trades"), list) else []
+
+    lines = [
+        f"\U0001f4ca *30m portfolio update* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
+        f"Equity: *{_md_escape(_fmt_money(equity))}* — Cash {_md_escape(_fmt_money(cash))} — Invested {_md_escape(_fmt_money(invested))}",
+        f"Unrealized: *{_md_escape(_fmt_money(unrealized, signed=True))}*",
+        f"Realized today: *{_md_escape(_fmt_money(realized_today, signed=True))}* \\({trades_today} trades\\)",
+        f"Realized all\\-time: *{_md_escape(_fmt_money(realized_total, signed=True))}*",
+    ]
+    if recent_trades:
+        lines.append("*Recent closed trades*")
+        lines.extend(_line_for_closed_trade(trade) for trade in recent_trades[:10])
+    if open_positions:
+        lines.append("*Open positions*")
+        lines.extend(_line_for_open_position(position) for position in open_positions[:12])
+        if len(open_positions) > 12:
+            lines.append(f"…and {len(open_positions) - 12} more open positions")
+
+    text = "\n".join(lines)
+    if len(text) > 3900:
+        text = text[:3850] + "\n…truncated"
+    if _post(text):
+        state.last_portfolio_update_ts = now
         _save_state(path, state)

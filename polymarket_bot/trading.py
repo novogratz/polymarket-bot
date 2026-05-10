@@ -625,6 +625,8 @@ def execute_live_trade(
                 outcome=str(candidate.outcome or ""),
                 market_url=market_url,
             )
+            if position is not None:
+                position["telegram_buy_notified"] = True
         except Exception as exc:
             print(f"[notif] trade_buy hook failed: {exc}", file=sys.stderr, flush=True)
     return LiveTradeResult(order=order, response=response, candidate=candidate)

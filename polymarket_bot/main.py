@@ -1757,6 +1757,88 @@ def _journal_stats_last_24h(
     return len(trades), wins, losses, top_w, top_l, 0.0
 
 
+def _read_trade_journal(path: Path) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    try:
+        with path.open(encoding="utf-8") as fp:
+            for line in fp:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(record, dict):
+                    records.append(record)
+    except (FileNotFoundError, OSError):
+        return []
+    return records
+
+
+def _record_pnl(record: dict[str, object]) -> float:
+    try:
+        return float(record.get("realized_pnl") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _record_closed_at(record: dict[str, object]) -> dt.datetime | None:
+    raw = record.get("closed_at") or record.get("ts")
+    if not raw:
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
+
+
+def _portfolio_update_snapshot(settings: Settings) -> dict[str, object]:
+    portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+    summary = portfolio.summary()
+    open_positions = [
+        position
+        for position in portfolio.positions
+        if position.get("status") == "open"
+    ]
+    open_positions = sorted(
+        open_positions,
+        key=lambda p: float(p.get("unrealized_pnl") or 0.0),
+        reverse=True,
+    )
+    records = _read_trade_journal(settings.trade_journal_path)
+    now = utc_now()
+    today = now.astimezone().date()
+    today_records = [
+        record
+        for record in records
+        if (closed_at := _record_closed_at(record)) is not None
+        and closed_at.astimezone().date() == today
+    ]
+    recent_records = sorted(
+        records,
+        key=lambda record: _record_closed_at(record) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
+        reverse=True,
+    )
+    open_realized = sum(float(position.get("realized_pnl") or 0.0) for position in open_positions)
+    return {
+        "timestamp": now.astimezone().strftime("%Y-%m-%d %H:%M"),
+        "cash_usd": float(summary.get("cash") or 0.0),
+        "invested_usd": float(summary.get("invested") or 0.0),
+        "equity_usd": float(summary.get("equity") or 0.0),
+        "unrealized_pnl_usd": float(summary.get("unrealized_pnl") or 0.0),
+        "realized_total_usd": round(sum(_record_pnl(record) for record in records) + open_realized, 2),
+        "realized_today_usd": round(sum(_record_pnl(record) for record in today_records), 2),
+        "trades_today": len(today_records),
+        "open_position_count": len(open_positions),
+        "open_positions": open_positions,
+        "recent_trades": recent_records,
+    }
+
+
 def _append_trade_journal(settings: Settings, position: dict[str, object], reason: str) -> None:
     path = settings.trade_journal_path
     try:
@@ -1875,23 +1957,31 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
         if position is None:
             position = _position_from_live_api(item)
             portfolio.positions.append(position)
-            try:
-                notifications.notify_trade_buy(
-                    market_title=str(position.get("question") or ""),
-                    token_id=str(position.get("token_id") or ""),
-                    price=float(position.get("entry_price") or 0.0),
-                    size_usd=float(position.get("stake") or 0.0),
-                    signal={"tag": "live_sync"},
-                    outcome=str(position.get("outcome") or ""),
-                    market_url=str(position.get("url") or "") or None,
-                )
-            except Exception as exc:
-                print(f"[notif] live_sync buy hook failed: {exc}", file=sys.stderr, flush=True)
+            _notify_live_sync_buy_once(position)
             report.append({"action": "imported_live_position", "token_id": token_id, "question": position.get("question")})
         else:
             _update_position_from_live_api(position, item)
+            _notify_live_sync_buy_once(position)
             report.append({"action": "updated_live_position", "token_id": token_id, "question": position.get("question")})
     return report
+
+
+def _notify_live_sync_buy_once(position: dict[str, object]) -> None:
+    if position.get("telegram_buy_notified"):
+        return
+    try:
+        notifications.notify_trade_buy(
+            market_title=str(position.get("question") or ""),
+            token_id=str(position.get("token_id") or ""),
+            price=float(position.get("entry_price") or 0.0),
+            size_usd=float(position.get("stake") or 0.0),
+            signal={"tag": str(position.get("strategy") or "live_sync")},
+            outcome=str(position.get("outcome") or ""),
+            market_url=str(position.get("url") or "") or None,
+        )
+        position["telegram_buy_notified"] = True
+    except Exception as exc:
+        print(f"[notif] live_sync buy hook failed: {exc}", file=sys.stderr, flush=True)
 
 
 def _position_from_live_api(item: dict[str, object]) -> dict[str, object]:
@@ -2056,6 +2146,7 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                 trades_24h, wins_24h, losses_24h, top_w, top_l, pct_24h = (
                     _journal_stats_last_24h(settings.trade_journal_path)
                 )
+                portfolio_snapshot = _portfolio_update_snapshot(settings)
                 notifications.notify_daily_summary(
                     {
                         "today": now_local.date().isoformat(),
@@ -2068,8 +2159,12 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                         "losses_24h": losses_24h,
                         "top_winner": top_w,
                         "top_loser": top_l,
+                        "unrealized_pnl_usd": portfolio_snapshot.get("unrealized_pnl_usd", 0.0),
+                        "realized_total_usd": portfolio_snapshot.get("realized_total_usd", 0.0),
+                        "realized_today_usd": portfolio_snapshot.get("realized_today_usd", 0.0),
                     }
                 )
+            notifications.notify_portfolio_update(_portfolio_update_snapshot(settings))
         except Exception as exc:
             print(f"[notif] post-tick hook failed: {exc}", file=sys.stderr, flush=True)
 
