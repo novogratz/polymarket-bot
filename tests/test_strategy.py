@@ -21,6 +21,7 @@ from polymarket_bot.smart_money import SmartTrade, market_category, smart_money_
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
 from polymarket_bot.trading import _is_filled_buy_response, execute_live_sell, execute_live_trade
 from polymarket_bot.main import (
+    _dynamic_max_trade,
     _is_unfilled_market_order_error,
     _max_trade_for_signal,
     _sell_plan,
@@ -1635,6 +1636,31 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(result.response.get("status"), "matched")
         self.assertEqual(len(portfolio.positions), 1)
         self.assertEqual(portfolio.positions[0]["shares"], 5.0)
+
+    def test_dynamic_max_trade_uses_cash_floor_to_deploy_idle_cash(self):
+        settings = Settings(
+            smart_position_pct=0.30,
+            smart_cash_floor_pct=0.02,
+            smart_max_position_ceiling_usd=150.0,
+            smart_max_position_ceiling_pct=0.40,
+        )
+        signal = {
+            "consensus": 4,
+            "selection_metrics": {"profitable_wallet_count": 4, "copied_usdc": 2000},
+        }
+        portfolio = Portfolio(
+            cash=100.0,
+            positions=[
+                {
+                    "status": "open",
+                    "stake": 100.0,
+                    "current_value": 100.0,
+                    "unrealized_pnl": 0.0,
+                }
+            ],
+        )
+
+        self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=2), 96.0)
 
 
 class MarketCategoryTests(unittest.TestCase):

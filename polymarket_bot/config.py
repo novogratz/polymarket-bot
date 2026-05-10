@@ -62,7 +62,7 @@ class Settings:
     soon_hours: int = _int_env("POLYMARKET_SOON_HOURS", 72)
     paper_balance_usd: float = _float_env("POLYMARKET_PAPER_BALANCE_USD", 20.0)
     assumed_live_balance_usd: float = _float_env("POLYMARKET_ASSUME_LIVE_BALANCE_USD", 0.0)
-    max_position_usd: float = _float_env("POLYMARKET_MAX_POSITION_USD", 5.0)
+    max_position_usd: float = _float_env("POLYMARKET_MAX_POSITION_USD", 12.0)
     trade_fraction: float = _float_env("POLYMARKET_TRADE_FRACTION", 1.0)
     btc_edge_integrated: bool = _bool_env("POLYMARKET_BTC_EDGE_INTEGRATED", False)
     btc_min_model_probability: float = _float_env("POLYMARKET_BTC_MIN_MODEL_PROBABILITY", 0.90)
@@ -122,26 +122,26 @@ class Settings:
     smart_crypto_min_copied_usdc: float = _float_env("POLYMARKET_SMART_CRYPTO_MIN_COPIED_USDC", 1000.0)
     smart_crypto_min_consensus: int = _int_env("POLYMARKET_SMART_CRYPTO_MIN_CONSENSUS", 3)
     smart_crypto_min_buy_price: float = _float_env("POLYMARKET_SMART_CRYPTO_MIN_BUY_PRICE", 0.70)
-    smart_max_trade_usd: float = _float_env("POLYMARKET_SMART_MAX_TRADE_USD", 5.0)
-    smart_position_pct: float = _float_env("POLYMARKET_SMART_POSITION_PCT", 0.0)
+    smart_max_trade_usd: float = _float_env("POLYMARKET_SMART_MAX_TRADE_USD", 12.0)
+    smart_position_pct: float = _float_env("POLYMARKET_SMART_POSITION_PCT", 0.30)
     smart_max_position_ceiling_usd: float = _float_env(
         "POLYMARKET_SMART_MAX_POSITION_CEILING_USD",
-        50.0,
+        150.0,
     )
-    smart_max_position_ceiling_pct: float = _float_env("POLYMARKET_SMART_MAX_POSITION_CEILING_PCT", 0.0)
+    smart_max_position_ceiling_pct: float = _float_env("POLYMARKET_SMART_MAX_POSITION_CEILING_PCT", 0.40)
     smart_max_hold_hours: float = _float_env("POLYMARKET_SMART_MAX_HOLD_HOURS", 0.0)
     smart_resolved_exit_threshold: float = _float_env("POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD", 0.97)
-    smart_cash_floor_pct: float = _float_env("POLYMARKET_SMART_CASH_FLOOR_PCT", 0.0)
+    smart_cash_floor_pct: float = _float_env("POLYMARKET_SMART_CASH_FLOOR_PCT", 0.02)
     smart_noise_fallback_enabled: bool = _bool_env("POLYMARKET_SMART_NOISE_FALLBACK_ENABLED", False)
-    smart_noise_fallback_max_trades_per_tick: int = _int_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADES_PER_TICK", 2)
-    smart_noise_fallback_max_trade_usd: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADE_USD", 5.0)
+    smart_noise_fallback_max_trades_per_tick: int = _int_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADES_PER_TICK", 4)
+    smart_noise_fallback_max_trade_usd: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADE_USD", 10.0)
     smart_noise_fallback_min_buy_price: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_MIN_BUY_PRICE", 0.20)
     smart_noise_fallback_max_buy_price: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_BUY_PRICE", 0.80)
     smart_noise_fallback_max_spread: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_SPREAD", 0.04)
-    smart_noise_fallback_cash_pressure_pct: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_CASH_PRESSURE_PCT", 0.35)
+    smart_noise_fallback_cash_pressure_pct: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_CASH_PRESSURE_PCT", 0.25)
     smart_high_conviction_balance_fraction: float = _float_env(
         "POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION",
-        0.0,
+        0.25,
     )
     smart_max_orders_per_tick: int = _int_env("POLYMARKET_SMART_MAX_ORDERS_PER_TICK", 0)
     smart_take_profit_tiers: str = os.getenv(
