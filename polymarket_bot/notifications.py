@@ -92,6 +92,7 @@ class _State:
     last_portfolio_update_ts: float | None = None
     last_portfolio_update_equity_usd: float | None = None
     last_portfolio_update_cash_usd: float | None = None
+    last_portfolio_update_unrealized_usd: float | None = None
     dedupe_seen: dict[str, float] = field(default_factory=dict)
     drawdown_armed: bool = False  # True quand on a déjà alerté sur ce pic
     last_post_ts: float = 0.0
@@ -123,6 +124,7 @@ def _load_state(path: Path) -> _State:
         last_portfolio_update_ts=data.get("last_portfolio_update_ts"),
         last_portfolio_update_equity_usd=data.get("last_portfolio_update_equity_usd"),
         last_portfolio_update_cash_usd=data.get("last_portfolio_update_cash_usd"),
+        last_portfolio_update_unrealized_usd=data.get("last_portfolio_update_unrealized_usd"),
         dedupe_seen={str(k): float(v) for k, v in (data.get("dedupe_seen") or {}).items()},
         drawdown_armed=bool(data.get("drawdown_armed", False)),
         last_post_ts=float(data.get("last_post_ts", 0.0)),
@@ -153,6 +155,7 @@ def _save_state(path: Path, state: _State) -> None:
         "last_portfolio_update_ts": state.last_portfolio_update_ts,
         "last_portfolio_update_equity_usd": state.last_portfolio_update_equity_usd,
         "last_portfolio_update_cash_usd": state.last_portfolio_update_cash_usd,
+        "last_portfolio_update_unrealized_usd": state.last_portfolio_update_unrealized_usd,
         "dedupe_seen": state.dedupe_seen,
         "drawdown_armed": state.drawdown_armed,
         "last_post_ts": state.last_post_ts,
@@ -730,11 +733,11 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
             f"\U0001f4ca *Director review* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
             (
                 f"*Equity* {_md_escape(_fmt_money(equity))}"
-                f"{_fmt_delta_suffix(equity, state.last_portfolio_update_equity_usd)}"
+                f" \\({_pnl_icon(today_pnl)} {_md_escape(_fmt_money(today_pnl, signed=True))}\\)"
             ),
             f"*Cash* {_md_escape(_fmt_money(cash))}",
             f"*Invested* {_md_escape(_fmt_money(invested))}",
-            f"*PnL unrealized* {_pnl_icon(unrealized)} {_md_escape(_fmt_money(unrealized, signed=True))}",
+            f"*PnL unrealized* {_pnl_icon(unrealized)} {_md_escape(_fmt_money(unrealized, signed=True))}{_fmt_delta_suffix(unrealized, state.last_portfolio_update_unrealized_usd)}",
             f"*PnL today* {_pnl_icon(today_pnl)} {_md_escape(_fmt_money(today_pnl, signed=True))}",
             f"*PnL all\\-time* {_pnl_icon(total_pnl)} {_md_escape(_fmt_money(total_pnl, signed=True))}",
             f"*Closed PnL today* {_pnl_icon(realized_today)} {_md_escape(_fmt_money(realized_today, signed=True))}",
@@ -790,4 +793,5 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     state.last_portfolio_update_ts = now
     state.last_portfolio_update_equity_usd = equity
     state.last_portfolio_update_cash_usd = cash
+    state.last_portfolio_update_unrealized_usd = unrealized
     _save_state(path, state)
