@@ -525,17 +525,15 @@ def notify_daily_summary(snapshot: dict[str, Any]) -> None:
 
     lines = [
         f"\U0001f4ca *Director daily review* — {_md_escape(today)}",
-        f"*Equity* {_md_escape(f'${equity:.2f}')} \\({pct_icon} {pct_str} 24h\\) — *Cash* {_md_escape(f'${cash:.2f}')} — *Open* {positions}",
+        (
+            f"*Equity* {_md_escape(f'${equity:.2f}')}"
+            f"{_fmt_delta_suffix(equity, state.last_daily_summary_equity_usd)}"
+            f" \\({pct_icon} {pct_str} 24h\\) — *Cash* {_md_escape(f'${cash:.2f}')} — *Open* {positions}"
+        ),
         f"*Activity* {trades} closed trades — ✅ {wins}W / ❌ {losses}L — Win rate {_md_escape(f'{win_rate:.0f}%')}",
     ]
     if state.last_daily_summary_date:
         lines.append(f"*Last daily review* {_md_escape(state.last_daily_summary_date)}")
-    for delta_line in (
-        _fmt_portfolio_delta("Total balance vs last daily", equity, state.last_daily_summary_equity_usd),
-        _fmt_portfolio_delta("Cash vs last daily", cash, state.last_daily_summary_cash_usd),
-    ):
-        if delta_line:
-            lines.append(delta_line)
     if "unrealized_pnl_usd" in snapshot:
         value = float(snapshot.get("unrealized_pnl_usd") or 0.0)
         lines.append(f"*PnL* unrealized {_pnl_icon(value)} {_md_escape(_fmt_money(value, signed=True))}")
@@ -585,18 +583,12 @@ def _fmt_minutes_ago(seconds: float) -> str:
     return f"{days}d {hours}h ago"
 
 
-def _fmt_portfolio_delta(label: str, current: float, previous: float | None) -> str | None:
+def _fmt_delta_suffix(current: float, previous: float | None) -> str:
     if previous is None:
-        return None
+        return ""
     delta = round(current - previous, 2)
-    if delta > 0:
-        direction = "higher"
-    elif delta < 0:
-        direction = "lower"
-    else:
-        direction = "flat"
     amount = f"{'+' if delta >= 0 else '-'}${abs(delta):.2f} USD"
-    return f"*{label}* {_pnl_icon(delta)} {_md_escape(amount)} {direction}"
+    return f" \\({_pnl_icon(delta)} {_md_escape(amount)}\\)"
 
 
 def _pnl_icon(value: float) -> str:
@@ -698,7 +690,10 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     sections: list[list[str]] = [
         [
             f"\U0001f4ca *Director review* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
-            f"*Equity* {_md_escape(_fmt_money(equity))}",
+            (
+                f"*Equity* {_md_escape(_fmt_money(equity))}"
+                f"{_fmt_delta_suffix(equity, state.last_portfolio_update_equity_usd)}"
+            ),
             f"*Cash* {_md_escape(_fmt_money(cash))}",
             f"*Invested* {_md_escape(_fmt_money(invested))}",
             f"*PnL unrealized* {_pnl_icon(unrealized)} {_md_escape(_fmt_money(unrealized, signed=True))}",
@@ -713,16 +708,6 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
         last_lines.append(
             f"*Last 30m review* {_md_escape(_fmt_minutes_ago(now - state.last_portfolio_update_ts))}"
         )
-    for delta_line in (
-        _fmt_portfolio_delta(
-            "Total balance vs last 30m",
-            equity,
-            state.last_portfolio_update_equity_usd,
-        ),
-        _fmt_portfolio_delta("Cash vs last 30m", cash, state.last_portfolio_update_cash_usd),
-    ):
-        if delta_line:
-            last_lines.append(delta_line)
     if last_lines:
         sections[0].extend(last_lines)
 

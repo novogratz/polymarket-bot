@@ -393,8 +393,10 @@ class TestTradeFormats(NotificationsBaseTest):
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
         self.assertIn("*Last 30m review* 30m ago", text)
-        self.assertIn("*Total balance vs last 30m* ✅ \\+$20\\.00 USD higher", text)
-        self.assertIn("*Cash vs last 30m* ❌ \\-$10\\.00 USD lower", text)
+        self.assertIn("*Equity* $220\\.00 \\(✅ \\+$20\\.00 USD\\)", text)
+        self.assertIn("\n*Cash* $50\\.00", text)
+        self.assertNotIn("Total balance vs last 30m", text)
+        self.assertNotIn("Cash vs last 30m", text)
 
 
 class TestBigWinLoss(NotificationsBaseTest):
@@ -566,8 +568,10 @@ class TestDailySummary(NotificationsBaseTest):
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
         self.assertIn("*Last daily review* 2026\\-05\\-09", text)
-        self.assertIn("*Total balance vs last daily* ❌ \\-$2\\.90 USD lower", text)
-        self.assertIn("*Cash vs last daily* ✅ \\+$6\\.40 USD higher", text)
+        self.assertIn("*Equity* $92\\.10 \\(❌ \\-$2\\.90 USD\\)", text)
+        self.assertIn("*Cash* $18\\.40", text)
+        self.assertNotIn("Total balance vs last daily", text)
+        self.assertNotIn("Cash vs last daily", text)
 
 
 class TestAutoTuneDiff(NotificationsBaseTest):
