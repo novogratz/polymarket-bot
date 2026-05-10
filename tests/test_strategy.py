@@ -17,7 +17,7 @@ from polymarket_bot.config import Settings
 from polymarket_bot.models import Candidate, utc_now
 from polymarket_bot.polymarket import ApiCreds, PolymarketClient
 from polymarket_bot.portfolio import Portfolio
-from polymarket_bot.smart_money import SmartTrade, market_category, smart_money_signals
+from polymarket_bot.smart_money import SmartTrade, SmartTrader, fetch_smart_money_data, market_category, smart_money_signals
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
 from polymarket_bot.trading import _is_filled_buy_response, execute_live_sell, execute_live_trade
 from polymarket_bot.main import (
@@ -1135,6 +1135,38 @@ class StrategyTests(unittest.TestCase):
         self.assertIn("Pick: *Yes*", sent[0]["text"])
         self.assertIn("Tag: `live_sync`", sent[0]["text"])
         self.assertTrue(portfolio.positions[0].get("telegram_buy_notified"))
+
+    def test_fetch_smart_money_data_caps_qualified_traders_by_pnl(self):
+        class FakeClient:
+            pulled: list[str] = []
+
+            def leaderboard(self, *, category, time_period, limit):
+                return [
+                    SmartTrader(wallet=f"0x{i}", username="", pnl=float(i), volume=1000.0, category=category)
+                    for i in range(5)
+                ]
+
+            def trades(self, *, user, start, limit=100, side="BUY"):
+                self.pulled.append(user)
+                return [
+                    SmartTrade(user, f"asset-{user}", "BUY", 0.5, 10.0, 5.0, 1, "Q", "Yes", "q")
+                ]
+
+        client = FakeClient()
+        data = fetch_smart_money_data(
+            Settings(
+                smart_categories="OVERALL",
+                smart_time_periods="MONTH",
+                smart_leaderboard_limit=5,
+                smart_max_traders=2,
+                smart_trade_fetch_concurrency=1,
+            ),
+            client=client,
+        )
+
+        self.assertEqual(data.traders_used, 2)
+        self.assertEqual(client.pulled, ["0x4", "0x3"])
+        self.assertEqual(len(data.trades), 2)
 
     def test_smart_money_requires_consensus(self):
         candidate = Candidate(

@@ -80,7 +80,7 @@ class Settings:
     polygon_rpc_url: str = os.getenv("POLYMARKET_POLYGON_RPC_URL", "https://polygon-bor-rpc.publicnode.com")
     smart_categories: str = os.getenv(
         "POLYMARKET_SMART_CATEGORIES",
-        "OVERALL,FINANCE,ECONOMICS,TECH,POLITICS,SPORTS,CULTURE,WEATHER,GAMING,CRYPTO,ENTERTAINMENT",
+        "OVERALL,FINANCE,ECONOMICS,TECH,POLITICS,SPORTS,CULTURE,WEATHER,CRYPTO",
     )
     smart_discovery_keywords: str = os.getenv(
         "POLYMARKET_SMART_DISCOVERY_KEYWORDS",
@@ -90,6 +90,7 @@ class Settings:
     smart_time_period: str = os.getenv("POLYMARKET_SMART_TIME_PERIOD", "WEEK")
     smart_time_periods: str = os.getenv("POLYMARKET_SMART_TIME_PERIODS", "")
     smart_leaderboard_limit: int = _int_env("POLYMARKET_SMART_LEADERBOARD_LIMIT", 25)
+    smart_max_traders: int = _int_env("POLYMARKET_SMART_MAX_TRADERS", 250)
     smart_scan_limit: int = _int_env("POLYMARKET_SMART_SCAN_LIMIT", 1000)
     smart_soon_hours: int = _int_env("POLYMARKET_SMART_SOON_HOURS", 72)
     smart_trade_lookback_minutes: int = _int_env("POLYMARKET_SMART_TRADE_LOOKBACK_MINUTES", 1440)

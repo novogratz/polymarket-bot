@@ -309,7 +309,15 @@ def fetch_smart_money_data(
                 return False
         return True
 
-    qualified = [t for t in traders if _qualifies(t)]
+    qualified = sorted((t for t in traders if _qualifies(t)), key=lambda trader: trader.pnl, reverse=True)
+    if settings.smart_max_traders > 0:
+        before_limit = len(qualified)
+        qualified = qualified[: settings.smart_max_traders]
+        if before_limit > len(qualified) and not settings.quiet:
+            print(
+                f"      limiting trade fetch to top {len(qualified)}/{before_limit} qualified trader(s) by PnL",
+                flush=True,
+            )
     if qualified and not settings.quiet:
         print(
             f"      pulling trades for {len(qualified)} qualified trader(s)"
