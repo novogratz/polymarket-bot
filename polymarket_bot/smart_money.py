@@ -697,8 +697,8 @@ def _value_pct(avg_copy_price: float, current_ask: float | None) -> float:
 def _value_score(avg_copy_price: float, current_ask: float | None, copied_usdc: float) -> float:
     value_pct = _value_pct(avg_copy_price, current_ask)
     if value_pct > 0:
-        flow_quality = min(max(copied_usdc, 0.0) / 250.0, 1.0)
-        longshot_bonus = 4.0 if current_ask is not None and current_ask <= 0.15 and copied_usdc >= 20.0 else 0.0
+        flow_quality = min(max(copied_usdc, 0.0) / 50.0, 1.0)
+        longshot_bonus = 4.0 if current_ask is not None and current_ask <= 0.15 and copied_usdc >= 10.0 else 0.0
         return min(value_pct * 30.0, 18.0) * flow_quality + longshot_bonus
     return -min(abs(value_pct) * 18.0, 12.0)
 

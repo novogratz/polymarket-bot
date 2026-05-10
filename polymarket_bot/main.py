@@ -1290,8 +1290,18 @@ def _dynamic_max_trade(
         ceiling = max(ceiling, total_equity * settings.smart_max_position_ceiling_pct)
     if ceiling > 0:
         dynamic = min(dynamic, ceiling)
+    cap = _absolute_trade_cap(settings, strategy)
+    if cap > 0:
+        dynamic = min(dynamic, cap)
     dynamic = min(dynamic, cash)
     return round(max(base, dynamic), 2)
+
+
+def _absolute_trade_cap(settings: Settings, strategy: str) -> float:
+    caps = [cap for cap in (settings.max_position_usd, settings.smart_max_trade_usd) if cap > 0]
+    if strategy == "smart_money_starter" and settings.starter_trade_usd > 0:
+        caps.append(settings.starter_trade_usd)
+    return min(caps) if caps else 0.0
 
 
 def _max_trade_for_signal(
@@ -1304,6 +1314,7 @@ def _max_trade_for_signal(
     metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
     consensus = int(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0)
     copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
+    absolute_cap = _absolute_trade_cap(settings, strategy)
 
     if (
         settings.smart_position_pct > 0
@@ -1313,6 +1324,8 @@ def _max_trade_for_signal(
         size = available_cash * settings.smart_position_pct * quality_mult
         if settings.smart_max_position_ceiling_usd > 0:
             size = min(size, settings.smart_max_position_ceiling_usd)
+        if absolute_cap > 0:
+            size = min(size, absolute_cap)
         if is_crypto_micro:
             size = min(size, settings.smart_crypto_micro_max_trade_usd)
         return round(max(0.0, size), 2)
@@ -1334,6 +1347,8 @@ def _max_trade_for_signal(
         quality_cap = min(settings.max_position_usd, 10.0)
     else:
         quality_cap = min(settings.max_position_usd, 5.0)
+    if absolute_cap > 0:
+        quality_cap = min(quality_cap, absolute_cap)
     return min(base_cap, quality_cap)
 
 
@@ -1382,6 +1397,16 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
                 "reason": "trailing_stop",
                 "shares": current_shares,
             }
+
+    if (
+        settings.smart_recycle_profit_pct > 0
+        and current_pnl_pct >= settings.smart_recycle_profit_pct
+        and _position_age_minutes(position) >= settings.smart_recycle_profit_min_age_minutes
+    ):
+        return {
+            "reason": "recycle_profit",
+            "shares": current_shares,
+        }
 
     exits = position.get("exits", [])
     sold_shares = sum(float(exit_record.get("shares", 0.0)) for exit_record in exits if isinstance(exit_record, dict))
@@ -1916,14 +1941,19 @@ def _portfolio_update_snapshot(settings: Settings) -> dict[str, object]:
         reverse=True,
     )
     open_realized = sum(float(position.get("realized_pnl") or 0.0) for position in open_positions)
+    realized_today = sum(_record_pnl(record) for record in today_records)
+    unrealized = float(summary.get("unrealized_pnl") or 0.0)
+    realized_total = sum(_record_pnl(record) for record in records) + open_realized
     return {
         "timestamp": now.astimezone().strftime("%Y-%m-%d %H:%M"),
         "cash_usd": float(summary.get("cash") or 0.0),
         "invested_usd": float(summary.get("invested") or 0.0),
         "equity_usd": float(summary.get("equity") or 0.0),
-        "unrealized_pnl_usd": float(summary.get("unrealized_pnl") or 0.0),
-        "realized_total_usd": round(sum(_record_pnl(record) for record in records) + open_realized, 2),
-        "realized_today_usd": round(sum(_record_pnl(record) for record in today_records), 2),
+        "unrealized_pnl_usd": unrealized,
+        "realized_total_usd": round(realized_total, 2),
+        "realized_today_usd": round(realized_today, 2),
+        "total_pnl_usd": round(realized_total + unrealized, 2),
+        "today_pnl_usd": round(realized_today + open_realized + unrealized, 2),
         "trades_today": len(today_records),
         "open_position_count": len(open_positions),
         "open_positions": open_positions,
@@ -2040,6 +2070,7 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
             position["sync_closed"] = True
             report.append({"action": "closed_stale_local_position", "token_id": token_id})
 
+    to_notify: list[dict[str, object]] = []
     for token_id, item in active_by_token.items():
         position = local_by_token.get(token_id)
         for pending in portfolio.pending_orders or []:
@@ -2049,31 +2080,20 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
         if position is None:
             position = _position_from_live_api(item)
             portfolio.positions.append(position)
-            _notify_live_sync_buy_once(position)
+            to_notify.append(position)
             report.append({"action": "imported_live_position", "token_id": token_id, "question": position.get("question")})
         else:
             _update_position_from_live_api(position, item)
-            _notify_live_sync_buy_once(position)
+            to_notify.append(position)
             report.append({"action": "updated_live_position", "token_id": token_id, "question": position.get("question")})
+
+    if to_notify:
+        try:
+            notifications.notify_sync_import(to_notify)
+        except Exception as exc:
+            print(f"⚠️  sync notification batch failed: {exc}")
+
     return report
-
-
-def _notify_live_sync_buy_once(position: dict[str, object]) -> None:
-    if position.get("telegram_buy_notified"):
-        return
-    try:
-        notifications.notify_trade_buy(
-            market_title=str(position.get("question") or ""),
-            token_id=str(position.get("token_id") or ""),
-            price=float(position.get("entry_price") or 0.0),
-            size_usd=float(position.get("stake") or 0.0),
-            signal={"tag": str(position.get("strategy") or "live_sync")},
-            outcome=str(position.get("outcome") or ""),
-            market_url=str(position.get("url") or "") or None,
-        )
-        position["telegram_buy_notified"] = True
-    except Exception as exc:
-        print(f"[notif] live_sync buy hook failed: {exc}", file=sys.stderr, flush=True)
 
 
 def _position_from_live_api(item: dict[str, object]) -> dict[str, object]:

@@ -684,6 +684,8 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     unrealized = float(snapshot.get("unrealized_pnl_usd", 0.0) or 0.0)
     realized_total = float(snapshot.get("realized_total_usd", 0.0) or 0.0)
     realized_today = float(snapshot.get("realized_today_usd", 0.0) or 0.0)
+    total_pnl = float(snapshot.get("total_pnl_usd", realized_total + unrealized) or 0.0)
+    today_pnl = float(snapshot.get("today_pnl_usd", realized_today + unrealized) or 0.0)
     trades_today = int(snapshot.get("trades_today", 0) or 0)
     open_positions = snapshot.get("open_positions") if isinstance(snapshot.get("open_positions"), list) else []
 
@@ -697,8 +699,9 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
             f"*Cash* {_md_escape(_fmt_money(cash))}",
             f"*Invested* {_md_escape(_fmt_money(invested))}",
             f"*PnL unrealized* {_pnl_icon(unrealized)} {_md_escape(_fmt_money(unrealized, signed=True))}",
-            f"*PnL today* {_pnl_icon(realized_today)} {_md_escape(_fmt_money(realized_today, signed=True))}",
-            f"*PnL all\\-time* {_pnl_icon(realized_total)} {_md_escape(_fmt_money(realized_total, signed=True))}",
+            f"*PnL today* {_pnl_icon(today_pnl)} {_md_escape(_fmt_money(today_pnl, signed=True))}",
+            f"*PnL all\\-time* {_pnl_icon(total_pnl)} {_md_escape(_fmt_money(total_pnl, signed=True))}",
+            f"*Closed PnL today* {_pnl_icon(realized_today)} {_md_escape(_fmt_money(realized_today, signed=True))}",
             f"*Closed trades today* {trades_today}",
             f"*Open positions* {len(open_positions)}",
         ]

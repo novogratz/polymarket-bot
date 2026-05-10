@@ -26,6 +26,7 @@ from polymarket_bot.main import (
     _is_unfilled_market_order_error,
     _max_trade_for_signal,
     _noise_fallback_candidates,
+    _portfolio_update_snapshot,
     _sell_plan,
     _smart_discovery_keywords,
     _terminal_candidate_from_synced_position,
@@ -732,6 +733,47 @@ class StrategyTests(unittest.TestCase):
         plan = _sell_plan(position, 0.05, settings)
         self.assertEqual(plan["reason"], "max_hold_time_reached")
         self.assertEqual(plan["shares"], 100.0)
+
+    def test_sell_plan_recycles_mature_profit_before_long_hold(self):
+        opened = (utc_now() - timedelta(hours=2)).isoformat()
+        position = {
+            "shares": 100.0,
+            "initial_shares": 100.0,
+            "peak_pnl_pct": 0.22,
+            "sell_tiers_hit": [],
+            "exits": [],
+            "opened_at": opened,
+        }
+        settings = Settings(
+            smart_recycle_profit_pct=0.20,
+            smart_recycle_profit_min_age_minutes=60,
+            smart_take_profit_tiers="0.50:0.25",
+            smart_max_hold_hours=24,
+            smart_stop_loss_pct=0.0,
+            smart_trailing_stop_arm_pct=0.0,
+        )
+        plan = _sell_plan(position, 0.21, settings)
+        self.assertEqual(plan["reason"], "recycle_profit")
+        self.assertEqual(plan["shares"], 100.0)
+
+    def test_sell_plan_does_not_recycle_fresh_profit(self):
+        opened = (utc_now() - timedelta(minutes=10)).isoformat()
+        position = {
+            "shares": 100.0,
+            "initial_shares": 100.0,
+            "peak_pnl_pct": 0.22,
+            "sell_tiers_hit": [],
+            "exits": [],
+            "opened_at": opened,
+        }
+        settings = Settings(
+            smart_recycle_profit_pct=0.20,
+            smart_recycle_profit_min_age_minutes=60,
+            smart_take_profit_tiers="0.50:0.25",
+            smart_stop_loss_pct=0.0,
+            smart_trailing_stop_arm_pct=0.0,
+        )
+        self.assertIsNone(_sell_plan(position, 0.21, settings))
 
     def test_sell_plan_accepts_naive_opened_at_as_utc(self):
         old_open = (utc_now() - timedelta(hours=30)).replace(tzinfo=None).isoformat()
@@ -1881,6 +1923,8 @@ class StrategyTests(unittest.TestCase):
     def test_max_trade_percentage_sizing_scales_with_cash(self):
         settings = Settings(
             smart_position_pct=0.10,
+            max_position_usd=100.0,
+            smart_max_trade_usd=100.0,
             smart_max_position_ceiling_usd=50.0,
             smart_crypto_micro_max_trade_usd=5.0,
         )
@@ -1991,9 +2035,46 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(len(portfolio.positions), 1)
         self.assertEqual(portfolio.positions[0]["shares"], 5.0)
 
+    def test_portfolio_update_snapshot_reports_net_today_pnl(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            state_path = tmp_path / "state.json"
+            journal_path = tmp_path / "journal.jsonl"
+            now = utc_now()
+            state_path.write_text(json.dumps({
+                "cash": 50.0,
+                "pending_orders": [],
+                "positions": [
+                    {
+                        "status": "open",
+                        "stake": 100.0,
+                        "unrealized_pnl": 25.0,
+                        "realized_pnl": 3.0,
+                    }
+                ],
+            }))
+            journal_path.write_text(json.dumps({
+                "closed_at": now.isoformat(),
+                "realized_pnl": -10.0,
+            }) + "\n")
+
+            snapshot = _portfolio_update_snapshot(
+                Settings(state_path=state_path, trade_journal_path=journal_path)
+            )
+
+        self.assertEqual(snapshot["realized_today_usd"], -10.0)
+        self.assertEqual(snapshot["today_pnl_usd"], 18.0)
+        self.assertEqual(snapshot["total_pnl_usd"], 18.0)
+
     def test_dynamic_max_trade_uses_cash_floor_to_deploy_idle_cash(self):
         settings = Settings(
             smart_position_pct=0.30,
+            max_position_usd=100.0,
+            smart_max_trade_usd=100.0,
             smart_cash_floor_pct=0.02,
             smart_max_position_ceiling_usd=150.0,
             smart_max_position_ceiling_pct=0.40,
@@ -2015,6 +2096,23 @@ class StrategyTests(unittest.TestCase):
         )
 
         self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=2), 96.0)
+
+    def test_percentage_sizing_never_exceeds_absolute_trade_cap(self):
+        settings = Settings(
+            smart_position_pct=0.50,
+            max_position_usd=25.0,
+            smart_max_trade_usd=25.0,
+            smart_max_position_ceiling_usd=150.0,
+            smart_max_position_ceiling_pct=0.80,
+        )
+        signal = {
+            "consensus": 5,
+            "selection_metrics": {"profitable_wallet_count": 5, "copied_usdc": 10000},
+        }
+        portfolio = Portfolio(cash=250.0, positions=[])
+
+        self.assertEqual(_max_trade_for_signal(settings, signal, "smart_money", available_cash=250.0), 25.0)
+        self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=1), 25.0)
 
 
 class MarketCategoryTests(unittest.TestCase):

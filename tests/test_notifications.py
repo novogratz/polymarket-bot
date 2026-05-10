@@ -256,6 +256,8 @@ class TestTradeFormats(NotificationsBaseTest):
                     "unrealized_pnl_usd": 5.0,
                     "realized_today_usd": 1.25,
                     "realized_total_usd": -3.50,
+                    "today_pnl_usd": 6.25,
+                    "total_pnl_usd": 1.50,
                     "trades_today": 2,
                     "recent_trades": [
                         {
@@ -351,7 +353,9 @@ class TestTradeFormats(NotificationsBaseTest):
         self.assertIn("\n*PnL all\\-time*", text)
         self.assertIn("\\+$5\\.00", text)
         self.assertIn("*PnL today* ✅", text)
-        self.assertIn("*PnL all\\-time* ❌", text)
+        self.assertIn("\\+$6\\.25", text)
+        self.assertIn("*PnL all\\-time* ✅", text)
+        self.assertIn("*Closed PnL today* ✅", text)
         self.assertNotIn("Top winners", text)
         self.assertNotIn("Top losers", text)
         self.assertIn("\n\n📌 *Open book*", text)
