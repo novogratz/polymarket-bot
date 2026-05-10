@@ -128,4 +128,8 @@ if command -v uv >/dev/null 2>&1; then
     exec uv run pmbot auto-loop
 fi
 
+if [ -f .venv/bin/python ]; then
+    exec .venv/bin/python -B -m polymarket_bot.main auto-loop
+fi
+
 exec python3 -B -m polymarket_bot.main auto-loop

@@ -10,22 +10,31 @@ Polymarket smart-money copy-trading bot with a local dashboard, persistent ledge
 
 ## Install
 
-From source, in development mode:
+Requires **Python ≥3.9.10** and a modern pip. The recommended approach uses `uv`:
 
 ```bash
-python3 -m pip install -e .
+pip install uv
+uv sync
 ```
 
-Or just runtime dependencies:
+Activate the virtual environment:
 
 ```bash
-python3 -m pip install -r requirements.txt
+source .venv/bin/activate
+```
+
+Or install via pip (for systems without `uv`):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 ```
 
 With dev tools (ruff):
 
 ```bash
-python3 -m pip install -e ".[dev]"
+pip install -e ".[dev]"
 ```
 
 Configure your wallet and API credentials in `.env` at the project root. Use `.env.example` as a template. See [API credentials](#api-credentials) for the required keys.
