@@ -543,6 +543,13 @@ def _pnl_for_trade(trade: dict[str, Any]) -> float:
         return 0.0
 
 
+def _stake_for_position(position: dict[str, Any]) -> float:
+    try:
+        return float(position.get("stake") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_PORTFOLIO_UPDATES"):
         return
@@ -583,14 +590,27 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     if open_positions:
         section = ["\U0001f4cc *Open book*"]
         added = 0
-        for position in open_positions:
-            line = _line_for_open_position(position)
-            if current_len + len(line) > 3900:
-                section.append(f"_… and {len(open_positions) - added} more positions_")
+        groups = [
+            ("*Big trades \\> $50*", [p for p in open_positions if _stake_for_position(p) > 50.0]),
+            ("*Smaller trades*", [p for p in open_positions if _stake_for_position(p) <= 50.0]),
+        ]
+        for heading, positions in groups:
+            if not positions:
+                continue
+            section.append("")
+            section.append(heading)
+            for position in sorted(positions, key=_stake_for_position, reverse=True):
+                line = _line_for_open_position(position)
+                if current_len + len(line) > 3900:
+                    section.append("")
+                    section.append(f"_… and {len(open_positions) - added} more positions_")
+                    break
+                section.append("")
+                section.append(line)
+                current_len += len(line) + 2
+                added += 1
+            if added >= len(open_positions):
                 break
-            section.append(line)
-            current_len += len(line) + 1
-            added += 1
         sections.append(section)
 
     text = "\n\n".join("\n".join(section) for section in sections)

@@ -275,6 +275,15 @@ class TestTradeFormats(NotificationsBaseTest):
                     ],
                     "open_positions": [
                         {
+                            "question": "Will big position win?",
+                            "outcome": "Yes",
+                            "stake": 75.0,
+                            "entry_price": 0.50,
+                            "current_price": 0.55,
+                            "unrealized_pnl": 7.50,
+                            "strategy": "smart_money",
+                        },
+                        {
                             "question": "Will BTC be above $100,000?",
                             "outcome": "Yes",
                             "stake": 15.0,
@@ -310,8 +319,13 @@ class TestTradeFormats(NotificationsBaseTest):
         self.assertNotIn("Top winners", text)
         self.assertNotIn("Top losers", text)
         self.assertIn("\n\n📌 *Open book*", text)
+        self.assertIn("*Big trades \\> $50*", text)
+        self.assertIn("*Smaller trades*", text)
+        self.assertIn("Will big position win?", text)
         self.assertIn("Will BTC be above $100,000?", text)
         self.assertIn("Will ETH be above $4,000?", text)
+        self.assertIn("*Big trades \\> $50*\n\n", text)
+        self.assertIn("*Smaller trades*\n\n", text)
 
 
 class TestBigWinLoss(NotificationsBaseTest):
