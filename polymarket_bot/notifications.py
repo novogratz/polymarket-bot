@@ -206,6 +206,7 @@ def notify_trade_buy(
     price: float,
     size_usd: float,
     signal: dict[str, Any],
+    outcome: str | None = None,
     market_url: str | None = None,
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
@@ -229,6 +230,8 @@ def notify_trade_buy(
         f"\U0001f7e2 *BUY* `${_md_escape(f'{size_usd:.2f}')}` @ `{_md_escape(f'{price:.2f}')}`",
         f"*{_md_escape(market_title)}*",
     ]
+    if outcome:
+        lines.append(f"Pick: *{_md_escape(outcome)}*")
     if signal_line:
         lines.append(signal_line)
     if market_url:

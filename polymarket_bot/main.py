@@ -1875,6 +1875,18 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
         if position is None:
             position = _position_from_live_api(item)
             portfolio.positions.append(position)
+            try:
+                notifications.notify_trade_buy(
+                    market_title=str(position.get("question") or ""),
+                    token_id=str(position.get("token_id") or ""),
+                    price=float(position.get("entry_price") or 0.0),
+                    size_usd=float(position.get("stake") or 0.0),
+                    signal={"tag": "live_sync"},
+                    outcome=str(position.get("outcome") or ""),
+                    market_url=str(position.get("url") or "") or None,
+                )
+            except Exception as exc:
+                print(f"[notif] live_sync buy hook failed: {exc}", file=sys.stderr, flush=True)
             report.append({"action": "imported_live_position", "token_id": token_id, "question": position.get("question")})
         else:
             _update_position_from_live_api(position, item)

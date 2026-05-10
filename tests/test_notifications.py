@@ -204,6 +204,7 @@ class TestTradeFormats(NotificationsBaseTest):
             price=0.42,
             size_usd=14.20,
             signal={"wallets": 4, "copied_usdc": 2100.0},
+            outcome="Yes",
             market_url="https://polymarket.com/event/foo",
         )
         self.assertEqual(len(sent), 1)
@@ -212,6 +213,7 @@ class TestTradeFormats(NotificationsBaseTest):
         self.assertIn("14\\.20", text)  # MarkdownV2 escape du point
         self.assertIn("0\\.42", text)
         self.assertIn("Trump 2028 nominee", text)
+        self.assertIn("Pick: *Yes*", text)
         self.assertIn("4 wallets", text)
 
     def test_sell_format_contains_pnl(self) -> None:

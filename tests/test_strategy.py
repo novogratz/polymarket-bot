@@ -870,6 +870,56 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(keywords, {"bitcoin", "btc"})
         self.assertTrue(any(candidate.token_id == "yes-token" for candidate in candidates))
 
+    def test_sync_live_position_import_sends_buy_notification(self):
+        import polymarket_bot.main as main_module
+
+        class FakeDataApiClient:
+            def __init__(self, base_url):
+                self.base_url = base_url
+
+            def positions(self, user):
+                self.user = user
+                return [
+                    {
+                        "asset": "token-live",
+                        "size": "12",
+                        "currentValue": "6",
+                        "initialValue": "5.40",
+                        "avgPrice": "0.45",
+                        "curPrice": "0.50",
+                        "conditionId": "condition-1",
+                        "title": "Will Bitcoin be above $100,000 today?",
+                        "slug": "will-bitcoin-be-above-100000-today",
+                        "eventSlug": "will-bitcoin-be-above-100000-today",
+                        "outcome": "Yes",
+                    }
+                ]
+
+        portfolio = Portfolio(cash=100.0, positions=[])
+        sent: list[dict] = []
+        original_client = main_module.DataApiClient
+        try:
+            main_module.DataApiClient = FakeDataApiClient
+            notifications = main_module.notifications
+            notifications.set_transport_for_test(lambda payload: sent.append(payload) or True)
+            os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+            os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+            report = main_module._sync_live_positions(
+                Settings(funder_address="0xfunder"),
+                portfolio,
+            )
+        finally:
+            main_module.DataApiClient = original_client
+            main_module.notifications._reset_for_tests()
+            os.environ.pop("TELEGRAM_BOT_TOKEN", None)
+            os.environ.pop("TELEGRAM_CHAT_ID_LIVE", None)
+
+        self.assertEqual(report[0]["action"], "imported_live_position")
+        self.assertEqual(len(sent), 1)
+        self.assertIn("BUY", sent[0]["text"])
+        self.assertIn("Pick: *Yes*", sent[0]["text"])
+        self.assertIn("Tag: `live_sync`", sent[0]["text"])
+
     def test_smart_money_requires_consensus(self):
         candidate = Candidate(
             market_id="1",
