@@ -497,9 +497,13 @@ def _short(text: Any, limit: int = 72) -> str:
     return raw[: limit - 1] + "…"
 
 
+def _sort_by_pnl(items: list[Any], pnl_fn: Callable[[Any], float], *, reverse: bool) -> list[Any]:
+    return sorted(items, key=pnl_fn, reverse=reverse)
+
+
 def _line_for_open_position(position: dict[str, Any]) -> str:
-    title = _short(position.get("question") or position.get("slug") or position.get("market_id") or "?", 58)
-    outcome = _short(position.get("outcome") or "?", 18)
+    title = _short(position.get("question") or position.get("slug") or position.get("market_id") or "?", 48)
+    outcome = _short(position.get("outcome") or "?", 14)
     stake = float(position.get("stake") or 0.0)
     pnl = float(position.get("unrealized_pnl") or 0.0)
     entry = _fmt_price(position.get("entry_price"))
@@ -513,8 +517,8 @@ def _line_for_open_position(position: dict[str, Any]) -> str:
 
 
 def _line_for_closed_trade(trade: dict[str, Any]) -> str:
-    title = _short(trade.get("question") or trade.get("title") or trade.get("market_title") or "?", 58)
-    outcome = _short(trade.get("outcome") or "?", 18)
+    title = _short(trade.get("question") or trade.get("title") or trade.get("market_title") or "?", 48)
+    outcome = _short(trade.get("outcome") or "?", 14)
     pnl = float(trade.get("realized_pnl") or trade.get("pnl_usd") or 0.0)
     strategy = str(trade.get("strategy") or "?")
     reason = str(trade.get("exit_reason") or trade.get("reason") or "")
@@ -560,32 +564,39 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     trades_today = int(snapshot.get("trades_today", 0) or 0)
     open_positions = snapshot.get("open_positions") if isinstance(snapshot.get("open_positions"), list) else []
     recent_trades = snapshot.get("recent_trades") if isinstance(snapshot.get("recent_trades"), list) else []
-    winning_trades = [trade for trade in recent_trades if _pnl_for_trade(trade) >= 0]
-    losing_trades = [trade for trade in recent_trades if _pnl_for_trade(trade) < 0]
-    winning_positions = [position for position in open_positions if _pnl_for_position(position) >= 0]
-    losing_positions = [position for position in open_positions if _pnl_for_position(position) < 0]
+    winners = _sort_by_pnl(
+        [("open", position) for position in open_positions if _pnl_for_position(position) >= 0]
+        + [("closed", trade) for trade in recent_trades if _pnl_for_trade(trade) >= 0],
+        lambda item: _pnl_for_position(item[1]) if item[0] == "open" else _pnl_for_trade(item[1]),
+        reverse=True,
+    )
+    losers = _sort_by_pnl(
+        [("open", position) for position in open_positions if _pnl_for_position(position) < 0]
+        + [("closed", trade) for trade in recent_trades if _pnl_for_trade(trade) < 0],
+        lambda item: _pnl_for_position(item[1]) if item[0] == "open" else _pnl_for_trade(item[1]),
+        reverse=False,
+    )
 
     sections: list[list[str]] = [
         [
-            f"\U0001f4ca *Executive 30m portfolio update* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
-            f"*Portfolio:* Equity {_md_escape(_fmt_money(equity))} — Cash {_md_escape(_fmt_money(cash))} — Invested {_md_escape(_fmt_money(invested))}",
-            f"*Unrealized PnL:* {_pnl_icon(unrealized)} *{_md_escape(_fmt_money(unrealized, signed=True))}*",
-            f"*Realized today:* {_pnl_icon(realized_today)} *{_md_escape(_fmt_money(realized_today, signed=True))}* \\({trades_today} closed trades\\)",
-            f"*Realized all\\-time:* {_pnl_icon(realized_total)} *{_md_escape(_fmt_money(realized_total, signed=True))}*",
+            f"\U0001f4ca *Director review* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
+            f"*Equity* {_md_escape(_fmt_money(equity))} | *Cash* {_md_escape(_fmt_money(cash))} | *Invested* {_md_escape(_fmt_money(invested))}",
+            f"*PnL* unrealized {_pnl_icon(unrealized)} {_md_escape(_fmt_money(unrealized, signed=True))} | today {_pnl_icon(realized_today)} {_md_escape(_fmt_money(realized_today, signed=True))} | all\\-time {_pnl_icon(realized_total)} {_md_escape(_fmt_money(realized_total, signed=True))}",
+            f"*Activity* {trades_today} closed trades | {len(open_positions)} open positions",
         ]
     ]
-    if winning_trades or winning_positions:
-        section = ["✅ *Winners \\(open + closed\\)*"]
-        section.extend(_line_for_open_position(position) for position in winning_positions[:8])
-        section.extend(_line_for_closed_trade(trade) for trade in winning_trades[:8])
+    if winners:
+        section = ["✅ *Top winners*"]
+        for kind, item in winners[:5]:
+            section.append(_line_for_open_position(item) if kind == "open" else _line_for_closed_trade(item))
         sections.append(section)
-    if losing_trades or losing_positions:
-        section = ["❌ *Losers \\(open + closed\\)*"]
-        section.extend(_line_for_open_position(position) for position in losing_positions[:8])
-        section.extend(_line_for_closed_trade(trade) for trade in losing_trades[:8])
+    if losers:
+        section = ["❌ *Top losers*"]
+        for kind, item in losers[:5]:
+            section.append(_line_for_open_position(item) if kind == "open" else _line_for_closed_trade(item))
         sections.append(section)
     if open_positions:
-        section = ["\U0001f4cc *Full open book*"]
+        section = ["\U0001f4cc *Open book*"]
         section.extend(_line_for_open_position(position) for position in open_positions)
         sections.append(section)
 
