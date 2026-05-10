@@ -94,3 +94,8 @@ Hierarchy to preserve in any strategy edit: **consensus first, execution quality
 5. If the change affects the live command, update `scripts/run_live_70.sh`.
 6. Update `CHANGELOG.md`, `README.md`, `CLAUDE.md`, `CODEX.md`, and the SKILL files when user-visible.
 7. Commit and push.
+
+## Known issues
+
+- The installed `py-clob-client` SDK (≥0.21.0) does not export a `Side` enum. Always pass side as a plain `"BUY"` / `"SELL"` string to `OrderArgs` and `MarketOrderArgs`.
+- For FOK market orders, use `create_market_order` + `post_order` — `create_and_post_market_order` does not exist on this SDK version.

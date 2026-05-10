@@ -252,13 +252,12 @@ class TradingSession:
                 order_args_cls = getattr(module, "OrderArgs", None)
                 order_type_cls = getattr(module, "OrderType", None)
                 partial_options_cls = getattr(module, "PartialCreateOrderOptions", None)
-                side_cls = getattr(module, "Side", None)
-                if order_args_cls and order_type_cls and partial_options_cls and side_cls:
+                if order_args_cls and order_type_cls and partial_options_cls:
                     order_args = order_args_cls(
                         token_id=candidate.token_id or "",
                         price=price,
                         size=size,
-                        side=getattr(side_cls, side, side),
+                        side=side,
                     )
                     options = partial_options_cls(
                         tick_size=str(candidate.tick_size or "0.01"),
@@ -308,27 +307,22 @@ class TradingSession:
                 market_order_args_cls = getattr(module, "MarketOrderArgs", None)
                 order_type_cls = getattr(module, "OrderType", None)
                 partial_options_cls = getattr(module, "PartialCreateOrderOptions", None)
-                side_cls = getattr(module, "Side", None)
-                if market_order_args_cls and order_type_cls and partial_options_cls and side_cls:
+                if market_order_args_cls and order_type_cls and partial_options_cls:
                     order_args = market_order_args_cls(
                         token_id=candidate.token_id or "",
                         amount=amount,
-                        side=getattr(side_cls, side, side),
+                        side=side,
                         price=price,
-                        order_type=getattr(order_type_cls, "FOK", "FOK"),
-                        user_usdc_balance=amount if side == "BUY" else 0,
                     )
                     options = partial_options_cls(
                         tick_size=str(candidate.tick_size or "0.01"),
                         neg_risk=candidate.neg_risk,
                     )
-                    method = getattr(self.sdk_client, "create_and_post_market_order", None)
-                    if callable(method):
-                        response = method(
-                            order_args=order_args,
-                            options=options,
-                            order_type=getattr(order_type_cls, "FOK", "FOK"),
-                        )
+                    create_method = getattr(self.sdk_client, "create_market_order", None)
+                    post_method = getattr(self.sdk_client, "post_order", None)
+                    if callable(create_method) and callable(post_method):
+                        signed_order = create_method(order_args=order_args, options=options)
+                        response = post_method(signed_order, getattr(order_type_cls, "FOK", "FOK"))
                         order_dict = {
                             "tokenId": candidate.token_id,
                             "amount": amount,

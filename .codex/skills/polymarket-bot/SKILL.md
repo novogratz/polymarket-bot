@@ -64,3 +64,8 @@ Smart-money copy-trading:
 - Skipping is a valid action when the setup is not clean.
 
 When editing strategy code, preserve this hierarchy: **consensus first, execution quality second, sizing discipline third.** Never replace it with random market selection.
+
+## Known issues
+
+- The installed `py-clob-client` SDK (≥0.21.0) does not export a `Side` enum. Always pass side as a plain `"BUY"` / `"SELL"` string.
+- For FOK market orders, use `create_market_order` + `post_order` — `create_and_post_market_order` does not exist on this SDK version.

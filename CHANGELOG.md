@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-05-10
+
+Bug-fix release. Fixes the "Invalid order payload" HTTP 400 error that prevented all live FOK market orders from executing.
+
+### Fixed
+
+- **FOK market orders were never sent as market orders.** The installed `py-clob-client` SDK (≥0.21.0) does not export a `Side` enum class in `clob_types`, so both `place_market_order` and `place_live_order` fell through to the legacy `build_limit_order` + `post_order("GTC")` path. Market orders were being placed as GTC limit orders with the USDC stake value incorrectly used as the share count, causing an "Invalid order payload" rejection from the Polymarket API.
+- **`place_market_order` now uses `create_market_order` + `post_order`** (both exist on the installed SDK) with the correct `MarketOrderArgs(amount=stake, side="BUY", price=limit)` and `OrderType.FOK`. Removed the non-existent `create_and_post_market_order` call and the `Side` enum dependency throughout.
+- **`place_live_order` passes `side` as a plain string** instead of looking up a non-existent `Side` enum, so the SDK `create_and_post_order` path is now taken for limit orders too.
+
+### Changed
+
+- `trading.py`: removed `Side` class check from both `place_live_order` and `place_market_order` — the SDK accepts plain `"BUY"` / `"SELL"` strings.
+- Tests expanded from 54 to 192 to cover the full strategy surface.
+
 ## [1.2.0] - 2026-05-08
 
 Documentation refresh release. All Markdown files (`README.md`, `CLAUDE.md`, `CODEX.md`, `AGENTS.md`, `docs/AUTONOMOUS_STRATEGY.md`, and the structured `.claude/` and `.codex/` skill files) are now in sync with the live `scripts/run_live_70.sh` configuration and the multi-level exit waterfall introduced in 1.1.0.
