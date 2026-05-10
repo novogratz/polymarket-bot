@@ -2237,6 +2237,24 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(_max_trade_for_signal(settings, signal, "smart_money", available_cash=250.0), 25.0)
         self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=1), 25.0)
 
+    def test_live_profile_sizing_deploys_more_idle_cash_per_signal(self):
+        settings = Settings(
+            smart_position_pct=0.18,
+            max_position_usd=25.0,
+            smart_max_trade_usd=25.0,
+            smart_cash_floor_pct=0.0,
+            smart_max_position_ceiling_usd=35.0,
+            smart_max_position_ceiling_pct=0.14,
+        )
+        signal = {
+            "consensus": 4,
+            "selection_metrics": {"profitable_wallet_count": 4, "copied_usdc": 2000},
+        }
+        portfolio = Portfolio(cash=250.0, positions=[])
+
+        self.assertEqual(_max_trade_for_signal(settings, signal, "smart_money", available_cash=250.0), 25.0)
+        self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=16), 25.0)
+
     def test_high_conviction_dynamic_sizing_can_exceed_normal_trade_cap(self):
         settings = Settings(
             smart_position_pct=0.50,
