@@ -50,6 +50,52 @@ def load_candidates(settings: Settings):
     return rank_markets(markets, settings)
 
 
+def load_btc_candidates(settings: Settings):
+    client = GammaClient(settings.gamma_base_url)
+    now = utc_now()
+    horizon = now + timedelta(hours=settings.soon_hours)
+    batches = []
+    for kwargs in (
+        {
+            "limit": settings.scan_limit,
+            "end_date_min": now,
+            "end_date_max": horizon,
+        },
+        {
+            "limit": settings.scan_limit,
+            "order": "volume",
+            "ascending": False,
+            "end_date_min": now,
+            "end_date_max": horizon,
+        },
+    ):
+        try:
+            batches.append(client.get_markets(**kwargs))
+        except Exception as exc:
+            print(f"⚠️  Gamma BTC market batch skipped: {type(exc).__name__}: {exc}")
+    keyword_limit = max(20, min(settings.scan_limit, 100))
+    for keyword in ("bitcoin", "btc"):
+        try:
+            batches.append(
+                client.get_markets(
+                    limit=keyword_limit,
+                    order="volume",
+                    ascending=False,
+                    end_date_min=now,
+                    end_date_max=horizon,
+                    question_contains=keyword,
+                )
+            )
+        except Exception as exc:
+            print(f"⚠️  Gamma BTC keyword batch skipped: {keyword} {type(exc).__name__}: {exc}")
+    markets_by_id = {
+        str(market.get("id") or market.get("conditionId") or index): market
+        for index, batch in enumerate(batches)
+        for market in batch
+    }
+    return rank_markets(list(markets_by_id.values()), settings)
+
+
 def load_smart_candidates(settings: Settings):
     client = GammaClient(settings.gamma_base_url)
     now = utc_now()
@@ -148,7 +194,7 @@ def require_saved_api_creds(settings: Settings) -> None:
 
 
 def btc_edge_once(settings: Settings) -> dict[str, object]:
-    candidates = load_candidates(settings)
+    candidates = load_btc_candidates(settings)
     btc_model = CoinbaseBtcClient().model(settings)
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
     portfolio.mark_to_market(candidates)
