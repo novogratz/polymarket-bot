@@ -32,7 +32,7 @@ from .config import Settings
 from .dashboard import serve
 from .gamma import GammaClient
 from .portfolio import Portfolio
-from .models import parse_dt, utc_now
+from .models import Candidate, parse_dt, utc_now
 from .smart_money import (
     DataApiClient,
     analyze_smart_money,
@@ -726,6 +726,8 @@ def _execute_sell_strategy(
         token_id = position.get("token_id")
         candidate = by_token.get(token_id)
         if candidate is None or candidate.best_bid is None:
+            candidate = _terminal_candidate_from_synced_position(position, settings)
+        if candidate is None or candidate.best_bid is None:
             continue
 
         entry_price = float(position.get("entry_price", 0.0))
@@ -830,6 +832,50 @@ def _execute_sell_strategy(
             }
         )
     return exit_report
+
+
+def _terminal_candidate_from_synced_position(
+    position: dict[str, object],
+    settings: Settings,
+) -> Candidate | None:
+    """Build an executable sell candidate from live-sync prices for terminal winners.
+
+    Some resolved or near-resolved positions disappear from the Gamma candidate
+    scan while the Data API still reports a sellable current price. Without this
+    fallback, 99-100c winners can sit open because the normal sell loop has no
+    Gamma ``best_bid`` to evaluate.
+    """
+    if settings.smart_resolved_exit_threshold <= 0:
+        return None
+    current_price = _float(position.get("current_price"))
+    if current_price < settings.smart_resolved_exit_threshold:
+        return None
+    token_id = str(position.get("token_id") or "")
+    if not token_id:
+        return None
+    end_date = parse_dt(str(position.get("end_date") or ""))
+    hours_to_close = None
+    if end_date is not None:
+        hours_to_close = max((end_date - utc_now()).total_seconds() / 3600.0, 0.0)
+    return Candidate(
+        market_id=str(position.get("market_id") or ""),
+        question=str(position.get("question") or ""),
+        slug=str(position.get("slug") or position.get("event_slug") or ""),
+        event_slug=str(position.get("event_slug") or ""),
+        end_date=end_date,
+        hours_to_close=hours_to_close,
+        liquidity=0.0,
+        volume=0.0,
+        outcome=str(position.get("outcome") or ""),
+        price=current_price,
+        token_id=token_id,
+        score=0.0,
+        url=str(position.get("url") or ""),
+        best_bid=current_price,
+        best_ask=current_price,
+        tick_size=0.01,
+        accepts_orders=True,
+    )
 
 
 def _noise_fallback_candidates(

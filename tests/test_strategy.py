@@ -27,6 +27,7 @@ from polymarket_bot.main import (
     _noise_fallback_candidates,
     _sell_plan,
     _smart_discovery_keywords,
+    _terminal_candidate_from_synced_position,
     load_btc_candidates,
 )
 
@@ -584,6 +585,36 @@ class StrategyTests(unittest.TestCase):
         )
         self.assertEqual(protected["reason"], "peak_profit_protection")
         self.assertEqual(protected["shares"], 100.0)
+
+    def test_terminal_synced_position_builds_sell_candidate_at_threshold(self):
+        position = {
+            "market_id": "m1",
+            "question": "Will Kashiwa Reysol win?",
+            "slug": "kashiwa-reysol",
+            "event_slug": "kashiwa-reysol",
+            "outcome": "Yes",
+            "token_id": "token",
+            "current_price": 0.9995,
+            "end_date": (utc_now() + timedelta(hours=1)).isoformat(),
+        }
+
+        candidate = _terminal_candidate_from_synced_position(
+            position,
+            Settings(smart_resolved_exit_threshold=0.98),
+        )
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.token_id, "token")
+        self.assertEqual(candidate.best_bid, 0.9995)
+        self.assertTrue(candidate.accepts_orders)
+
+    def test_terminal_synced_position_waits_below_threshold(self):
+        candidate = _terminal_candidate_from_synced_position(
+            {"token_id": "token", "current_price": 0.97},
+            Settings(smart_resolved_exit_threshold=0.98),
+        )
+
+        self.assertIsNone(candidate)
 
     def test_sell_plan_max_hold_time_force_exits_stale_positions(self):
         old_open = (utc_now() - timedelta(hours=30)).isoformat()
