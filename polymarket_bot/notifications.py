@@ -425,6 +425,7 @@ def notify_daily_summary(snapshot: dict[str, Any]) -> None:
         return
     equity = float(snapshot.get("equity_usd", 0))
     pct_24h = float(snapshot.get("equity_pct_24h", 0))
+    pct_icon = _pnl_icon(pct_24h)
     sign = "+" if pct_24h >= 0 else "-"
     pct_str = _md_escape(f"{sign}{abs(pct_24h):.1f}%")
     cash = float(snapshot.get("cash_usd", 0))
@@ -435,29 +436,31 @@ def notify_daily_summary(snapshot: dict[str, Any]) -> None:
     win_rate = (wins / trades * 100) if trades > 0 else 0.0
 
     lines = [
-        f"\U0001f4ca *Daily summary* — {_md_escape(today)}",
-        f"Equity: *{_md_escape(f'${equity:.2f}')}* \\({pct_str} 24h\\)",
-        f"Cash: {_md_escape(f'${cash:.2f}')} — Positions: {positions}",
-        f"Trades 24h: {trades} \\({wins}W / {losses}L\\) — Win rate {_md_escape(f'{win_rate:.0f}%')}",
+        f"\U0001f4ca *Executive daily summary* — {_md_escape(today)}",
+        f"*Portfolio:* Equity {_md_escape(f'${equity:.2f}')} \\({pct_icon} {pct_str} 24h\\) — Cash {_md_escape(f'${cash:.2f}')} — Open {positions}",
+        f"*Closed trades:* {trades} \\(✅ {wins}W / ❌ {losses}L\\) — Win rate {_md_escape(f'{win_rate:.0f}%')}",
     ]
     if "unrealized_pnl_usd" in snapshot:
-        lines.append(f"Unrealized: *{_md_escape(_fmt_money(float(snapshot.get('unrealized_pnl_usd') or 0.0), signed=True))}*")
+        value = float(snapshot.get("unrealized_pnl_usd") or 0.0)
+        lines.append(f"*Unrealized PnL:* {_pnl_icon(value)} *{_md_escape(_fmt_money(value, signed=True))}*")
     if "realized_total_usd" in snapshot:
-        lines.append(f"Realized all\\-time: *{_md_escape(_fmt_money(float(snapshot.get('realized_total_usd') or 0.0), signed=True))}*")
+        value = float(snapshot.get("realized_total_usd") or 0.0)
+        lines.append(f"*Realized all\\-time:* {_pnl_icon(value)} *{_md_escape(_fmt_money(value, signed=True))}*")
     if "realized_today_usd" in snapshot:
-        lines.append(f"Realized today: *{_md_escape(_fmt_money(float(snapshot.get('realized_today_usd') or 0.0), signed=True))}*")
+        value = float(snapshot.get("realized_today_usd") or 0.0)
+        lines.append(f"*Realized today:* {_pnl_icon(value)} *{_md_escape(_fmt_money(value, signed=True))}*")
     top_w = snapshot.get("top_winner")
     if isinstance(top_w, dict) and top_w:
         pnl_w = float(top_w.get("pnl_usd", 0))
         lines.append(
-            f"Top winner: *{_md_escape(f'+${pnl_w:.2f}')}* "
+            f"*Best closed trade:* ✅ *{_md_escape(f'+${pnl_w:.2f}')}* "
             f"on {_md_escape(str(top_w.get('title', '')))}"
         )
     top_l = snapshot.get("top_loser")
     if isinstance(top_l, dict) and top_l:
         pnl_l = float(top_l.get("pnl_usd", 0))
         lines.append(
-            f"Top loser: *{_md_escape(f'-${abs(pnl_l):.2f}')}* "
+            f"*Worst closed trade:* ❌ *{_md_escape(f'-${abs(pnl_l):.2f}')}* "
             f"on {_md_escape(str(top_l.get('title', '')))}"
         )
     if _post("\n".join(lines)):
@@ -470,6 +473,14 @@ def _fmt_money(value: float, *, signed: bool = False) -> str:
     if signed:
         sign = "+" if value >= 0 else "-"
     return f"{sign}${abs(value):.2f}" if signed else f"${value:.2f}"
+
+
+def _pnl_icon(value: float) -> str:
+    if value > 0:
+        return "✅"
+    if value < 0:
+        return "❌"
+    return "⚪"
 
 
 def _fmt_price(value: Any) -> str:
@@ -495,7 +506,7 @@ def _line_for_open_position(position: dict[str, Any]) -> str:
     current = _fmt_price(position.get("current_price"))
     strategy = str(position.get("strategy") or "?")
     return (
-        f"• {_md_escape(title)} — *{_md_escape(outcome)}* "
+        f"{_pnl_icon(pnl)} {_md_escape(title)} — *{_md_escape(outcome)}* "
         f"`{_md_escape(_fmt_money(stake))}` {_md_escape(entry)}→{_md_escape(current)} "
         f"uPnL *{_md_escape(_fmt_money(pnl, signed=True))}* `{_md_escape(strategy)}`"
     )
@@ -509,7 +520,7 @@ def _line_for_closed_trade(trade: dict[str, Any]) -> str:
     reason = str(trade.get("exit_reason") or trade.get("reason") or "")
     suffix = f" `{_md_escape(reason)}`" if reason else ""
     return (
-        f"• {_md_escape(title)} — *{_md_escape(outcome)}* "
+        f"{_pnl_icon(pnl)} {_md_escape(title)} — *{_md_escape(outcome)}* "
         f"rPnL *{_md_escape(_fmt_money(pnl, signed=True))}* `{_md_escape(strategy)}`{suffix}"
     )
 
@@ -556,25 +567,25 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
 
     sections: list[list[str]] = [
         [
-            f"\U0001f4ca *30m portfolio update* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
-            f"Equity: *{_md_escape(_fmt_money(equity))}* — Cash {_md_escape(_fmt_money(cash))} — Invested {_md_escape(_fmt_money(invested))}",
-            f"Unrealized: *{_md_escape(_fmt_money(unrealized, signed=True))}*",
-            f"Realized today: *{_md_escape(_fmt_money(realized_today, signed=True))}* \\({trades_today} trades\\)",
-            f"Realized all\\-time: *{_md_escape(_fmt_money(realized_total, signed=True))}*",
+            f"\U0001f4ca *Executive 30m portfolio update* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
+            f"*Portfolio:* Equity {_md_escape(_fmt_money(equity))} — Cash {_md_escape(_fmt_money(cash))} — Invested {_md_escape(_fmt_money(invested))}",
+            f"*Unrealized PnL:* {_pnl_icon(unrealized)} *{_md_escape(_fmt_money(unrealized, signed=True))}*",
+            f"*Realized today:* {_pnl_icon(realized_today)} *{_md_escape(_fmt_money(realized_today, signed=True))}* \\({trades_today} closed trades\\)",
+            f"*Realized all\\-time:* {_pnl_icon(realized_total)} *{_md_escape(_fmt_money(realized_total, signed=True))}*",
         ]
     ]
     if winning_trades or winning_positions:
-        section = ["*Winning positions / trades*"]
+        section = ["✅ *Winners \\(open + closed\\)*"]
         section.extend(_line_for_open_position(position) for position in winning_positions[:8])
         section.extend(_line_for_closed_trade(trade) for trade in winning_trades[:8])
         sections.append(section)
     if losing_trades or losing_positions:
-        section = ["*Losing positions / trades*"]
+        section = ["❌ *Losers \\(open + closed\\)*"]
         section.extend(_line_for_open_position(position) for position in losing_positions[:8])
         section.extend(_line_for_closed_trade(trade) for trade in losing_trades[:8])
         sections.append(section)
     if open_positions:
-        section = ["*All open positions*"]
+        section = ["\U0001f4cc *Full open book*"]
         section.extend(_line_for_open_position(position) for position in open_positions)
         sections.append(section)
 
