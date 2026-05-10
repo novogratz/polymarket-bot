@@ -1462,6 +1462,48 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(len(signals), 1)
         self.assertEqual(signals[0].candidate.token_id, "btc-token")
 
+    def test_live_crypto_profile_allows_mid_price_two_wallet_signal(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will Ethereum be above $4,000 tomorrow?",
+            slug="will-ethereum-be-above-4000-tomorrow",
+            end_date=utc_now() + timedelta(hours=18),
+            hours_to_close=18,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.56,
+            token_id="eth-token",
+            score=10,
+            url="https://polymarket.com/event/will-ethereum-be-above-4000-tomorrow",
+            best_bid=0.55,
+            best_ask=0.56,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "eth-token", "BUY", 0.56, 500, 280, 1, "ETH", "Yes", "eth"),
+            SmartTrade("0x2", "eth-token", "BUY", 0.56, 500, 280, 1, "ETH", "Yes", "eth"),
+        ]
+
+        signals = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(
+                smart_allow_crypto=True,
+                smart_crypto_min_buy_price=0.55,
+                smart_crypto_min_hours_to_close=0.75,
+                smart_crypto_max_hours_to_close=72,
+                smart_crypto_min_consensus=2,
+                smart_crypto_min_copied_usdc=500,
+                smart_min_copied_usdc=50,
+                smart_min_trade_usd=1,
+            ),
+        )
+
+        self.assertEqual(len(signals), 1)
+        self.assertEqual(signals[0].candidate.token_id, "eth-token")
+
     def test_crypto_allowed_requires_high_buy_price(self):
         candidate = Candidate(
             market_id="1",
