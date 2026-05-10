@@ -366,6 +366,36 @@ class TestTradeFormats(NotificationsBaseTest):
         self.assertIn("*Big trades \\> $50*\n\n", text)
         self.assertIn("*Smaller trades*\n\n", text)
 
+    def test_portfolio_update_compares_total_and_cash_to_previous_review(self) -> None:
+        sent = self._setup_enabled()
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "state.json"
+            base = 1_800_000.0
+            path.write_text(json.dumps({
+                "last_portfolio_update_ts": base - 1800,
+                "last_portfolio_update_equity_usd": 200.0,
+                "last_portfolio_update_cash_usd": 60.0,
+            }), encoding="utf-8")
+            with mock.patch("polymarket_bot.notifications._default_state_path", return_value=path):
+                with mock.patch("time.time", return_value=base):
+                    notifications.notify_portfolio_update({
+                        "timestamp": "2026-05-10 11:00",
+                        "equity_usd": 220.0,
+                        "cash_usd": 50.0,
+                        "invested_usd": 165.0,
+                        "unrealized_pnl_usd": 5.0,
+                        "realized_today_usd": 0.0,
+                        "realized_total_usd": 0.0,
+                        "trades_today": 0,
+                        "open_positions": [],
+                    })
+
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertIn("*Last 30m review* 30m ago", text)
+        self.assertIn("*Total balance vs last 30m* ✅ \\+$20\\.00 USD higher", text)
+        self.assertIn("*Cash vs last 30m* ❌ \\-$10\\.00 USD lower", text)
+
 
 class TestBigWinLoss(NotificationsBaseTest):
     def _setup_enabled(self) -> list[dict]:
@@ -508,6 +538,36 @@ class TestDailySummary(NotificationsBaseTest):
                 snap_next = dict(snap, today="2026-05-10")
                 notifications.notify_daily_summary(snap_next)
                 self.assertEqual(len(sent), 2)
+
+    def test_summary_compares_total_and_cash_to_previous_daily_review(self) -> None:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        sent: list[dict] = []
+        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "state.json"
+            path.write_text(json.dumps({
+                "last_daily_summary_date": "2026-05-09",
+                "last_daily_summary_equity_usd": 95.0,
+                "last_daily_summary_cash_usd": 12.0,
+            }), encoding="utf-8")
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_daily_summary({
+                    "today": "2026-05-10",
+                    "equity_usd": 92.10,
+                    "equity_pct_24h": -3.1,
+                    "cash_usd": 18.40,
+                    "open_positions": 7,
+                    "trades_24h": 4,
+                    "wins_24h": 2,
+                    "losses_24h": 2,
+                })
+
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertIn("*Last daily review* 2026\\-05\\-09", text)
+        self.assertIn("*Total balance vs last daily* ❌ \\-$2\\.90 USD lower", text)
+        self.assertIn("*Cash vs last daily* ✅ \\+$6\\.40 USD higher", text)
 
 
 class TestAutoTuneDiff(NotificationsBaseTest):

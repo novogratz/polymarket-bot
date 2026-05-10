@@ -87,9 +87,14 @@ class _State:
     equity_peak_usd: float | None = None
     equity_floor_breached: bool = False
     last_daily_summary_date: str | None = None
+    last_daily_summary_equity_usd: float | None = None
+    last_daily_summary_cash_usd: float | None = None
     last_portfolio_update_ts: float | None = None
+    last_portfolio_update_equity_usd: float | None = None
+    last_portfolio_update_cash_usd: float | None = None
     dedupe_seen: dict[str, float] = field(default_factory=dict)
     drawdown_armed: bool = False  # True quand on a déjà alerté sur ce pic
+    last_post_ts: float = 0.0
 
 
 def _default_state_path() -> Path:
@@ -112,9 +117,14 @@ def _load_state(path: Path) -> _State:
         equity_peak_usd=data.get("equity_peak_usd"),
         equity_floor_breached=bool(data.get("equity_floor_breached", False)),
         last_daily_summary_date=data.get("last_daily_summary_date"),
+        last_daily_summary_equity_usd=data.get("last_daily_summary_equity_usd"),
+        last_daily_summary_cash_usd=data.get("last_daily_summary_cash_usd"),
         last_portfolio_update_ts=data.get("last_portfolio_update_ts"),
+        last_portfolio_update_equity_usd=data.get("last_portfolio_update_equity_usd"),
+        last_portfolio_update_cash_usd=data.get("last_portfolio_update_cash_usd"),
         dedupe_seen={str(k): float(v) for k, v in (data.get("dedupe_seen") or {}).items()},
         drawdown_armed=bool(data.get("drawdown_armed", False)),
+        last_post_ts=float(data.get("last_post_ts", 0.0)),
     )
 
 
@@ -136,9 +146,14 @@ def _save_state(path: Path, state: _State) -> None:
         "equity_peak_usd": state.equity_peak_usd,
         "equity_floor_breached": state.equity_floor_breached,
         "last_daily_summary_date": state.last_daily_summary_date,
+        "last_daily_summary_equity_usd": state.last_daily_summary_equity_usd,
+        "last_daily_summary_cash_usd": state.last_daily_summary_cash_usd,
         "last_portfolio_update_ts": state.last_portfolio_update_ts,
+        "last_portfolio_update_equity_usd": state.last_portfolio_update_equity_usd,
+        "last_portfolio_update_cash_usd": state.last_portfolio_update_cash_usd,
         "dedupe_seen": state.dedupe_seen,
         "drawdown_armed": state.drawdown_armed,
+        "last_post_ts": state.last_post_ts,
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -157,12 +172,28 @@ def _default_transport(payload: dict[str, Any]) -> bool:
     req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json"}, method="POST"
     )
-    try:
-        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
-            return 200 <= resp.status < 300
-    except (urllib.error.URLError, OSError, TimeoutError) as exc:
-        print(f"[notif] failed: {exc}", file=sys.stderr, flush=True)
-        return False
+
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
+                return 200 <= resp.status < 300
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429 and attempt == 0:
+                # Rate limited. Try to extract retry-after or just wait 5s.
+                retry_after = 5
+                try:
+                    retry_after = int(exc.headers.get("Retry-After", "5"))
+                except (TypeError, ValueError):
+                    pass
+                print(f"[notif] rate limited (429), waiting {retry_after}s...", file=sys.stderr, flush=True)
+                time.sleep(min(retry_after, 30))
+                continue
+            print(f"[notif] failed: {exc}", file=sys.stderr, flush=True)
+            return False
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+            print(f"[notif] failed: {exc}", file=sys.stderr, flush=True)
+            return False
+    return False
 
 
 def _get_transport() -> Transport:
@@ -173,6 +204,18 @@ def _post(text: str) -> bool:
     """Envoi best-effort. Retourne False sur erreur, jamais d'exception."""
     if not is_enabled():
         return False
+
+    path = _default_state_path()
+    state = _load_state(path)
+    now = time.time()
+
+    # Telegram rate limit: ~1 msg/sec per chat.
+    # We enforce a small gap to be safe.
+    elapsed = now - state.last_post_ts
+    if elapsed < 1.0:
+        time.sleep(1.0 - elapsed)
+        now = time.time()
+
     payload = {
         "chat_id": _chat_id(),
         "text": text,
@@ -180,7 +223,11 @@ def _post(text: str) -> bool:
         "disable_web_page_preview": True,
     }
     try:
-        return bool(_get_transport()(payload))
+        success = bool(_get_transport()(payload))
+        if success:
+            state.last_post_ts = time.time()
+            _save_state(path, state)
+        return success
     except Exception as exc:
         print(f"[notif] failed: {exc}", file=sys.stderr, flush=True)
         return False
@@ -239,7 +286,48 @@ def notify_trade_buy(
         lines.append(signal_line)
     if market_url:
         lines.append(f"[market]({market_url})")
-    _post("\n".join(lines))
+    if _post("\n".join(lines)):
+        signal["telegram_buy_notified"] = True
+
+
+def notify_sync_import(positions: list[dict[str, Any]]) -> None:
+    """Notifie un batch de positions importées/synchronisées."""
+    if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES") or not positions:
+        return
+
+    # Ne notifier que ceux qui n'ont pas encore été notifiés
+    to_notify = [p for p in positions if not p.get("telegram_buy_notified")]
+    if not to_notify:
+        return
+
+    if len(to_notify) == 1:
+        p = to_notify[0]
+        # On délègue à notify_trade_buy pour le format standard
+        notify_trade_buy(
+            market_title=str(p.get("question") or ""),
+            token_id=str(p.get("token_id") or ""),
+            price=float(p.get("entry_price") or 0.0),
+            size_usd=float(p.get("stake") or 0.0),
+            signal={"tag": str(p.get("strategy") or "live_sync")},
+            outcome=str(p.get("outcome") or ""),
+            market_url=str(p.get("url") or ""),
+        )
+        p["telegram_buy_notified"] = True
+        return
+
+    lines = [f"🔄 *Sync: {len(to_notify)} positions imported/updated*"]
+    for p in to_notify[:20]:  # Limite pour éviter de dépasser la taille max
+        title = _short(p.get("question") or p.get("token_id") or "?", 48)
+        price = float(p.get("entry_price") or 0.0)
+        size = float(p.get("stake") or 0.0)
+        lines.append(f"• `${_md_escape(f'{size:.1f}')}` @ `{_md_escape(f'{price:.2f}')}` *{_md_escape(title)}*")
+
+    if len(to_notify) > 20:
+        lines.append(f"_... and {len(to_notify) - 20} more_")
+
+    if _post("\n".join(lines)):
+        for p in to_notify:
+            p["telegram_buy_notified"] = True
 
 
 def notify_trade_sell(
@@ -437,9 +525,17 @@ def notify_daily_summary(snapshot: dict[str, Any]) -> None:
 
     lines = [
         f"\U0001f4ca *Director daily review* — {_md_escape(today)}",
-        f"*Equity* {_md_escape(f'${equity:.2f}')} \\({pct_icon} {pct_str} 24h\\) | *Cash* {_md_escape(f'${cash:.2f}')} | *Open* {positions}",
-        f"*Activity* {trades} closed trades | ✅ {wins}W / ❌ {losses}L | Win rate {_md_escape(f'{win_rate:.0f}%')}",
+        f"*Equity* {_md_escape(f'${equity:.2f}')} \\({pct_icon} {pct_str} 24h\\) — *Cash* {_md_escape(f'${cash:.2f}')} — *Open* {positions}",
+        f"*Activity* {trades} closed trades — ✅ {wins}W / ❌ {losses}L — Win rate {_md_escape(f'{win_rate:.0f}%')}",
     ]
+    if state.last_daily_summary_date:
+        lines.append(f"*Last daily review* {_md_escape(state.last_daily_summary_date)}")
+    for delta_line in (
+        _fmt_portfolio_delta("Total balance vs last daily", equity, state.last_daily_summary_equity_usd),
+        _fmt_portfolio_delta("Cash vs last daily", cash, state.last_daily_summary_cash_usd),
+    ):
+        if delta_line:
+            lines.append(delta_line)
     if "unrealized_pnl_usd" in snapshot:
         value = float(snapshot.get("unrealized_pnl_usd") or 0.0)
         lines.append(f"*PnL* unrealized {_pnl_icon(value)} {_md_escape(_fmt_money(value, signed=True))}")
@@ -464,7 +560,10 @@ def notify_daily_summary(snapshot: dict[str, Any]) -> None:
             f"on {_md_escape(str(top_l.get('title', '')))}"
         )
     if _post("\n".join(lines)):
+        state = _load_state(path)
         state.last_daily_summary_date = today
+        state.last_daily_summary_equity_usd = equity
+        state.last_daily_summary_cash_usd = cash
         _save_state(path, state)
 
 
@@ -473,6 +572,31 @@ def _fmt_money(value: float, *, signed: bool = False) -> str:
     if signed:
         sign = "+" if value >= 0 else "-"
     return f"{sign}${abs(value):.2f}" if signed else f"${value:.2f}"
+
+
+def _fmt_minutes_ago(seconds: float) -> str:
+    minutes = max(0, int(round(seconds / 60.0)))
+    if minutes < 60:
+        return f"{minutes}m ago"
+    hours, rem = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h{rem:02d}m ago"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h ago"
+
+
+def _fmt_portfolio_delta(label: str, current: float, previous: float | None) -> str | None:
+    if previous is None:
+        return None
+    delta = round(current - previous, 2)
+    if delta > 0:
+        direction = "higher"
+    elif delta < 0:
+        direction = "lower"
+    else:
+        direction = "flat"
+    amount = f"{'+' if delta >= 0 else '-'}${abs(delta):.2f} USD"
+    return f"*{label}* {_pnl_icon(delta)} {_md_escape(amount)} {direction}"
 
 
 def _pnl_icon(value: float) -> str:
@@ -584,6 +708,23 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
             f"*Open positions* {len(open_positions)}",
         ]
     ]
+    last_lines: list[str] = []
+    if state.last_portfolio_update_ts is not None:
+        last_lines.append(
+            f"*Last 30m review* {_md_escape(_fmt_minutes_ago(now - state.last_portfolio_update_ts))}"
+        )
+    for delta_line in (
+        _fmt_portfolio_delta(
+            "Total balance vs last 30m",
+            equity,
+            state.last_portfolio_update_equity_usd,
+        ),
+        _fmt_portfolio_delta("Cash vs last 30m", cash, state.last_portfolio_update_cash_usd),
+    ):
+        if delta_line:
+            last_lines.append(delta_line)
+    if last_lines:
+        sections[0].extend(last_lines)
 
     current_len = sum(len("\n".join(s)) for s in sections) + 20
 
@@ -621,5 +762,8 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
 
     text = "\n\n".join("\n".join(section) for section in sections)
     _post(text)
+    state = _load_state(path)
     state.last_portfolio_update_ts = now
+    state.last_portfolio_update_equity_usd = equity
+    state.last_portfolio_update_cash_usd = cash
     _save_state(path, state)
