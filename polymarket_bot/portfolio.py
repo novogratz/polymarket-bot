@@ -197,7 +197,8 @@ class Portfolio:
         position["stake"] = round(max(0.0, stake - cost_basis), 2)
         position["current_price"] = exit_price
         position["unrealized_pnl"] = round(float(position["shares"]) * exit_price - float(position["stake"]), 2)
-        if position["shares"] <= 0.000001 or float(position["stake"]) <= 0.01:
+        fully_closed = position["shares"] <= 0.000001 or float(position["stake"]) <= 0.01
+        if fully_closed:
             position["status"] = "closed"
             position["closed_at"] = exit_record["closed_at"]
         elif entry_price > 0:
@@ -237,16 +238,18 @@ class Portfolio:
                 reason=str(reason or ""),
                 held_seconds=held_seconds,
             )
-            kind = "big_win" if realized_pnl > 0 else "big_loss"
-            notifications.notify_threshold(
-                kind,
-                {
-                    "market_title": title,
-                    "pnl_usd": float(realized_pnl),
-                    "reason": str(reason or ""),
-                    "held_seconds": held_seconds,
-                },
-            )
+            if fully_closed:
+                kind = "big_win" if realized_pnl > 0 else "big_loss"
+                notifications.notify_threshold(
+                    kind,
+                    {
+                        "market_title": title,
+                        "pnl_usd": float(realized_pnl),
+                        "pnl_pct": pnl_pct,
+                        "reason": str(reason or ""),
+                        "held_seconds": held_seconds,
+                    },
+                )
         except Exception as exc:
             print(f"[notif] trade_sell hook failed: {exc}", file=sys.stderr, flush=True)
         return exit_record

@@ -269,7 +269,7 @@ class TradingSession:
                         try:
                             response = method(order_args=order_args, options=options, order_type=order_type)
                         except TypeError:
-                            response = method(order_args, options, order_type)
+                            response = method(order_args=order_args, options=options)
                         order_dict = {
                             "tokenId": candidate.token_id,
                             "price": price,
@@ -320,6 +320,18 @@ class TradingSession:
                     )
                     create_method = getattr(self.sdk_client, "create_market_order", None)
                     post_method = getattr(self.sdk_client, "post_order", None)
+                    market_method = getattr(self.sdk_client, "create_and_post_market_order", None)
+                    if callable(market_method):
+                        response = market_method(order_args=order_args, options=options, order_type=getattr(order_type_cls, "FOK", "FOK"))
+                        order_dict = {
+                            "tokenId": candidate.token_id,
+                            "amount": amount,
+                            "price": price,
+                            "side": side,
+                            "orderType": "FOK",
+                            "signatureType": self.settings.signature_type,
+                        }
+                        return order_dict, response
                     if callable(create_method) and callable(post_method):
                         signed_order = create_method(order_args=order_args, options=options)
                         response = post_method(signed_order, getattr(order_type_cls, "FOK", "FOK"))

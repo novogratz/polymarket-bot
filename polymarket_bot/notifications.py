@@ -395,10 +395,12 @@ def _handle_big_win(payload: dict[str, Any]) -> None:
         return
     reason = str(payload.get("reason", ""))
     title = str(payload.get("market_title", ""))
+    pnl_pct = payload.get("pnl_pct")
+    pnl_pct_str = f" ({_md_escape(f'+{pnl_pct:.1f}%')})" if pnl_pct is not None else ""
     held_str = _fmt_held(payload.get("held_seconds"))
     held_line = f" after {_md_escape(held_str)}" if held_str else ""
     text = (
-        f"\U0001f4b0 *BIG WIN* {_md_escape(f'+${pnl:.2f}')} on *{_md_escape(title)}*\n"
+        f"\U0001f4b0 *BIG WIN* {_md_escape(f'+${pnl:.2f}')}{pnl_pct_str} on *{_md_escape(title)}*\n"
         f"Exit: `{reason}`{held_line}"
     )
     _post(text)
@@ -411,10 +413,12 @@ def _handle_big_loss(payload: dict[str, Any]) -> None:
         return
     reason = str(payload.get("reason", ""))
     title = str(payload.get("market_title", ""))
+    pnl_pct = payload.get("pnl_pct")
+    pnl_pct_str = f" ({_md_escape(f'{pnl_pct:.1f}%')})" if pnl_pct is not None else ""
     held_str = _fmt_held(payload.get("held_seconds"))
     held_line = f" after {_md_escape(held_str)}" if held_str else ""
     text = (
-        f"\U0001f4b8 *BIG LOSS* {_md_escape(f'-${abs(pnl):.2f}')} on *{_md_escape(title)}*\n"
+        f"\U0001f4b8 *BIG LOSS* {_md_escape(f'-${abs(pnl):.2f}')}{pnl_pct_str} on *{_md_escape(title)}*\n"
         f"Exit: `{reason}`{held_line}"
     )
     _post(text)
