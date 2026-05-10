@@ -355,6 +355,77 @@ class StrategyTests(unittest.TestCase):
                 max_trade_usd=30.0,
             )
 
+    def test_smart_money_trade_uses_cash_floor_not_legacy_exposure_target(self):
+        class FakeClient:
+            def live_available_balance(self):
+                return 52.0
+
+            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
+                return {"price": price, "amount": amount, "side": side}, {
+                    "success": True,
+                    "status": "matched",
+                    "orderID": "order-1",
+                    "makingAmount": str(amount),
+                }
+
+        open_candidate = Candidate(
+            market_id="open",
+            question="Q",
+            slug="q-open",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="open-token",
+            score=1,
+            url="https://polymarket.com/event/q-open",
+            best_bid=0.49,
+            best_ask=0.5,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        next_candidate = Candidate(
+            market_id="next",
+            question="Next Q",
+            slug="q-next",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="next-token",
+            score=1,
+            url="https://polymarket.com/event/q-next",
+            best_bid=0.49,
+            best_ask=0.5,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=52.0, positions=[])
+        self.assertIsNotNone(portfolio.record_live_position(open_candidate, 80.0, entry_price=0.5))
+
+        result = execute_live_trade(
+            FakeClient(),
+            Settings(
+                trade_fraction=0.5,
+                smart_cash_floor_pct=0.10,
+                max_position_usd=20,
+                smart_max_trade_usd=20,
+            ),
+            next_candidate,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=20.0,
+            strategy="smart_money",
+            signal={"selection_metrics": {"profitable_wallet_count": 2, "copied_usdc": 1000}},
+        )
+
+        self.assertEqual(result.order["amount"], 20.0)
+        self.assertEqual(portfolio.positions[-1]["stake"], 20.0)
+
     def test_high_flow_two_wallet_trade_can_use_balance_fraction(self):
         class FakeClient:
             def live_available_balance(self):

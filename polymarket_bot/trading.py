@@ -475,12 +475,18 @@ def execute_live_trade(
     if live_balance <= 0:
         raise ValueError("no live balance available")
 
-    # Target exposure sizing: deploy until invested capital reaches the configured equity fraction.
+    # Target exposure sizing. Smart-money entries are already sized by the
+    # allocator in main.py, so only reserve the configured cash floor here.
     summary = portfolio.summary()
     current_exposure = float(summary.get("invested", 0.0))
     total_equity = live_balance + current_exposure
-    target_total_exposure = total_equity * settings.trade_fraction
-    needed_usd = max(0.0, target_total_exposure - current_exposure)
+    is_smart_money = bool(strategy and strategy.startswith("smart_money"))
+    if is_smart_money:
+        cash_floor = total_equity * max(0.0, min(settings.smart_cash_floor_pct, 1.0))
+        needed_usd = max(0.0, live_balance - cash_floor)
+    else:
+        target_total_exposure = total_equity * settings.trade_fraction
+        needed_usd = max(0.0, target_total_exposure - current_exposure)
     
     # Sizing logic
     minimum = min_trade_usd if min_trade_usd is not None else settings.btc_min_trade_usd
