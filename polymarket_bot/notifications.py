@@ -258,30 +258,33 @@ def notify_trade_buy(
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
         return
-    wallets = int(signal.get("wallets", 0))
-    copied = float(signal.get("copied_usdc", 0))
-    tag = signal.get("tag")  # ex. "btc_edge", "noise_fallback"
+    wallets = int(signal.get("wallets", 0) or 0)
+    copied = float(signal.get("copied_usdc", 0) or 0)
+    tag = signal.get("tag")
 
     if tag:
-        signal_line = f"Tag: `{tag}`"
+        signal_part = f"tag\\={_md_escape(str(tag))}"
     elif wallets > 0:
-        copied_str = f"${copied/1000:.1f}k" if copied >= 1000 else f"${copied:.0f}"
-        signal_line = (
-            f"Smart\\-money: {wallets} wallets, "
-            f"{_md_escape(copied_str)} copied"
-        )
+        if copied >= 1000:
+            copied_str = f"${copied/1000:.1f}k"
+        else:
+            copied_str = f"${copied:.0f}"
+        signal_part = f"{wallets}w {_md_escape(copied_str)}"
     else:
-        signal_line = ""
+        signal_part = None
 
-    lines = [
-        f"\U0001f7e2 *BUY* `${_md_escape(f'{size_usd:.2f}')}` @ `{_md_escape(f'{price:.2f}')}`",
-        f"*{_md_escape(market_title)}*",
+    title = _truncate(market_title or "", 40)
+    size_str = _md_escape(_fmt_amount(size_usd))
+    price_str = _md_escape(f"{price:.2f}")
+    parts = [
+        f"🟢 *BUY* `{size_str}` @ `{price_str}`",
+        f"*{_md_escape(title)}*",
     ]
-    if signal_line:
-        lines.append(signal_line)
+    if signal_part:
+        parts.append(signal_part)
     if market_url:
-        lines.append(f"[market]({market_url})")
-    _post("\n".join(lines))
+        parts.append(f"[🔗]({market_url})")
+    _post(" · ".join(parts))
 
 
 def notify_trade_sell(

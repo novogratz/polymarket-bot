@@ -229,57 +229,73 @@ class TestDedupWindow(NotificationsBaseTest):
                 self.assertEqual(len(sent), 5)
 
 
-class TestTradeFormats(NotificationsBaseTest):
-    def _setup_enabled(self) -> list[dict]:
+class TestTradeBuyOneLine(NotificationsBaseTest):
+    def _setup(self) -> list[dict]:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
         os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
         sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        notifications.set_transport_for_test(lambda payload: sent.append(payload) or True)
         return sent
 
-    def test_buy_format_contains_key_fields(self) -> None:
-        sent = self._setup_enabled()
+    def test_buy_one_line_with_signal(self) -> None:
+        sent = self._setup()
         notifications.notify_trade_buy(
-            market_title="Trump 2028 nominee",
+            market_title="Trump 2028 GOP",
             token_id="0xabc",
-            price=0.42,
-            size_usd=14.20,
-            signal={"wallets": 4, "copied_usdc": 2100.0},
-            market_url="https://polymarket.com/event/foo",
+            price=0.34,
+            size_usd=12.50,
+            signal={"wallets": 3, "copied_usdc": 1200},
+            market_url="https://polymarket.com/event/x",
         )
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
+        self.assertNotIn("\n", text)
+        self.assertIn("🟢", text)
         self.assertIn("BUY", text)
-        self.assertIn("14\\.20", text)  # MarkdownV2 escape du point
-        self.assertIn("0\\.42", text)
-        self.assertIn("Trump 2028 nominee", text)
-        self.assertIn("4 wallets", text)
+        # Montants et prix : escapés MdV2 (point devient \.).
+        self.assertIn("12\\.50", text)
+        self.assertIn("0\\.34", text)
+        self.assertIn("Trump 2028 GOP", text)
+        self.assertIn("3w", text)
+        self.assertIn("$1\\.2k", text)
+        self.assertIn("🔗", text)
+        self.assertIn("polymarket.com", text)
+        # Séparateur middle-dot entre segments.
+        self.assertIn(" · ", text)
 
-    def test_sell_format_contains_pnl(self) -> None:
-        sent = self._setup_enabled()
-        notifications.notify_trade_sell(
-            market_title="Bitcoin EOY",
+    def test_buy_with_tag(self) -> None:
+        sent = self._setup()
+        notifications.notify_trade_buy(
+            market_title="BTC ≥ $120k Dec",
             token_id="0xabc",
-            price=0.51,
-            size_usd=18.50,
-            realized_pnl_usd=4.30,
-            realized_pnl_pct=30.3,
-            reason="take_profit_ladder",
-            held_seconds=8040,
+            price=0.52,
+            size_usd=5.0,
+            signal={"tag": "btc_edge"},
         )
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
-        self.assertIn("SELL", text)
-        self.assertIn("take_profit_ladder", text)
-        self.assertIn("Bitcoin EOY", text)
-        self.assertIn("\\+\\$4\\.30", text)
+        self.assertNotIn("\n", text)
+        # tag\=btc\_edge en MdV2 (= et _ échappés).
+        self.assertIn("tag\\=btc\\_edge", text)
 
-    def test_trades_disabled_flag_skips(self) -> None:
-        sent = self._setup_enabled()
+    def test_buy_truncates_long_title(self) -> None:
+        sent = self._setup()
+        notifications.notify_trade_buy(
+            market_title="X" * 60,
+            token_id="0xabc",
+            price=0.5,
+            size_usd=10.0,
+            signal={"wallets": 2, "copied_usdc": 250},
+        )
+        text = sent[0]["text"]
+        self.assertIn("…", text)
+
+    def test_buy_disabled_by_toggle(self) -> None:
+        sent = self._setup()
         os.environ["TELEGRAM_ALERT_TRADES"] = "0"
         notifications.notify_trade_buy(
-            market_title="x", token_id="t", price=0.5, size_usd=1.0,
-            signal={"wallets": 1, "copied_usdc": 100},
+            market_title="x", token_id="0xabc",
+            price=0.5, size_usd=10.0, signal={"wallets": 2, "copied_usdc": 250},
         )
         self.assertEqual(sent, [])
 
