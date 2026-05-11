@@ -11,7 +11,7 @@ Use this skill when working in this repository: strategy code, filters, live com
 
 - Never print or commit `.env` values, private keys, API secrets, or passphrases.
 - Live trading stays gated by `POLYMARKET_ENABLE_LIVE_TRADING=1`.
-- No random trade entry. The live strategy only enters smart-money signals with explicit entry criteria.
+- No random trade entry beyond the bounded `noise_fallback` ($10/trade, 4/tick).
 - Any new live strategy must define explicit entry criteria, spread filters, sizing caps, and duplicate-position checks.
 - Update tests when strategy behavior changes.
 - No LLM call (Claude, Codex, anything else) in the scanning or trade-selection path.
@@ -27,7 +27,7 @@ python3 -B -m polymarket_bot.main tune-strategy
 POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
 ```
 
-Canonical live config: `bash scripts/run_live_70.sh` (~$90 bankroll).
+Canonical live config: `bash scripts/run_live_70.sh` (Pierre's proven config).
 
 ## Architecture
 
@@ -45,14 +45,15 @@ Canonical live config: `bash scripts/run_live_70.sh` (~$90 bankroll).
 Smart-money copy-trading:
 
 1. Load active Polymarket markets (Gamma scan + keyword scan + reverse-lookup).
-2. Pull leaderboard wallets that pass PnL / volume / ROI floors.
+2. Pull leaderboard wallets that pass PnL / volume / ROI floors ($1k / $2k / 3%).
 3. Inspect recent BUYs in parallel.
-4. Require multi-wallet consensus, sufficient copied USDC, tight spreads, price band, freshness.
-5. Three passes: strict → relaxed → deep fallback. One shared leaderboard+trades fetch.
-6. Conviction-weighted sizing (0.55x to 2.5x), dynamic per-slot toward `SMART_CASH_FLOOR_PCT`.
+4. Require multi-wallet consensus, sufficient copied USDC ($75), tight spreads, price band (0.03–0.96), freshness (10 min).
+5. Three passes: strict → relaxed → deep fallback ($25 min copied). One shared leaderboard+trades fetch.
+6. Conviction-weighted sizing (0.55x to 2.5x), dynamic per-slot toward 5% cash floor.
 7. Multi-level exits before every new entry: take-profit ladder +50/+100/+200/+300, trailing stop, peak-protect, stop-loss, cohort-sell, cohort-silent, near-expiry, max-hold-time.
 8. No duplicate per market_id, per token, per event-slug. Per-category cap on sports.
-9. BTC edge integrated after the smart-money tick (cap $5, edge ≥ 8%).
+9. BTC edge integrated after the smart-money tick ($5 max, 8% edge).
+10. Noise fallback ($10 max, 4 per tick) when 0 smart-money signal qualifies AND (positions below min=7 OR cash above 35% of equity).
 
 ## Money-making logic
 

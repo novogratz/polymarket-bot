@@ -11,7 +11,7 @@ Use this skill when working in this repository: strategy code, filters, live com
 
 - Never print or commit `.env` values, private keys, API secrets, or passphrases.
 - Live trading stays gated by `POLYMARKET_ENABLE_LIVE_TRADING=1`. The only sanctioned bypass is `POLYMARKET_DRY_RUN=1`, which short-circuits SDK BUY/SELL calls and writes to `data/dry_run_state.json` + `data/dry_run_journal.jsonl`.
-- No random trade entry. The live strategy only enters smart-money signals with explicit entry criteria.
+- No random trade entry beyond the bounded `noise_fallback` ($10/trade, 4/tick).
 - Any new live strategy must define explicit entry criteria, spread filters, sizing caps, and duplicate-position checks.
 - Update tests when strategy behavior changes.
 - No LLM call (Claude, Codex, anything else) in the scanning or trade-selection path. The scanner stays deterministic Python over Polymarket APIs.
@@ -34,7 +34,7 @@ POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop          # simulated, no SDK calls, 
 
 Canonical live config: `bash scripts/run_live_70.sh`
 
-Code defaults — permissive entry filters (no trader PnL/volume/ROI floor), percentage-based sizing (50% of cash × conviction, high-conviction up to 80% of cash). No noise fallback. See `scripts/run_live_70.sh` for the exact override set.
+Pierre's proven config: $7 max trade, 18% position pct, 15% high-conviction fraction, $1k PnL floor, $2k volume floor, 3% ROI floor, 10 min signal age, noise fallback enabled ($10/trade, 4/tick), BTC edge enabled ($5 max).
 
 CLI surface: 9 Typer commands (`auto-loop`, `dashboard`, `doctor`, `status`, `positions`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`) plus the global `--version` / `-V` option. The Typer app is exposed as the `pmbot` console script via `[project.scripts]`; `python -m polymarket_bot.main <cmd>` continues to work as a fallback. `status` and `positions` are read-only — no SDK calls, no network — and automatically pick up the dry-run ledger when `POLYMARKET_DRY_RUN=1` is set. ANSI colors auto-disable when stdout is not a TTY (or when `NO_COLOR=1`); set `POLYMARKET_FORCE_COLOR=1` to keep them through pipes.
 
@@ -54,15 +54,16 @@ CLI surface: 9 Typer commands (`auto-loop`, `dashboard`, `doctor`, `status`, `po
 Smart-money copy-trading:
 
 1. Load active Polymarket markets (Gamma scan + keyword scan + reverse-lookup of high-flow tokens).
-2. Pull monthly-leaderboard wallets that pass PnL / volume / ROI floors.
+2. Pull monthly-leaderboard wallets that pass PnL / volume / ROI floors ($1k / $2k / 3%).
 3. Inspect their recent BUYs in parallel.
-4. Require multi-wallet consensus on the same token, sufficient copied USDC, tight spreads (absolute and relative), price band, freshness.
-5. Three passes: strict → relaxed (consensus floor relaxed) → deep fallback (consensus=1, looser filters). One leaderboard+trades fetch shared across all three.
-6. Conviction-weighted sizing (0.55x to 2.5x), dynamic per-slot redistribution toward `SMART_CASH_FLOOR_PCT` (5%).
-7. Per-position ceiling: `max(SMART_MAX_POSITION_CEILING_USD, equity × SMART_MAX_POSITION_CEILING_PCT)`.
+4. Require multi-wallet consensus on the same token, sufficient copied USDC ($75), tight spreads (8% relative, 45% relative cap), price band (0.03–0.96), freshness (10 min).
+5. Three passes: strict → relaxed (consensus floor relaxed) → deep fallback ($25 min copied). One leaderboard+trades fetch shared across all three.
+6. Conviction-weighted sizing (0.55x to 2.5x), dynamic per-slot redistribution toward 5% cash floor.
+7. Per-position ceiling: `max(SMART_MAX_POSITION_CEILING_USD=150, equity × SMART_MAX_POSITION_CEILING_PCT=0.30)`.
 8. Multi-level exits (run before every entry): take-profit ladder +50/+100/+200/+300, trailing stop, peak-protect, stop-loss, cohort-sell, cohort-silent, near-expiry, max-hold-time (24h).
 9. No duplicate per market_id, per token, or per event-slug (sports). Per-category cap on sports.
-10. BTC edge integrated after the smart-money tick (cap $5, edge ≥ 8%).
+10. BTC edge integrated after the smart-money tick ($5 max, 8% edge).
+11. Noise fallback ($10 max, 4 per tick) when 0 smart-money signal qualifies AND (positions below min=7 OR cash above 35% of equity).
 
 ## Defensive auto-tuner
 
@@ -85,20 +86,6 @@ Defensive only: tightens after losses, never loosens after wins. Overrides writt
 - Quiet hours stay quiet.
 
 Hierarchy to preserve in any strategy edit: **consensus first, execution quality second, sizing discipline third.** Never replace this with random market selection.
-
-## Current config
-
-The live strategy uses **code defaults** for all entry filters and sizing:
-- **No trader quality filters**: `MIN_TRADER_PNL=0`, `MIN_TRADER_VOLUME=0`, `MIN_TRADER_ROI=0`
-- **Permissive entry**: `MIN_COPIED_USDC=5`, `MAX_SPREAD=0.25`, `MAX_CHASE_PREMIUM=0.35`, `MAX_ENTRY_SLIPPAGE=0.50`, no signal age limit
-- **Sizing**: `POSITION_PCT=0.50`, `MAX_POSITION_CEILING_USD=150`, `MAX_POSITION_CEILING_PCT=0.40`, `CASH_FLOOR_PCT=0.02`. High-conviction signals (5+ wallets / $5k+ copied) get up to 80% of available cash via `HIGH_CONVICTION_BALANCE_FRACTION=0.80`
-- **Scan**: 24h lookback, MONTH + ALL leaderboard, top 100 traders
-- **Overlays enabled**: leaderboard-position, top10-flow, reverse-lookup
-- **BTC edge**: disabled (code default False)
-- **Noise fallback**: disabled
-- **Sports**: penalty 4, max 8 positions
-
-See `scripts/run_live_70.sh` for the exact override set.
 
 ## Editing workflow
 

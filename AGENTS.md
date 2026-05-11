@@ -38,7 +38,7 @@ Canonical live config:
 bash scripts/run_live_70.sh
 ```
 
-The live config uses code defaults (matching a fresh clone with no `.env` overrides): permissive entry filters (no trader PnL/volume/ROI floor), percentage-based sizing (50% of cash × conviction multiplier, high-conviction up to 80% of cash), 24h trade lookback, no signal age limit. The full parameter list is in `scripts/run_live_70.sh`.
+The live config uses Pierre's proven parameters: $7 max trade, $7 max position, 18% position pct, 15% high-conviction fraction, $1k trader PnL floor, $2k volume floor, 3% ROI floor, 30 min lookback, 10 min max signal age, noise fallback enabled ($10/trade, 4/tick), BTC edge enabled ($5 max). The full parameter list is in `scripts/run_live_70.sh`.
 
 A `Makefile` is also provided: `make test`, `make lint`, `make run`, `make dashboard`, `make journal`, `make tune`, `make clean`.
 

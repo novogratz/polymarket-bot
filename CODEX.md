@@ -24,7 +24,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - `polymarket_bot/portfolio.py` — local ledger, positions, pending orders, exits.
 - `polymarket_bot/gamma.py` — Gamma client + reverse-lookup by clob_token_ids.
 - `polymarket_bot/strategy.py` — candidate ranking.
-- `scripts/run_live_70.sh` — canonical live runner.
+- `scripts/run_live_70.sh` — canonical live runner (Pierre's proven config).
 - `tests/test_strategy.py` — 52 tests.
 
 ## Commands
@@ -49,9 +49,7 @@ Dashboard, journal stats, manual auto-tuner, bootstrap-creds, and reset-ledger: 
 bash scripts/run_live_70.sh
 ```
 
-Code defaults — permissive entry filters (no trader PnL/volume/ROI floor), percentage-based sizing (50% of cash × conviction, high-conviction up to 80% of cash). No noise fallback.
-
-See `CLAUDE.md` for the full parameter list and tick sequence.
+Pierre's proven config: smart-money only, $7 max trade, 18% position pct, noise fallback enabled, BTC edge enabled. See `CLAUDE.md` for the full parameter list.
 
 ## Winning strategy
 

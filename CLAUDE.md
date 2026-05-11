@@ -26,7 +26,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - `polymarket_bot/gamma.py` — Gamma client (market scan + reverse-lookup by clob_token_ids).
 - `polymarket_bot/strategy.py` — candidate ranking from Gamma payloads.
 - `polymarket_bot/models.py` — shared dataclasses and parsing helpers.
-- `scripts/run_live_70.sh` — canonical live runner for ~$90 bankroll.
+- `scripts/run_live_70.sh` — canonical live runner with Pierre's proven config.
 - `tests/test_strategy.py` — 52 tests covering scoring, sizing, exit plans, auto-tuner rules.
 
 ## Development workflow
@@ -109,21 +109,17 @@ Use the canonical script to avoid copy-paste pitfalls:
 bash scripts/run_live_70.sh
 ```
 
-The script sets strategy params to code defaults (matching a fresh clone — no `.env` overrides). Current settings:
+The script sets Pierre's proven parameters. Current settings:
 
-- Smart-money only — noise fallback disabled.
-- Trader quality: no filters (PNL=0, VOL=0, ROI=0). Leaderboard MONTH + ALL, top 100.
-- Entry filters: `MIN_CONSENSUS=2`, `MIN_COPIED_USDC=$5`, `MAX_CHASE_PREMIUM=0.35`, price band 0.02–0.98, max spread 25%, signal staleness unlimited (0 = any age), `MAX_ENTRY_SLIPPAGE=0.50`.
-- Sizing: `POSITION_PCT=0.50` (50% of available cash × conviction multiplier), `MAX_POSITION_CEILING_USD=$150`, `MAX_POSITION_CEILING_PCT=0.40`, `CASH_FLOOR_PCT=0.02`, `HIGH_CONVICTION_BALANCE_FRACTION=0.80` (high-conviction signals can use 80% of cash).
-- Exits: take-profit ladder `0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15` (starts at +50%), trailing stop (arm at +25%, exit on 50% giveback), peak-protect (arm at +100%, floor at +40%), stop-loss -40% (after 15 min), cohort-sell exit (120 min lookback), near-expiry positive exit at +5%.
-- Deep fallback pass enabled (relaxed filters when no strict signals qualify).
-- Cash-pressure mode enabled (relaxed entry filters when cash > 20% of equity).
-- Scan: 24h trade lookback (1440 min), no signal age limit.
-- Loop interval: 10 seconds.
-- Crypto: enabled at code defaults (min price $0.05, min copied $10).
-- Sports: `SCORE_PENALTY=4`, max 8 positions.
-- Horizon: `MIN_HOURS_TO_CLOSE=0.1`, `MAX_HOURS_TO_CLOSE=168` (7 days).
-- Overlays: leaderboard-position, top10-flow, reverse-lookup all enabled at defaults.
+- **Sizing**: `POSITION_PCT=0.18`, `MAX_POSITION_CEILING_USD=$150`, `MAX_POSITION_CEILING_PCT=0.30`, `CASH_FLOOR_PCT=0.05`, `HIGH_CONVICTION_BALANCE_FRACTION=0.15`, `MAX_POSITION_USD=$7`, `MAX_TRADE_USD=$7`.
+- **Trader quality**: `MIN_TRADER_PNL=$1k`, `MIN_TRADER_VOLUME=$2k`, `MIN_TRADER_ROI=3%`, MONTH leaderboard, top 100.
+- **Entry filters**: `MIN_CONSENSUS=2`, `MIN_COPIED_USDC=$75`, `MAX_CHASE_PREMIUM=0.13`, `MAX_ENTRY_SLIPPAGE=0.12`, price band 0.03–0.96, max spread 8%, max signal age 10 min, 30 min trade lookback.
+- **Discovery**: reverse-lookup enabled (max 100 tokens, min $50 copied, $200 liquidity, $500 volume).
+- **Activity**: `MIN_OPEN_POSITIONS=7`, deep fallback enabled ($25 min copied), noise fallback enabled ($10/trade, 4/tick, 35% cash trigger).
+- **Exits**: take-profit ladder at +50%/+100%/+200%/+300%, trailing stop (arm +25%, giveback 50%), peak-protect (arm +100%, floor +40%), stop-loss -40% (15 min), max hold 24h, cohort exit (120 min lookback).
+- **BTC edge**: enabled ($5 max, 8% min edge, 4% max spread, 90% model prob).
+- **Auto-tuner**: enabled (min 30 trades).
+- **Loop**: 20 second interval.
 
 Dashboard at `http://127.0.0.1:8765` by default.
 
