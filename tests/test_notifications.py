@@ -65,6 +65,47 @@ class TestMdEscape(NotificationsBaseTest):
         self.assertEqual(notifications._md_escape("a"), "a")
 
 
+class TestFmtAmount(NotificationsBaseTest):
+    def test_below_1000_uses_two_decimals(self) -> None:
+        self.assertEqual(notifications._fmt_amount(0), "$0.00")
+        self.assertEqual(notifications._fmt_amount(12.5), "$12.50")
+        self.assertEqual(notifications._fmt_amount(999.99), "$999.99")
+
+    def test_at_or_above_1000_uses_k_suffix(self) -> None:
+        self.assertEqual(notifications._fmt_amount(1000), "$1.0k")
+        self.assertEqual(notifications._fmt_amount(1234), "$1.2k")
+        self.assertEqual(notifications._fmt_amount(12500), "$12.5k")
+
+    def test_negative_below_1000(self) -> None:
+        self.assertEqual(notifications._fmt_amount(-50.25), "$-50.25")
+
+    def test_negative_above_1000(self) -> None:
+        # Le signe est porté par |amount| >= 1000 → format -X.Yk
+        self.assertEqual(notifications._fmt_amount(-2500), "$-2.5k")
+
+
+class TestTruncate(NotificationsBaseTest):
+    def test_short_string_unchanged(self) -> None:
+        self.assertEqual(notifications._truncate("hello", 40), "hello")
+
+    def test_exact_length_unchanged(self) -> None:
+        text = "x" * 40
+        self.assertEqual(notifications._truncate(text, 40), text)
+
+    def test_long_string_truncated_with_ellipsis(self) -> None:
+        text = "x" * 50
+        result = notifications._truncate(text, 40)
+        self.assertEqual(len(result), 40)
+        self.assertTrue(result.endswith("…"))
+
+    def test_empty_string(self) -> None:
+        self.assertEqual(notifications._truncate("", 40), "")
+
+    def test_default_max_len_40(self) -> None:
+        text = "y" * 50
+        self.assertEqual(notifications._truncate(text), notifications._truncate(text, 40))
+
+
 class TestChatIdRouting(NotificationsBaseTest):
     def _capture(self) -> tuple[Callable, list[dict]]:
         sent: list[dict] = []

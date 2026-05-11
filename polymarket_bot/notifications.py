@@ -199,6 +199,24 @@ def _fmt_held(seconds: int | None) -> str:
     return f"{m}m"
 
 
+def _fmt_amount(amount: float) -> str:
+    """Formate un montant USD : $X.YY sous 1k, $X.Yk au-delà (en valeur absolue)."""
+    abs_amt = abs(amount)
+    if abs_amt >= 1000:
+        sign = "-" if amount < 0 else ""
+        return f"${sign}{abs_amt/1000:.1f}k"
+    return f"${amount:.2f}"
+
+
+def _truncate(text: str, max_len: int = 40) -> str:
+    """Tronque avec ellipse `…` si > max_len ; longueur résultante == max_len."""
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
+
+
 def notify_trade_buy(
     *,
     market_title: str,
