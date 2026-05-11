@@ -785,6 +785,10 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     total_pnl = float(snapshot.get("total_pnl_usd", realized_total + unrealized) or 0.0)
     today_pnl = float(snapshot.get("today_pnl_usd", realized_today + unrealized) or 0.0)
     trades_today = int(snapshot.get("trades_today", 0) or 0)
+    wins_today = int(snapshot.get("wins_today", 0) or 0)
+    losses_today = int(snapshot.get("losses_today", 0) or 0)
+    total_wins = int(snapshot.get("total_wins", 0) or 0)
+    total_losses = int(snapshot.get("total_losses", 0) or 0)
     open_positions = snapshot.get("open_positions") if isinstance(snapshot.get("open_positions"), list) else []
     equity_30m_delta = (
         round(equity - float(state.last_portfolio_update_equity_usd), 2)
@@ -822,7 +826,8 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
             *[f"  — {part}" for part in equity_parts],
             "",
             f"*Invested* {_md_escape(_fmt_money(invested))}",
-            f"*Closed trades today* {trades_today}",
+            f"*Today* {trades_today} trades ✅ {wins_today} / ❌ {losses_today}",
+            f"*All\\-time* {total_wins + total_losses} trades ✅ {total_wins} / ❌ {total_losses} ({_md_escape(f'{total_wins / max(total_wins + total_losses, 1) * 100.0:.0f}%')})",
             f"*Open positions* {len(open_positions)}",
         ]
     ]

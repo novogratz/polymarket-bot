@@ -2205,6 +2205,10 @@ def _portfolio_update_snapshot(settings: Settings) -> dict[str, object]:
     realized_today = sum(_record_pnl(record) for record in today_records)
     unrealized = float(summary.get("unrealized_pnl") or 0.0)
     realized_total = sum(_record_pnl(record) for record in records) + open_realized
+    today_wins = sum(1 for r in today_records if _record_pnl(r) > 0)
+    today_losses = sum(1 for r in today_records if _record_pnl(r) <= 0)
+    all_wins = sum(1 for r in records if _record_pnl(r) > 0)
+    all_losses = sum(1 for r in records if _record_pnl(r) <= 0)
     return {
         "timestamp": now.astimezone().strftime("%Y-%m-%d %H:%M"),
         "cash_usd": float(summary.get("cash") or 0.0),
@@ -2216,6 +2220,10 @@ def _portfolio_update_snapshot(settings: Settings) -> dict[str, object]:
         "total_pnl_usd": round(realized_total + unrealized, 2),
         "today_pnl_usd": round(realized_today + open_realized + unrealized, 2),
         "trades_today": len(today_records),
+        "wins_today": today_wins,
+        "losses_today": today_losses,
+        "total_wins": all_wins,
+        "total_losses": all_losses,
         "open_position_count": len(open_positions),
         "open_positions": open_positions,
         "recent_trades": recent_records,
