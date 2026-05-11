@@ -11,7 +11,7 @@ Use this skill when working in this repository: strategy code, filters, live com
 
 - Never print or commit `.env` values, private keys, API secrets, or passphrases.
 - Live trading stays gated by `POLYMARKET_ENABLE_LIVE_TRADING=1`. The only sanctioned bypass is `POLYMARKET_DRY_RUN=1`, which short-circuits SDK BUY/SELL calls and writes to `data/dry_run_state.json` + `data/dry_run_journal.jsonl`.
-- No random trade entry beyond the bounded `noise_fallback` ($10/trade, 4/tick).
+- No random trade entry. The live strategy only enters smart-money signals with explicit entry criteria.
 - Any new live strategy must define explicit entry criteria, spread filters, sizing caps, and duplicate-position checks.
 - Update tests when strategy behavior changes.
 - No LLM call (Claude, Codex, anything else) in the scanning or trade-selection path. The scanner stays deterministic Python over Polymarket APIs.
@@ -63,7 +63,6 @@ Smart-money copy-trading:
 8. Multi-level exits (run before every entry): take-profit ladder +50/+100/+200/+300, trailing stop, peak-protect, stop-loss, cohort-sell, cohort-silent, near-expiry, max-hold-time (24h).
 9. No duplicate per market_id, per token, or per event-slug (sports). Per-category cap on sports.
 10. BTC edge integrated after the smart-money tick (cap $5, edge ≥ 8%).
-11. Noise fallback (cap $10, max 4 per tick) when 0 smart-money signal qualifies AND (positions below min OR cash above 35% of equity).
 
 ## Defensive auto-tuner
 
@@ -101,3 +100,4 @@ Hierarchy to preserve in any strategy edit: **consensus first, execution quality
 
 - The installed `py-clob-client` SDK (≥0.21.0) does not export a `Side` enum. Always pass side as a plain `"BUY"` / `"SELL"` string to `OrderArgs` and `MarketOrderArgs`.
 - For FOK market orders, use `create_market_order` + `post_order` — `create_and_post_market_order` does not exist on this SDK version.
+- **PnL double-count bug**: In `main.py:_portfolio_update_snapshot` (~line 2177), `open_realized` is unconditionally added to `sum(records)`, which can double-count partial-exit PnLs that are already embedded in position records. Not fixed yet.
