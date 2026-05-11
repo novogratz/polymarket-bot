@@ -47,7 +47,7 @@ Everything lives in the script:
 bash scripts/run_live_70.sh
 ```
 
-Tuned for a ~$90 bankroll. Runs in the foreground; `Ctrl+C` to stop.
+Smart-money only — no noise fallback trades. Tight trader quality filters ($2k PnL floor), 5 min signal freshness, 6% max spread. Percentage-based sizing (75% of available cash × conviction multiplier, 50% equity ceiling). Runs in the foreground; `Ctrl+C` to stop.
 
 ## CLI commands
 

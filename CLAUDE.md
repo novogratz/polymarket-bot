@@ -111,16 +111,18 @@ bash scripts/run_live_70.sh
 
 The script is the single source of truth for the live config. Current settings:
 
-- `POLYMARKET_ASSUME_LIVE_BALANCE_USD=90`, `POLYMARKET_SYNC_LIVE_POSITIONS=1`.
-- Sizing: `POSITION_PCT=0.18`, `MAX_POSITION_CEILING_USD=150`, `MAX_POSITION_CEILING_PCT=0.30`, `CASH_FLOOR_PCT=0.05` (~95% deployment), `MIN_OPEN_POSITIONS=7`.
-- Trader cohort: leaderboard `MONTH`, top 100, `MIN_TRADER_PNL=$1k`, `MIN_TRADER_VOLUME=$2k`, `MIN_TRADER_ROI=3%`. Parallel fetch with `TRADE_FETCH_CONCURRENCY=24`.
-- Discovery: standard Gamma scan + keyword scan + reverse-lookup of the top 100 tokens with $50+ smart-money flow that aren't already in the scan.
-- Entry filters: `MIN_CONSENSUS=2`, `MIN_COPIED_USDC=$75`, `MAX_CHASE_PREMIUM=0.13`, price band 0.03–0.96, absolute spread ≤8c, relative spread ≤45%, signal staleness ≤10 min.
-- Three-pass scan per tick: strict → relaxed → deep fallback.
-- Exits: take-profit ladder `0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15`, peak-protect arming at +100% and exiting below +40%, trailing stop arming at +25% with 50% giveback, stop-loss -40% (after 15 min in position), resolved-market exit when bid ≥ 0.97, max-hold-time 24h, cohort-sell exit (active SELL detection in 120 min lookback, parallel fetch), near-expiry positive exit. SELLs that are rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
-- BTC edge integrated: at the end of every smart-money tick `btc_edge_once` runs with $5/trade cap and 8% minimum modeled edge over market.
-- Noise fallback: up to 4 trades at $10 each when all three smart-money scans return 0 AND (positions below `MIN_OPEN_POSITIONS` OR cash share above 35% of equity). Tagged `noise_fallback` in the journal.
-- Auto-tune: `SMART_AUTO_TUNE_ENABLED=1` (paused below 30 closed trades; defensive only).
+- Smart-money only — noise fallback disabled.
+- Trader quality: leaderboard `MONTH`, top 100, `MIN_TRADER_PNL=$2k`.
+- Entry filters: `MIN_CONSENSUS=2`, `MIN_COPIED_USDC=$125`, `MAX_CHASE_PREMIUM=0.08`, price band 0.05–0.92, absolute spread ≤6¢, signal staleness ≤5 min, `MAX_ENTRY_SLIPPAGE=0.08`.
+- Sizing: `POSITION_PCT=0.75` (75% of available cash × conviction multiplier 0.55×–2.5×), `MAX_POSITION_CEILING_USD=$150`, `MAX_POSITION_CEILING_PCT=0.50`, `CASH_FLOOR_PCT=0.05` (~95% deployment target), `HIGH_CONVICTION_BALANCE_FRACTION=0.80`.
+- Exits: take-profit ladder `1.0:0.50,2.0:0.25,3.0:0.15`, peak-protect arming at +100% and exiting below +40%, stop-loss -40% (after 15 min), cohort-sell exit (120 min lookback), near-expiry positive exit, `EXIT_MIN_PROFIT=0.05`.
+- Deep fallback pass enabled (relaxed consensus filters when no strict signals qualify).
+- Cash-pressure mode enabled (relaxed entry filters when cash > 15% of equity).
+- Scan: 120 min trade lookback, 5 min max signal age.
+- Loop interval: 20 seconds.
+- Crypto: `MIN_BUY_PRICE=0.70`, `MIN_COPIED_USDC=$1500`, 2–48h horizon.
+- Sports: `SCORE_PENALTY=12`, max 2 sports positions.
+- Horizon: `MIN_HOURS_TO_CLOSE=1`, `MAX_HOURS_TO_CLOSE=48`.
 
 Dashboard at `http://127.0.0.1:8765` by default.
 

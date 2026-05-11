@@ -32,7 +32,9 @@ POLYMARKET_ENABLE_LIVE_TRADING=1 uv run pmbot auto-loop
 POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop          # simulated, no SDK calls, separate ledger
 ```
 
-Canonical live config: `bash scripts/run_live_70.sh` (~$90 bankroll).
+Canonical live config: `bash scripts/run_live_70.sh`
+
+Smart-money only — no noise fallback. Percentage-based sizing (75% of cash × conviction), tight trader quality ($2k PnL floor), 5 min freshness, 6% max spread. Deploy toward 5% cash floor.
 
 CLI surface: 9 Typer commands (`auto-loop`, `dashboard`, `doctor`, `status`, `positions`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`) plus the global `--version` / `-V` option. The Typer app is exposed as the `pmbot` console script via `[project.scripts]`; `python -m polymarket_bot.main <cmd>` continues to work as a fallback. `status` and `positions` are read-only — no SDK calls, no network — and automatically pick up the dry-run ledger when `POLYMARKET_DRY_RUN=1` is set. ANSI colors auto-disable when stdout is not a TTY (or when `NO_COLOR=1`); set `POLYMARKET_FORCE_COLOR=1` to keep them through pipes.
 

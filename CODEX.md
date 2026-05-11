@@ -49,6 +49,8 @@ Dashboard, journal stats, manual auto-tuner, bootstrap-creds, and reset-ledger: 
 bash scripts/run_live_70.sh
 ```
 
+Smart-money only — no noise fallback. Percentage-based sizing (75% of cash × conviction), tight entry filters ($2k PnL floor, 5 min freshness, 6% max spread), aggressive deployment toward cash floor.
+
 See `CLAUDE.md` for the full parameter list and tick sequence.
 
 ## Winning strategy
