@@ -200,6 +200,8 @@ def bootstrap_creds(settings: Settings) -> dict[str, str]:
 
 
 def require_saved_api_creds(settings: Settings) -> None:
+    if settings.dry_run:
+        return
     if settings.api_key and settings.api_secret and settings.api_passphrase:
         return
     if settings.relayer_api_key or settings.relayer_api_key_address:
@@ -341,12 +343,15 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     if sells:
         _step(settings, f"   sells executed: {sells}")
 
-    try:
-        live_cash = client.live_available_balance()
-        portfolio.cash = round(live_cash, 2)
-        _step(settings, f"   live cash: ${portfolio.cash:.2f}")
-    except Exception as exc:
-        print(f"   live cash refresh failed: {type(exc).__name__}: {exc}")
+    if not settings.dry_run:
+        try:
+            live_cash = client.live_available_balance()
+            portfolio.cash = round(live_cash, 2)
+            _step(settings, f"   live cash: ${portfolio.cash:.2f}")
+        except Exception as exc:
+            print(f"   live cash refresh failed: {type(exc).__name__}: {exc}")
+    else:
+        _step(settings, f"   [DRY-RUN] cash: ${portfolio.cash:.2f} (simulated ledger)")
 
     # 2. CATEGORY DIVERSIFICATION: Count open categories
     open_categories: dict[str, int] = {}
@@ -474,9 +479,13 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     stop_reason: str | None = None
     rejected_signals: list[dict[str, object]] = []
     if opportunities:
-        # Gracefully wait if out of funds
-        live_cash = client.live_available_balance()
-        portfolio.cash = round(live_cash, 2)
+        # Gracefully wait if out of funds.
+        # In dry-run, trust the local ledger (no live CLOB to query).
+        if settings.dry_run:
+            live_cash = portfolio.cash
+        else:
+            live_cash = client.live_available_balance()
+            portfolio.cash = round(live_cash, 2)
         if live_cash < 1.0:
             portfolio.save(settings.state_path)
             return {

@@ -401,7 +401,41 @@ class TradingSession:
         return amount / 1_000_000.0
 
 
-def build_client(settings: Settings) -> TradingSession:
+class _DryRunClient:
+    """No-op trading client used when ``settings.dry_run`` is True.
+
+    Implements only the read/cancel surface the smart-money loop hits
+    on every tick (``live_available_balance``, ``cancel_order``,
+    ``cancel_active_orders_for_token``). Real buys/sells are
+    short-circuited inside ``execute_live_trade`` / ``execute_live_sell``
+    via ``settings.dry_run`` before this object is touched, so we don't
+    need to stub ``place_market_order``.
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def live_available_balance(self) -> float:
+        # No CLOB to ask — return 0 so the smart-money loop falls back
+        # on portfolio.cash from the simulated ledger.
+        return 0.0
+
+    def cancel_order(self, order_id: str) -> dict:
+        return {"dry_run": True, "cancelled": order_id}
+
+    def cancel_active_orders_for_token(self, token_id: str) -> list[str]:
+        return []
+
+    def derive_or_create_api_creds(self):
+        raise RuntimeError(
+            "derive_or_create_api_creds() is unavailable in dry-run mode "
+            "(no private key). Run without --dry-run for credential setup."
+        )
+
+
+def build_client(settings: Settings) -> "TradingSession | _DryRunClient":
+    if settings.dry_run:
+        return _DryRunClient(settings)
     if not settings.private_key:
         raise ValueError("POLYMARKET_PRIVATE_KEY is required for live trading")
     api_creds = (
