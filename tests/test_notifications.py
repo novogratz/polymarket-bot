@@ -449,3 +449,81 @@ class TestAutoTuneDiff(NotificationsBaseTest):
         self.assertIn("Auto\\-tune", text)
         self.assertIn("MIN_CONSENSUS", text)
         self.assertIn("MAX_CHASE_PREMIUM", text)
+
+
+class TestStateMigration(NotificationsBaseTest):
+    def test_loads_old_dedupe_seen_float_format(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "state.json"
+            path.write_text(json.dumps({
+                "equity_peak_usd": 100.0,
+                "dedupe_seen": {"err_a": 1700000000.0, "err_b": 1700000050.5},
+            }))
+            state = notifications._load_state(path)
+        self.assertEqual(state.equity_peak_usd, 100.0)
+        self.assertIn("err_a", state.dedupe_seen)
+        self.assertEqual(state.dedupe_seen["err_a"]["count"], 1)
+        self.assertEqual(state.dedupe_seen["err_a"]["first_ts"], 1700000000.0)
+        self.assertEqual(state.dedupe_seen["err_a"]["last_ts"], 1700000000.0)
+        self.assertEqual(state.dedupe_seen["err_a"]["last_message"], "")
+
+    def test_loads_new_dedupe_seen_dict_format(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "state.json"
+            path.write_text(json.dumps({
+                "dedupe_seen": {
+                    "err_a": {
+                        "first_ts": 1.0, "last_ts": 5.0,
+                        "count": 3, "last_message": "boom",
+                    },
+                },
+            }))
+            state = notifications._load_state(path)
+        entry = state.dedupe_seen["err_a"]
+        self.assertEqual(entry["count"], 3)
+        self.assertEqual(entry["last_message"], "boom")
+        self.assertEqual(entry["first_ts"], 1.0)
+        self.assertEqual(entry["last_ts"], 5.0)
+
+    def test_ignores_legacy_last_daily_summary_date(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "state.json"
+            path.write_text(json.dumps({"last_daily_summary_date": "2024-01-01"}))
+            state = notifications._load_state(path)
+        self.assertFalse(hasattr(state, "last_daily_summary_date"))
+
+    def test_loads_last_heartbeat_ts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "state.json"
+            path.write_text(json.dumps({"last_heartbeat_ts": 1700000000.0}))
+            state = notifications._load_state(path)
+        self.assertEqual(state.last_heartbeat_ts, 1700000000.0)
+
+    def test_save_round_trip_preserves_new_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "state.json"
+            state = notifications._State(
+                equity_peak_usd=200.0,
+                last_heartbeat_ts=1700000123.0,
+                dedupe_seen={
+                    "err_a": {"first_ts": 1.0, "last_ts": 2.0, "count": 4, "last_message": "x"},
+                },
+            )
+            notifications._save_state(path, state)
+            loaded = notifications._load_state(path)
+        self.assertEqual(loaded.equity_peak_usd, 200.0)
+        self.assertEqual(loaded.last_heartbeat_ts, 1700000123.0)
+        self.assertEqual(loaded.dedupe_seen["err_a"]["count"], 4)
+
+    def test_prune_dedupe_removes_old_entries(self) -> None:
+        state = notifications._State(
+            dedupe_seen={
+                "old": {"first_ts": 0.0, "last_ts": 0.0, "count": 1, "last_message": ""},
+                "new": {"first_ts": 1500.0, "last_ts": 1500.0, "count": 1, "last_message": ""},
+            },
+        )
+        # window=300, window*4=1200, cutoff = now - 1200 = 800
+        # "old" last_ts=0 < 800 → supprimé ; "new" last_ts=1500 ≥ 800 → gardé
+        notifications._prune_dedupe(state, now=2000.0, window=300.0)
+        self.assertNotIn("old", state.dedupe_seen)
+        self.assertIn("new", state.dedupe_seen)

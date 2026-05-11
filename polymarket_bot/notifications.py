@@ -86,9 +86,9 @@ def _md_escape(text: str) -> str:
 class _State:
     equity_peak_usd: float | None = None
     equity_floor_breached: bool = False
-    last_daily_summary_date: str | None = None
-    dedupe_seen: dict[str, float] = field(default_factory=dict)
+    dedupe_seen: dict[str, dict[str, Any]] = field(default_factory=dict)
     drawdown_armed: bool = False  # True quand on a déjà alerté sur ce pic
+    last_heartbeat_ts: float | None = None
 
 
 def _default_state_path() -> Path:
@@ -110,10 +110,37 @@ def _load_state(path: Path) -> _State:
     return _State(
         equity_peak_usd=data.get("equity_peak_usd"),
         equity_floor_breached=bool(data.get("equity_floor_breached", False)),
-        last_daily_summary_date=data.get("last_daily_summary_date"),
-        dedupe_seen={str(k): float(v) for k, v in (data.get("dedupe_seen") or {}).items()},
+        dedupe_seen=_migrate_dedupe(data.get("dedupe_seen")),
         drawdown_armed=bool(data.get("drawdown_armed", False)),
+        last_heartbeat_ts=(
+            float(data["last_heartbeat_ts"])
+            if data.get("last_heartbeat_ts") is not None
+            else None
+        ),
     )
+
+
+def _migrate_dedupe(raw: Any) -> dict[str, dict[str, Any]]:
+    """Migre `dedupe_seen` de l'ancien format float vers la structure imbriquée."""
+    out: dict[str, dict[str, Any]] = {}
+    if not isinstance(raw, dict):
+        return out
+    for k, v in raw.items():
+        if isinstance(v, (int, float)):
+            out[str(k)] = {
+                "first_ts": float(v),
+                "last_ts": float(v),
+                "count": 1,
+                "last_message": "",
+            }
+        elif isinstance(v, dict):
+            out[str(k)] = {
+                "first_ts": float(v.get("first_ts", 0) or 0),
+                "last_ts": float(v.get("last_ts", 0) or 0),
+                "count": int(v.get("count", 1) or 1),
+                "last_message": str(v.get("last_message", "") or ""),
+            }
+    return out
 
 
 def _dedupe_window_sec() -> float:
@@ -124,18 +151,21 @@ def _dedupe_window_sec() -> float:
 
 
 def _prune_dedupe(state: _State, now: float, window: float) -> None:
-    """Supprime les entrées plus anciennes que window × 4."""
+    """Supprime les entrées dont le `last_ts` dépasse `window × 4`."""
     cutoff = now - (window * 4)
-    state.dedupe_seen = {k: v for k, v in state.dedupe_seen.items() if v >= cutoff}
+    state.dedupe_seen = {
+        k: v for k, v in state.dedupe_seen.items()
+        if float(v.get("last_ts", 0)) >= cutoff
+    }
 
 
 def _save_state(path: Path, state: _State) -> None:
     payload = {
         "equity_peak_usd": state.equity_peak_usd,
         "equity_floor_breached": state.equity_floor_breached,
-        "last_daily_summary_date": state.last_daily_summary_date,
         "dedupe_seen": state.dedupe_seen,
         "drawdown_armed": state.drawdown_armed,
+        "last_heartbeat_ts": state.last_heartbeat_ts,
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
