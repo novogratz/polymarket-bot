@@ -1,36 +1,9 @@
 # Profil live-90 — reproduit scripts/run_live_70.sh (bankroll ~$90).
 # C'est la config tournant en LIVE par défaut.
 #
-# NOTE: scripts/run_live_70.sh exporte aussi des variables qui ne sont
-# PAS dans le schéma de profils (polymarket_bot/profiles.py _SCHEMA).
-# Ces variables doivent toujours être passées via l'environnement (ou
-# via le script shell) pour reproduire intégralement la config LIVE :
-#   - POLYMARKET_ENABLE_LIVE_TRADING, POLYMARKET_SYNC_LIVE_POSITIONS
-#   - POLYMARKET_SMART_CATEGORIES, POLYMARKET_SMART_DISCOVERY_KEYWORDS
-#   - POLYMARKET_SMART_TIME_PERIODS
-#   - POLYMARKET_SMART_REVERSE_LOOKUP_* (5 vars)
-#   - POLYMARKET_SMART_ALLOW_CRYPTO, POLYMARKET_SMART_CRYPTO_* (4 vars)
-#   - POLYMARKET_MAX_POSITION_USD, POLYMARKET_SMART_MAX_TRADE_USD
-#   - POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION
-#   - POLYMARKET_BTC_MIN_TRADE_USD, POLYMARKET_BTC_MIN_BUY_PRICE,
-#     POLYMARKET_BTC_MAX_BUY_PRICE, POLYMARKET_BTC_MAX_SPREAD,
-#     POLYMARKET_BTC_MIN_MODEL_PROBABILITY, POLYMARKET_BTC_MIN_HOURS_TO_CLOSE
-#   - POLYMARKET_SMART_NOISE_FALLBACK_MIN_BUY_PRICE,
-#     POLYMARKET_SMART_NOISE_FALLBACK_MAX_BUY_PRICE,
-#     POLYMARKET_SMART_NOISE_FALLBACK_MAX_SPREAD
-#   - POLYMARKET_SMART_FALLBACK_CONSENSUS
-#   - POLYMARKET_SMART_DEEP_FALLBACK_ENABLED,
-#     POLYMARKET_SMART_DEEP_FALLBACK_MIN_COPIED_USDC
-#   - POLYMARKET_SMART_MIN_TRADE_USD, POLYMARKET_SMART_MAX_ENTRY_SLIPPAGE
-#   - POLYMARKET_SMART_PRIORITY_CATEGORY_BONUS,
-#     POLYMARKET_SMART_SPORTS_SCORE_PENALTY,
-#     POLYMARKET_SMART_MAX_SPORTS_POSITIONS
-#   - POLYMARKET_SMART_SOON_HOURS, POLYMARKET_SMART_MIN_HOURS_TO_CLOSE,
-#     POLYMARKET_SMART_MAX_HOURS_TO_CLOSE
-#   - POLYMARKET_SMART_COHORT_EXIT_* (4 vars)
-#   - POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE,
-#     POLYMARKET_SMART_EXIT_MIN_PROFIT,
-#     POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD
+# Depuis l'extension du schéma profile, ce TOML couvre la totalité des
+# paramètres de stratégie. Le .env ne devrait plus contenir que les
+# secrets/endpoints. Voir docs/PROFILES.md pour la liste complète.
 
 [run]
 # Côté live cette valeur est ignorée (cash réel synchronisé depuis Polymarket).
@@ -40,8 +13,11 @@ starting_cash = 100.0
 position_pct = 0.18
 max_position_ceiling_usd = 150.0
 max_position_ceiling_pct = 0.30
+max_trade_usd = 0.0
+high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 7
+starter_trade_usd = 15.0
 assumed_live_balance_usd = 90.0
 
 [trader_cohort]
@@ -54,15 +30,47 @@ min_trader_roi = 0.03
 trade_fetch_concurrency = 24
 trade_lookback_minutes = 30
 
+[discovery]
+scan_limit = 1000
+soon_hours = 72
+fresh_signal_bonus = 8.0
+priority_category_bonus = 6.0
+
+[market_filters]
+min_liquidity_usd = 500.0
+min_volume_usd = 1000.0
+
 [filters]
 min_consensus = 2
+fallback_consensus = 2
 min_copied_usdc = 75.0
+min_trade_usd = 1.0
 max_chase_premium = 0.13
 price_min = 0.03
 price_max = 0.96
 max_absolute_spread = 0.08
 max_relative_spread = 0.45
 signal_staleness_seconds = 10
+min_hours_to_close = 0.25
+max_hours_to_close = 72.0
+max_orders_per_tick = 0
+max_sports_positions = 3
+sports_score_penalty = 8.0
+
+[crypto]
+min_buy_price = 0.70
+min_hours_to_close = 6.0
+max_hours_to_close = 48.0
+min_copied_usdc = 1000.0
+min_consensus = 3
+micro_min_consensus = 3
+micro_max_entry_slippage = 0.05
+micro_max_trade_usd = 5.0
+
+[execution]
+max_entry_slippage = 0.10
+pending_order_ttl_seconds = 45
+min_sell_usd = 1.0
 
 [exits]
 take_profit_ladder = "0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15"
@@ -73,27 +81,62 @@ peak_protect_exit_pct = 0.40
 stop_loss_pct = 0.40
 stop_loss_min_age_minutes = 15
 max_hold_hours = 24.0
+near_expiry_min_profit = 0.05
+near_expiry_minutes_to_close = 20
+resolved_market_threshold = 0.97
+
+[cohort_exit]
+enabled = true
+lookback_minutes = 120
+min_age_minutes = 30
+min_wallets = 2
+
+[deep_fallback]
+enabled = true
+min_copied_usdc = 250.0
+
+[reverse_lookup]
+enabled = true
+max_tokens = 100
+min_copied_usdc = 50.0
+min_liquidity_usd = 200.0
+min_volume_usd = 500.0
 
 [btc_edge]
 enabled = true
 per_trade_cap_usd = 5.0
 min_edge_over_market = 0.08
+min_buy_price = 0.05
+max_buy_price = 0.95
+max_spread = 0.04
+min_trade_usd = 1.0
+min_model_probability = 0.90
+min_hours_to_close = 0.5
+volatility_days = 7
 
 [noise_fallback]
 enabled = true
 max_trades_per_tick = 8
 stake_usd = 15.0
 cash_pressure_threshold = 0.25
+min_buy_price = 0.20
+max_buy_price = 0.80
+max_spread = 0.04
 
-[telemetry]
-auto_interval_seconds = 10
+[auto_tune]
+enabled = true
+min_closed_trades = 30
 
 [persistence]
 # Filtre persistance d'edge : élimine les wallets "chanceux" du mois.
-# OR entre intersection (≥2 listes sur WEEK/MONTH/ALL) et cache (≥70%
-# des 30 derniers snapshots quotidiens).
+# OR entre intersection (≥intersect_min listes sur WEEK/MONTH/ALL) et
+# cache (≥cache_threshold des window_days derniers snapshots).
 enabled = true
 window_days = 30
 cache_threshold = 0.70
 intersect_periods = "WEEK,MONTH,ALL"
 intersect_min = 2
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 10
