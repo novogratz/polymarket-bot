@@ -72,8 +72,8 @@ class CliAutoLoopFlagsTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, msg=(result.stderr or "") + (result.stdout or ""))
         loop_mock.assert_called_once()
         settings = loop_mock.call_args.args[0]
-        # baseline.toml sets position_pct = 0.0
-        self.assertAlmostEqual(settings.smart_position_pct, 0.0)
+        # baseline.toml sets position_pct = 0.10 (10% du cash par trade).
+        self.assertAlmostEqual(settings.smart_position_pct, 0.10)
         # baseline.toml sets starting_cash = 100.0 (paper_balance_usd)
         self.assertAlmostEqual(settings.paper_balance_usd, 100.0)
 
