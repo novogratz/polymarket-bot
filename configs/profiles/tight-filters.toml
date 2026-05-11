@@ -40,3 +40,11 @@ enabled = false
 [auto_tune]
 enabled = true
 min_closed_trades = 30
+
+[persistence]
+# Strict : 3/3 sur intersection ET cache à 80%.
+enabled = true
+window_days = 30
+cache_threshold = 0.80
+intersect_periods = "WEEK,MONTH,ALL"
+intersect_min = 3

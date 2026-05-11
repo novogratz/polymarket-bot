@@ -86,3 +86,13 @@ cash_pressure_threshold = 0.25
 
 [telemetry]
 auto_interval_seconds = 10
+
+[persistence]
+# Filtre persistance d'edge : élimine les wallets "chanceux" du mois.
+# OR entre intersection (≥2 listes sur WEEK/MONTH/ALL) et cache (≥70%
+# des 30 derniers snapshots quotidiens).
+enabled = true
+window_days = 30
+cache_threshold = 0.70
+intersect_periods = "WEEK,MONTH,ALL"
+intersect_min = 2

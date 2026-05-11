@@ -79,3 +79,7 @@ min_closed_trades = 30
 [telemetry]
 quiet = false
 auto_interval_seconds = 10
+
+[persistence]
+# Filtre persistance désactivé sur baseline : sert de référence A/B.
+enabled = false
