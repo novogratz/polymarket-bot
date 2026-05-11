@@ -347,6 +347,29 @@ class TradingSession:
 
         return self.place_live_order(candidate=candidate, price=price, size=amount, side=side)
 
+    def buy_depth_usd(self, candidate: Candidate, max_price: float) -> float | None:
+        token_id = candidate.token_id or ""
+        if not token_id:
+            return None
+        try:
+            book = self.legacy_client.get_order_book(token_id)
+        except Exception:
+            return None
+        asks = book.get("asks") if isinstance(book, dict) else None
+        if not isinstance(asks, list):
+            return None
+        depth = 0.0
+        for level in asks:
+            if not isinstance(level, dict):
+                continue
+            price = _amount(level.get("price") or level.get("p"))
+            size = _amount(level.get("size") or level.get("s"))
+            if price <= 0 or size <= 0:
+                continue
+            if price <= max_price:
+                depth += price * size
+        return round(depth, 2)
+
     def cancel_order(self, order_id: str) -> Any:
         if self.sdk_client is not None:
             module, _ = _load_sdk_client()
@@ -534,6 +557,16 @@ def execute_live_trade(
     min_share_stake = settings.min_order_shares * entry_price
     if stake > 0 and live_balance >= min_share_stake:
         stake = max(stake, min_share_stake)
+
+    if settings.smart_liquidity_sizing_enabled and not settings.dry_run:
+        depth_method = getattr(client, "buy_depth_usd", None)
+        depth_usd = depth_method(candidate, entry_price) if callable(depth_method) else None
+        if depth_usd is not None:
+            haircut = max(0.0, min(settings.smart_liquidity_sizing_haircut, 1.0))
+            fillable_usd = round(depth_usd * haircut, 2)
+            if fillable_usd <= 0:
+                raise ValueError("no visible ask liquidity at price guard")
+            stake = min(stake, fillable_usd)
     
     stake = round(min(stake, live_balance), 2)
     if stake <= 0:
@@ -755,6 +788,13 @@ def _is_high_conviction_signal(signal: dict[str, Any]) -> bool:
     if consensus >= 3 and copied_usdc >= 15000 and total_trader_pnl >= 250000 and value_discount_pct >= 0:
         return True
     return consensus >= 3 and copied_usdc >= 5000 and value_score >= 10 and value_discount_pct >= 0
+
+
+def _amount(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def execute_live_sell(

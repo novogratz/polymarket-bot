@@ -28,7 +28,7 @@ from polymarket_bot.smart_money import (
     smart_money_signals,
 )
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
-from polymarket_bot.trading import _is_filled_buy_response, execute_live_sell, execute_live_trade
+from polymarket_bot.trading import TradingSession, _is_filled_buy_response, execute_live_sell, execute_live_trade
 from polymarket_bot.main import (
     _dynamic_max_trade,
     _candidate_entry_block_reason,
@@ -374,6 +374,103 @@ class StrategyTests(unittest.TestCase):
 
         self.assertEqual(result.order["amount"], 50.0)
         self.assertEqual(portfolio.positions[0]["stake"], 50.0)
+
+    def test_live_trade_caps_buy_to_visible_ask_liquidity(self):
+        class FakeClient:
+            def __init__(self):
+                self.amounts = []
+
+            def live_available_balance(self):
+                return 100.0
+
+            def buy_depth_usd(self, candidate, max_price):
+                self.depth_query = (candidate.token_id, max_price)
+                return 20.0
+
+            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
+                self.amounts.append(amount)
+                return {"price": price, "amount": amount, "side": side}, {
+                    "success": True,
+                    "status": "matched",
+                    "orderID": "order-1",
+                    "makingAmount": str(amount),
+                }
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.49,
+            best_ask=0.5,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        client = FakeClient()
+        portfolio = Portfolio(cash=100.0, positions=[])
+
+        result = execute_live_trade(
+            client,
+            Settings(
+                trade_fraction=1.0,
+                max_position_usd=100.0,
+                smart_max_trade_usd=100.0,
+                smart_liquidity_sizing_haircut=0.85,
+            ),
+            candidate,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=100.0,
+        )
+
+        self.assertEqual(client.depth_query, ("token", 0.51))
+        self.assertEqual(client.amounts, [17.0])
+        self.assertEqual(result.order["amount"], 17.0)
+        self.assertEqual(portfolio.positions[0]["stake"], 17.0)
+
+    def test_trading_session_buy_depth_sums_asks_inside_price_guard(self):
+        class FakeLegacyClient:
+            def get_order_book(self, token_id):
+                self.token_id = token_id
+                return {
+                    "asks": [
+                        {"price": "0.50", "size": "10"},
+                        {"price": "0.51", "size": "20"},
+                        {"price": "0.55", "size": "100"},
+                    ]
+                }
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.49,
+            best_ask=0.5,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        legacy = FakeLegacyClient()
+        session = TradingSession(Settings(), legacy, sdk_client=None)
+
+        self.assertEqual(session.buy_depth_usd(candidate, 0.51), 15.2)
+        self.assertEqual(legacy.token_id, "token")
 
     def test_live_trade_rejects_second_position_in_same_sports_event(self):
         class FakeClient:

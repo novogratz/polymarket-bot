@@ -177,6 +177,8 @@ class Settings:
     smart_top10_flow_min_copied_usdc: float = _float_env("POLYMARKET_SMART_TOP10_FLOW_MIN_COPIED_USDC", 100.0)
     smart_top10_flow_max_signal_age_minutes: int = _int_env("POLYMARKET_SMART_TOP10_FLOW_MAX_SIGNAL_AGE_MINUTES", 360)
     smart_top10_flow_cash_pct: float = _float_env("POLYMARKET_SMART_TOP10_FLOW_CASH_PCT", 0.25)
+    smart_liquidity_sizing_enabled: bool = _bool_env("POLYMARKET_SMART_LIQUIDITY_SIZING_ENABLED", True)
+    smart_liquidity_sizing_haircut: float = _float_env("POLYMARKET_SMART_LIQUIDITY_SIZING_HAIRCUT", 0.85)
     smart_high_conviction_balance_fraction: float = _float_env(
         "POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION",
         0.80,
