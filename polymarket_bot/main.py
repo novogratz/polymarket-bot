@@ -2491,6 +2491,7 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                     "big_win_in_progress",
                     {
                         "pnl_pct": pnl_pct,
+                        "pnl_usd": float(position.get("unrealized_pnl") or 0.0),
                         "token_id": str(position.get("token_id", "")),
                         "market_title": str(position.get("question", "")),
                         "bid": current_price,

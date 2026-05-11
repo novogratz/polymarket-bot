@@ -411,9 +411,14 @@ def _handle_big_win_in_progress(payload: dict[str, Any]) -> None:
         return
     title = str(payload.get("market_title", ""))
     bid = float(payload.get("bid", 0))
+    pnl_usd = _optional_float(payload.get("pnl_usd"))
+    pnl_usd_str = _fmt_loud_win_usd(pnl_usd) if pnl_usd is not None else "USD PnL pending"
+    pnl_pct_str = _fmt_loud_win_pct(pnl_pct)
     title_str = f" on *{_md_escape(title)}*" if title else ""
     text = (
-        f"\U0001f4c8 *BIG WIN IN PROGRESS* {_md_escape(f'+{pnl_pct:.1f}%')}{title_str}\n"
+        f"\U0001f7e2✅✅✅ *BIG WIN IN PROGRESS* ✅✅✅\n"
+        f"*{pnl_usd_str}*  *{pnl_pct_str}* {title_str}\n"
+        f"{_md_escape('MAKE SOME NOISE!!!!!!')} @pmarx\n"
         f"Bid: {_md_escape(f'{bid:.3f}')}"
     )
     if _post(text):
@@ -429,11 +434,14 @@ def _handle_big_win(payload: dict[str, Any]) -> None:
     reason = str(payload.get("reason", ""))
     title = str(payload.get("market_title", ""))
     pnl_pct = payload.get("pnl_pct")
-    pnl_pct_str = f" ({_md_escape(f'+{pnl_pct:.1f}%')})" if pnl_pct is not None else ""
+    pnl_pct_value = _optional_float(pnl_pct)
+    pnl_pct_str = f"  *{_fmt_loud_win_pct(pnl_pct_value)}*" if pnl_pct_value is not None else ""
     held_str = _fmt_held(payload.get("held_seconds"))
     held_line = f" after {_md_escape(held_str)}" if held_str else ""
     text = (
-        f"\U0001f4b0 *BIG WIN* {_md_escape(f'+${pnl:.2f}')}{pnl_pct_str} on *{_md_escape(title)}*\n"
+        f"\U0001f7e2✅✅✅ *BIG WIN* ✅✅✅\n"
+        f"*{_fmt_loud_win_usd(pnl)}*{pnl_pct_str} on *{_md_escape(title)}*\n"
+        f"{_md_escape('MAKE SOME NOISE!!!!!!')} @pmarx\n"
         f"Exit: `{reason}`{held_line}"
     )
     _post(text)
@@ -638,6 +646,27 @@ def _pnl_icon(value: float) -> str:
     return "⚪"
 
 
+def _optional_float(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fmt_loud_win_usd(value: float | None) -> str:
+    if value is None:
+        return _md_escape("USD PnL pending")
+    return _md_escape(f"🟢 +${abs(value):.2f} USD 🟢")
+
+
+def _fmt_loud_win_pct(value: float | None) -> str:
+    if value is None:
+        return _md_escape("+?%")
+    return _md_escape(f"🟢 +{abs(value):.1f}% 🟢")
+
+
 def _fmt_price(value: Any) -> str:
     try:
         return f"{float(value):.2f}"
@@ -661,9 +690,20 @@ def _line_for_open_position(position: dict[str, Any]) -> str:
     outcome = _short(position.get("outcome") or "?", 14)
     stake = float(position.get("stake") or 0.0)
     pnl = float(position.get("unrealized_pnl") or 0.0)
+    pnl_pct = (pnl / stake * 100.0) if stake > 0 else None
     entry = _fmt_price(position.get("entry_price"))
     current = _fmt_price(position.get("current_price"))
     strategy = str(position.get("strategy") or "?")
+    threshold_pct = _float_env("TELEGRAM_BIG_WIN_IN_PROGRESS_PCT", 20.0)
+    threshold_usd = _float_env("TELEGRAM_BIG_WIN_USD", 10.0)
+    if pnl > 0 and (pnl >= threshold_usd or (pnl_pct is not None and pnl_pct >= threshold_pct)):
+        pct_part = f" *{_fmt_loud_win_pct(pnl_pct)}*" if pnl_pct is not None else ""
+        return (
+            f"\U0001f7e2✅✅ *WIN IN PROGRESS* *{_fmt_loud_win_usd(pnl)}*{pct_part} @pmarx\n"
+            f"{_md_escape(title)} — *{_md_escape(outcome)}* "
+            f"`{_md_escape(_fmt_money(stake))}` {_md_escape(entry)}→{_md_escape(current)} "
+            f"`{_md_escape(strategy)}`"
+        )
     return (
         f"{_pnl_icon(pnl)} {_md_escape(title)} — *{_md_escape(outcome)}* "
         f"`{_md_escape(_fmt_money(stake))}` {_md_escape(entry)}→{_md_escape(current)} "

@@ -363,6 +363,10 @@ class TestTradeFormats(NotificationsBaseTest):
         self.assertIn("*Smaller trades*", text)
         self.assertIn("Will big position win?", text)
         self.assertIn("Will BTC be above $100,000?", text)
+        self.assertIn("WIN IN PROGRESS", text)
+        self.assertIn("\\+$4\\.50 USD", text)
+        self.assertIn("\\+30\\.0%", text)
+        self.assertIn("@pmarx", text)
         self.assertIn("Will ETH be above $4,000?", text)
         self.assertIn("Small position 5", text)
         self.assertNotIn("Small position 6 hidden", text)
@@ -408,6 +412,7 @@ class TestBigWinLoss(NotificationsBaseTest):
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
         os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
         os.environ["TELEGRAM_BIG_WIN_USD"] = "10.0"
+        os.environ["TELEGRAM_BIG_WIN_IN_PROGRESS_PCT"] = "20.0"
         os.environ["TELEGRAM_BIG_LOSS_USD"] = "5.0"
         sent: list[dict] = []
         notifications.set_transport_for_test(lambda p: sent.append(p) or True)
@@ -416,12 +421,36 @@ class TestBigWinLoss(NotificationsBaseTest):
     def test_big_win_above_threshold(self) -> None:
         sent = self._setup_enabled()
         notifications.notify_threshold("big_win", {
-            "market_title": "BTC EOY", "pnl_usd": 12.40, "reason": "peak_protect",
+            "market_title": "BTC EOY", "pnl_usd": 12.40, "pnl_pct": 30.3, "reason": "peak_protect",
             "held_seconds": 100000,
         })
         self.assertEqual(len(sent), 1)
         self.assertIn("BIG WIN", sent[0]["text"])
         self.assertIn("12\\.40", sent[0]["text"])
+        self.assertIn("\\+30\\.3%", sent[0]["text"])
+        self.assertIn("✅✅✅", sent[0]["text"])
+        self.assertIn("@pmarx", sent[0]["text"])
+        self.assertIn("MAKE SOME NOISE", sent[0]["text"])
+
+    def test_big_win_in_progress_is_loud_and_tagged(self) -> None:
+        sent = self._setup_enabled()
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch("polymarket_bot.notifications._default_state_path", return_value=Path(td) / "state.json"):
+                notifications.notify_threshold("big_win_in_progress", {
+                    "market_title": "BTC live runner",
+                    "token_id": "token-1",
+                    "pnl_usd": 14.25,
+                    "pnl_pct": 24.7,
+                    "bid": 0.75,
+                })
+
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertIn("BIG WIN IN PROGRESS", text)
+        self.assertIn("\\+$14\\.25 USD", text)
+        self.assertIn("\\+24\\.7%", text)
+        self.assertIn("✅✅✅", text)
+        self.assertIn("@pmarx", text)
 
     def test_big_win_below_threshold_skips(self) -> None:
         sent = self._setup_enabled()
