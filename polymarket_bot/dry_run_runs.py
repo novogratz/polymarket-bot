@@ -145,3 +145,51 @@ def update_tick_metadata(paths: DryRunPaths) -> None:
     metadata.total_ticks += 1
     metadata.last_tick_at = _now_iso()
     save_metadata(paths, metadata)
+
+
+import shutil
+
+
+def list_runs(base_dir: Path) -> list[RunMetadata]:
+    """Return metadata for every run under ``base_dir/dry_runs/``.
+
+    Skips directories without a ``metadata.json`` (orphan dirs).
+    """
+    runs_dir = base_dir / "dry_runs"
+    if not runs_dir.is_dir():
+        return []
+    result: list[RunMetadata] = []
+    for entry in sorted(runs_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        meta_path = entry / "metadata.json"
+        if not meta_path.is_file():
+            continue
+        result.append(load_metadata(DryRunPaths.for_run(base_dir, entry.name)))
+    return result
+
+
+def reset_run(paths: DryRunPaths) -> None:
+    """Delete all volatile files of a run; preserve metadata.json and
+    config_snapshot.toml. Resets ``total_ticks`` and ``last_tick_at``.
+    """
+    for path in (
+        paths.state,
+        paths.journal,
+        paths.equity_curve,
+        paths.decisions,
+        paths.tick_state,
+        paths.tick_history,
+        paths.overrides,
+    ):
+        path.unlink(missing_ok=True)
+    metadata = load_metadata(paths)
+    metadata.total_ticks = 0
+    metadata.last_tick_at = None
+    save_metadata(paths, metadata)
+
+
+def remove_run(paths: DryRunPaths) -> None:
+    """Delete the run directory and everything in it."""
+    if paths.root.is_dir():
+        shutil.rmtree(paths.root)

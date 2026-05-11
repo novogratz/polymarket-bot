@@ -98,5 +98,80 @@ class UpdateTickMetadataTests(unittest.TestCase):
             self.assertEqual(after.started_at, initial.started_at)
 
 
+from polymarket_bot.dry_run_runs import list_runs, reset_run, remove_run
+
+
+class ListRunsTests(unittest.TestCase):
+    def test_list_returns_metadata_for_each_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            ensure_run_directory(base, "alpha", starting_cash=100.0, profile_source="a.toml")
+            ensure_run_directory(base, "beta", starting_cash=50.0, profile_source="b.toml")
+            runs = list_runs(base)
+            names = sorted(r.run_name for r in runs)
+            self.assertEqual(names, ["alpha", "beta"])
+
+    def test_list_empty_when_no_runs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(list_runs(Path(tmp)), [])
+
+    def test_list_skips_dirs_without_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            ensure_run_directory(base, "good", starting_cash=100.0, profile_source="x.toml")
+            (base / "dry_runs" / "stray").mkdir()  # no metadata.json
+            runs = list_runs(base)
+            self.assertEqual([r.run_name for r in runs], ["good"])
+
+
+class ResetRunTests(unittest.TestCase):
+    def test_reset_clears_state_journal_equity_decisions_but_preserves_metadata_and_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = ensure_run_directory(
+                Path(tmp), "to-reset", starting_cash=100.0, profile_source="x.toml"
+            )
+            # Simulate accumulated files.
+            paths.state.write_text('{"cash": 50.0}', encoding="utf-8")
+            paths.journal.write_text('{"trade": 1}\n', encoding="utf-8")
+            paths.equity_curve.write_text('{"equity": 100}\n', encoding="utf-8")
+            paths.decisions.write_text('{"tick": 1}\n', encoding="utf-8")
+            paths.tick_state.write_text('{}', encoding="utf-8")
+            paths.tick_history.write_text('{}\n', encoding="utf-8")
+            paths.overrides.write_text('{}', encoding="utf-8")
+            paths.config_snapshot.write_text('# snapshot', encoding="utf-8")
+            original_metadata = load_metadata(paths)
+
+            reset_run(paths)
+
+            # Volatile files gone.
+            self.assertFalse(paths.state.is_file())
+            self.assertFalse(paths.journal.is_file())
+            self.assertFalse(paths.equity_curve.is_file())
+            self.assertFalse(paths.decisions.is_file())
+            self.assertFalse(paths.tick_state.is_file())
+            self.assertFalse(paths.tick_history.is_file())
+            self.assertFalse(paths.overrides.is_file())
+            # Metadata preserved BUT total_ticks reset to 0.
+            metadata = load_metadata(paths)
+            self.assertEqual(metadata.total_ticks, 0)
+            self.assertIsNone(metadata.last_tick_at)
+            self.assertEqual(metadata.run_name, original_metadata.run_name)
+            self.assertEqual(metadata.started_at, original_metadata.started_at)
+            # Config snapshot preserved.
+            self.assertTrue(paths.config_snapshot.is_file())
+
+
+class RemoveRunTests(unittest.TestCase):
+    def test_remove_deletes_entire_run_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = ensure_run_directory(
+                Path(tmp), "to-remove", starting_cash=100.0, profile_source="x.toml"
+            )
+            paths.state.write_text('{}', encoding="utf-8")
+            self.assertTrue(paths.root.is_dir())
+            remove_run(paths)
+            self.assertFalse(paths.root.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
