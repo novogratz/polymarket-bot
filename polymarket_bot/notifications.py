@@ -813,6 +813,7 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     sections: list[list[str]] = [
         [
             f"\U0001f4ca *Director review* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
+            "",
             f"{'✅' if total_pnl > 0 else '⚪'} *Equity* {_md_escape(_fmt_money(equity))}{equity_pct_str} — *Cash* {_md_escape(_fmt_money(cash))}",
             *[f"  — {part}" for part in equity_parts],
             "",
