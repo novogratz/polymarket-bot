@@ -324,6 +324,7 @@ def fetch_smart_money_data(
                 return False
         return True
 
+    cohort_before_prefilter = len(traders)
     qualified = [t for t in traders if _qualifies(t)]
 
     # Filtre persistance d'edge — branché entre pré-filtre PnL/Vol/ROI et fetch trades
@@ -359,7 +360,8 @@ def fetch_smart_money_data(
                 and s.intersect_score * 3 >= settings.persistence_intersect_min
             )
             print(
-                f"      cohort: {cohort_before} → {len(qualified)} "
+                f"      cohort: {cohort_before_prefilter} → {cohort_before} "
+                f"(PnL/Vol/ROI) → {len(qualified)} "
                 f"(persistence: {n_cache} cache, {n_intersect} intersect, {n_both} both)",
                 flush=True,
             )

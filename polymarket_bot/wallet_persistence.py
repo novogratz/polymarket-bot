@@ -43,6 +43,7 @@ class WalletHistoryStore:
         self.path = Path(path)
         self.window_days = int(window_days)
         self._max_kept = self.window_days * 2
+        self._cache: dict[str, Any] | None = None
 
     def record_snapshot(self, snapshot_date: date, wallets: list[str]) -> bool:
         """Enregistre un snapshot. Retourne True si ajouté, False si idempotent."""
@@ -74,15 +75,21 @@ class WalletHistoryStore:
         return len(self._load().get("snapshots", []))
 
     def _load(self) -> dict[str, Any]:
+        if self._cache is not None:
+            return self._cache
         if not self.path.exists():
-            return {"version": _SUPPORTED_VERSION, "snapshots": []}
+            self._cache = {"version": _SUPPORTED_VERSION, "snapshots": []}
+            return self._cache
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            return {"version": _SUPPORTED_VERSION, "snapshots": []}
+            self._cache = {"version": _SUPPORTED_VERSION, "snapshots": []}
+            return self._cache
         if not isinstance(data, dict) or "snapshots" not in data:
-            return {"version": _SUPPORTED_VERSION, "snapshots": []}
-        return data
+            self._cache = {"version": _SUPPORTED_VERSION, "snapshots": []}
+            return self._cache
+        self._cache = data
+        return self._cache
 
     def _save(self, data: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -95,6 +102,7 @@ class WalletHistoryStore:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(data, fh, indent=2)
             os.replace(tmp_path, self.path)
+            self._cache = data  # cache après écriture réussie
         except Exception:
             try:
                 os.unlink(tmp_path)

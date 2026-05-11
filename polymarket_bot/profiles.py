@@ -43,6 +43,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
     },
     "trader_cohort": {
         "leaderboard_window": ("POLYMARKET_SMART_TIME_PERIOD", "str"),
+        "leaderboard_windows": ("POLYMARKET_SMART_TIME_PERIODS", "str"),
         "top_n": ("POLYMARKET_SMART_LEADERBOARD_LIMIT", "int"),
         "min_trader_pnl": ("POLYMARKET_SMART_MIN_TRADER_PNL", "float"),
         "min_trader_volume": ("POLYMARKET_SMART_MIN_TRADER_VOLUME", "float"),

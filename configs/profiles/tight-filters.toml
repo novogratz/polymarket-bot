@@ -10,6 +10,9 @@ max_position_ceiling_usd = 100.0
 cash_floor_pct = 0.10
 min_open_positions = 3
 
+[trader_cohort]
+leaderboard_windows = "WEEK,MONTH,ALL"
+
 [filters]
 min_consensus = 3
 min_copied_usdc = 250.0

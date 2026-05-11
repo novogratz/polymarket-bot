@@ -12,6 +12,9 @@ cash_floor_pct = 0.05
 min_open_positions = 5
 starter_trade_usd = 25.0
 
+[trader_cohort]
+leaderboard_windows = "WEEK,MONTH,ALL"
+
 [filters]
 min_consensus = 2
 min_copied_usdc = 50.0
