@@ -38,6 +38,11 @@ class CliAutoLoopFlagsTests(unittest.TestCase):
             p = Path("data") / name
             if p.exists():
                 p.unlink()
+        # Cleanup default run directory possibly created.
+        import shutil
+        default_run = Path("data") / "dry_runs" / "default"
+        if default_run.exists():
+            shutil.rmtree(default_run, ignore_errors=True)
 
     def test_no_mode_flag_rejects(self):
         result = self.runner.invoke(self.app, ["auto-loop"])
@@ -103,7 +108,7 @@ class CliAutoLoopFlagsTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         settings = loop_mock.call_args.args[0]
         self.assertTrue(settings.dry_run)
-        self.assertEqual(str(settings.state_path), "data/dry_run_state.json")
+        self.assertTrue(str(settings.state_path).endswith("data/dry_runs/default/state.json"))
 
 
 import tempfile
@@ -113,14 +118,6 @@ class CliAutoLoopIntegrationTests(unittest.TestCase):
     def setUp(self):
         self._snapshot = dict(os.environ)
         _clean_env()
-        self._tmp = tempfile.TemporaryDirectory()
-        # Redirect state/journal to the temp dir so the test does not
-        # touch repo-root data/.
-        os.environ["POLYMARKET_STATE_PATH"] = str(Path(self._tmp.name) / "state.json")
-        os.environ["POLYMARKET_TRADE_JOURNAL_PATH"] = str(Path(self._tmp.name) / "journal.jsonl")
-        os.environ["POLYMARKET_STRATEGY_OVERRIDES_PATH"] = str(Path(self._tmp.name) / "overrides.json")
-        os.environ["POLYMARKET_TICK_STATE_PATH"] = str(Path(self._tmp.name) / "last_tick.json")
-        os.environ["POLYMARKET_TICK_HISTORY_PATH"] = str(Path(self._tmp.name) / "tick_history.jsonl")
         from polymarket_bot.main import app
         self.app = app
         try:
@@ -129,10 +126,13 @@ class CliAutoLoopIntegrationTests(unittest.TestCase):
             self.runner = CliRunner()
 
     def tearDown(self):
-        self._tmp.cleanup()
         _clean_env()
         for k, v in self._snapshot.items():
             os.environ[k] = v
+        import shutil
+        default_run = Path("data") / "dry_runs" / "default"
+        if default_run.exists():
+            shutil.rmtree(default_run, ignore_errors=True)
 
     def test_dry_run_baseline_writes_snapshot(self):
         with patch("polymarket_bot.main.smart_money_loop"):
@@ -140,8 +140,8 @@ class CliAutoLoopIntegrationTests(unittest.TestCase):
                 self.app, ["auto-loop", "--dry-run", "--profile", "baseline"]
             )
         self.assertEqual(result.exit_code, 0, msg=(result.stderr or "") + (result.stdout or ""))
-        # Snapshot lives next to state_path (in tmp).
-        snap = Path(self._tmp.name) / "dry_run_config_snapshot.toml"
+        # Snapshot lives in the named-run directory (default).
+        snap = Path("data") / "dry_runs" / "default" / "config_snapshot.toml"
         self.assertTrue(snap.is_file(), f"snapshot not found at {snap}")
         content = snap.read_text(encoding="utf-8")
         self.assertIn("# source: baseline.toml", content)
@@ -167,6 +167,62 @@ class CliAutoLoopIntegrationTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         settings = loop_mock.call_args.args[0]
         self.assertAlmostEqual(settings.paper_balance_usd, 100.0)
+
+
+class CliAutoLoopNamedRunTests(unittest.TestCase):
+    def setUp(self):
+        self._snapshot = dict(os.environ)
+        _clean_env()
+        from polymarket_bot.main import app
+        self.app = app
+        try:
+            self.runner = CliRunner(mix_stderr=False)
+        except TypeError:
+            self.runner = CliRunner()
+
+    def tearDown(self):
+        _clean_env()
+        for k, v in self._snapshot.items():
+            os.environ[k] = v
+        # Cleanup any run directories created by the tests.
+        import shutil
+        for d in ("sim1", "sim2", "default"):
+            p = Path("data") / "dry_runs" / d
+            if p.exists():
+                shutil.rmtree(p, ignore_errors=True)
+
+    def test_default_run_name_creates_default_dir(self):
+        with patch("polymarket_bot.main.smart_money_loop"):
+            result = self.runner.invoke(self.app, ["auto-loop", "--dry-run", "--profile", "baseline"])
+        self.assertEqual(result.exit_code, 0, msg=(result.stderr or "") + (result.stdout or ""))
+        self.assertTrue((Path("data") / "dry_runs" / "default" / "metadata.json").is_file())
+
+    def test_explicit_run_name_creates_named_dir(self):
+        with patch("polymarket_bot.main.smart_money_loop"):
+            result = self.runner.invoke(
+                self.app, ["auto-loop", "--dry-run", "--run", "sim1", "--profile", "baseline"]
+            )
+        self.assertEqual(result.exit_code, 0)
+        run_dir = Path("data") / "dry_runs" / "sim1"
+        self.assertTrue((run_dir / "metadata.json").is_file())
+        self.assertTrue((run_dir / "config_snapshot.toml").is_file())
+
+    def test_run_name_validated(self):
+        with patch("polymarket_bot.main.smart_money_loop"):
+            result = self.runner.invoke(
+                self.app, ["auto-loop", "--dry-run", "--run", "bad/name", "--profile", "baseline"]
+            )
+        self.assertNotEqual(result.exit_code, 0)
+
+    def test_run_rejected_in_live_mode(self):
+        with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
+            result = self.runner.invoke(
+                self.app, ["auto-loop", "--live", "--run", "sim2", "--profile", "live-90", "--yes"]
+            )
+        self.assertNotEqual(result.exit_code, 0)
+        loop_mock.assert_not_called()
+        combined = (result.stderr or "") + (result.stdout or "")
+        self.assertIn("dry-run only", combined)
 
 
 if __name__ == "__main__":

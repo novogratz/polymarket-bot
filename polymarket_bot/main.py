@@ -30,6 +30,8 @@ from .auto_tuner import apply_overrides, maybe_tune
 from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
 from .config import Settings
 from .dashboard import serve
+from .dry_run_runs import DryRunPaths, ensure_run_directory, update_tick_metadata
+from .equity_tracker import append_equity_point
 from .profiles import (
     ProfileValidationError,
     apply_profile_to_env,
@@ -2339,6 +2341,11 @@ def cli_auto_loop(
     yes: bool = typer.Option(
         False, "--yes", help="Skip le prompt de confirmation live."
     ),
+    run: str = typer.Option(
+        "default",
+        "--run",
+        help="Nom du dossier de simulation dans data/dry_runs/. Dry-run only.",
+    ),
 ) -> None:
     """Run the smart-money loop in --dry-run or --live mode."""
 
@@ -2351,6 +2358,9 @@ def cli_auto_loop(
             "Specify --dry-run or --live (modes are mutually exclusive and required).",
             err=True,
         )
+        raise typer.Exit(code=2)
+    if live and run != "default":
+        typer.echo("--run is dry-run only.", err=True)
         raise typer.Exit(code=2)
 
     # 2) Warn on legacy env vars (no longer used to drive mode).
@@ -2371,17 +2381,36 @@ def cli_auto_loop(
         raise typer.Exit(code=2)
     apply_profile_to_env(loaded)
 
-    # 4) Force dry-run env var BEFORE Settings() reads it (so __post_init__ swaps paths).
+    # 4) Dry-run: provision the named run directory and inject paths into env
+    #    BEFORE Settings() reads them (so every component points to the run dir).
+    paths: DryRunPaths | None = None
     if dry_run:
+        try:
+            paths = ensure_run_directory(
+                repo_root / "data",
+                run,
+                starting_cash=loaded.starting_cash,
+                profile_source=profile_path.name,
+            )
+        except ValueError as exc:
+            typer.echo(f"invalid --run name: {exc}", err=True)
+            raise typer.Exit(code=2)
+        os.environ["POLYMARKET_STATE_PATH"] = str(paths.state)
+        os.environ["POLYMARKET_TRADE_JOURNAL_PATH"] = str(paths.journal)
+        os.environ["POLYMARKET_STRATEGY_OVERRIDES_PATH"] = str(paths.overrides)
+        os.environ["POLYMARKET_TICK_STATE_PATH"] = str(paths.tick_state)
+        os.environ["POLYMARKET_TICK_HISTORY_PATH"] = str(paths.tick_history)
         os.environ["POLYMARKET_DRY_RUN"] = "1"
     else:
         os.environ.pop("POLYMARKET_DRY_RUN", None)
 
     settings = Settings()
 
-    # 5) Snapshot effective config (next to the active ledger).
-    snapshot_name = "live_config_snapshot.toml" if live else "dry_run_config_snapshot.toml"
-    snapshot_target = settings.state_path.parent / snapshot_name
+    # 5) Snapshot effective config.
+    if dry_run and paths is not None:
+        snapshot_target = paths.config_snapshot
+    else:
+        snapshot_target = settings.state_path.parent / "live_config_snapshot.toml"
     write_snapshot_toml(snapshot_target, source_label=profile_path.name)
 
     # 6) Live: confirmation gate.
@@ -2394,7 +2423,7 @@ def cli_auto_loop(
         typer.echo(f"LIVE — profile={profile_path.name} ledger={settings.state_path}", err=True)
     else:
         typer.echo(
-            f"[DRY-RUN] profile={profile_path.name} "
+            f"[DRY-RUN] run={run} profile={profile_path.name} "
             f"ledger={settings.state_path} starting_cash=${loaded.starting_cash:g}",
             err=True,
         )
