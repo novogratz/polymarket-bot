@@ -409,78 +409,79 @@ class TestTradeSellOneLine(NotificationsBaseTest):
         self.assertEqual(sent, [])
 
 
-class TestDrawdownArming(NotificationsBaseTest):
+class TestThresholdOneLine(NotificationsBaseTest):
     def _setup(self) -> list[dict]:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
         os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
-        os.environ["TELEGRAM_DRAWDOWN_PCT"] = "10.0"
         sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        notifications.set_transport_for_test(lambda payload: sent.append(payload) or True)
         return sent
 
-    def test_drawdown_alerts_only_after_arming(self) -> None:
+    def test_drawdown_one_line(self) -> None:
         sent = self._setup()
-        with tempfile.TemporaryDirectory() as td:
-            path = Path(td) / "state.json"
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
             with patch.object(notifications, "_default_state_path", return_value=path):
-                # Premier appel: equity 100 → pic 100, pas de drawdown
                 notifications.notify_threshold("drawdown", {"equity_usd": 100.0})
-                self.assertEqual(len(sent), 0)
-
-                # Equity tombe à 95 (-5%): sous le seuil 10%, pas d'alerte
-                notifications.notify_threshold("drawdown", {"equity_usd": 95.0})
-                self.assertEqual(len(sent), 0)
-
-                # Equity tombe à 88 (-12%): alerte
-                notifications.notify_threshold("drawdown", {"equity_usd": 88.0})
-                self.assertEqual(len(sent), 1)
-                self.assertIn("Drawdown", sent[0]["text"])
-
-                # Encore à 85 (-15%): pas de re-alerte (déjà armé)
                 notifications.notify_threshold("drawdown", {"equity_usd": 85.0})
-                self.assertEqual(len(sent), 1)
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertNotIn("\n", text)
+        self.assertIn("⚠️", text)
+        self.assertIn("DD", text)
+        self.assertIn("\\-15\\.0%", text)
 
-                # Remonte à 102 (nouveau pic): re-arme
-                notifications.notify_threshold("drawdown", {"equity_usd": 102.0})
-                self.assertEqual(len(sent), 1)
-
-                # Re-tombe à 89 (-12.7% du nouveau pic): re-alerte
-                notifications.notify_threshold("drawdown", {"equity_usd": 89.0})
-                self.assertEqual(len(sent), 2)
-
-
-class TestEquityFloor(NotificationsBaseTest):
-    def test_floor_one_shot_with_hysteresis(self) -> None:
-        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
-        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
-        os.environ["TELEGRAM_EQUITY_FLOOR_USD"] = "50.0"
-        sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
-        with tempfile.TemporaryDirectory() as td:
-            path = Path(td) / "state.json"
+    def test_equity_floor_one_line(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
             with patch.object(notifications, "_default_state_path", return_value=path):
-                # Au-dessus du seuil: rien
-                notifications.notify_threshold("equity_floor", {"equity_usd": 60.0, "open_positions": 5, "cash_usd": 10})
-                self.assertEqual(sent, [])
-                # Cassure: alerte
-                notifications.notify_threshold("equity_floor", {"equity_usd": 48.0, "open_positions": 6, "cash_usd": 12})
-                self.assertEqual(len(sent), 1)
-                self.assertIn("Equity floor", sent[0]["text"])
-                # Toujours en-dessous: pas de re-alerte
-                notifications.notify_threshold("equity_floor", {"equity_usd": 47.0, "open_positions": 6, "cash_usd": 12})
-                self.assertEqual(len(sent), 1)
-                # Remonte juste au seuil (50): pas de re-arm (hystérésis × 1.05 = 52.5)
-                notifications.notify_threshold("equity_floor", {"equity_usd": 51.0, "open_positions": 6, "cash_usd": 12})
-                self.assertEqual(len(sent), 1)
-                # Re-tombe à 48: pas de re-alerte (pas re-armé)
-                notifications.notify_threshold("equity_floor", {"equity_usd": 48.0, "open_positions": 6, "cash_usd": 12})
-                self.assertEqual(len(sent), 1)
-                # Remonte au-dessus de 52.5: re-arme
-                notifications.notify_threshold("equity_floor", {"equity_usd": 53.0, "open_positions": 6, "cash_usd": 12})
-                self.assertEqual(len(sent), 1)
-                # Re-tombe en-dessous: re-alerte
-                notifications.notify_threshold("equity_floor", {"equity_usd": 47.0, "open_positions": 6, "cash_usd": 12})
-                self.assertEqual(len(sent), 2)
+                notifications.notify_threshold(
+                    "equity_floor",
+                    {"equity_usd": 48.0, "cash_usd": 4.0, "open_positions": 5},
+                )
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertNotIn("\n", text)
+        self.assertIn("🚨", text)
+        self.assertIn("Floor", text)
+        self.assertIn("5pos", text)
+
+    def test_auto_tune_one_line(self) -> None:
+        sent = self._setup()
+        notifications.notify_threshold(
+            "auto_tune_change",
+            {
+                "changes": [
+                    {"param": "MIN_CONSENSUS", "old": 2, "new": 3},
+                    {"param": "POSITION_PCT", "old": 0.18, "new": 0.14},
+                ],
+            },
+        )
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertNotIn("\n", text)
+        self.assertIn("🛠", text)
+        self.assertIn("Tune", text)
+        self.assertIn("MIN\\_CONSENSUS", text)
+        self.assertIn("2→3", text)
+        self.assertIn("POSITION\\_PCT", text)
+
+    def test_big_win_threshold_kind_is_noop(self) -> None:
+        sent = self._setup()
+        notifications.notify_threshold(
+            "big_win",
+            {"market_title": "x", "pnl_usd": 100.0, "reason": "tp_ladder"},
+        )
+        self.assertEqual(sent, [])
+
+    def test_big_loss_threshold_kind_is_noop(self) -> None:
+        sent = self._setup()
+        notifications.notify_threshold(
+            "big_loss",
+            {"market_title": "x", "pnl_usd": -100.0, "reason": "stop_loss"},
+        )
+        self.assertEqual(sent, [])
 
 
 class TestDailySummary(NotificationsBaseTest):
@@ -510,34 +511,6 @@ class TestDailySummary(NotificationsBaseTest):
                 snap_next = dict(snap, today="2026-05-10")
                 notifications.notify_daily_summary(snap_next)
                 self.assertEqual(len(sent), 2)
-
-
-class TestAutoTuneDiff(NotificationsBaseTest):
-    def _setup(self) -> list[dict]:
-        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
-        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
-        sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
-        return sent
-
-    def test_skips_when_no_changes(self) -> None:
-        sent = self._setup()
-        notifications.notify_threshold("auto_tune_change", {"changes": []})
-        self.assertEqual(sent, [])
-
-    def test_sends_with_changes(self) -> None:
-        sent = self._setup()
-        notifications.notify_threshold("auto_tune_change", {
-            "changes": [
-                {"param": "MIN_CONSENSUS", "old": 2, "new": 3},
-                {"param": "MAX_CHASE_PREMIUM", "old": 0.13, "new": 0.104},
-            ]
-        })
-        self.assertEqual(len(sent), 1)
-        text = sent[0]["text"]
-        self.assertIn("Auto\\-tune", text)
-        self.assertIn("MIN_CONSENSUS", text)
-        self.assertIn("MAX_CHASE_PREMIUM", text)
 
 
 class TestStateMigration(NotificationsBaseTest):

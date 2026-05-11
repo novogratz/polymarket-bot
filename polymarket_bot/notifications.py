@@ -360,40 +360,8 @@ def _float_env(name: str, default: float) -> float:
         return default
 
 
-def _handle_big_win(payload: dict[str, Any]) -> None:
-    threshold = _float_env("TELEGRAM_BIG_WIN_USD", 10.0)
-    pnl = float(payload.get("pnl_usd", 0))
-    if pnl < threshold:
-        return
-    reason = str(payload.get("reason", ""))
-    title = str(payload.get("market_title", ""))
-    held_str = _fmt_held(payload.get("held_seconds"))
-    held_line = f" after {_md_escape(held_str)}" if held_str else ""
-    text = (
-        f"\U0001f4b0 *BIG WIN* {_md_escape(f'+${pnl:.2f}')} on *{_md_escape(title)}*\n"
-        f"Exit: `{reason}`{held_line}"
-    )
-    _post(text)
-
-
-def _handle_big_loss(payload: dict[str, Any]) -> None:
-    threshold = _float_env("TELEGRAM_BIG_LOSS_USD", 5.0)
-    pnl = float(payload.get("pnl_usd", 0))
-    if pnl > -threshold:
-        return
-    reason = str(payload.get("reason", ""))
-    title = str(payload.get("market_title", ""))
-    held_str = _fmt_held(payload.get("held_seconds"))
-    held_line = f" after {_md_escape(held_str)}" if held_str else ""
-    text = (
-        f"\U0001f4b8 *BIG LOSS* {_md_escape(f'-${abs(pnl):.2f}')} on *{_md_escape(title)}*\n"
-        f"Exit: `{reason}`{held_line}"
-    )
-    _post(text)
-
-
 def _handle_drawdown(payload: dict[str, Any]) -> None:
-    equity = float(payload.get("equity_usd", 0))
+    equity = float(payload.get("equity_usd", 0) or 0)
     if equity <= 0:
         return
     threshold_pct = _float_env("TELEGRAM_DRAWDOWN_PCT", 10.0)
@@ -411,8 +379,9 @@ def _handle_drawdown(payload: dict[str, Any]) -> None:
     drawdown_pct = ((peak - equity) / peak) * 100.0
     if drawdown_pct >= threshold_pct and not state.drawdown_armed:
         text = (
-            f"⚠️ *Drawdown* {_md_escape(f'-{drawdown_pct:.1f}%')} from peak\n"
-            f"Equity: {_md_escape(f'${equity:.2f}')} \\(peak {_md_escape(f'${peak:.2f}')}\\)"
+            f"⚠️ *DD* {_md_escape(f'-{drawdown_pct:.1f}%')} · "
+            f"eq {_md_escape(_fmt_amount(equity))} "
+            f"\\(pic {_md_escape(_fmt_amount(peak))}\\)"
         )
         if _post(text):
             state.drawdown_armed = True
@@ -420,7 +389,7 @@ def _handle_drawdown(payload: dict[str, Any]) -> None:
 
 
 def _handle_equity_floor(payload: dict[str, Any]) -> None:
-    equity = float(payload.get("equity_usd", 0))
+    equity = float(payload.get("equity_usd", 0) or 0)
     floor = _float_env("TELEGRAM_EQUITY_FLOOR_USD", 50.0)
     if floor <= 0:
         return
@@ -433,12 +402,12 @@ def _handle_equity_floor(payload: dict[str, Any]) -> None:
             _save_state(path, state)
         return
     if equity < floor:
-        cash = float(payload.get("cash_usd", 0))
+        cash = float(payload.get("cash_usd", 0) or 0)
+        positions = int(payload.get("open_positions", 0) or 0)
         text = (
-            f"\U0001f6a8 *Equity floor breached* — "
-            f"{_md_escape(f'${equity:.2f}')} \\< {_md_escape(f'${floor:.2f}')}\n"
-            f"Open positions: {int(payload.get('open_positions', 0))} — "
-            f"cash: {_md_escape(f'${cash:.2f}')}"
+            f"🚨 *Floor* · eq {_md_escape(_fmt_amount(equity))} "
+            f"\\< {_md_escape(_fmt_amount(floor))} · "
+            f"{positions}pos cash {_md_escape(_fmt_amount(cash))}"
         )
         if _post(text):
             state.equity_floor_breached = True
@@ -449,30 +418,26 @@ def _handle_auto_tune_change(payload: dict[str, Any]) -> None:
     changes = payload.get("changes") or []
     if not changes:
         return
-    lines = [f"\U0001f6e0 *Auto\\-tune* updated {len(changes)} params"]
+    parts: list[str] = []
     for change in changes:
         param = str(change.get("param", "?"))
         old = change.get("old", "?")
         new = change.get("new", "?")
-        lines.append(
-            f"`{param}`: {_md_escape(str(old))} → {_md_escape(str(new))}"
-        )
-    _post("\n".join(lines))
+        parts.append(f"`{_md_escape(param)}` {_md_escape(str(old))}→{_md_escape(str(new))}")
+    text = "🛠 *Tune* · " + ", ".join(parts)
+    _post(text)
 
 
 def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_THRESHOLDS"):
         return
-    if kind == "big_win":
-        _handle_big_win(payload)
-    elif kind == "big_loss":
-        _handle_big_loss(payload)
-    elif kind == "drawdown":
+    if kind == "drawdown":
         _handle_drawdown(payload)
     elif kind == "equity_floor":
         _handle_equity_floor(payload)
     elif kind == "auto_tune_change":
         _handle_auto_tune_change(payload)
+    # big_win / big_loss : intégrés à notify_trade_sell, ignorés ici
 
 
 def notify_daily_summary(snapshot: dict[str, Any]) -> None:
