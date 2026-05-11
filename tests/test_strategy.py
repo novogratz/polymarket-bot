@@ -775,6 +775,60 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(position["exits"][0]["order_id"], "sell-1")
         self.assertEqual(portfolio.cash, 20.0)
 
+    def test_take_profit_partial_sell_upgrades_to_minimum_executable_size(self):
+        class FakeClient:
+            def __init__(self):
+                self.sizes = []
+
+            def place_live_order(self, *, candidate, price, size, side="BUY"):
+                self.sizes.append(size)
+                return {"price": price, "size": size, "side": side}, {"success": True, "orderID": "sell-1"}
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.61,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.61,
+            best_ask=0.62,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        position = {
+            "status": "open",
+            "live": True,
+            "market_id": "1",
+            "outcome": "Yes",
+            "token_id": "token",
+            "entry_price": 0.4,
+            "stake": 4.0,
+            "shares": 10.0,
+            "initial_shares": 10.0,
+            "sell_tiers_hit": [],
+        }
+        portfolio = Portfolio(cash=0.0, positions=[position])
+        client = FakeClient()
+
+        report = _execute_sell_strategy(
+            client,
+            Settings(min_order_shares=5.0, smart_min_sell_usd=1.0),
+            portfolio,
+            [candidate],
+        )
+
+        self.assertEqual(client.sizes, [5.0])
+        self.assertEqual(report[0]["action"], "sell")
+        self.assertEqual(report[0]["reason"], "take_profit_50pct")
+        self.assertEqual(position["sell_tiers_hit"], ["0.5"])
+
     def test_sell_plan_uses_profit_tiers_and_peak_protection(self):
         position = {
             "shares": 100.0,

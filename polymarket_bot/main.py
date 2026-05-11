@@ -793,6 +793,11 @@ def _execute_sell_strategy(
         if plan is None:
             continue
         planned_shares = float(plan.get("shares") or 0.0)
+        current_shares = float(position.get("shares") or 0.0)
+        is_take_profit = str(plan.get("reason") or "").startswith("take_profit_")
+        if is_take_profit and 0 < planned_shares < settings.min_order_shares <= current_shares:
+            planned_shares = settings.min_order_shares
+            plan["shares"] = planned_shares
         if 0 < planned_shares < settings.min_order_shares:
             position["sell_blocked_reason"] = "below_minimum_sell_shares"
             exit_report.append(
@@ -809,9 +814,16 @@ def _execute_sell_strategy(
                 }
             )
             continue
-        executable_shares = min(planned_shares, float(position.get("shares") or 0.0))
+        executable_shares = min(planned_shares, current_shares)
         sell_price = round(max(float(candidate.best_bid or 0.0), float(candidate.tick_size or 0.0)), 3)
         expected_proceeds = round(executable_shares * sell_price, 2)
+        if is_take_profit and 0 < expected_proceeds < settings.smart_min_sell_usd and sell_price > 0:
+            min_usd_shares = settings.smart_min_sell_usd / sell_price
+            if min_usd_shares <= current_shares:
+                executable_shares = round(min_usd_shares, 6)
+                planned_shares = executable_shares
+                plan["shares"] = planned_shares
+                expected_proceeds = round(executable_shares * sell_price, 2)
         if 0 < expected_proceeds < settings.smart_min_sell_usd:
             position["sell_blocked_reason"] = "below_minimum_sell_usd"
             exit_report.append(

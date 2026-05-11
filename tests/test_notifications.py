@@ -401,7 +401,10 @@ class TestTradeFormats(NotificationsBaseTest):
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
         self.assertIn("*Last 30m review* 30m ago", text)
-        self.assertIn("*Equity* $220\\.00 \\(✅ \\+$5\\.00\\)", text)
+        self.assertIn(
+            "*Equity* $220\\.00 \\(30m ✅ \\+$20\\.00 / Today ✅ \\+$5\\.00 / All\\-time ✅ \\+$5\\.00\\)",
+            text,
+        )
         self.assertIn("\n*Cash* $50\\.00", text)
         self.assertNotIn("Total balance vs last 30m", text)
         self.assertNotIn("Cash vs last 30m", text)

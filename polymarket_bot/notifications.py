@@ -638,6 +638,12 @@ def _fmt_delta_suffix(current: float, previous: float | None) -> str:
     return f" \\({_pnl_icon(delta)} {_md_escape(amount)}\\)"
 
 
+def _fmt_equity_delta(label: str, value: float | None) -> str:
+    if value is None:
+        return f"{_md_escape(label)} n/a"
+    return f"{_md_escape(label)} {_pnl_icon(value)} {_md_escape(_fmt_money(value, signed=True))}"
+
+
 def _pnl_icon(value: float) -> str:
     if value > 0:
         return "✅"
@@ -767,14 +773,21 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     today_pnl = float(snapshot.get("today_pnl_usd", realized_today + unrealized) or 0.0)
     trades_today = int(snapshot.get("trades_today", 0) or 0)
     open_positions = snapshot.get("open_positions") if isinstance(snapshot.get("open_positions"), list) else []
+    equity_30m_delta = (
+        round(equity - float(state.last_portfolio_update_equity_usd), 2)
+        if state.last_portfolio_update_equity_usd is not None
+        else None
+    )
+    equity_parts = [
+        _fmt_equity_delta("30m", equity_30m_delta),
+        _fmt_equity_delta("Today", today_pnl),
+        _fmt_equity_delta("All-time", total_pnl),
+    ]
 
     sections: list[list[str]] = [
         [
             f"\U0001f4ca *Director review* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
-            (
-                f"*Equity* {_md_escape(_fmt_money(equity))}"
-                f" \\({_pnl_icon(today_pnl)} {_md_escape(_fmt_money(today_pnl, signed=True))}\\)"
-            ),
+            f"*Equity* {_md_escape(_fmt_money(equity))} \\({' / '.join(equity_parts)}\\)",
             f"*Cash* {_md_escape(_fmt_money(cash))}",
             f"*Invested* {_md_escape(_fmt_money(invested))}",
             f"*PnL unrealized* {_pnl_icon(unrealized)} {_md_escape(_fmt_money(unrealized, signed=True))}{_fmt_delta_suffix(unrealized, state.last_portfolio_update_unrealized_usd)}",
