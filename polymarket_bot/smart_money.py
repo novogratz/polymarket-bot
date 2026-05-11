@@ -284,7 +284,17 @@ def fetch_smart_money_data(
 ) -> SmartMoneyData:
     client = client or DataApiClient(settings.data_api_base_url)
     try:
-        traders = _top_traders(client, settings)
+        traders_by_period = _top_traders(client, settings)
+        # Liste plate dédupée pour le pipeline existant (compat ascendante)
+        seen_wallets: set[str] = set()
+        traders: list[SmartTrader] = []
+        for period_traders in traders_by_period.values():
+            for t in period_traders:
+                key = t.wallet.lower()
+                if key in seen_wallets:
+                    continue
+                seen_wallets.add(key)
+                traders.append(t)
     except Exception as exc:
         return SmartMoneyData(
             traders=[],
@@ -528,9 +538,15 @@ def _time_periods(settings: Settings) -> list[str]:
     return [settings.smart_time_period.strip().upper() or "WEEK"]
 
 
-def _top_traders(client: DataApiClient, settings: Settings) -> list[SmartTrader]:
-    seen: set[str] = set()
-    traders: list[SmartTrader] = []
+def _top_traders(client: DataApiClient, settings: Settings) -> dict[str, list[SmartTrader]]:
+    """Retourne un dict {period: traders} (au lieu d'une liste dédupée).
+
+    La déduplication par wallet est désormais responsabilité du consommateur,
+    qui peut ainsi calculer les croisements multi-période (filtre persistance).
+    Dédup interne par période (un même wallet dans plusieurs catégories
+    n'apparaît qu'une fois dans la liste de cette période).
+    """
+    result: dict[str, list[SmartTrader]] = {}
     categories = _categories(settings)
     periods = _time_periods(settings)
     combos = [(period, category) for period in periods for category in categories]
@@ -549,16 +565,19 @@ def _top_traders(client: DataApiClient, settings: Settings) -> list[SmartTrader]
                 flush=True,
             )
             continue
+        bucket = result.setdefault(period, [])
+        seen = {t.wallet.lower() for t in bucket}
         added = 0
         for trader in category_traders:
-            if trader.wallet.lower() in seen:
+            key = trader.wallet.lower()
+            if key in seen:
                 continue
-            seen.add(trader.wallet.lower())
-            traders.append(trader)
+            seen.add(key)
+            bucket.append(trader)
             added += 1
         if not settings.quiet:
-            print(f"         +{added} new (total {len(traders)})", flush=True)
-    return traders
+            print(f"         +{added} new in {period} (period total {len(bucket)})", flush=True)
+    return result
 
 
 def _categories(settings: Settings) -> list[str]:
