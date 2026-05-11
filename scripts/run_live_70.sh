@@ -32,4 +32,10 @@ export POLYMARKET_SMART_MAX_POSITION_CEILING_PCT=0.40
 export POLYMARKET_SMART_SPORTS_SCORE_PENALTY=4
 export POLYMARKET_SMART_MAX_SPORTS_POSITIONS=8
 
-exec uv run pmbot auto-loop
+if command -v uv >/dev/null 2>&1; then
+    exec uv run pmbot auto-loop
+fi
+if [ -f .venv/bin/python ]; then
+    exec .venv/bin/python -B -m polymarket_bot.main auto-loop
+fi
+exec python3 -B -m polymarket_bot.main auto-loop
