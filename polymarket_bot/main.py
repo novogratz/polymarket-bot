@@ -2508,26 +2508,28 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
 
         # Hooks post-tick best-effort: drawdown, equity floor, résumé quotidien.
         try:
-            tick_payload = result.get("result")
-            summary_snap = (
-                tick_payload.get("summary")
-                if isinstance(tick_payload, dict)
-                else None
+            tick_valid = (
+                not result.get("error")
+                and isinstance(result.get("result"), dict)
+                and isinstance(result["result"].get("summary"), dict)
+                and bool(result["result"]["summary"].get("equity"))
             )
-            if not isinstance(summary_snap, dict):
-                summary_snap = {}
-            equity_val = float(summary_snap.get("equity", 0) or 0)
-            cash_val = float(summary_snap.get("cash", 0) or 0)
-            open_positions_count = int(summary_snap.get("open_positions", 0) or 0)
-            notifications.notify_threshold("drawdown", {"equity_usd": equity_val})
-            notifications.notify_threshold(
-                "equity_floor",
-                {
-                    "equity_usd": equity_val,
-                    "open_positions": open_positions_count,
-                    "cash_usd": cash_val,
-                },
-            )
+            if tick_valid:
+                summary_snap = result["result"]["summary"]
+                equity_val = float(summary_snap.get("equity", 0) or 0)
+                cash_val = float(summary_snap.get("cash", 0) or 0)
+                open_positions_count = int(summary_snap.get("open_positions", 0) or 0)
+                notifications.notify_threshold("drawdown", {"equity_usd": equity_val})
+                notifications.notify_threshold(
+                    "equity_floor",
+                    {
+                        "equity_usd": equity_val,
+                        "open_positions": open_positions_count,
+                        "cash_usd": cash_val,
+                    },
+                )
+            else:
+                equity_val = cash_val = open_positions_count = 0
             target_hour = int(os.environ.get("TELEGRAM_DAILY_SUMMARY_HOUR", "9"))
             now_local = dt.datetime.now()
             if now_local.hour >= target_hour:
