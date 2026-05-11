@@ -1,11 +1,12 @@
-# Profil baseline — reproduit les valeurs par défaut codées dans
-# polymarket_bot/config.py. Charger ce profil ne change pas le
-# comportement existant ; il sert de point de référence et d'exemple
-# pour les profils dérivés.
+# Profil baseline — point de référence par défaut pour les dry-runs.
+# Reproduit les valeurs hardcodées de polymarket_bot/config.py SAUF
+# starting_cash, fixé à $100 pour les simulations (le default code de
+# $20 reste pour la rétrocompat, mais le profil baseline charge $100).
+# Sert de point de référence et d'exemple pour les profils dérivés.
 
 [run]
-# Défaut code : POLYMARKET_PAPER_BALANCE_USD = 20.0
-starting_cash = 20.0
+# $100 pour les dry-runs (voir docs/superpowers/specs/2026-05-11-dry-run-named-design.md).
+starting_cash = 100.0
 
 [sizing]
 position_pct = 0.0
