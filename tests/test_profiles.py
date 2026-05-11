@@ -309,5 +309,47 @@ class ProfilesDirectoryTests(unittest.TestCase):
         self.assertIn("POLYMARKET_SMART_NOISE_FALLBACK_ENABLED", profile.values)
 
 
+class TestProfilesPersistenceSection(unittest.TestCase):
+    def test_persistence_section_recognized(self) -> None:
+        toml_content = """
+[persistence]
+enabled = true
+window_days = 14
+cache_threshold = 0.65
+intersect_periods = "MONTH,ALL"
+intersect_min = 1
+"""
+        import os, tempfile
+
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as fh:
+            fh.write(toml_content)
+            path = Path(fh.name)
+        try:
+            profile = load_profile(path)
+            self.assertEqual(profile.values["POLYMARKET_PERSISTENCE_ENABLED"], "1")
+            self.assertEqual(profile.values["POLYMARKET_PERSISTENCE_WINDOW_DAYS"], "14")
+            self.assertEqual(profile.values["POLYMARKET_PERSISTENCE_CACHE_THRESHOLD"], "0.65")
+            self.assertEqual(profile.values["POLYMARKET_PERSISTENCE_INTERSECT_PERIODS"], "MONTH,ALL")
+            self.assertEqual(profile.values["POLYMARKET_PERSISTENCE_INTERSECT_MIN"], "1")
+        finally:
+            os.unlink(path)
+
+    def test_persistence_section_disabled(self) -> None:
+        toml_content = """
+[persistence]
+enabled = false
+"""
+        import os, tempfile
+
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as fh:
+            fh.write(toml_content)
+            path = Path(fh.name)
+        try:
+            profile = load_profile(path)
+            self.assertEqual(profile.values["POLYMARKET_PERSISTENCE_ENABLED"], "0")
+        finally:
+            os.unlink(path)
+
+
 if __name__ == "__main__":
     unittest.main()

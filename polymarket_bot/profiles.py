@@ -85,6 +85,13 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "enabled": ("POLYMARKET_SMART_AUTO_TUNE_ENABLED", "bool"),
         "min_closed_trades": ("POLYMARKET_SMART_AUTO_TUNE_MIN_TRADES", "int"),
     },
+    "persistence": {
+        "enabled": ("POLYMARKET_PERSISTENCE_ENABLED", "bool"),
+        "window_days": ("POLYMARKET_PERSISTENCE_WINDOW_DAYS", "int"),
+        "cache_threshold": ("POLYMARKET_PERSISTENCE_CACHE_THRESHOLD", "float"),
+        "intersect_periods": ("POLYMARKET_PERSISTENCE_INTERSECT_PERIODS", "str"),
+        "intersect_min": ("POLYMARKET_PERSISTENCE_INTERSECT_MIN", "int"),
+    },
     "telemetry": {
         "quiet": ("POLYMARKET_QUIET", "bool"),
         "auto_interval_seconds": ("POLYMARKET_AUTO_INTERVAL_SECONDS", "int"),
