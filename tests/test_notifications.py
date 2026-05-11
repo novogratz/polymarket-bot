@@ -231,6 +231,10 @@ class TestTradeFormats(NotificationsBaseTest):
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
         self.assertIn("SELL", text)
+        self.assertIn("WIN SELL", text)
+        self.assertIn("PROFIT", text)
+        self.assertIn("✅", text)
+        self.assertIn("Nice win locked in", text)
         self.assertIn("take_profit_ladder", text)
         self.assertIn("Bitcoin EOY", text)
         self.assertIn("\\+\\$4\\.30", text)

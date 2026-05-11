@@ -18,9 +18,11 @@ from polymarket_bot.models import Candidate, utc_now
 from polymarket_bot.polymarket import ApiCreds, PolymarketClient
 from polymarket_bot.portfolio import Portfolio
 from polymarket_bot.smart_money import (
+    SmartMoneyData,
     SmartTrade,
     SmartTrader,
     choose_leaderboard_open_position,
+    choose_top10_leaderboard_flow,
     fetch_smart_money_data,
     market_category,
     smart_money_signals,
@@ -213,6 +215,60 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(signal.wallet_count, 4)
         self.assertEqual(signal.total_position_value, 100.0)
         self.assertIn("currently hold this same token", signal.to_dict()["selection_reason"])
+
+    def test_top10_leaderboard_flow_uses_only_elite_recent_buys(self):
+        end_date = utc_now() + timedelta(hours=24)
+        candidate = Candidate(
+            market_id="elite",
+            question="Elite top ten buy this?",
+            slug="elite-top-ten-buy-this",
+            end_date=end_date,
+            hours_to_close=24,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="elite-token",
+            score=1,
+            url="https://polymarket.com/event/elite",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        traders = [
+            SmartTrader(f"0x{i}", f"w{i}", 1000.0 - i, 10_000.0, "OVERALL")
+            for i in range(12)
+        ]
+        now_ts = int(utc_now().timestamp())
+        trades = [
+            SmartTrade("0x0", "elite-token", "BUY", 0.48, 200, 96, now_ts, "Elite", "Yes", "elite"),
+            SmartTrade("0x1", "elite-token", "BUY", 0.49, 200, 98, now_ts, "Elite", "Yes", "elite"),
+            SmartTrade("0x11", "ignored-token", "BUY", 0.49, 10000, 4900, now_ts, "Ignored", "Yes", "ignored"),
+        ]
+        data = SmartMoneyData(
+            traders=traders,
+            trades=trades,
+            pnl_by_wallet={trader.wallet.lower(): trader.pnl for trader in traders},
+            traders_used=len(traders),
+        )
+
+        signal = choose_top10_leaderboard_flow(
+            [candidate],
+            Settings(
+                smart_top10_flow_enabled=True,
+                smart_top10_flow_min_consensus=2,
+                smart_top10_flow_min_copied_usdc=100,
+                smart_top10_flow_max_signal_age_minutes=360,
+                smart_min_trade_usd=1,
+            ),
+            data,
+        )
+
+        self.assertIsNotNone(signal)
+        self.assertEqual(signal.candidate.token_id, "elite-token")
+        self.assertEqual(signal.consensus, 2)
+        self.assertEqual(signal.copied_usdc, 194.0)
 
     def test_live_trade_respects_minimum_share_size(self):
         class FakeClient:
@@ -2478,6 +2534,25 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(
             _dynamic_max_trade(settings, signal, "leaderboard_open_position", portfolio, remaining_slots=1),
             75.0,
+        )
+
+    def test_top10_leaderboard_flow_sizing_targets_cash_percentage(self):
+        settings = Settings(
+            smart_position_pct=0.10,
+            max_position_usd=25.0,
+            smart_max_trade_usd=25.0,
+            smart_top10_flow_cash_pct=0.25,
+        )
+        signal = {
+            "consensus": 2,
+            "copied_usdc": 194.0,
+            "selection_metrics": {"profitable_wallet_count": 2},
+        }
+        portfolio = Portfolio(cash=240.0, positions=[])
+
+        self.assertEqual(
+            _dynamic_max_trade(settings, signal, "top10_leaderboard_flow", portfolio, remaining_slots=1),
+            60.0,
         )
 
 

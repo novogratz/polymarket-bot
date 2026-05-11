@@ -358,6 +358,15 @@ def notify_trade_sell(
         pct_str = f" \\({_md_escape(f'{sign_pct}{abs(realized_pnl_pct):.1f}%')}\\)"
     held_str = _fmt_held(held_seconds)
     held_line = f" — held {_md_escape(held_str)}" if held_str else ""
+    if realized_pnl_usd > 0:
+        lines = [
+            f"\U0001f7e2✅ *WIN SELL* `${_md_escape(f'{size_usd:.2f}')}` @ `{_md_escape(f'{price:.2f}')}` — `{reason}`",
+            f"*{_md_escape(market_title)}*",
+            f"\U0001f7e2✅ *PROFIT* *{pnl_str}*{pct_str} ✅{held_line}",
+            _md_escape("Nice win locked in."),
+        ]
+        _post("\n".join(lines))
+        return
     lines = [
         f"\U0001f534 *SELL* `${_md_escape(f'{size_usd:.2f}')}` @ `{_md_escape(f'{price:.2f}')}` — `{reason}`",
         f"*{_md_escape(market_title)}*",

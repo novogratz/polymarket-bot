@@ -518,6 +518,8 @@ def execute_live_trade(
             absolute_cap = min(absolute_caps)
             if strategy == "leaderboard_open_position" and settings.smart_leaderboard_position_cash_pct > 0:
                 absolute_cap = max(absolute_cap, live_balance * settings.smart_leaderboard_position_cash_pct)
+            if strategy == "top10_leaderboard_flow" and settings.smart_top10_flow_cash_pct > 0:
+                absolute_cap = max(absolute_cap, live_balance * settings.smart_top10_flow_cash_pct)
             if _is_high_conviction_signal(signal) and settings.smart_high_conviction_balance_fraction > 0:
                 absolute_cap = max(absolute_cap, live_balance * settings.smart_high_conviction_balance_fraction)
             maximum = min(maximum, absolute_cap)

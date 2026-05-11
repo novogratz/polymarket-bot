@@ -38,6 +38,7 @@ from .smart_money import (
     analyze_smart_money,
     analyze_smart_money_with_data,
     choose_leaderboard_open_position,
+    choose_top10_leaderboard_flow,
     fetch_smart_money_data,
     market_category,
     _top_traders,
@@ -297,6 +298,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "relaxed": 0,
         "deep": 0,
         "leaderboard_position": 0,
+        "top10_flow": 0,
         "candidates_total": len(candidates),
     }
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
@@ -399,6 +401,17 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     signal = report.selected
     strategy = "smart_money"
     opportunities = list(report.opportunities)
+    if settings.smart_top10_flow_enabled:
+        top10_signal = choose_top10_leaderboard_flow(eligible_candidates, settings, smart_data)
+        if top10_signal is not None:
+            _step(settings, "   top-10 leaderboard flow overlay: 1 opportunity")
+            scan_counts["top10_flow"] = 1
+            _merge_opportunities(opportunities, [top10_signal])
+            if signal is None or top10_signal.score >= signal.score:
+                signal = top10_signal
+                strategy = "top10_leaderboard_flow"
+        else:
+            _step(settings, "   top-10 leaderboard flow overlay: 0 opportunities")
     if settings.smart_leaderboard_position_enabled:
         _step(
             settings,
@@ -1466,6 +1479,8 @@ def _dynamic_max_trade(
         return base
     if strategy == "leaderboard_open_position" and settings.smart_leaderboard_position_cash_pct > 0:
         return round(max(base, min(cash, total_equity * settings.smart_leaderboard_position_cash_pct)), 2)
+    if strategy == "top10_leaderboard_flow" and settings.smart_top10_flow_cash_pct > 0:
+        return round(max(base, min(cash, total_equity * settings.smart_top10_flow_cash_pct)), 2)
     target_deployed = total_equity * (1.0 - max(0.0, settings.smart_cash_floor_pct))
     remaining_to_deploy = max(0.0, target_deployed - invested)
     if remaining_to_deploy <= 0 or remaining_slots <= 0:
@@ -1508,6 +1523,13 @@ def _trade_cap_for_signal(
     ):
         leaderboard_cap = total_equity * settings.smart_leaderboard_position_cash_pct
         cap = max(cap, leaderboard_cap) if cap > 0 else leaderboard_cap
+    if (
+        strategy == "top10_leaderboard_flow"
+        and settings.smart_top10_flow_cash_pct > 0
+        and total_equity > 0
+    ):
+        top10_cap = total_equity * settings.smart_top10_flow_cash_pct
+        cap = max(cap, top10_cap) if cap > 0 else top10_cap
     if (
         strategy.startswith("smart_money")
         and _is_high_conviction_smart_signal(signal)

@@ -16,7 +16,7 @@ import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from .config import Settings
@@ -539,6 +539,42 @@ def choose_leaderboard_open_position(
             )
         )
     return sorted(signals, key=lambda signal: signal.score, reverse=True)[0] if signals else None
+
+
+def choose_top10_leaderboard_flow(
+    candidates: list[Candidate],
+    settings: Settings,
+    data: SmartMoneyData,
+) -> SmartMoneySignal | None:
+    if not settings.smart_top10_flow_enabled or data.leaderboard_error is not None:
+        return None
+    top_wallets = {
+        trader.wallet.lower()
+        for trader in sorted(data.traders, key=lambda trader: trader.pnl, reverse=True)[:10]
+    }
+    if not top_wallets:
+        return None
+    top_trades = [trade for trade in data.trades if trade.wallet.lower() in top_wallets]
+    if not top_trades:
+        return None
+    top_settings = replace(
+        settings,
+        smart_min_consensus=max(2, settings.smart_top10_flow_min_consensus),
+        smart_min_copied_usdc=max(settings.smart_min_copied_usdc, settings.smart_top10_flow_min_copied_usdc),
+        smart_max_signal_age_minutes=(
+            settings.smart_top10_flow_max_signal_age_minutes
+            if settings.smart_top10_flow_max_signal_age_minutes > 0
+            else settings.smart_max_signal_age_minutes
+        ),
+    )
+    signals = smart_money_signals(
+        candidates,
+        top_trades,
+        top_settings,
+        pnl_by_wallet=data.pnl_by_wallet,
+    )
+    opportunities = sorted(signals, key=lambda signal: signal.score, reverse=True)
+    return opportunities[0] if opportunities else None
 
 
 def _position_token_id(position: dict[str, Any]) -> str:
