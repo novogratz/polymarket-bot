@@ -809,14 +809,13 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
         _fmt_equity_delta("All-time", total_pnl, pct=total_pnl_pct),
     ]
 
+    equity_pct_str = f" \\({_md_escape(f'{total_pnl_pct:+.1f}%')}\\)" if total_pnl_pct is not None else ""
     sections: list[list[str]] = [
         [
             f"\U0001f4ca *Director review* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
-            f"{'✅' if total_pnl > 0 else '⚪'} *Equity*",
-            f"{_md_escape(_fmt_money(equity))}",
+            f"{'✅' if total_pnl > 0 else '⚪'} *Equity* {_md_escape(_fmt_money(equity))}{equity_pct_str} — *Cash* {_md_escape(_fmt_money(cash))}",
             *[f"  — {part}" for part in equity_parts],
             "",
-            f"*Cash* {_md_escape(_fmt_money(cash))}",
             f"*Invested* {_md_escape(_fmt_money(invested))}",
             f"*Closed trades today* {trades_today}",
             f"*Open positions* {len(open_positions)}",
