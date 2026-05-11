@@ -38,7 +38,7 @@ Canonical live config:
 bash scripts/run_live_70.sh
 ```
 
-The live config uses smart-money only (no noise fallback), percentage-based sizing (75% of available cash × conviction multiplier 0.55×–2.5×), tight trader quality filters ($2k PnL floor), 5 min signal freshness, 6% max spread, and aggressive deployment toward a 5% cash floor. The full parameter list is in `scripts/run_live_70.sh`.
+The live config uses code defaults (matching a fresh clone with no `.env` overrides): permissive entry filters (no trader PnL/volume/ROI floor), percentage-based sizing (50% of cash × conviction multiplier, high-conviction up to 80% of cash), 24h trade lookback, no signal age limit. The full parameter list is in `scripts/run_live_70.sh`.
 
 A `Makefile` is also provided: `make test`, `make lint`, `make run`, `make dashboard`, `make journal`, `make tune`, `make clean`.
 

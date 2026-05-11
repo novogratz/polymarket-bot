@@ -109,20 +109,21 @@ Use the canonical script to avoid copy-paste pitfalls:
 bash scripts/run_live_70.sh
 ```
 
-The script is the single source of truth for the live config. Current settings:
+The script sets strategy params to code defaults (matching a fresh clone — no `.env` overrides). Current settings:
 
 - Smart-money only — noise fallback disabled.
-- Trader quality: leaderboard `MONTH`, top 100, `MIN_TRADER_PNL=$2k`.
-- Entry filters: `MIN_CONSENSUS=2`, `MIN_COPIED_USDC=$125`, `MAX_CHASE_PREMIUM=0.08`, price band 0.05–0.92, absolute spread ≤6¢, signal staleness ≤5 min, `MAX_ENTRY_SLIPPAGE=0.08`.
-- Sizing: `POSITION_PCT=0.75` (75% of available cash × conviction multiplier 0.55×–2.5×), `MAX_POSITION_CEILING_USD=$150`, `MAX_POSITION_CEILING_PCT=0.50`, `CASH_FLOOR_PCT=0.05` (~95% deployment target), `HIGH_CONVICTION_BALANCE_FRACTION=0.80`.
-- Exits: take-profit ladder `1.0:0.50,2.0:0.25,3.0:0.15`, peak-protect arming at +100% and exiting below +40%, stop-loss -40% (after 15 min), cohort-sell exit (120 min lookback), near-expiry positive exit, `EXIT_MIN_PROFIT=0.05`.
-- Deep fallback pass enabled (relaxed consensus filters when no strict signals qualify).
-- Cash-pressure mode enabled (relaxed entry filters when cash > 15% of equity).
-- Scan: 120 min trade lookback, 5 min max signal age.
-- Loop interval: 20 seconds.
-- Crypto: `MIN_BUY_PRICE=0.70`, `MIN_COPIED_USDC=$1500`, 2–48h horizon.
-- Sports: `SCORE_PENALTY=12`, max 2 sports positions.
-- Horizon: `MIN_HOURS_TO_CLOSE=1`, `MAX_HOURS_TO_CLOSE=48`.
+- Trader quality: no filters (PNL=0, VOL=0, ROI=0). Leaderboard MONTH + ALL, top 100.
+- Entry filters: `MIN_CONSENSUS=2`, `MIN_COPIED_USDC=$5`, `MAX_CHASE_PREMIUM=0.35`, price band 0.02–0.98, max spread 25%, signal staleness unlimited (0 = any age), `MAX_ENTRY_SLIPPAGE=0.50`.
+- Sizing: `POSITION_PCT=0.50` (50% of available cash × conviction multiplier), `MAX_POSITION_CEILING_USD=$150`, `MAX_POSITION_CEILING_PCT=0.40`, `CASH_FLOOR_PCT=0.02`, `HIGH_CONVICTION_BALANCE_FRACTION=0.80` (high-conviction signals can use 80% of cash).
+- Exits: take-profit ladder `0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15` (starts at +50%), trailing stop (arm at +25%, exit on 50% giveback), peak-protect (arm at +100%, floor at +40%), stop-loss -40% (after 15 min), cohort-sell exit (120 min lookback), near-expiry positive exit at +5%.
+- Deep fallback pass enabled (relaxed filters when no strict signals qualify).
+- Cash-pressure mode enabled (relaxed entry filters when cash > 20% of equity).
+- Scan: 24h trade lookback (1440 min), no signal age limit.
+- Loop interval: 10 seconds.
+- Crypto: enabled at code defaults (min price $0.05, min copied $10).
+- Sports: `SCORE_PENALTY=4`, max 8 positions.
+- Horizon: `MIN_HOURS_TO_CLOSE=0.1`, `MAX_HOURS_TO_CLOSE=168` (7 days).
+- Overlays: leaderboard-position, top10-flow, reverse-lookup all enabled at defaults.
 
 Dashboard at `http://127.0.0.1:8765` by default.
 

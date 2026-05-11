@@ -34,7 +34,7 @@ POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop          # simulated, no SDK calls, 
 
 Canonical live config: `bash scripts/run_live_70.sh`
 
-Smart-money only — no noise fallback. Percentage-based sizing (75% of cash × conviction), tight trader quality ($2k PnL floor), 5 min freshness, 6% max spread. Deploy toward 5% cash floor.
+Code defaults — permissive entry filters (no trader PnL/volume/ROI floor), percentage-based sizing (50% of cash × conviction, high-conviction up to 80% of cash). No noise fallback. See `scripts/run_live_70.sh` for the exact override set.
 
 CLI surface: 9 Typer commands (`auto-loop`, `dashboard`, `doctor`, `status`, `positions`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`) plus the global `--version` / `-V` option. The Typer app is exposed as the `pmbot` console script via `[project.scripts]`; `python -m polymarket_bot.main <cmd>` continues to work as a fallback. `status` and `positions` are read-only — no SDK calls, no network — and automatically pick up the dry-run ledger when `POLYMARKET_DRY_RUN=1` is set. ANSI colors auto-disable when stdout is not a TTY (or when `NO_COLOR=1`); set `POLYMARKET_FORCE_COLOR=1` to keep them through pipes.
 
@@ -85,6 +85,20 @@ Defensive only: tightens after losses, never loosens after wins. Overrides writt
 - Quiet hours stay quiet.
 
 Hierarchy to preserve in any strategy edit: **consensus first, execution quality second, sizing discipline third.** Never replace this with random market selection.
+
+## Current config
+
+The live strategy uses **code defaults** for all entry filters and sizing:
+- **No trader quality filters**: `MIN_TRADER_PNL=0`, `MIN_TRADER_VOLUME=0`, `MIN_TRADER_ROI=0`
+- **Permissive entry**: `MIN_COPIED_USDC=5`, `MAX_SPREAD=0.25`, `MAX_CHASE_PREMIUM=0.35`, `MAX_ENTRY_SLIPPAGE=0.50`, no signal age limit
+- **Sizing**: `POSITION_PCT=0.50`, `MAX_POSITION_CEILING_USD=150`, `MAX_POSITION_CEILING_PCT=0.40`, `CASH_FLOOR_PCT=0.02`. High-conviction signals (5+ wallets / $5k+ copied) get up to 80% of available cash via `HIGH_CONVICTION_BALANCE_FRACTION=0.80`
+- **Scan**: 24h lookback, MONTH + ALL leaderboard, top 100 traders
+- **Overlays enabled**: leaderboard-position, top10-flow, reverse-lookup
+- **BTC edge**: disabled (code default False)
+- **Noise fallback**: disabled
+- **Sports**: penalty 4, max 8 positions
+
+See `scripts/run_live_70.sh` for the exact override set.
 
 ## Editing workflow
 
