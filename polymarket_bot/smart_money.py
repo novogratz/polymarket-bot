@@ -16,7 +16,7 @@ import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 from .config import Settings
@@ -62,7 +62,6 @@ class SmartMoneySignal:
     category_bonus: float = 0.0
     latest_trade_age_minutes: float | None = None
     fresh_bonus: float = 0.0
-    fast_market_bonus: float = 0.0
 
     @property
     def score(self) -> float:
@@ -73,7 +72,6 @@ class SmartMoneySignal:
             + min(self.copied_usdc / 10.0, 25.0)
             + pnl_bonus
             + _short_horizon_bonus(self.candidate.hours_to_close)
-            + self.fast_market_bonus
             + value
             + self.category_bonus
             + self.fresh_bonus
@@ -137,7 +135,6 @@ class SmartMoneySignal:
                     round(self.latest_trade_age_minutes, 2) if self.latest_trade_age_minutes is not None else None
                 ),
                 "fresh_bonus": round(self.fresh_bonus, 4),
-                "fast_market_bonus": round(self.fast_market_bonus, 4),
             },
             "url": self.candidate.url,
         }
@@ -166,64 +163,6 @@ class SmartMoneyReport:
             "grouped_tokens": self.grouped_tokens,
             "matched_tokens": self.matched_tokens,
             "rejected": self.rejected,
-        }
-
-
-@dataclass(frozen=True)
-class LeaderboardPositionSignal:
-    candidate: Candidate
-    wallets: list[str]
-    wallet_count: int
-    total_position_value: float
-    top_n: int = 50
-    category: str = "OTHER"
-
-    @property
-    def score(self) -> float:
-        return (self.wallet_count * 20.0) + min(self.total_position_value / 25.0, 25.0) - (self.candidate.best_ask or 0.0)
-
-    def to_dict(self) -> dict[str, Any]:
-        spread = (
-            round((self.candidate.best_ask or 0.0) - (self.candidate.best_bid or 0.0), 4)
-            if self.candidate.best_ask is not None and self.candidate.best_bid is not None
-            else 0.0
-        )
-        selection_reason = (
-            f"{self.wallet_count} top leaderboard wallets currently hold this same token, "
-            f"with ${self.total_position_value:.2f} visible open position value; "
-            f"current ask {self.candidate.best_ask} has spread {spread:.4f}, "
-            f"and passed top-{self.top_n} consensus, price band, spread, and duplicate checks."
-        )
-        return {
-            "market_id": self.candidate.market_id,
-            "question": self.candidate.question,
-            "outcome": self.candidate.outcome,
-            "best_ask": self.candidate.best_ask,
-            "best_bid": self.candidate.best_bid,
-            "consensus": self.wallet_count,
-            "copied_usdc": round(self.total_position_value, 2),
-            "avg_copy_price": self.candidate.best_ask,
-            "wallets": self.wallets,
-            "titles": [self.candidate.question],
-            "total_trader_pnl": 0.0,
-            "category": self.category,
-            "score": round(self.score, 4),
-            "selection_reason": selection_reason,
-            "selection_metrics": {
-                "profitable_wallet_count": self.wallet_count,
-                "min_consensus": 1,
-                "copied_usdc": round(self.total_position_value, 2),
-                "avg_copy_price": self.candidate.best_ask,
-                "current_ask": self.candidate.best_ask,
-                "current_bid": self.candidate.best_bid,
-                "spread": spread,
-                "hours_to_close": self.candidate.hours_to_close,
-                "leaderboard_open_position": True,
-                "leaderboard_top_n": self.top_n,
-                "is_crypto_micro": _is_crypto_micro(self.candidate),
-                "category": self.category,
-            },
-            "url": self.candidate.url,
         }
 
 
@@ -367,15 +306,7 @@ def fetch_smart_money_data(
                 return False
         return True
 
-    qualified = sorted((t for t in traders if _qualifies(t)), key=lambda trader: trader.pnl, reverse=True)
-    if settings.smart_max_traders > 0:
-        before_limit = len(qualified)
-        qualified = qualified[: settings.smart_max_traders]
-        if before_limit > len(qualified) and not settings.quiet:
-            print(
-                f"      limiting trade fetch to top {len(qualified)}/{before_limit} qualified trader(s) by PnL",
-                flush=True,
-            )
+    qualified = [t for t in traders if _qualifies(t)]
     if qualified and not settings.quiet:
         print(
             f"      pulling trades for {len(qualified)} qualified trader(s)"
@@ -469,154 +400,6 @@ def analyze_smart_money(
     return analyze_smart_money_with_data(candidates, settings, data)
 
 
-def choose_leaderboard_open_position(
-    candidates: list[Candidate],
-    settings: Settings,
-    *,
-    client: DataApiClient | None = None,
-) -> LeaderboardPositionSignal | None:
-    if not settings.smart_leaderboard_position_enabled:
-        return None
-    client = client or DataApiClient(settings.data_api_base_url)
-    traders = sorted(_top_traders(client, settings), key=lambda trader: trader.pnl, reverse=True)
-    top_n = max(1, settings.smart_leaderboard_position_top_n)
-    traders = traders[:top_n]
-    if not traders:
-        return None
-    positions_by_wallet: list[tuple[SmartTrader, list[dict[str, Any]]]] = []
-
-    def _pull(trader: SmartTrader) -> tuple[SmartTrader, list[dict[str, Any]]]:
-        try:
-            return trader, client.positions(user=trader.wallet)
-        except Exception:
-            return trader, []
-
-    concurrency = max(1, settings.smart_leaderboard_position_fetch_concurrency)
-    if concurrency > 1 and len(traders) > 1:
-        with ThreadPoolExecutor(max_workers=concurrency) as executor:
-            futures = [executor.submit(_pull, trader) for trader in traders]
-            for future in as_completed(futures):
-                positions_by_wallet.append(future.result())
-    else:
-        for trader in traders:
-            positions_by_wallet.append(_pull(trader))
-
-    by_token = {candidate.token_id: candidate for candidate in candidates if candidate.token_id}
-    grouped: dict[str, dict[str, Any]] = {}
-    for trader, positions in positions_by_wallet:
-        wallet_seen: set[str] = set()
-        for position in positions:
-            token_id = _position_token_id(position)
-            if not token_id or token_id in wallet_seen:
-                continue
-            candidate = by_token.get(token_id)
-            if candidate is None or not _leaderboard_position_candidate_allowed(candidate, settings):
-                continue
-            value = _position_value_usd(position)
-            grouped.setdefault(
-                token_id,
-                {"candidate": candidate, "wallets": [], "value": 0.0},
-            )
-            grouped[token_id]["wallets"].append(trader.wallet)
-            grouped[token_id]["value"] += value
-            wallet_seen.add(token_id)
-
-    min_wallets = max(1, settings.smart_leaderboard_position_min_wallets)
-    signals: list[LeaderboardPositionSignal] = []
-    for group in grouped.values():
-        wallets = sorted(set(group["wallets"]))
-        if len(wallets) < min_wallets:
-            continue
-        candidate = group["candidate"]
-        signals.append(
-            LeaderboardPositionSignal(
-                candidate=candidate,
-                wallets=wallets,
-                wallet_count=len(wallets),
-                total_position_value=round(float(group["value"]), 2),
-                top_n=top_n,
-                category=market_category(candidate.question, candidate.slug),
-            )
-        )
-    return sorted(signals, key=lambda signal: signal.score, reverse=True)[0] if signals else None
-
-
-def choose_top10_leaderboard_flow(
-    candidates: list[Candidate],
-    settings: Settings,
-    data: SmartMoneyData,
-) -> SmartMoneySignal | None:
-    if not settings.smart_top10_flow_enabled or data.leaderboard_error is not None:
-        return None
-    top_wallets = {
-        trader.wallet.lower()
-        for trader in sorted(data.traders, key=lambda trader: trader.pnl, reverse=True)[:10]
-    }
-    if not top_wallets:
-        return None
-    top_trades = [trade for trade in data.trades if trade.wallet.lower() in top_wallets]
-    if not top_trades:
-        return None
-    top_settings = replace(
-        settings,
-        smart_min_consensus=max(2, settings.smart_top10_flow_min_consensus),
-        smart_min_copied_usdc=max(settings.smart_min_copied_usdc, settings.smart_top10_flow_min_copied_usdc),
-        smart_max_signal_age_minutes=(
-            settings.smart_top10_flow_max_signal_age_minutes
-            if settings.smart_top10_flow_max_signal_age_minutes > 0
-            else settings.smart_max_signal_age_minutes
-        ),
-    )
-    signals = smart_money_signals(
-        candidates,
-        top_trades,
-        top_settings,
-        pnl_by_wallet=data.pnl_by_wallet,
-    )
-    opportunities = sorted(signals, key=lambda signal: signal.score, reverse=True)
-    return opportunities[0] if opportunities else None
-
-
-def _position_token_id(position: dict[str, Any]) -> str:
-    for key in ("asset", "token_id", "tokenId", "clobTokenId"):
-        value = position.get(key)
-        if value:
-            return str(value)
-    return ""
-
-
-def _position_value_usd(position: dict[str, Any]) -> float:
-    value = _float(position.get("currentValue"), 0.0)
-    if value > 0:
-        return value
-    size = _float(position.get("size"), _float(position.get("shares")))
-    price = _float(position.get("currentPrice"), _float(position.get("price")))
-    return max(0.0, size * price)
-
-
-def _leaderboard_position_candidate_allowed(candidate: Candidate, settings: Settings) -> bool:
-    if candidate.best_ask is None or candidate.best_bid is None:
-        return False
-    if candidate.hours_to_close is None or candidate.hours_to_close < settings.smart_min_hours_to_close:
-        return False
-    max_hours = _entry_max_hours_to_close(settings)
-    if max_hours > 0 and candidate.hours_to_close > max_hours:
-        return False
-    if not candidate.accepts_orders or candidate.tick_size is None:
-        return False
-    spread = candidate.best_ask - candidate.best_bid
-    if spread < 0 or spread > settings.smart_max_spread:
-        return False
-    if settings.smart_max_relative_spread > 0 and candidate.best_ask > 0:
-        if (spread / candidate.best_ask) > settings.smart_max_relative_spread:
-            return False
-    if candidate.best_ask < settings.smart_min_buy_price or candidate.best_ask > settings.smart_max_buy_price:
-        return False
-    if _is_crypto_market(candidate) and not settings.smart_allow_crypto:
-        return False
-    return True
-
-
 def smart_money_signals(
     candidates: list[Candidate],
     trades: list[SmartTrade],
@@ -645,14 +428,14 @@ def smart_money_signals(
             rejected["no_matching_candidate_or_quote"] = rejected.get("no_matching_candidate_or_quote", 0) + 1
             continue
         matched_tokens += 1
-        max_hours_to_close = _entry_max_hours_to_close(settings)
-        if candidate.hours_to_close is None:
-            rejected["unknown_expiry"] = rejected.get("unknown_expiry", 0) + 1
-            continue
-        if candidate.hours_to_close < settings.smart_min_hours_to_close:
+        if candidate.hours_to_close is not None and candidate.hours_to_close < settings.smart_min_hours_to_close:
             rejected["too_close_to_expiry"] = rejected.get("too_close_to_expiry", 0) + 1
             continue
-        if max_hours_to_close > 0 and candidate.hours_to_close > max_hours_to_close:
+        if (
+            settings.smart_max_hours_to_close > 0
+            and candidate.hours_to_close is not None
+            and candidate.hours_to_close > settings.smart_max_hours_to_close
+        ):
             rejected["too_far_to_expiry"] = rejected.get("too_far_to_expiry", 0) + 1
             continue
         if not candidate.accepts_orders or candidate.tick_size is None:
@@ -724,7 +507,6 @@ def smart_money_signals(
                 category_bonus=_category_bonus(category, settings),
                 latest_trade_age_minutes=latest_trade_age_minutes,
                 fresh_bonus=_fresh_signal_bonus(latest_trade_age_minutes, settings),
-                fast_market_bonus=_fast_market_bonus(candidate.hours_to_close, category, min_consensus, settings),
             )
         )
     if include_details:
@@ -735,18 +517,6 @@ def smart_money_signals(
             "rejected": rejected,
         }
     return signals
-
-
-def _entry_max_hours_to_close(settings: Settings) -> float:
-    caps = [
-        cap
-        for cap in (
-            float(settings.smart_max_hours_to_close or 0.0),
-            168.0,
-        )
-        if cap > 0
-    ]
-    return min(caps) if caps else 0.0
 
 
 def _time_periods(settings: Settings) -> list[str]:
@@ -906,16 +676,6 @@ def _short_horizon_bonus(hours_to_close: float | None) -> float:
     return -min((hours_to_close - 72.0) / 24.0, 5.0)
 
 
-def _fast_market_bonus(hours_to_close: float | None, category: str, min_consensus: int, settings: Settings) -> float:
-    if hours_to_close is None or hours_to_close <= 0:
-        return 0.0
-    if settings.smart_fast_market_score_bonus <= 0 or hours_to_close > settings.smart_fast_market_max_hours:
-        return 0.0
-    if category == "SPORTS" and hours_to_close < 0.5:
-        return 0.0
-    return settings.smart_fast_market_score_bonus if min_consensus >= 2 else 0.0
-
-
 def _value_pct(avg_copy_price: float, current_ask: float | None) -> float:
     if avg_copy_price <= 0.0 or current_ask is None:
         return 0.0
@@ -925,8 +685,8 @@ def _value_pct(avg_copy_price: float, current_ask: float | None) -> float:
 def _value_score(avg_copy_price: float, current_ask: float | None, copied_usdc: float) -> float:
     value_pct = _value_pct(avg_copy_price, current_ask)
     if value_pct > 0:
-        flow_quality = min(max(copied_usdc, 0.0) / 50.0, 1.0)
-        longshot_bonus = 4.0 if current_ask is not None and current_ask <= 0.15 and copied_usdc >= 10.0 else 0.0
+        flow_quality = min(max(copied_usdc, 0.0) / 250.0, 1.0)
+        longshot_bonus = 4.0 if current_ask is not None and current_ask <= 0.15 and copied_usdc >= 20.0 else 0.0
         return min(value_pct * 30.0, 18.0) * flow_quality + longshot_bonus
     return -min(abs(value_pct) * 18.0, 12.0)
 

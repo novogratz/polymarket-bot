@@ -178,7 +178,6 @@ HTML = r"""<!doctype html>
       currentTab: localStorage.getItem('pmbot_dashboard_tab') || 'live',
       state: null,
       refreshIntervalsMs: { state: 5000, live: 5000, stats: 15000, tune: 15000 },
-      pageReloadMs: 30 * 60 * 1000,
       timers: {},
     };
 
@@ -240,7 +239,7 @@ HTML = r"""<!doctype html>
       document.getElementById('balance-pill').innerHTML = bp;
       document.getElementById('updated').textContent = 'updated ' + new Date(state.updated_at).toLocaleTimeString();
       document.getElementById('ledger-info').textContent = state.state_path;
-      document.getElementById('refresh-info').textContent = 'auto-refresh ' + (PMBOT.refreshIntervalsMs[PMBOT.currentTab] || 5000)/1000 + 's · reload 30m';
+      document.getElementById('refresh-info').textContent = 'auto-refresh ' + (PMBOT.refreshIntervalsMs[PMBOT.currentTab] || 5000)/1000 + 's';
     }
 
     function renderStatsBar(state) {
@@ -289,15 +288,8 @@ HTML = r"""<!doctype html>
 
       const sc = last.scan_counts || {};
       card.appendChild(el('div', {class:'scan'},
-        'scan: strict ' + (sc.strict ?? 0) + ' → cash ' + (sc.cash_pressure ?? 0)
-        + ' → relaxed ' + (sc.relaxed ?? 0) + ' → deep ' + (sc.deep ?? 0)
+        'scan: strict ' + (sc.strict ?? 0) + ' → relaxed ' + (sc.relaxed ?? 0) + ' → deep ' + (sc.deep ?? 0)
         + ' (candidates: ' + (sc.candidates_total ?? 0) + ')'));
-      const rej = last.rejection_summary || {};
-      const rejEntries = Object.entries(rej).sort((a,b) => Number(b[1])-Number(a[1])).slice(0, 5);
-      if (rejEntries.length) {
-        card.appendChild(el('div', {class:'scan'},
-          'top rejects: ' + rejEntries.map(([k,v]) => k + ' ' + v).join(' · ')));
-      }
 
       const acts = last.actions || [];
       if (acts.length === 0) {
@@ -459,9 +451,7 @@ HTML = r"""<!doctype html>
         el('h3', {}, 'Overview'),
         el('dl', {class:'kv'},
           el('dt', {}, 'Records'), el('dd', {}, String(payload.records)),
-          el('dt', {}, 'Net PnL'), el('dd', {class: pnlClass(payload.net_total_pnl)}, fmtUsd.format(payload.net_total_pnl)),
-          el('dt', {}, 'Closed PnL'), el('dd', {class: pnlClass(payload.closed_total_pnl)}, fmtUsd.format(payload.closed_total_pnl)),
-          el('dt', {}, 'Open PnL'), el('dd', {class: pnlClass(payload.open_unrealized_pnl)}, fmtUsd.format(payload.open_unrealized_pnl)),
+          el('dt', {}, 'Total PnL'), el('dd', {class: pnlClass(payload.total_pnl)}, fmtUsd.format(payload.total_pnl)),
           el('dt', {}, 'Wins / Losses / Flats'), el('dd', {}, payload.wins+' / '+payload.losses+' / '+payload.flats),
           el('dt', {}, 'Win rate'), el('dd', {}, fmtPct(payload.win_rate)),
           el('dt', {}, 'Avg PnL'), el('dd', {class: pnlClass(payload.avg_pnl)}, fmtUsd.format(payload.avg_pnl)),
@@ -639,7 +629,6 @@ HTML = r"""<!doctype html>
       updateClock();
       setInterval(updateClock, 1000);
       setInterval(refreshState, PMBOT.refreshIntervalsMs.state);
-      setInterval(() => window.location.reload(), PMBOT.pageReloadMs);
     });
   </script>
 </body>

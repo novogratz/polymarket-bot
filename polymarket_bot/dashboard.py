@@ -127,18 +127,6 @@ def build_live(settings: Settings) -> dict[str, Any]:
 def build_stats(settings: Settings) -> dict[str, Any]:
     from .main import journal_stats  # local import to avoid circular dependency
     payload = journal_stats(settings)
-    portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
-    summary = portfolio.summary()
-    open_realized = sum(
-        float(position.get("realized_pnl") or 0.0)
-        for position in portfolio.positions
-        if position.get("status") == "open"
-    )
-    closed_total = float(payload.get("total_pnl") or 0.0)
-    unrealized = float(summary.get("unrealized_pnl") or 0.0)
-    payload["closed_total_pnl"] = round(closed_total, 2)
-    payload["open_unrealized_pnl"] = round(unrealized, 2)
-    payload["net_total_pnl"] = round(closed_total + open_realized + unrealized, 2)
     payload["updated_at"] = datetime.now(timezone.utc).isoformat()
     return payload
 

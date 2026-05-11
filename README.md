@@ -10,31 +10,22 @@ Polymarket smart-money copy-trading bot with a local dashboard, persistent ledge
 
 ## Install
 
-Requires **Python ≥3.9.10** and a modern pip. The recommended approach uses `uv`:
+From source, in development mode:
 
 ```bash
-pip install uv
-uv sync
+python3 -m pip install -e .
 ```
 
-Activate the virtual environment:
+Or just runtime dependencies:
 
 ```bash
-source .venv/bin/activate
-```
-
-Or install via pip (for systems without `uv`):
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+python3 -m pip install -r requirements.txt
 ```
 
 With dev tools (ruff):
 
 ```bash
-pip install -e ".[dev]"
+python3 -m pip install -e ".[dev]"
 ```
 
 Configure your wallet and API credentials in `.env` at the project root. Use `.env.example` as a template. See [API credentials](#api-credentials) for the required keys.
@@ -47,7 +38,7 @@ Everything lives in the script:
 bash scripts/run_live_70.sh
 ```
 
-Smart-money only — no noise fallback trades. Tight trader quality filters ($2k PnL floor), 5 min signal freshness, 6% max spread. Percentage-based sizing (75% of available cash × conviction multiplier, 50% equity ceiling). Runs in the foreground; `Ctrl+C` to stop.
+Tuned for a ~$90 bankroll. Runs in the foreground; `Ctrl+C` to stop.
 
 ## CLI commands
 
@@ -144,7 +135,7 @@ Risks the strategy explicitly avoids:
 
 ### Conviction-weighted sizing
 
-Each trade = `cash * SMART_POSITION_PCT (0.30) * conviction_multiplier`, capped by `SMART_MAX_POSITION_CEILING_USD ($150)` or `equity * SMART_MAX_POSITION_CEILING_PCT (0.40)` — whichever is bigger.
+Each trade = `cash * SMART_POSITION_PCT (0.18) * conviction_multiplier`, capped by `SMART_MAX_POSITION_CEILING_USD ($150)` or `equity * SMART_MAX_POSITION_CEILING_PCT (0.30)` — whichever is bigger.
 
 ```
 crypto micro                     -> 0.55x
@@ -158,9 +149,9 @@ weak (<2-wallet $250)            -> 0.7x
 5-wallet $5k+                    -> 2.5x
 ```
 
-At $100 cash: weak signal ~$21, 4-wallet $1k flow signal ~$48, 5-wallet $5k+ ~$75.
+At $90 cash: weak signal ~$11, 4-wallet $1k flow signal ~$26, 5-wallet $5k+ ~$40.
 
-`SMART_CASH_FLOOR_PCT=0.02` dynamically redistributes the remaining deploy budget across the remaining opportunities of the tick to target ~98% deployment.
+`SMART_CASH_FLOOR_PCT=0.05` dynamically redistributes the remaining deploy budget across the remaining opportunities of the tick to target ~95% deployment.
 
 ### Exits (before every new entry)
 
@@ -238,13 +229,13 @@ POLYMARKET_API_SECRET=...
 POLYMARKET_API_PASSPHRASE=...
 
 # Sizing
-POLYMARKET_SMART_POSITION_PCT=0.30
+POLYMARKET_SMART_POSITION_PCT=0.18
 POLYMARKET_SMART_MAX_POSITION_CEILING_USD=150
-POLYMARKET_SMART_MAX_POSITION_CEILING_PCT=0.40
-POLYMARKET_SMART_CASH_FLOOR_PCT=0.02
-POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION=0.25
-POLYMARKET_MAX_POSITION_USD=12
-POLYMARKET_SMART_MAX_TRADE_USD=12
+POLYMARKET_SMART_MAX_POSITION_CEILING_PCT=0.30
+POLYMARKET_SMART_CASH_FLOOR_PCT=0.05
+POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION=0.15
+POLYMARKET_MAX_POSITION_USD=7
+POLYMARKET_SMART_MAX_TRADE_USD=7
 
 # Trader cohort
 POLYMARKET_SMART_TIME_PERIOD=MONTH
@@ -273,12 +264,12 @@ POLYMARKET_SMART_REVERSE_LOOKUP_MAX_TOKENS=100
 POLYMARKET_SMART_REVERSE_LOOKUP_MIN_COPIED_USDC=50
 
 # Activity floors
-POLYMARKET_MIN_OPEN_POSITIONS=12
+POLYMARKET_MIN_OPEN_POSITIONS=7
 POLYMARKET_SMART_DEEP_FALLBACK_ENABLED=1
 POLYMARKET_SMART_DEEP_FALLBACK_MIN_COPIED_USDC=25
 POLYMARKET_SMART_NOISE_FALLBACK_ENABLED=1
-POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADES_PER_TICK=4
-POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADE_USD=10
+POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADES_PER_TICK=8
+POLYMARKET_SMART_NOISE_FALLBACK_MAX_TRADE_USD=15
 POLYMARKET_SMART_NOISE_FALLBACK_CASH_PRESSURE_PCT=0.25
 
 # Exits

@@ -32,9 +32,7 @@ POLYMARKET_ENABLE_LIVE_TRADING=1 uv run pmbot auto-loop
 POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop          # simulated, no SDK calls, separate ledger
 ```
 
-Canonical live config: `bash scripts/run_live_70.sh`
-
-Pierre's proven config: $7 max trade, 18% position pct, 15% high-conviction fraction, $1k PnL floor, $2k volume floor, 3% ROI floor, 10 min signal age, BTC edge enabled ($5 max). Smart-money only — no leaderboard_position, no top10_flow, no noise fallback.
+Canonical live config: `bash scripts/run_live_70.sh` (~$90 bankroll).
 
 CLI surface: 9 Typer commands (`auto-loop`, `dashboard`, `doctor`, `status`, `positions`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`) plus the global `--version` / `-V` option. The Typer app is exposed as the `pmbot` console script via `[project.scripts]`; `python -m polymarket_bot.main <cmd>` continues to work as a fallback. `status` and `positions` are read-only — no SDK calls, no network — and automatically pick up the dry-run ledger when `POLYMARKET_DRY_RUN=1` is set. ANSI colors auto-disable when stdout is not a TTY (or when `NO_COLOR=1`); set `POLYMARKET_FORCE_COLOR=1` to keep them through pipes.
 
@@ -54,15 +52,16 @@ CLI surface: 9 Typer commands (`auto-loop`, `dashboard`, `doctor`, `status`, `po
 Smart-money copy-trading:
 
 1. Load active Polymarket markets (Gamma scan + keyword scan + reverse-lookup of high-flow tokens).
-2. Pull monthly-leaderboard wallets that pass PnL / volume / ROI floors ($1k / $2k / 3%).
+2. Pull monthly-leaderboard wallets that pass PnL / volume / ROI floors.
 3. Inspect their recent BUYs in parallel.
-4. Require multi-wallet consensus on the same token, sufficient copied USDC ($75), tight spreads (8% relative, 45% relative cap), price band (0.03–0.96), freshness (10 min).
-5. Three passes: strict → relaxed (consensus floor relaxed) → deep fallback ($25 min copied). One leaderboard+trades fetch shared across all three.
-6. Conviction-weighted sizing (0.55x to 2.5x), dynamic per-slot redistribution toward 5% cash floor.
-7. Per-position ceiling: `max(SMART_MAX_POSITION_CEILING_USD=150, equity × SMART_MAX_POSITION_CEILING_PCT=0.30)`.
+4. Require multi-wallet consensus on the same token, sufficient copied USDC, tight spreads (absolute and relative), price band, freshness.
+5. Three passes: strict → relaxed (consensus floor relaxed) → deep fallback (consensus=1, looser filters). One leaderboard+trades fetch shared across all three.
+6. Conviction-weighted sizing (0.55x to 2.5x), dynamic per-slot redistribution toward `SMART_CASH_FLOOR_PCT` (5%).
+7. Per-position ceiling: `max(SMART_MAX_POSITION_CEILING_USD, equity × SMART_MAX_POSITION_CEILING_PCT)`.
 8. Multi-level exits (run before every entry): take-profit ladder +50/+100/+200/+300, trailing stop, peak-protect, stop-loss, cohort-sell, cohort-silent, near-expiry, max-hold-time (24h).
 9. No duplicate per market_id, per token, or per event-slug (sports). Per-category cap on sports.
-10. BTC edge integrated after the smart-money tick ($5 max, 8% edge).
+10. BTC edge integrated after the smart-money tick (cap $5, edge ≥ 8%).
+11. Noise fallback (cap $10, max 4 per tick) when 0 smart-money signal qualifies AND (positions below min OR cash above 35% of equity).
 
 ## Defensive auto-tuner
 
@@ -95,9 +94,3 @@ Hierarchy to preserve in any strategy edit: **consensus first, execution quality
 5. If the change affects the live command, update `scripts/run_live_70.sh`.
 6. Update `CHANGELOG.md`, `README.md`, `CLAUDE.md`, `CODEX.md`, and the SKILL files when user-visible.
 7. Commit and push.
-
-## Known issues
-
-- The installed `py-clob-client` SDK (≥0.21.0) does not export a `Side` enum. Always pass side as a plain `"BUY"` / `"SELL"` string to `OrderArgs` and `MarketOrderArgs`.
-- For FOK market orders, use `create_market_order` + `post_order` — `create_and_post_market_order` does not exist on this SDK version.
-- **PnL double-count bug**: In `main.py:_portfolio_update_snapshot` (~line 2177), `open_realized` is unconditionally added to `sum(records)`, which can double-count partial-exit PnLs that are already embedded in position records. Not fixed yet.

@@ -204,7 +204,6 @@ class TestTradeFormats(NotificationsBaseTest):
             price=0.42,
             size_usd=14.20,
             signal={"wallets": 4, "copied_usdc": 2100.0},
-            outcome="Yes",
             market_url="https://polymarket.com/event/foo",
         )
         self.assertEqual(len(sent), 1)
@@ -213,7 +212,6 @@ class TestTradeFormats(NotificationsBaseTest):
         self.assertIn("14\\.20", text)  # MarkdownV2 escape du point
         self.assertIn("0\\.42", text)
         self.assertIn("Trump 2028 nominee", text)
-        self.assertIn("Pick: *Yes*", text)
         self.assertIn("4 wallets", text)
 
     def test_sell_format_contains_pnl(self) -> None:
@@ -231,10 +229,6 @@ class TestTradeFormats(NotificationsBaseTest):
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
         self.assertIn("SELL", text)
-        self.assertIn("WIN SELL", text)
-        self.assertIn("PROFIT", text)
-        self.assertIn("✅", text)
-        self.assertIn("Nice win locked in", text)
         self.assertIn("take_profit_ladder", text)
         self.assertIn("Bitcoin EOY", text)
         self.assertIn("\\+\\$4\\.30", text)
@@ -248,178 +242,12 @@ class TestTradeFormats(NotificationsBaseTest):
         )
         self.assertEqual(sent, [])
 
-    def test_portfolio_update_contains_realized_unrealized_and_trade_lists(self) -> None:
-        sent = self._setup_enabled()
-        with tempfile.TemporaryDirectory() as td:
-            with mock.patch("polymarket_bot.notifications._default_state_path", return_value=Path(td) / "state.json"):
-                notifications.notify_portfolio_update({
-                    "timestamp": "2026-05-10 10:30",
-                    "equity_usd": 220.0,
-                    "cash_usd": 50.0,
-                    "invested_usd": 165.0,
-                    "unrealized_pnl_usd": 5.0,
-                    "realized_today_usd": 1.25,
-                    "realized_total_usd": -3.50,
-                    "today_pnl_usd": 6.25,
-                    "total_pnl_usd": 1.50,
-                    "trades_today": 2,
-                    "recent_trades": [
-                        {
-                            "question": "Bitcoin Up or Down",
-                            "outcome": "Up",
-                            "realized_pnl": 0.75,
-                            "strategy": "btc_edge",
-                            "exit_reason": "positive_pnl_before_expiry",
-                        },
-                        {
-                            "question": "Will team lose?",
-                            "outcome": "No",
-                            "realized_pnl": -0.50,
-                            "strategy": "noise_fallback",
-                            "exit_reason": "stop_loss",
-                        }
-                    ],
-                    "open_positions": [
-                        {
-                            "question": "Will big position win?",
-                            "outcome": "Yes",
-                            "stake": 75.0,
-                            "entry_price": 0.50,
-                            "current_price": 0.55,
-                            "unrealized_pnl": 7.50,
-                            "strategy": "smart_money",
-                        },
-                        {
-                            "question": "Will BTC be above $100,000?",
-                            "outcome": "Yes",
-                            "stake": 15.0,
-                            "entry_price": 0.40,
-                            "current_price": 0.52,
-                            "unrealized_pnl": 4.50,
-                            "strategy": "btc_edge",
-                        },
-                        {
-                            "question": "Will ETH be above $4,000?",
-                            "outcome": "Yes",
-                            "stake": 10.0,
-                            "entry_price": 0.60,
-                            "current_price": 0.50,
-                            "unrealized_pnl": -1.67,
-                            "strategy": "smart_money",
-                        },
-                        {
-                            "question": "Small position 3",
-                            "outcome": "Yes",
-                            "stake": 9.0,
-                            "entry_price": 0.50,
-                            "current_price": 0.51,
-                            "unrealized_pnl": 0.18,
-                            "strategy": "smart_money",
-                        },
-                        {
-                            "question": "Small position 4",
-                            "outcome": "Yes",
-                            "stake": 8.0,
-                            "entry_price": 0.50,
-                            "current_price": 0.51,
-                            "unrealized_pnl": 0.16,
-                            "strategy": "smart_money",
-                        },
-                        {
-                            "question": "Small position 5",
-                            "outcome": "Yes",
-                            "stake": 7.0,
-                            "entry_price": 0.50,
-                            "current_price": 0.51,
-                            "unrealized_pnl": 0.14,
-                            "strategy": "smart_money",
-                        },
-                        {
-                            "question": "Small position 6 hidden",
-                            "outcome": "Yes",
-                            "stake": 6.0,
-                            "entry_price": 0.50,
-                            "current_price": 0.51,
-                            "unrealized_pnl": 0.12,
-                            "strategy": "smart_money",
-                        }
-                    ],
-                })
-
-        self.assertEqual(len(sent), 1)
-        text = sent[0]["text"]
-        self.assertIn("Director review", text)
-        self.assertIn("*Equity*", text)
-        self.assertIn("\n*Cash*", text)
-        self.assertIn("\n*Invested*", text)
-        self.assertIn("*PnL unrealized*", text)
-        self.assertIn("\n*PnL today*", text)
-        self.assertIn("\n*PnL all\\-time*", text)
-        self.assertIn("\\+$5\\.00", text)
-        self.assertIn("*PnL today* ✅", text)
-        self.assertIn("\\+$6\\.25", text)
-        self.assertIn("*PnL all\\-time* ✅", text)
-        self.assertIn("*Closed PnL today* ✅", text)
-        self.assertNotIn("Top winners", text)
-        self.assertNotIn("Top losers", text)
-        self.assertIn("\n\n📌 *Open book*", text)
-        self.assertIn("*Big trades \\> $50*", text)
-        self.assertIn("*Smaller trades*", text)
-        self.assertIn("Will big position win?", text)
-        self.assertIn("Will BTC be above $100,000?", text)
-        self.assertIn("WIN IN PROGRESS", text)
-        self.assertIn("\\+$4\\.50 USD", text)
-        self.assertIn("\\+30\\.0%", text)
-        self.assertIn("@pmarx", text)
-        self.assertIn("Will ETH be above $4,000?", text)
-        self.assertIn("Small position 5", text)
-        self.assertNotIn("Small position 6 hidden", text)
-        self.assertIn("_… and 1 smaller positions hidden_", text)
-        self.assertIn("*Big trades \\> $50*\n\n", text)
-        self.assertIn("*Smaller trades*\n\n", text)
-
-    def test_portfolio_update_compares_total_and_cash_to_previous_review(self) -> None:
-        sent = self._setup_enabled()
-        with tempfile.TemporaryDirectory() as td:
-            path = Path(td) / "state.json"
-            base = 1_800_000.0
-            path.write_text(json.dumps({
-                "last_portfolio_update_ts": base - 1800,
-                "last_portfolio_update_equity_usd": 200.0,
-                "last_portfolio_update_cash_usd": 60.0,
-            }), encoding="utf-8")
-            with mock.patch("polymarket_bot.notifications._default_state_path", return_value=path):
-                with mock.patch("time.time", return_value=base):
-                    notifications.notify_portfolio_update({
-                        "timestamp": "2026-05-10 11:00",
-                        "equity_usd": 220.0,
-                        "cash_usd": 50.0,
-                        "invested_usd": 165.0,
-                        "unrealized_pnl_usd": 5.0,
-                        "realized_today_usd": 0.0,
-                        "realized_total_usd": 0.0,
-                        "trades_today": 0,
-                        "open_positions": [],
-                    })
-
-        self.assertEqual(len(sent), 1)
-        text = sent[0]["text"]
-        self.assertIn("*Last 30m review* 30m ago", text)
-        self.assertIn(
-            "*Equity* $220\\.00 \\(30m ✅ \\+$20\\.00 / Today ✅ \\+$5\\.00 / All\\-time ✅ \\+$5\\.00\\)",
-            text,
-        )
-        self.assertIn("\n*Cash* $50\\.00", text)
-        self.assertNotIn("Total balance vs last 30m", text)
-        self.assertNotIn("Cash vs last 30m", text)
-
 
 class TestBigWinLoss(NotificationsBaseTest):
     def _setup_enabled(self) -> list[dict]:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
         os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
         os.environ["TELEGRAM_BIG_WIN_USD"] = "10.0"
-        os.environ["TELEGRAM_BIG_WIN_IN_PROGRESS_PCT"] = "20.0"
         os.environ["TELEGRAM_BIG_LOSS_USD"] = "5.0"
         sent: list[dict] = []
         notifications.set_transport_for_test(lambda p: sent.append(p) or True)
@@ -428,36 +256,12 @@ class TestBigWinLoss(NotificationsBaseTest):
     def test_big_win_above_threshold(self) -> None:
         sent = self._setup_enabled()
         notifications.notify_threshold("big_win", {
-            "market_title": "BTC EOY", "pnl_usd": 12.40, "pnl_pct": 30.3, "reason": "peak_protect",
+            "market_title": "BTC EOY", "pnl_usd": 12.40, "reason": "peak_protect",
             "held_seconds": 100000,
         })
         self.assertEqual(len(sent), 1)
         self.assertIn("BIG WIN", sent[0]["text"])
         self.assertIn("12\\.40", sent[0]["text"])
-        self.assertIn("\\+30\\.3%", sent[0]["text"])
-        self.assertIn("✅✅✅", sent[0]["text"])
-        self.assertIn("@pmarx", sent[0]["text"])
-        self.assertIn("MAKE SOME NOISE", sent[0]["text"])
-
-    def test_big_win_in_progress_is_loud_and_tagged(self) -> None:
-        sent = self._setup_enabled()
-        with tempfile.TemporaryDirectory() as td:
-            with mock.patch("polymarket_bot.notifications._default_state_path", return_value=Path(td) / "state.json"):
-                notifications.notify_threshold("big_win_in_progress", {
-                    "market_title": "BTC live runner",
-                    "token_id": "token-1",
-                    "pnl_usd": 14.25,
-                    "pnl_pct": 24.7,
-                    "bid": 0.75,
-                })
-
-        self.assertEqual(len(sent), 1)
-        text = sent[0]["text"]
-        self.assertIn("BIG WIN IN PROGRESS", text)
-        self.assertIn("\\+$14\\.25 USD", text)
-        self.assertIn("\\+24\\.7%", text)
-        self.assertIn("✅✅✅", text)
-        self.assertIn("@pmarx", text)
 
     def test_big_win_below_threshold_skips(self) -> None:
         sent = self._setup_enabled()
@@ -568,11 +372,7 @@ class TestDailySummary(NotificationsBaseTest):
                 }
                 notifications.notify_daily_summary(snap)
                 self.assertEqual(len(sent), 1)
-                self.assertIn("Director daily review", sent[0]["text"])
-                self.assertIn("*Equity*", sent[0]["text"])
-                self.assertIn("*Activity*", sent[0]["text"])
-                self.assertIn("✅ *Best*", sent[0]["text"])
-                self.assertIn("❌ *Worst*", sent[0]["text"])
+                self.assertIn("Daily summary", sent[0]["text"])
                 # Second appel le même jour: skip
                 notifications.notify_daily_summary(snap)
                 self.assertEqual(len(sent), 1)
@@ -580,38 +380,6 @@ class TestDailySummary(NotificationsBaseTest):
                 snap_next = dict(snap, today="2026-05-10")
                 notifications.notify_daily_summary(snap_next)
                 self.assertEqual(len(sent), 2)
-
-    def test_summary_compares_total_and_cash_to_previous_daily_review(self) -> None:
-        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
-        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
-        sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
-        with tempfile.TemporaryDirectory() as td:
-            path = Path(td) / "state.json"
-            path.write_text(json.dumps({
-                "last_daily_summary_date": "2026-05-09",
-                "last_daily_summary_equity_usd": 95.0,
-                "last_daily_summary_cash_usd": 12.0,
-            }), encoding="utf-8")
-            with patch.object(notifications, "_default_state_path", return_value=path):
-                notifications.notify_daily_summary({
-                    "today": "2026-05-10",
-                    "equity_usd": 92.10,
-                    "equity_pct_24h": -3.1,
-                    "cash_usd": 18.40,
-                    "open_positions": 7,
-                    "trades_24h": 4,
-                    "wins_24h": 2,
-                    "losses_24h": 2,
-                })
-
-        self.assertEqual(len(sent), 1)
-        text = sent[0]["text"]
-        self.assertIn("*Last daily review* 2026\\-05\\-09", text)
-        self.assertIn("*Equity* $92\\.10 \\(❌ \\-$2\\.90 USD\\)", text)
-        self.assertIn("*Cash* $18\\.40", text)
-        self.assertNotIn("Total balance vs last daily", text)
-        self.assertNotIn("Cash vs last daily", text)
 
 
 class TestAutoTuneDiff(NotificationsBaseTest):

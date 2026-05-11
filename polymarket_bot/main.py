@@ -31,14 +31,12 @@ from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
 from .config import Settings
 from .dashboard import serve
 from .gamma import GammaClient
-from .portfolio import Portfolio, _event_key
-from .models import Candidate, parse_dt, utc_now
+from .portfolio import Portfolio
+from .models import parse_dt, utc_now
 from .smart_money import (
     DataApiClient,
     analyze_smart_money,
     analyze_smart_money_with_data,
-    choose_leaderboard_open_position,
-    choose_top10_leaderboard_flow,
     fetch_smart_money_data,
     market_category,
     _top_traders,
@@ -110,17 +108,12 @@ def load_btc_candidates(settings: Settings):
     return rank_markets(list(markets_by_id.values()), settings)
 
 
-def _smart_entry_horizon_hours(settings: Settings) -> float:
-    horizon_hours = float(settings.smart_soon_hours)
-    if settings.smart_max_hours_to_close > 0:
-        horizon_hours = min(horizon_hours, settings.smart_max_hours_to_close)
-    return min(horizon_hours, 168.0)
-
-
 def load_smart_candidates(settings: Settings):
     client = GammaClient(settings.gamma_base_url)
     now = utc_now()
-    horizon_hours = _smart_entry_horizon_hours(settings)
+    horizon_hours = settings.smart_soon_hours
+    if settings.smart_max_hours_to_close > 0:
+        horizon_hours = min(horizon_hours, settings.smart_max_hours_to_close)
     horizon = now + timedelta(hours=horizon_hours)
     batches = []
     for kwargs in (
@@ -164,7 +157,7 @@ def load_smart_candidates(settings: Settings):
     smart_settings = replace(
         settings,
         scan_limit=settings.smart_scan_limit,
-        soon_hours=horizon_hours,
+        soon_hours=settings.smart_soon_hours,
     )
     return rank_markets(list(markets_by_id.values()), smart_settings)
 
@@ -294,11 +287,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     _step(settings, f"   markets: {len(candidates)} candidates")
     scan_counts = {
         "strict": 0,
-        "cash_pressure": 0,
         "relaxed": 0,
         "deep": 0,
-        "leaderboard_position": 0,
-        "top10_flow": 0,
         "candidates_total": len(candidates),
     }
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
@@ -366,7 +356,10 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         and candidate.best_ask is not None
         and candidate.best_bid is not None
         and candidate.tick_size is not None
-        and _candidate_entry_block_reason(settings, portfolio, candidate, open_categories) is None
+        and not portfolio.has_open_position(candidate.market_id)
+        and not portfolio.has_open_token(candidate.token_id)
+        and not portfolio.has_pending_token(candidate.token_id)
+        and not portfolio.has_open_event_position(candidate)
     ]
 
     _step(settings, f"   smart-money scan over {len(eligible_candidates)} eligible candidate(s)...")
@@ -387,7 +380,13 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     or extra.tick_size is None
                 ):
                     continue
-                if _candidate_entry_block_reason(settings, portfolio, extra, open_categories) is not None:
+                if portfolio.has_open_position(extra.market_id):
+                    continue
+                if portfolio.has_open_token(extra.token_id):
+                    continue
+                if portfolio.has_pending_token(extra.token_id):
+                    continue
+                if portfolio.has_open_event_position(extra):
                     continue
                 eligible_candidates.append(extra)
                 existing_tokens_eligible.add(extra.token_id)
@@ -401,63 +400,6 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     signal = report.selected
     strategy = "smart_money"
     opportunities = list(report.opportunities)
-    if settings.smart_top10_flow_enabled:
-        top10_signal = choose_top10_leaderboard_flow(eligible_candidates, settings, smart_data)
-        if top10_signal is not None:
-            _step(settings, "   top-10 leaderboard flow overlay: 1 opportunity")
-            scan_counts["top10_flow"] = 1
-            _merge_opportunities(opportunities, [top10_signal])
-            if signal is None or top10_signal.score >= signal.score:
-                signal = top10_signal
-                strategy = "top10_leaderboard_flow"
-        else:
-            _step(settings, "   top-10 leaderboard flow overlay: 0 opportunities")
-    if settings.smart_leaderboard_position_enabled:
-        _step(
-            settings,
-            f"   leaderboard open-position overlay: top {settings.smart_leaderboard_position_top_n} wallet(s)...",
-        )
-        try:
-            leaderboard_signal = choose_leaderboard_open_position(
-                eligible_candidates,
-                settings,
-                client=DataApiClient(settings.data_api_base_url),
-            )
-        except Exception as exc:
-            leaderboard_signal = None
-            _step(settings, f"   leaderboard open-position overlay skipped: {type(exc).__name__}: {exc}")
-        if leaderboard_signal is not None:
-            _step(settings, "   leaderboard open-position overlay: 1 opportunity")
-            scan_counts["leaderboard_position"] = 1
-            _merge_opportunities(opportunities, [leaderboard_signal])
-            if signal is None or leaderboard_signal.score >= signal.score:
-                signal = leaderboard_signal
-                strategy = "leaderboard_open_position"
-        else:
-            _step(settings, "   leaderboard open-position overlay: 0 opportunities")
-    pressure_report = None
-    if _smart_cash_pressure_active(settings, portfolio):
-        pressure_settings = replace(
-            settings,
-            smart_min_consensus=max(2, settings.smart_min_consensus),
-            smart_min_copied_usdc=min(settings.smart_min_copied_usdc, settings.smart_cash_pressure_min_copied_usdc),
-            smart_max_signal_age_minutes=max(
-                settings.smart_max_signal_age_minutes,
-                settings.smart_cash_pressure_max_signal_age_minutes,
-            ),
-            smart_max_relative_spread=max(
-                settings.smart_max_relative_spread,
-                settings.smart_cash_pressure_max_relative_spread,
-            ),
-        )
-        pressure_report = analyze_smart_money_with_data(eligible_candidates, pressure_settings, smart_data)
-        _step(settings, f"   cash-pressure smart scan: {len(pressure_report.opportunities)} opportunity(ies)")
-        scan_counts["cash_pressure"] = len(pressure_report.opportunities)
-        _merge_opportunities(opportunities, pressure_report.opportunities)
-        if signal is None and pressure_report.selected is not None:
-            report = pressure_report
-            signal = pressure_report.selected
-            strategy = "smart_money_cash_pressure"
     if open_count + len(opportunities) < settings.min_open_positions:
         print(
             f"   below min open positions ({open_count + len(opportunities)} < {settings.min_open_positions}); running relaxed scan (reusing leaderboard+trades)...",
@@ -470,7 +412,14 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         fallback_report = analyze_smart_money_with_data(eligible_candidates, fallback_settings, smart_data)
         _step(settings, f"   relaxed scan: {len(fallback_report.opportunities)} opportunity(ies)")
         scan_counts["relaxed"] = len(fallback_report.opportunities)
-        _merge_opportunities(opportunities, fallback_report.opportunities)
+        seen_tokens = {opp.candidate.token_id for opp in opportunities if opp.candidate.token_id}
+        for opp in fallback_report.opportunities:
+            token_id = opp.candidate.token_id
+            if token_id and token_id in seen_tokens:
+                continue
+            opportunities.append(opp)
+            if token_id:
+                seen_tokens.add(token_id)
         if signal is None and fallback_report.selected is not None:
             report = fallback_report
             signal = fallback_report.selected
@@ -497,7 +446,13 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             deep_report = analyze_smart_money_with_data(eligible_candidates, deep_settings, smart_data)
             _step(settings, f"   deep fallback: {len(deep_report.opportunities)} opportunity(ies)")
             scan_counts["deep"] = len(deep_report.opportunities)
-            _merge_opportunities(opportunities, deep_report.opportunities)
+            for opp in deep_report.opportunities:
+                token_id = opp.candidate.token_id
+                if token_id and token_id in seen_tokens:
+                    continue
+                opportunities.append(opp)
+                if token_id:
+                    seen_tokens.add(token_id)
             if signal is None and deep_report.selected is not None:
                 report = deep_report
                 signal = deep_report.selected
@@ -530,55 +485,55 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             }
 
         for slot_index, opportunity in enumerate(opportunities):
+            remaining_slots = max(1, len(opportunities) - slot_index)
             if settings.smart_max_orders_per_tick > 0 and len(executed_trades) >= settings.smart_max_orders_per_tick:
                 stop_reason = "max_orders_per_tick_reached"
                 break
-            opportunity_payload = opportunity.to_dict()
-            category = str(opportunity_payload.get("category") or "OTHER")
-            block_reason = _candidate_entry_block_reason(settings, portfolio, opportunity.candidate, open_categories)
-            if block_reason == "duplicate_open_market":
+            if portfolio.has_open_position(opportunity.candidate.market_id):
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
                         "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
-                        "reason": block_reason,
-                        "selection_reason": opportunity_payload["selection_reason"],
+                        "reason": "duplicate_open_market",
+                        "selection_reason": opportunity.to_dict()["selection_reason"],
                     }
                 )
                 continue
-            if block_reason is not None:
+            if portfolio.has_open_event_position(opportunity.candidate):
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
                         "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
                         "event_slug": opportunity.candidate.event_slug,
-                        "reason": block_reason,
+                        "reason": "duplicate_open_sports_event",
+                        "selection_reason": opportunity.to_dict()["selection_reason"],
+                    }
+                )
+                continue
+            opportunity_payload = opportunity.to_dict()
+            category = str(opportunity_payload.get("category") or "OTHER")
+            if (
+                category == "SPORTS"
+                and settings.smart_max_sports_positions >= 0
+                and open_categories.get("SPORTS", 0) >= settings.smart_max_sports_positions
+            ):
+                rejected_signals.append(
+                    {
+                        "market_id": opportunity.candidate.market_id,
+                        "question": opportunity.candidate.question,
+                        "outcome": opportunity.candidate.outcome,
+                        "reason": "sports_position_cap_reached",
+                        "category": category,
                         "selection_reason": opportunity_payload["selection_reason"],
                     }
                 )
                 continue
             print(f"🧠 SELECTED: {opportunity_payload['selection_reason']}")
-            remaining_slots = _remaining_deployment_slots(settings, portfolio, len(executed_trades))
             max_trade_usd = _dynamic_max_trade(
                 settings, opportunity_payload, strategy, portfolio, remaining_slots
             )
-            event_remaining_cap = _non_sports_event_remaining_cap(settings, portfolio, opportunity.candidate)
-            if event_remaining_cap is not None:
-                if event_remaining_cap < 1.0:
-                    rejected_signals.append(
-                        {
-                            "market_id": opportunity.candidate.market_id,
-                            "question": opportunity.candidate.question,
-                            "outcome": opportunity.candidate.outcome,
-                            "reason": "non_sports_event_cap_reached",
-                            "category": category,
-                            "selection_reason": opportunity_payload["selection_reason"],
-                        }
-                    )
-                    continue
-                max_trade_usd = min(max_trade_usd, event_remaining_cap)
             try:
                 result = execute_live_trade(
                     client,
@@ -739,7 +694,6 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "pending_orders": pending_report,
         "category_summary": open_categories,
         "rejected_signals": rejected_signals,
-        "rejection_summary": _rejection_summary(rejected_signals, report, pressure_report),
         "scan_report": report.to_dict(),
         "scan_counts": scan_counts,
         "summary": portfolio.summary(),
@@ -772,15 +726,12 @@ def _execute_sell_strategy(
         token_id = position.get("token_id")
         candidate = by_token.get(token_id)
         if candidate is None or candidate.best_bid is None:
-            candidate = _terminal_candidate_from_synced_position(position, settings)
-        if candidate is None or candidate.best_bid is None:
             continue
 
         entry_price = float(position.get("entry_price", 0.0))
         if entry_price <= 0:
             continue
         current_pnl_pct = (candidate.best_bid - entry_price) / entry_price
-        position["current_price"] = candidate.best_bid
         position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", current_pnl_pct)), current_pnl_pct)
         plan = _sell_plan(position, current_pnl_pct, settings)
         if (
@@ -805,55 +756,6 @@ def _execute_sell_strategy(
             }
         if plan is None:
             continue
-        planned_shares = float(plan.get("shares") or 0.0)
-        current_shares = float(position.get("shares") or 0.0)
-        is_take_profit = str(plan.get("reason") or "").startswith("take_profit_")
-        if is_take_profit and 0 < planned_shares < settings.min_order_shares <= current_shares:
-            planned_shares = settings.min_order_shares
-            plan["shares"] = planned_shares
-        if 0 < planned_shares < settings.min_order_shares:
-            position["sell_blocked_reason"] = "below_minimum_sell_shares"
-            exit_report.append(
-                {
-                    "market_id": position.get("market_id"),
-                    "question": position.get("question"),
-                    "outcome": position.get("outcome"),
-                    "action": "skip_sell",
-                    "reason": "below_minimum_sell_shares",
-                    "shares": round(planned_shares, 6),
-                    "min_order_shares": settings.min_order_shares,
-                    "pnl_pct": round(current_pnl_pct, 4),
-                    "peak_pnl_pct": round(float(position.get("peak_pnl_pct", 0.0)), 4),
-                }
-            )
-            continue
-        executable_shares = min(planned_shares, current_shares)
-        sell_price = round(max(float(candidate.best_bid or 0.0), float(candidate.tick_size or 0.0)), 3)
-        expected_proceeds = round(executable_shares * sell_price, 2)
-        if is_take_profit and 0 < expected_proceeds < settings.smart_min_sell_usd and sell_price > 0:
-            min_usd_shares = settings.smart_min_sell_usd / sell_price
-            if min_usd_shares <= current_shares:
-                executable_shares = round(min_usd_shares, 6)
-                planned_shares = executable_shares
-                plan["shares"] = planned_shares
-                expected_proceeds = round(executable_shares * sell_price, 2)
-        if 0 < expected_proceeds < settings.smart_min_sell_usd:
-            position["sell_blocked_reason"] = "below_minimum_sell_usd"
-            exit_report.append(
-                {
-                    "market_id": position.get("market_id"),
-                    "question": position.get("question"),
-                    "outcome": position.get("outcome"),
-                    "action": "skip_sell",
-                    "reason": "below_minimum_sell_usd",
-                    "shares": round(executable_shares, 6),
-                    "expected_proceeds": expected_proceeds,
-                    "min_sell_usd": settings.smart_min_sell_usd,
-                    "pnl_pct": round(current_pnl_pct, 4),
-                    "peak_pnl_pct": round(float(position.get("peak_pnl_pct", 0.0)), 4),
-                }
-            )
-            continue
 
         try:
             result = execute_live_sell(
@@ -868,18 +770,14 @@ def _execute_sell_strategy(
         except Exception as exc:
             message = str(exc)
             print(f"⚠️  sell skipped on {position.get('question')}: {type(exc).__name__}: {message}", flush=True)
-            below_minimum_sell = "below polymarket minimum" in message.lower() or "below minimum" in message.lower()
-            if below_minimum_sell:
-                position["sell_blocked_reason"] = "below_minimum_sell_shares"
-            else:
-                try:
-                    notifications.notify_error(
-                        "order_rejected",
-                        f"SELL skipped: {message}"[:500],
-                        dedupe_key=f"order_rejected:{position.get('token_id') or position.get('market_id') or 'unknown'}",
-                    )
-                except Exception:
-                    pass
+            try:
+                notifications.notify_error(
+                    "order_rejected",
+                    f"SELL skipped: {message}"[:500],
+                    dedupe_key=f"order_rejected:{position.get('token_id') or position.get('market_id') or 'unknown'}",
+                )
+            except Exception:
+                pass
             cancelled_ids: list[str] = []
             if "balance is not enough" in message.lower() or "allowance" in message.lower():
                 position["sell_blocked_reason"] = "active_sell_order_pending"
@@ -932,55 +830,6 @@ def _execute_sell_strategy(
             }
         )
     return exit_report
-
-
-def _terminal_candidate_from_synced_position(
-    position: dict[str, object],
-    settings: Settings,
-) -> Candidate | None:
-    """Build an executable sell candidate from live-sync prices for terminal winners.
-
-    Some resolved or near-resolved positions disappear from the Gamma candidate
-    scan while the Data API still reports a sellable current price. Without this
-    fallback, 99-100c winners can sit open because the normal sell loop has no
-    Gamma ``best_bid`` to evaluate.
-    """
-    thresholds = [
-        value
-        for value in (settings.smart_resolved_exit_threshold, settings.smart_lock_gain_price)
-        if value > 0
-    ]
-    if not thresholds:
-        return None
-    current_price = _float(position.get("current_price"))
-    if current_price < min(thresholds):
-        return None
-    token_id = str(position.get("token_id") or "")
-    if not token_id:
-        return None
-    end_date = parse_dt(str(position.get("end_date") or ""))
-    hours_to_close = None
-    if end_date is not None:
-        hours_to_close = max((end_date - utc_now()).total_seconds() / 3600.0, 0.0)
-    return Candidate(
-        market_id=str(position.get("market_id") or ""),
-        question=str(position.get("question") or ""),
-        slug=str(position.get("slug") or position.get("event_slug") or ""),
-        event_slug=str(position.get("event_slug") or ""),
-        end_date=end_date,
-        hours_to_close=hours_to_close,
-        liquidity=0.0,
-        volume=0.0,
-        outcome=str(position.get("outcome") or ""),
-        price=current_price,
-        token_id=token_id,
-        score=0.0,
-        url=str(position.get("url") or ""),
-        best_bid=current_price,
-        best_ask=current_price,
-        tick_size=0.01,
-        accepts_orders=True,
-    )
 
 
 def _noise_fallback_candidates(
@@ -1063,148 +912,6 @@ def _noise_fallback_candidates(
     return picks
 
 
-def _merge_opportunities(target: list, additions: list) -> None:
-    seen_tokens = {opp.candidate.token_id for opp in target if opp.candidate.token_id}
-    for opp in additions:
-        token_id = opp.candidate.token_id
-        if token_id and token_id in seen_tokens:
-            continue
-        target.append(opp)
-        if token_id:
-            seen_tokens.add(token_id)
-    target.sort(key=lambda opp: opp.score, reverse=True)
-
-
-def _smart_cash_pressure_active(settings: Settings, portfolio: Portfolio) -> bool:
-    if not settings.smart_cash_pressure_enabled:
-        return False
-    summary = portfolio.summary()
-    cash = float(summary.get("cash") or 0.0)
-    invested = float(summary.get("invested") or 0.0)
-    unrealized = float(summary.get("unrealized_pnl") or 0.0)
-    equity = cash + invested + unrealized
-    if equity <= 0:
-        return False
-    open_count = int(summary.get("open_positions") or 0)
-    cash_pct = cash / equity
-    return open_count < settings.min_open_positions or cash_pct >= settings.smart_cash_pressure_min_cash_pct
-
-
-def _remaining_deployment_slots(settings: Settings, portfolio: Portfolio, executed_this_tick: int) -> int:
-    open_count = int(portfolio.summary().get("open_positions") or 0)
-    target_slots = max(settings.min_open_positions - open_count - executed_this_tick, 1)
-    if settings.smart_max_orders_per_tick > 0:
-        remaining_orders = max(settings.smart_max_orders_per_tick - executed_this_tick, 1)
-        return max(1, min(target_slots, remaining_orders))
-    return target_slots
-
-
-def _candidate_entry_block_reason(
-    settings: Settings,
-    portfolio: Portfolio,
-    candidate: Candidate,
-    open_categories: dict[str, int],
-) -> str | None:
-    if portfolio.has_open_position(candidate.market_id):
-        return "duplicate_open_market"
-    if portfolio.has_open_token(candidate.token_id):
-        return "duplicate_open_token"
-    if portfolio.has_pending_token(candidate.token_id):
-        return "pending_order_same_token"
-    if portfolio.has_open_event_position(candidate):
-        return "duplicate_open_sports_event"
-    category = market_category(candidate.question, candidate.slug)
-    if (
-        category == "SPORTS"
-        and settings.smart_max_sports_positions >= 0
-        and open_categories.get("SPORTS", 0) >= settings.smart_max_sports_positions
-    ):
-        return "sports_position_cap_reached"
-    if _non_sports_event_remaining_cap(settings, portfolio, candidate) == 0.0:
-        return "non_sports_event_cap_reached"
-    cooldown = _reentry_cooldown_reason(settings, portfolio, candidate)
-    if cooldown:
-        return cooldown
-    return None
-
-
-def _non_sports_event_remaining_cap(
-    settings: Settings,
-    portfolio: Portfolio,
-    candidate: Candidate,
-) -> float | None:
-    cap = settings.smart_non_sports_event_cap_usd
-    if cap <= 0:
-        return None
-    category = market_category(candidate.question, candidate.slug)
-    if category == "SPORTS":
-        return None
-    event_key = _event_key(candidate)
-    if not event_key:
-        return None
-    exposure = 0.0
-    for position in portfolio.positions:
-        if position.get("status") != "open":
-            continue
-        if _event_key(position) != event_key:
-            continue
-        signal = position.get("signal") if isinstance(position.get("signal"), dict) else {}
-        position_category = str(signal.get("category") or "").upper()
-        if not position_category:
-            position_category = market_category(str(position.get("question") or ""), str(position.get("slug") or ""))
-        if position_category == "SPORTS":
-            continue
-        exposure += float(position.get("stake") or 0.0)
-    return round(max(0.0, cap - exposure), 2)
-
-
-def _reentry_cooldown_reason(settings: Settings, portfolio: Portfolio, candidate: Candidate) -> str | None:
-    token_id = str(candidate.token_id or "")
-    event_key = _event_key(candidate)
-    if not token_id and not event_key:
-        return None
-    now = utc_now()
-    for position in portfolio.positions:
-        if position.get("status") != "closed":
-            continue
-        same_token = token_id and str(position.get("token_id") or "") == token_id
-        same_event = event_key and _event_key(position) == event_key
-        if not same_token and not same_event:
-            continue
-        closed_at = parse_dt(str(position.get("closed_at") or ""))
-        if closed_at is None:
-            continue
-        realized_pnl = float(position.get("realized_pnl") or 0.0)
-        cooldown_minutes = (
-            settings.smart_profitable_reentry_cooldown_minutes
-            if realized_pnl > 0
-            else settings.smart_reentry_cooldown_minutes
-        )
-        if cooldown_minutes <= 0:
-            continue
-        age_minutes = (now - closed_at).total_seconds() / 60.0
-        if 0 <= age_minutes < cooldown_minutes:
-            return "recent_profitable_exit_cooldown" if realized_pnl > 0 else "recent_exit_cooldown"
-    return None
-
-
-def _rejection_summary(
-    rejected_signals: list[dict[str, object]],
-    report,
-    pressure_report=None,
-) -> dict[str, int]:
-    summary: dict[str, int] = {}
-    for item in rejected_signals:
-        reason = str(item.get("reason") or "unknown")
-        summary[reason] = summary.get(reason, 0) + 1
-    for source in (report, pressure_report):
-        if source is None:
-            continue
-        for reason, count in dict(getattr(source, "rejected", {}) or {}).items():
-            summary[f"scan_{reason}"] = summary.get(f"scan_{reason}", 0) + int(count)
-    return summary
-
-
 def _reverse_lookup_smart_money_markets(
     settings: Settings,
     smart_data,
@@ -1247,7 +954,7 @@ def _reverse_lookup_smart_money_markets(
     smart_settings = replace(
         settings,
         scan_limit=settings.smart_scan_limit,
-        soon_hours=_smart_entry_horizon_hours(settings),
+        soon_hours=settings.smart_soon_hours,
         min_liquidity_usd=min(settings.min_liquidity_usd, settings.smart_reverse_lookup_min_liquidity_usd),
         min_volume_usd=min(settings.min_volume_usd, settings.smart_reverse_lookup_min_volume_usd),
     )
@@ -1468,7 +1175,7 @@ def _dynamic_max_trade(
     remaining_slots: int,
 ) -> float:
     base = _max_trade_for_signal(settings, signal, strategy, available_cash=portfolio.cash)
-    if settings.smart_cash_floor_pct >= 1:
+    if settings.smart_cash_floor_pct <= 0 or settings.smart_cash_floor_pct >= 1:
         return base
     summary = portfolio.summary()
     cash = float(summary.get("cash") or 0.0)
@@ -1477,11 +1184,7 @@ def _dynamic_max_trade(
     total_equity = cash + invested + unrealized
     if total_equity <= 0:
         return base
-    if strategy == "leaderboard_open_position" and settings.smart_leaderboard_position_cash_pct > 0:
-        return round(max(base, min(cash, total_equity * settings.smart_leaderboard_position_cash_pct)), 2)
-    if strategy == "top10_leaderboard_flow" and settings.smart_top10_flow_cash_pct > 0:
-        return round(max(base, min(cash, total_equity * settings.smart_top10_flow_cash_pct)), 2)
-    target_deployed = total_equity * (1.0 - max(0.0, settings.smart_cash_floor_pct))
+    target_deployed = total_equity * (1.0 - settings.smart_cash_floor_pct)
     remaining_to_deploy = max(0.0, target_deployed - invested)
     if remaining_to_deploy <= 0 or remaining_slots <= 0:
         return base
@@ -1495,63 +1198,8 @@ def _dynamic_max_trade(
         ceiling = max(ceiling, total_equity * settings.smart_max_position_ceiling_pct)
     if ceiling > 0:
         dynamic = min(dynamic, ceiling)
-    cap = _trade_cap_for_signal(settings, signal, strategy, total_equity)
-    if cap > 0:
-        dynamic = min(dynamic, cap)
     dynamic = min(dynamic, cash)
     return round(max(base, dynamic), 2)
-
-
-def _absolute_trade_cap(settings: Settings, strategy: str) -> float:
-    caps = [cap for cap in (settings.max_position_usd, settings.smart_max_trade_usd) if cap > 0]
-    if strategy == "smart_money_starter" and settings.starter_trade_usd > 0:
-        caps.append(settings.starter_trade_usd)
-    return min(caps) if caps else 0.0
-
-
-def _trade_cap_for_signal(
-    settings: Settings,
-    signal: dict[str, object],
-    strategy: str,
-    total_equity: float,
-) -> float:
-    cap = _absolute_trade_cap(settings, strategy)
-    if (
-        strategy == "leaderboard_open_position"
-        and settings.smart_leaderboard_position_cash_pct > 0
-        and total_equity > 0
-    ):
-        leaderboard_cap = total_equity * settings.smart_leaderboard_position_cash_pct
-        cap = max(cap, leaderboard_cap) if cap > 0 else leaderboard_cap
-    if (
-        strategy == "top10_leaderboard_flow"
-        and settings.smart_top10_flow_cash_pct > 0
-        and total_equity > 0
-    ):
-        top10_cap = total_equity * settings.smart_top10_flow_cash_pct
-        cap = max(cap, top10_cap) if cap > 0 else top10_cap
-    if (
-        strategy.startswith("smart_money")
-        and _is_high_conviction_smart_signal(signal)
-        and settings.smart_high_conviction_balance_fraction > 0
-        and total_equity > 0
-    ):
-        high_cap = total_equity * settings.smart_high_conviction_balance_fraction
-        cap = max(cap, high_cap) if cap > 0 else high_cap
-    return cap
-
-
-def _is_high_conviction_smart_signal(signal: dict[str, object]) -> bool:
-    metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
-    consensus = float(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0.0)
-    copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
-    total_trader_pnl = float(metrics.get("total_trader_pnl") or signal.get("total_trader_pnl") or 0.0)
-    value_discount_pct = float(metrics.get("value_discount_pct") or 0.0)
-    if consensus >= 5 and copied_usdc >= 5000:
-        return True
-    if consensus >= 4 and copied_usdc >= 10000 and value_discount_pct >= -0.05:
-        return True
-    return consensus >= 3 and copied_usdc >= 15000 and total_trader_pnl >= 250000 and value_discount_pct >= 0
 
 
 def _max_trade_for_signal(
@@ -1564,8 +1212,6 @@ def _max_trade_for_signal(
     metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
     consensus = int(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0)
     copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
-    total_equity = available_cash or 0.0
-    absolute_cap = _trade_cap_for_signal(settings, signal, strategy, total_equity)
 
     if (
         settings.smart_position_pct > 0
@@ -1575,8 +1221,6 @@ def _max_trade_for_signal(
         size = available_cash * settings.smart_position_pct * quality_mult
         if settings.smart_max_position_ceiling_usd > 0:
             size = min(size, settings.smart_max_position_ceiling_usd)
-        if absolute_cap > 0:
-            size = min(size, absolute_cap)
         if is_crypto_micro:
             size = min(size, settings.smart_crypto_micro_max_trade_usd)
         return round(max(0.0, size), 2)
@@ -1598,8 +1242,6 @@ def _max_trade_for_signal(
         quality_cap = min(settings.max_position_usd, 10.0)
     else:
         quality_cap = min(settings.max_position_usd, 5.0)
-    if absolute_cap > 0:
-        quality_cap = min(quality_cap, absolute_cap)
     return min(base_cap, quality_cap)
 
 
@@ -1635,16 +1277,6 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
             "reason": "peak_profit_protection",
             "shares": current_shares,
         }
-    current_price = float(position.get("current_price") or 0.0)
-    if (
-        settings.smart_lock_gain_price > 0
-        and current_price >= settings.smart_lock_gain_price
-        and current_pnl_pct >= settings.smart_lock_gain_min_pnl_pct
-    ):
-        return {
-            "reason": "lock_gain_near_resolution",
-            "shares": current_shares,
-        }
 
     if (
         settings.smart_trailing_stop_arm_pct > 0
@@ -1658,16 +1290,6 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
                 "reason": "trailing_stop",
                 "shares": current_shares,
             }
-
-    if (
-        settings.smart_recycle_profit_pct > 0
-        and current_pnl_pct >= settings.smart_recycle_profit_pct
-        and _position_age_minutes(position) >= settings.smart_recycle_profit_min_age_minutes
-    ):
-        return {
-            "reason": "recycle_profit",
-            "shares": current_shares,
-        }
 
     exits = position.get("exits", [])
     sold_shares = sum(float(exit_record.get("shares", 0.0)) for exit_record in exits if isinstance(exit_record, dict))
@@ -2135,101 +1757,6 @@ def _journal_stats_last_24h(
     return len(trades), wins, losses, top_w, top_l, 0.0
 
 
-def _read_trade_journal(path: Path) -> list[dict[str, object]]:
-    records: list[dict[str, object]] = []
-    try:
-        with path.open(encoding="utf-8") as fp:
-            for line in fp:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(record, dict):
-                    records.append(record)
-    except (FileNotFoundError, OSError):
-        return []
-    return records
-
-
-def _record_pnl(record: dict[str, object]) -> float:
-    try:
-        return float(record.get("realized_pnl") or 0.0)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _record_closed_at(record: dict[str, object]) -> dt.datetime | None:
-    raw = record.get("closed_at") or record.get("ts")
-    if not raw:
-        return None
-    try:
-        parsed = dt.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=dt.timezone.utc)
-    return parsed.astimezone(dt.timezone.utc)
-
-
-def _portfolio_update_snapshot(settings: Settings) -> dict[str, object]:
-    portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
-    summary = portfolio.summary()
-    open_positions = [
-        position
-        for position in portfolio.positions
-        if position.get("status") == "open"
-    ]
-    open_positions = sorted(
-        open_positions,
-        key=lambda p: float(p.get("unrealized_pnl") or 0.0),
-        reverse=True,
-    )
-    records = _read_trade_journal(settings.trade_journal_path)
-    now = utc_now()
-    today = now.astimezone().date()
-    today_records = [
-        record
-        for record in records
-        if (closed_at := _record_closed_at(record)) is not None
-        and closed_at.astimezone().date() == today
-    ]
-    recent_records = sorted(
-        records,
-        key=lambda record: _record_closed_at(record) or dt.datetime.min.replace(tzinfo=dt.timezone.utc),
-        reverse=True,
-    )
-    open_realized = sum(float(position.get("realized_pnl") or 0.0) for position in open_positions)
-    realized_today = sum(_record_pnl(record) for record in today_records)
-    unrealized = float(summary.get("unrealized_pnl") or 0.0)
-    realized_total = sum(_record_pnl(record) for record in records) + open_realized
-    today_wins = sum(1 for r in today_records if _record_pnl(r) > 0)
-    today_losses = sum(1 for r in today_records if _record_pnl(r) <= 0)
-    all_wins = sum(1 for r in records if _record_pnl(r) > 0)
-    all_losses = sum(1 for r in records if _record_pnl(r) <= 0)
-    return {
-        "timestamp": now.astimezone().strftime("%Y-%m-%d %H:%M"),
-        "cash_usd": float(summary.get("cash") or 0.0),
-        "invested_usd": float(summary.get("invested") or 0.0),
-        "equity_usd": float(summary.get("equity") or 0.0),
-        "unrealized_pnl_usd": unrealized,
-        "realized_total_usd": round(realized_total, 2),
-        "realized_today_usd": round(realized_today, 2),
-        "total_pnl_usd": round(realized_total + unrealized, 2),
-        "today_pnl_usd": round(realized_today + open_realized + unrealized, 2),
-        "trades_today": len(today_records),
-        "wins_today": today_wins,
-        "losses_today": today_losses,
-        "total_wins": all_wins,
-        "total_losses": all_losses,
-        "open_position_count": len(open_positions),
-        "open_positions": open_positions,
-        "recent_trades": recent_records,
-    }
-
-
 def _append_trade_journal(settings: Settings, position: dict[str, object], reason: str) -> None:
     path = settings.trade_journal_path
     try:
@@ -2337,16 +1864,8 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
             position["status"] = "closed"
             position["closed_at"] = utc_now().isoformat()
             position["sync_closed"] = True
-            total_pnl = round(
-                float(position.get("unrealized_pnl") or 0.0)
-                + float(position.get("realized_pnl") or 0.0),
-                2,
-            )
-            position["realized_pnl"] = total_pnl
-            _append_trade_journal(settings, position, "live_sync_closed")
-            report.append({"action": "closed_stale_local_position", "token_id": token_id, "total_pnl": total_pnl})
+            report.append({"action": "closed_stale_local_position", "token_id": token_id})
 
-    to_notify: list[dict[str, object]] = []
     for token_id, item in active_by_token.items():
         position = local_by_token.get(token_id)
         for pending in portfolio.pending_orders or []:
@@ -2356,19 +1875,10 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
         if position is None:
             position = _position_from_live_api(item)
             portfolio.positions.append(position)
-            to_notify.append(position)
             report.append({"action": "imported_live_position", "token_id": token_id, "question": position.get("question")})
         else:
             _update_position_from_live_api(position, item)
-            to_notify.append(position)
             report.append({"action": "updated_live_position", "token_id": token_id, "question": position.get("question")})
-
-    if to_notify:
-        try:
-            notifications.notify_sync_import(to_notify)
-        except Exception as exc:
-            print(f"⚠️  sync notification batch failed: {exc}")
-
     return report
 
 
@@ -2508,35 +2018,32 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
 
         # Hooks post-tick best-effort: drawdown, equity floor, résumé quotidien.
         try:
-            tick_valid = (
-                not result.get("error")
-                and isinstance(result.get("result"), dict)
-                and isinstance(result["result"].get("summary"), dict)
-                and bool(result["result"]["summary"].get("equity"))
+            tick_payload = result.get("result")
+            summary_snap = (
+                tick_payload.get("summary")
+                if isinstance(tick_payload, dict)
+                else None
             )
-            if tick_valid:
-                summary_snap = result["result"]["summary"]
-                equity_val = float(summary_snap.get("equity", 0) or 0)
-                cash_val = float(summary_snap.get("cash", 0) or 0)
-                open_positions_count = int(summary_snap.get("open_positions", 0) or 0)
-                notifications.notify_threshold("drawdown", {"equity_usd": equity_val})
-                notifications.notify_threshold(
-                    "equity_floor",
-                    {
-                        "equity_usd": equity_val,
-                        "open_positions": open_positions_count,
-                        "cash_usd": cash_val,
-                    },
-                )
-            else:
-                equity_val = cash_val = open_positions_count = 0
+            if not isinstance(summary_snap, dict):
+                summary_snap = {}
+            equity_val = float(summary_snap.get("equity", 0) or 0)
+            cash_val = float(summary_snap.get("cash", 0) or 0)
+            open_positions_count = int(summary_snap.get("open_positions", 0) or 0)
+            notifications.notify_threshold("drawdown", {"equity_usd": equity_val})
+            notifications.notify_threshold(
+                "equity_floor",
+                {
+                    "equity_usd": equity_val,
+                    "open_positions": open_positions_count,
+                    "cash_usd": cash_val,
+                },
+            )
             target_hour = int(os.environ.get("TELEGRAM_DAILY_SUMMARY_HOUR", "9"))
             now_local = dt.datetime.now()
             if now_local.hour >= target_hour:
                 trades_24h, wins_24h, losses_24h, top_w, top_l, pct_24h = (
                     _journal_stats_last_24h(settings.trade_journal_path)
                 )
-                portfolio_snapshot = _portfolio_update_snapshot(settings)
                 notifications.notify_daily_summary(
                     {
                         "today": now_local.date().isoformat(),
@@ -2549,31 +2056,7 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                         "losses_24h": losses_24h,
                         "top_winner": top_w,
                         "top_loser": top_l,
-                        "unrealized_pnl_usd": portfolio_snapshot.get("unrealized_pnl_usd", 0.0),
-                        "realized_total_usd": portfolio_snapshot.get("realized_total_usd", 0.0),
-                        "realized_today_usd": portfolio_snapshot.get("realized_today_usd", 0.0),
                     }
-                )
-            notifications.notify_portfolio_update(_portfolio_update_snapshot(settings))
-            # Check open positions for BIG WIN IN PROGRESS
-            portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
-            for position in portfolio.positions:
-                if position.get("status") != "open":
-                    continue
-                entry_price = float(position.get("entry_price", 0.0))
-                current_price = float(position.get("current_price", 0.0))
-                if entry_price <= 0 or current_price <= 0:
-                    continue
-                pnl_pct = (current_price - entry_price) / entry_price * 100.0
-                notifications.notify_threshold(
-                    "big_win_in_progress",
-                    {
-                        "pnl_pct": pnl_pct,
-                        "pnl_usd": float(position.get("unrealized_pnl") or 0.0),
-                        "token_id": str(position.get("token_id", "")),
-                        "market_title": str(position.get("question", "")),
-                        "bid": current_price,
-                    },
                 )
         except Exception as exc:
             print(f"[notif] post-tick hook failed: {exc}", file=sys.stderr, flush=True)
@@ -2605,7 +2088,6 @@ def _build_tick_record(
         "mode": "dry_run" if settings.dry_run else "live",
         "scan_counts": dict(tick_result.get("scan_counts") or {}),
         "actions": _extract_tick_actions(tick_result),
-        "rejection_summary": dict(tick_result.get("rejection_summary") or {}),
         "tuner_changes": dict(tick_result.get("auto_tune_info") or {}),
         "next_tick_at": datetime.fromtimestamp(
             next_tick_at, tz=timezone.utc

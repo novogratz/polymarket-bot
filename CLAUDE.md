@@ -26,7 +26,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - `polymarket_bot/gamma.py` — Gamma client (market scan + reverse-lookup by clob_token_ids).
 - `polymarket_bot/strategy.py` — candidate ranking from Gamma payloads.
 - `polymarket_bot/models.py` — shared dataclasses and parsing helpers.
-- `scripts/run_live_70.sh` — canonical live runner with Pierre's proven config.
+- `scripts/run_live_70.sh` — canonical live runner for ~$90 bankroll.
 - `tests/test_strategy.py` — 52 tests covering scoring, sizing, exit plans, auto-tuner rules.
 
 ## Development workflow
@@ -109,17 +109,18 @@ Use the canonical script to avoid copy-paste pitfalls:
 bash scripts/run_live_70.sh
 ```
 
-The script sets Pierre's proven parameters, with smart-money only (no overlays). Current settings:
+The script is the single source of truth for the live config. Current settings:
 
-- **Sizing**: `POSITION_PCT=0.18`, `MAX_POSITION_CEILING_USD=$150`, `MAX_POSITION_CEILING_PCT=0.30`, `CASH_FLOOR_PCT=0.05`, `HIGH_CONVICTION_BALANCE_FRACTION=0.15`, `MAX_POSITION_USD=$7`, `MAX_TRADE_USD=$7`.
-- **Trader quality**: `MIN_TRADER_PNL=$1k`, `MIN_TRADER_VOLUME=$2k`, `MIN_TRADER_ROI=3%`, MONTH leaderboard, top 100.
-- **Entry filters**: `MIN_CONSENSUS=2`, `MIN_COPIED_USDC=$75`, `MAX_CHASE_PREMIUM=0.13`, `MAX_ENTRY_SLIPPAGE=0.12`, price band 0.03–0.96, max spread 8%, max signal age 10 min, 30 min trade lookback.
-- **Discovery**: reverse-lookup enabled (max 100 tokens, min $50 copied, $200 liquidity, $500 volume).
-- **Activity**: `MIN_OPEN_POSITIONS=7`, deep fallback enabled ($25 min copied). **No leaderboard_position, no top10_flow, no noise fallback** — smart-money only.
-- **Exits**: take-profit ladder at +50%/+100%/+200%/+300%, trailing stop (arm +25%, giveback 50%), peak-protect (arm +100%, floor +40%), stop-loss -40% (15 min), max hold 24h, cohort exit (120 min lookback).
-- **BTC edge**: enabled ($5 max, 8% min edge, 4% max spread, 90% model prob).
-- **Auto-tuner**: enabled (min 30 trades).
-- **Loop**: 20 second interval.
+- `POLYMARKET_ASSUME_LIVE_BALANCE_USD=90`, `POLYMARKET_SYNC_LIVE_POSITIONS=1`.
+- Sizing: `POSITION_PCT=0.18`, `MAX_POSITION_CEILING_USD=150`, `MAX_POSITION_CEILING_PCT=0.30`, `CASH_FLOOR_PCT=0.05` (~95% deployment), `MIN_OPEN_POSITIONS=7`.
+- Trader cohort: leaderboard `MONTH`, top 100, `MIN_TRADER_PNL=$1k`, `MIN_TRADER_VOLUME=$2k`, `MIN_TRADER_ROI=3%`. Parallel fetch with `TRADE_FETCH_CONCURRENCY=24`.
+- Discovery: standard Gamma scan + keyword scan + reverse-lookup of the top 100 tokens with $50+ smart-money flow that aren't already in the scan.
+- Entry filters: `MIN_CONSENSUS=2`, `MIN_COPIED_USDC=$75`, `MAX_CHASE_PREMIUM=0.13`, price band 0.03–0.96, absolute spread ≤8c, relative spread ≤45%, signal staleness ≤10 min.
+- Three-pass scan per tick: strict → relaxed → deep fallback.
+- Exits: take-profit ladder `0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15`, peak-protect arming at +100% and exiting below +40%, trailing stop arming at +25% with 50% giveback, stop-loss -40% (after 15 min in position), resolved-market exit when bid ≥ 0.97, max-hold-time 24h, cohort-sell exit (active SELL detection in 120 min lookback, parallel fetch), near-expiry positive exit. SELLs that are rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
+- BTC edge integrated: at the end of every smart-money tick `btc_edge_once` runs with $5/trade cap and 8% minimum modeled edge over market.
+- Noise fallback: up to 4 trades at $10 each when all three smart-money scans return 0 AND (positions below `MIN_OPEN_POSITIONS` OR cash share above 35% of equity). Tagged `noise_fallback` in the journal.
+- Auto-tune: `SMART_AUTO_TUNE_ENABLED=1` (paused below 30 closed trades; defensive only).
 
 Dashboard at `http://127.0.0.1:8765` by default.
 

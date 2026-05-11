@@ -4,8 +4,6 @@ Aucun appel réseau, aucun appel SDK : tout passe par le ledger / journal
 locaux écrits dans tmp_path.
 """
 
-from __future__ import annotations
-
 import os
 
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"

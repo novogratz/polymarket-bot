@@ -38,8 +38,6 @@ Canonical live config:
 bash scripts/run_live_70.sh
 ```
 
-The live config uses Pierre's proven parameters: $7 max trade, $7 max position, 18% position pct, 15% high-conviction fraction, $1k trader PnL floor, $2k volume floor, 3% ROI floor, 30 min lookback, 10 min max signal age, BTC edge enabled ($5 max). **Smart-money only** — no leaderboard_position, no top10_flow, no noise fallback. The full parameter list is in `scripts/run_live_70.sh`.
-
 A `Makefile` is also provided: `make test`, `make lint`, `make run`, `make dashboard`, `make journal`, `make tune`, `make clean`.
 
 ## Trading rules

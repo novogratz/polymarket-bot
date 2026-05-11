@@ -17,29 +17,14 @@ from polymarket_bot.config import Settings
 from polymarket_bot.models import Candidate, utc_now
 from polymarket_bot.polymarket import ApiCreds, PolymarketClient
 from polymarket_bot.portfolio import Portfolio
-from polymarket_bot.smart_money import (
-    SmartMoneyData,
-    SmartTrade,
-    SmartTrader,
-    choose_leaderboard_open_position,
-    choose_top10_leaderboard_flow,
-    fetch_smart_money_data,
-    market_category,
-    smart_money_signals,
-)
+from polymarket_bot.smart_money import SmartTrade, market_category, smart_money_signals
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
-from polymarket_bot.trading import TradingSession, _is_filled_buy_response, execute_live_sell, execute_live_trade
+from polymarket_bot.trading import _is_filled_buy_response, execute_live_sell, execute_live_trade
 from polymarket_bot.main import (
-    _dynamic_max_trade,
-    _candidate_entry_block_reason,
-    _execute_sell_strategy,
     _is_unfilled_market_order_error,
     _max_trade_for_signal,
-    _noise_fallback_candidates,
-    _portfolio_update_snapshot,
     _sell_plan,
     _smart_discovery_keywords,
-    _terminal_candidate_from_synced_position,
     load_btc_candidates,
 )
 
@@ -143,133 +128,6 @@ class StrategyTests(unittest.TestCase):
 
         self.assertEqual(_smart_discovery_keywords(settings), ["election", "weather", "fed"])
 
-    def test_leaderboard_open_position_picks_most_common_top_50_position(self):
-        class FakeDataClient:
-            def leaderboard(self, *, category, time_period, limit):
-                return [
-                    SmartTrader(f"0x{i}", f"w{i}", 1000.0 - i, 10_000.0, category)
-                    for i in range(50)
-                ]
-
-            def positions(self, *, user, limit=500):
-                index = int(user.replace("0x", ""))
-                if index < 4:
-                    return [{"asset": "common-token", "currentValue": "25"}]
-                if index < 6:
-                    return [{"asset": "other-token", "currentValue": "100"}]
-                return []
-
-        end_date = utc_now() + timedelta(hours=24)
-        common = Candidate(
-            market_id="common",
-            question="Common top wallet position?",
-            slug="common-top-wallet-position",
-            end_date=end_date,
-            hours_to_close=24,
-            liquidity=1000,
-            volume=2000,
-            outcome="Yes",
-            price=0.5,
-            token_id="common-token",
-            score=1,
-            url="https://polymarket.com/event/common",
-            best_bid=0.49,
-            best_ask=0.50,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        other = Candidate(
-            market_id="other",
-            question="Other top wallet position?",
-            slug="other-top-wallet-position",
-            end_date=end_date,
-            hours_to_close=24,
-            liquidity=1000,
-            volume=2000,
-            outcome="Yes",
-            price=0.5,
-            token_id="other-token",
-            score=1,
-            url="https://polymarket.com/event/other",
-            best_bid=0.49,
-            best_ask=0.50,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-
-        signal = choose_leaderboard_open_position(
-            [common, other],
-            Settings(
-                smart_leaderboard_position_enabled=True,
-                smart_leaderboard_position_top_n=50,
-                smart_leaderboard_position_min_wallets=3,
-                smart_leaderboard_position_fetch_concurrency=1,
-                smart_categories="OVERALL",
-                smart_leaderboard_limit=50,
-            ),
-            client=FakeDataClient(),
-        )
-
-        self.assertIsNotNone(signal)
-        self.assertEqual(signal.candidate.token_id, "common-token")
-        self.assertEqual(signal.wallet_count, 4)
-        self.assertEqual(signal.total_position_value, 100.0)
-        self.assertIn("currently hold this same token", signal.to_dict()["selection_reason"])
-
-    def test_top10_leaderboard_flow_uses_only_elite_recent_buys(self):
-        end_date = utc_now() + timedelta(hours=24)
-        candidate = Candidate(
-            market_id="elite",
-            question="Elite top ten buy this?",
-            slug="elite-top-ten-buy-this",
-            end_date=end_date,
-            hours_to_close=24,
-            liquidity=1000,
-            volume=2000,
-            outcome="Yes",
-            price=0.5,
-            token_id="elite-token",
-            score=1,
-            url="https://polymarket.com/event/elite",
-            best_bid=0.49,
-            best_ask=0.50,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        traders = [
-            SmartTrader(f"0x{i}", f"w{i}", 1000.0 - i, 10_000.0, "OVERALL")
-            for i in range(12)
-        ]
-        now_ts = int(utc_now().timestamp())
-        trades = [
-            SmartTrade("0x0", "elite-token", "BUY", 0.48, 200, 96, now_ts, "Elite", "Yes", "elite"),
-            SmartTrade("0x1", "elite-token", "BUY", 0.49, 200, 98, now_ts, "Elite", "Yes", "elite"),
-            SmartTrade("0x11", "ignored-token", "BUY", 0.49, 10000, 4900, now_ts, "Ignored", "Yes", "ignored"),
-        ]
-        data = SmartMoneyData(
-            traders=traders,
-            trades=trades,
-            pnl_by_wallet={trader.wallet.lower(): trader.pnl for trader in traders},
-            traders_used=len(traders),
-        )
-
-        signal = choose_top10_leaderboard_flow(
-            [candidate],
-            Settings(
-                smart_top10_flow_enabled=True,
-                smart_top10_flow_min_consensus=2,
-                smart_top10_flow_min_copied_usdc=100,
-                smart_top10_flow_max_signal_age_minutes=360,
-                smart_min_trade_usd=1,
-            ),
-            data,
-        )
-
-        self.assertIsNotNone(signal)
-        self.assertEqual(signal.candidate.token_id, "elite-token")
-        self.assertEqual(signal.consensus, 2)
-        self.assertEqual(signal.copied_usdc, 194.0)
-
     def test_live_trade_respects_minimum_share_size(self):
         class FakeClient:
             def live_available_balance(self):
@@ -346,12 +204,12 @@ class StrategyTests(unittest.TestCase):
             accepts_orders=True,
         )
         signal = {
-            "consensus": 5,
-            "copied_usdc": 10000,
+            "consensus": 4,
+            "copied_usdc": 2000,
             "avg_copy_price": 0.5,
             "selection_metrics": {
-                "profitable_wallet_count": 5,
-                "copied_usdc": 10000,
+                "profitable_wallet_count": 4,
+                "copied_usdc": 2000,
                 "avg_copy_price": 0.5,
                 "value_score": 0,
                 "value_discount_pct": 0,
@@ -374,103 +232,6 @@ class StrategyTests(unittest.TestCase):
 
         self.assertEqual(result.order["amount"], 50.0)
         self.assertEqual(portfolio.positions[0]["stake"], 50.0)
-
-    def test_live_trade_caps_buy_to_visible_ask_liquidity(self):
-        class FakeClient:
-            def __init__(self):
-                self.amounts = []
-
-            def live_available_balance(self):
-                return 100.0
-
-            def buy_depth_usd(self, candidate, max_price):
-                self.depth_query = (candidate.token_id, max_price)
-                return 20.0
-
-            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
-                self.amounts.append(amount)
-                return {"price": price, "amount": amount, "side": side}, {
-                    "success": True,
-                    "status": "matched",
-                    "orderID": "order-1",
-                    "makingAmount": str(amount),
-                }
-
-        candidate = Candidate(
-            market_id="1",
-            question="Q",
-            slug="q",
-            end_date=utc_now() + timedelta(hours=1),
-            hours_to_close=1,
-            liquidity=1000,
-            volume=2000,
-            outcome="Yes",
-            price=0.5,
-            token_id="token",
-            score=1,
-            url="https://polymarket.com/event/q",
-            best_bid=0.49,
-            best_ask=0.5,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        client = FakeClient()
-        portfolio = Portfolio(cash=100.0, positions=[])
-
-        result = execute_live_trade(
-            client,
-            Settings(
-                trade_fraction=1.0,
-                max_position_usd=100.0,
-                smart_max_trade_usd=100.0,
-                smart_liquidity_sizing_haircut=0.85,
-            ),
-            candidate,
-            portfolio,
-            min_trade_usd=1.0,
-            max_trade_usd=100.0,
-        )
-
-        self.assertEqual(client.depth_query, ("token", 0.51))
-        self.assertEqual(client.amounts, [17.0])
-        self.assertEqual(result.order["amount"], 17.0)
-        self.assertEqual(portfolio.positions[0]["stake"], 17.0)
-
-    def test_trading_session_buy_depth_sums_asks_inside_price_guard(self):
-        class FakeLegacyClient:
-            def get_order_book(self, token_id):
-                self.token_id = token_id
-                return {
-                    "asks": [
-                        {"price": "0.50", "size": "10"},
-                        {"price": "0.51", "size": "20"},
-                        {"price": "0.55", "size": "100"},
-                    ]
-                }
-
-        candidate = Candidate(
-            market_id="1",
-            question="Q",
-            slug="q",
-            end_date=utc_now() + timedelta(hours=1),
-            hours_to_close=1,
-            liquidity=1000,
-            volume=2000,
-            outcome="Yes",
-            price=0.5,
-            token_id="token",
-            score=1,
-            url="https://polymarket.com/event/q",
-            best_bid=0.49,
-            best_ask=0.5,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        legacy = FakeLegacyClient()
-        session = TradingSession(Settings(), legacy, sdk_client=None)
-
-        self.assertEqual(session.buy_depth_usd(candidate, 0.51), 15.2)
-        self.assertEqual(legacy.token_id, "token")
 
     def test_live_trade_rejects_second_position_in_same_sports_event(self):
         class FakeClient:
@@ -588,77 +349,6 @@ class StrategyTests(unittest.TestCase):
                 max_trade_usd=30.0,
             )
 
-    def test_smart_money_trade_uses_cash_floor_not_legacy_exposure_target(self):
-        class FakeClient:
-            def live_available_balance(self):
-                return 52.0
-
-            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
-                return {"price": price, "amount": amount, "side": side}, {
-                    "success": True,
-                    "status": "matched",
-                    "orderID": "order-1",
-                    "makingAmount": str(amount),
-                }
-
-        open_candidate = Candidate(
-            market_id="open",
-            question="Q",
-            slug="q-open",
-            end_date=utc_now() + timedelta(hours=1),
-            hours_to_close=1,
-            liquidity=1000,
-            volume=2000,
-            outcome="Yes",
-            price=0.5,
-            token_id="open-token",
-            score=1,
-            url="https://polymarket.com/event/q-open",
-            best_bid=0.49,
-            best_ask=0.5,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        next_candidate = Candidate(
-            market_id="next",
-            question="Next Q",
-            slug="q-next",
-            end_date=utc_now() + timedelta(hours=1),
-            hours_to_close=1,
-            liquidity=1000,
-            volume=2000,
-            outcome="Yes",
-            price=0.5,
-            token_id="next-token",
-            score=1,
-            url="https://polymarket.com/event/q-next",
-            best_bid=0.49,
-            best_ask=0.5,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        portfolio = Portfolio(cash=52.0, positions=[])
-        self.assertIsNotNone(portfolio.record_live_position(open_candidate, 80.0, entry_price=0.5))
-
-        result = execute_live_trade(
-            FakeClient(),
-            Settings(
-                trade_fraction=0.5,
-                smart_cash_floor_pct=0.10,
-                max_position_usd=20,
-                smart_max_trade_usd=20,
-            ),
-            next_candidate,
-            portfolio,
-            min_trade_usd=1.0,
-            max_trade_usd=20.0,
-            strategy="smart_money",
-            signal={"selection_metrics": {"profitable_wallet_count": 2, "copied_usdc": 1000}},
-        )
-
-        self.assertEqual(result.order["amount"], 20.0)
-        self.assertEqual(portfolio.positions[-1]["stake"], 20.0)
-
     def test_high_flow_two_wallet_trade_can_use_balance_fraction(self):
         class FakeClient:
             def live_available_balance(self):
@@ -719,8 +409,8 @@ class StrategyTests(unittest.TestCase):
             signal=signal,
         )
 
-        self.assertEqual(result.order["amount"], 10.0)
-        self.assertEqual(portfolio.positions[0]["stake"], 10.0)
+        self.assertEqual(result.order["amount"], 50.0)
+        self.assertEqual(portfolio.positions[0]["stake"], 50.0)
 
     def test_live_trade_does_not_record_resting_buy_order(self):
         class FakeClient:
@@ -814,59 +504,6 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(portfolio.positions, [])
         self.assertEqual(portfolio.pending_orders or [], [])
 
-    def test_live_trade_retries_smaller_fok_after_unfilled_error(self):
-        class FakeClient:
-            def __init__(self):
-                self.amounts = []
-
-            def live_available_balance(self):
-                return 50.0
-
-            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
-                self.amounts.append(amount)
-                if len(self.amounts) == 1:
-                    raise RuntimeError("order couldn't be fully filled. FOK orders are fully filled or killed.")
-                return {"price": price, "amount": amount, "side": side}, {
-                    "success": True,
-                    "status": "matched",
-                    "orderID": "order-filled-smaller",
-                    "makingAmount": str(amount),
-                }
-
-        candidate = Candidate(
-            market_id="1",
-            question="Q",
-            slug="q",
-            end_date=utc_now() + timedelta(hours=1),
-            hours_to_close=1,
-            liquidity=1000,
-            volume=2000,
-            outcome="Yes",
-            price=0.5,
-            token_id="token",
-            score=1,
-            url="https://polymarket.com/event/q",
-            best_bid=0.49,
-            best_ask=0.5,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        client = FakeClient()
-        portfolio = Portfolio(cash=50.0, positions=[])
-
-        result = execute_live_trade(
-            client,
-            Settings(trade_fraction=1.0, min_order_shares=5.0),
-            candidate,
-            portfolio,
-            min_trade_usd=1.0,
-            max_trade_usd=25.0,
-        )
-
-        self.assertEqual(client.amounts, [25.0, 12.5])
-        self.assertEqual(result.order["amount"], 12.5)
-        self.assertEqual(portfolio.positions[0]["stake"], 12.5)
-
     def test_fok_unfilled_error_is_skippable(self):
         message = (
             "PolyApiException[status_code=400, error_message={'error': "
@@ -928,60 +565,6 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(position["exits"][0]["order_id"], "sell-1")
         self.assertEqual(portfolio.cash, 20.0)
 
-    def test_take_profit_partial_sell_upgrades_to_minimum_executable_size(self):
-        class FakeClient:
-            def __init__(self):
-                self.sizes = []
-
-            def place_live_order(self, *, candidate, price, size, side="BUY"):
-                self.sizes.append(size)
-                return {"price": price, "size": size, "side": side}, {"success": True, "orderID": "sell-1"}
-
-        candidate = Candidate(
-            market_id="1",
-            question="Q",
-            slug="q",
-            end_date=utc_now() + timedelta(hours=1),
-            hours_to_close=1,
-            liquidity=1000,
-            volume=2000,
-            outcome="Yes",
-            price=0.61,
-            token_id="token",
-            score=1,
-            url="https://polymarket.com/event/q",
-            best_bid=0.61,
-            best_ask=0.62,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        position = {
-            "status": "open",
-            "live": True,
-            "market_id": "1",
-            "outcome": "Yes",
-            "token_id": "token",
-            "entry_price": 0.4,
-            "stake": 4.0,
-            "shares": 10.0,
-            "initial_shares": 10.0,
-            "sell_tiers_hit": [],
-        }
-        portfolio = Portfolio(cash=0.0, positions=[position])
-        client = FakeClient()
-
-        report = _execute_sell_strategy(
-            client,
-            Settings(min_order_shares=5.0, smart_min_sell_usd=1.0),
-            portfolio,
-            [candidate],
-        )
-
-        self.assertEqual(client.sizes, [5.0])
-        self.assertEqual(report[0]["action"], "sell")
-        self.assertEqual(report[0]["reason"], "take_profit_50pct")
-        self.assertEqual(position["sell_tiers_hit"], ["0.5"])
-
     def test_sell_plan_uses_profit_tiers_and_peak_protection(self):
         position = {
             "shares": 100.0,
@@ -1000,195 +583,8 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(protected["reason"], "peak_profit_protection")
         self.assertEqual(protected["shares"], 100.0)
 
-    def test_terminal_synced_position_builds_sell_candidate_at_threshold(self):
-        position = {
-            "market_id": "m1",
-            "question": "Will Kashiwa Reysol win?",
-            "slug": "kashiwa-reysol",
-            "event_slug": "kashiwa-reysol",
-            "outcome": "Yes",
-            "token_id": "token",
-            "current_price": 0.9995,
-            "end_date": (utc_now() + timedelta(hours=1)).isoformat(),
-        }
-
-        candidate = _terminal_candidate_from_synced_position(
-            position,
-            Settings(smart_resolved_exit_threshold=0.98),
-        )
-
-        self.assertIsNotNone(candidate)
-        self.assertEqual(candidate.token_id, "token")
-        self.assertEqual(candidate.best_bid, 0.9995)
-        self.assertTrue(candidate.accepts_orders)
-
-    def test_terminal_synced_position_waits_below_threshold(self):
-        candidate = _terminal_candidate_from_synced_position(
-            {"token_id": "token", "current_price": 0.97},
-            Settings(smart_resolved_exit_threshold=0.98, smart_lock_gain_price=0.0),
-        )
-
-        self.assertIsNone(candidate)
-
-    def test_sell_strategy_skips_below_minimum_dust_without_order(self):
-        class TripwireClient:
-            def place_live_order(self, **_kwargs):
-                raise AssertionError("dust sell should not reach trading client")
-
-        candidate = Candidate(
-            market_id="1",
-            question="Q",
-            slug="q",
-            end_date=utc_now() + timedelta(hours=1),
-            hours_to_close=1,
-            liquidity=1000,
-            volume=2000,
-            outcome="Yes",
-            price=0.99,
-            token_id="token",
-            score=1,
-            url="https://polymarket.com/event/q",
-            best_bid=0.99,
-            best_ask=1.0,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        position = {
-            "status": "open",
-            "live": True,
-            "market_id": "1",
-            "outcome": "Yes",
-            "token_id": "token",
-            "entry_price": 0.40,
-            "stake": 0.30,
-            "shares": 0.75,
-            "initial_shares": 0.75,
-        }
-        portfolio = Portfolio(cash=0.0, positions=[position])
-
-        report = _execute_sell_strategy(
-            TripwireClient(),
-            Settings(min_order_shares=5.0, smart_resolved_exit_threshold=0.98),
-            portfolio,
-            [candidate],
-        )
-
-        self.assertEqual(report[0]["action"], "skip_sell")
-        self.assertEqual(report[0]["reason"], "below_minimum_sell_shares")
-        self.assertEqual(position["sell_blocked_reason"], "below_minimum_sell_shares")
-
-    def test_sell_strategy_skips_below_minimum_proceeds_without_alert(self):
-        class TripwireClient:
-            def place_live_order(self, **_kwargs):
-                raise AssertionError("dust sell should not reach trading client")
-
-        candidate = Candidate(
-            market_id="1",
-            question="Q",
-            slug="q",
-            end_date=utc_now() + timedelta(hours=1),
-            hours_to_close=1,
-            liquidity=1000,
-            volume=2000,
-            outcome="Yes",
-            price=0.18,
-            token_id="token",
-            score=1,
-            url="https://polymarket.com/event/q",
-            best_bid=0.18,
-            best_ask=0.19,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        position = {
-            "status": "open",
-            "live": True,
-            "market_id": "1",
-            "outcome": "Yes",
-            "token_id": "token",
-            "entry_price": 0.17,
-            "stake": 0.50,
-            "shares": 5.0,
-            "initial_shares": 5.0,
-        }
-        portfolio = Portfolio(cash=0.0, positions=[position])
-
-        report = _execute_sell_strategy(
-            TripwireClient(),
-            Settings(min_order_shares=5.0, smart_min_sell_usd=1.0, smart_resolved_exit_threshold=0.0),
-            portfolio,
-            [candidate],
-            cohort_exit_tokens={"token": "cohort_sold"},
-        )
-
-        self.assertEqual(report[0]["action"], "skip_sell")
-        self.assertEqual(report[0]["reason"], "below_minimum_sell_usd")
-        self.assertEqual(report[0]["expected_proceeds"], 0.9)
-        self.assertEqual(position["sell_blocked_reason"], "below_minimum_sell_usd")
-
     def test_sell_plan_max_hold_time_force_exits_stale_positions(self):
         old_open = (utc_now() - timedelta(hours=30)).isoformat()
-        position = {
-            "shares": 100.0,
-            "initial_shares": 100.0,
-            "peak_pnl_pct": 0.10,
-            "sell_tiers_hit": [],
-            "exits": [],
-            "opened_at": old_open,
-        }
-        settings = Settings(
-            smart_max_hold_hours=24,
-            smart_take_profit_tiers="1.0:0.50",
-            smart_stop_loss_pct=0.0,
-            smart_trailing_stop_arm_pct=0.0,
-        )
-        plan = _sell_plan(position, 0.05, settings)
-        self.assertEqual(plan["reason"], "max_hold_time_reached")
-        self.assertEqual(plan["shares"], 100.0)
-
-    def test_sell_plan_recycles_mature_profit_before_long_hold(self):
-        opened = (utc_now() - timedelta(hours=2)).isoformat()
-        position = {
-            "shares": 100.0,
-            "initial_shares": 100.0,
-            "peak_pnl_pct": 0.22,
-            "sell_tiers_hit": [],
-            "exits": [],
-            "opened_at": opened,
-        }
-        settings = Settings(
-            smart_recycle_profit_pct=0.20,
-            smart_recycle_profit_min_age_minutes=60,
-            smart_take_profit_tiers="0.50:0.25",
-            smart_max_hold_hours=24,
-            smart_stop_loss_pct=0.0,
-            smart_trailing_stop_arm_pct=0.0,
-        )
-        plan = _sell_plan(position, 0.21, settings)
-        self.assertEqual(plan["reason"], "recycle_profit")
-        self.assertEqual(plan["shares"], 100.0)
-
-    def test_sell_plan_does_not_recycle_fresh_profit(self):
-        opened = (utc_now() - timedelta(minutes=10)).isoformat()
-        position = {
-            "shares": 100.0,
-            "initial_shares": 100.0,
-            "peak_pnl_pct": 0.22,
-            "sell_tiers_hit": [],
-            "exits": [],
-            "opened_at": opened,
-        }
-        settings = Settings(
-            smart_recycle_profit_pct=0.20,
-            smart_recycle_profit_min_age_minutes=60,
-            smart_take_profit_tiers="0.50:0.25",
-            smart_stop_loss_pct=0.0,
-            smart_trailing_stop_arm_pct=0.0,
-        )
-        self.assertIsNone(_sell_plan(position, 0.21, settings))
-
-    def test_sell_plan_accepts_naive_opened_at_as_utc(self):
-        old_open = (utc_now() - timedelta(hours=30)).replace(tzinfo=None).isoformat()
         position = {
             "shares": 100.0,
             "initial_shares": 100.0,
@@ -1237,25 +633,6 @@ class StrategyTests(unittest.TestCase):
         plan = _sell_plan(position, 0.55, Settings())
         self.assertEqual(plan["reason"], "take_profit_50pct")
         self.assertEqual(plan["shares"], 25.0)
-
-    def test_sell_plan_locks_near_resolution_gain_before_partial_tiers(self):
-        position = {
-            "shares": 100.0,
-            "initial_shares": 100.0,
-            "current_price": 0.97,
-            "peak_pnl_pct": 0.30,
-            "sell_tiers_hit": [],
-            "exits": [],
-        }
-        settings = Settings(
-            smart_lock_gain_price=0.95,
-            smart_lock_gain_min_pnl_pct=0.20,
-            smart_take_profit_tiers="0.5:0.25,1.0:0.50",
-            smart_trailing_stop_arm_pct=0.0,
-        )
-        plan = _sell_plan(position, 0.30, settings)
-        self.assertEqual(plan["reason"], "lock_gain_near_resolution")
-        self.assertEqual(plan["shares"], 100.0)
 
     def test_sell_plan_stop_loss_triggers_after_min_age(self):
         old_open = (utc_now() - timedelta(hours=2)).isoformat()
@@ -1490,94 +867,6 @@ class StrategyTests(unittest.TestCase):
         keywords = {call.get("question_contains") for call in FakeGammaClient.calls if call.get("question_contains")}
         self.assertEqual(keywords, {"bitcoin", "btc"})
         self.assertTrue(any(candidate.token_id == "yes-token" for candidate in candidates))
-
-    def test_sync_live_position_import_sends_buy_notification(self):
-        import polymarket_bot.main as main_module
-
-        class FakeDataApiClient:
-            def __init__(self, base_url):
-                self.base_url = base_url
-
-            def positions(self, user):
-                self.user = user
-                return [
-                    {
-                        "asset": "token-live",
-                        "size": "12",
-                        "currentValue": "6",
-                        "initialValue": "5.40",
-                        "avgPrice": "0.45",
-                        "curPrice": "0.50",
-                        "conditionId": "condition-1",
-                        "title": "Will Bitcoin be above $100,000 today?",
-                        "slug": "will-bitcoin-be-above-100000-today",
-                        "eventSlug": "will-bitcoin-be-above-100000-today",
-                        "outcome": "Yes",
-                    }
-                ]
-
-        portfolio = Portfolio(cash=100.0, positions=[])
-        sent: list[dict] = []
-        original_client = main_module.DataApiClient
-        try:
-            main_module.DataApiClient = FakeDataApiClient
-            notifications = main_module.notifications
-            notifications.set_transport_for_test(lambda payload: sent.append(payload) or True)
-            os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
-            os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
-            report = main_module._sync_live_positions(
-                Settings(funder_address="0xfunder"),
-                portfolio,
-            )
-            report_again = main_module._sync_live_positions(
-                Settings(funder_address="0xfunder"),
-                portfolio,
-            )
-        finally:
-            main_module.DataApiClient = original_client
-            main_module.notifications._reset_for_tests()
-            os.environ.pop("TELEGRAM_BOT_TOKEN", None)
-            os.environ.pop("TELEGRAM_CHAT_ID_LIVE", None)
-
-        self.assertEqual(report[0]["action"], "imported_live_position")
-        self.assertEqual(report_again[0]["action"], "updated_live_position")
-        self.assertEqual(len(sent), 1)
-        self.assertIn("BUY", sent[0]["text"])
-        self.assertIn("Pick: *Yes*", sent[0]["text"])
-        self.assertIn("Tag: `live_sync`", sent[0]["text"])
-        self.assertTrue(portfolio.positions[0].get("telegram_buy_notified"))
-
-    def test_fetch_smart_money_data_caps_qualified_traders_by_pnl(self):
-        class FakeClient:
-            pulled: list[str] = []
-
-            def leaderboard(self, *, category, time_period, limit):
-                return [
-                    SmartTrader(wallet=f"0x{i}", username="", pnl=float(i), volume=1000.0, category=category)
-                    for i in range(5)
-                ]
-
-            def trades(self, *, user, start, limit=100, side="BUY"):
-                self.pulled.append(user)
-                return [
-                    SmartTrade(user, f"asset-{user}", "BUY", 0.5, 10.0, 5.0, 1, "Q", "Yes", "q")
-                ]
-
-        client = FakeClient()
-        data = fetch_smart_money_data(
-            Settings(
-                smart_categories="OVERALL",
-                smart_time_periods="MONTH",
-                smart_leaderboard_limit=5,
-                smart_max_traders=2,
-                smart_trade_fetch_concurrency=1,
-            ),
-            client=client,
-        )
-
-        self.assertEqual(data.traders_used, 2)
-        self.assertEqual(client.pulled, ["0x4", "0x3"])
-        self.assertEqual(len(data.trades), 2)
 
     def test_smart_money_requires_consensus(self):
         candidate = Candidate(
@@ -1825,77 +1114,6 @@ class StrategyTests(unittest.TestCase):
             [candidate],
             trades,
             Settings(smart_max_hours_to_close=24, smart_min_trade_usd=1),
-            include_details=True,
-        )
-
-        self.assertEqual(signals, [])
-        self.assertEqual(details["rejected"]["too_far_to_expiry"], 1)
-
-    def test_smart_money_rejects_unknown_expiry(self):
-        candidate = Candidate(
-            market_id="1",
-            question="Will the market resolve Yes?",
-            slug="unknown-expiry-market",
-            end_date=None,
-            hours_to_close=None,
-            liquidity=10000,
-            volume=50000,
-            outcome="Yes",
-            price=0.5,
-            token_id="yes-token",
-            score=10,
-            url="https://polymarket.com/event/unknown-expiry-market",
-            best_bid=0.49,
-            best_ask=0.50,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        trades = [
-            SmartTrade("0x1", "yes-token", "BUY", 0.49, 100, 49, 1, "Unknown market", "Yes", "market"),
-            SmartTrade("0x2", "yes-token", "BUY", 0.50, 100, 50, 1, "Unknown market", "Yes", "market"),
-        ]
-
-        signals, details = smart_money_signals(
-            [candidate],
-            trades,
-            Settings(smart_min_trade_usd=1),
-            include_details=True,
-        )
-
-        self.assertEqual(signals, [])
-        self.assertEqual(details["rejected"]["unknown_expiry"], 1)
-
-    def test_smart_money_entry_horizon_caps_to_one_week(self):
-        candidate = Candidate(
-            market_id="1",
-            question="Will the next-month market resolve Yes?",
-            slug="next-month-market",
-            end_date=utc_now() + timedelta(hours=200),
-            hours_to_close=200,
-            liquidity=10000,
-            volume=50000,
-            outcome="Yes",
-            price=0.5,
-            token_id="yes-token",
-            score=10,
-            url="https://polymarket.com/event/next-month-market",
-            best_bid=0.49,
-            best_ask=0.50,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        trades = [
-            SmartTrade("0x1", "yes-token", "BUY", 0.49, 100, 49, 1, "Next month", "Yes", "market"),
-            SmartTrade("0x2", "yes-token", "BUY", 0.50, 100, 50, 1, "Next month", "Yes", "market"),
-        ]
-
-        signals, details = smart_money_signals(
-            [candidate],
-            trades,
-            Settings(
-                smart_max_hours_to_close=720,
-                smart_min_trade_usd=1,
-            ),
             include_details=True,
         )
 
@@ -2243,84 +1461,6 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(len(signals), 1)
         self.assertEqual(signals[0].candidate.token_id, "btc-token")
 
-    def test_live_crypto_profile_allows_mid_price_two_wallet_signal(self):
-        candidate = Candidate(
-            market_id="1",
-            question="Will Ethereum be above $4,000 tomorrow?",
-            slug="will-ethereum-be-above-4000-tomorrow",
-            end_date=utc_now() + timedelta(hours=18),
-            hours_to_close=18,
-            liquidity=10000,
-            volume=50000,
-            outcome="Yes",
-            price=0.56,
-            token_id="eth-token",
-            score=10,
-            url="https://polymarket.com/event/will-ethereum-be-above-4000-tomorrow",
-            best_bid=0.55,
-            best_ask=0.56,
-            tick_size=0.01,
-            accepts_orders=True,
-        )
-        trades = [
-            SmartTrade("0x1", "eth-token", "BUY", 0.56, 500, 280, 1, "ETH", "Yes", "eth"),
-            SmartTrade("0x2", "eth-token", "BUY", 0.56, 500, 280, 1, "ETH", "Yes", "eth"),
-        ]
-
-        signals = smart_money_signals(
-            [candidate],
-            trades,
-            Settings(
-                smart_allow_crypto=True,
-                smart_crypto_min_buy_price=0.55,
-                smart_crypto_min_hours_to_close=0.75,
-                smart_crypto_max_hours_to_close=72,
-                smart_crypto_min_consensus=2,
-                smart_crypto_min_copied_usdc=500,
-                smart_min_copied_usdc=50,
-                smart_min_trade_usd=1,
-            ),
-        )
-
-        self.assertEqual(len(signals), 1)
-        self.assertEqual(signals[0].candidate.token_id, "eth-token")
-
-    def test_noise_fallback_profile_stays_small_and_capped(self):
-        candidates = [
-            Candidate(
-                market_id=str(i),
-                question=f"Will team {i} win?",
-                slug=f"team-{i}",
-                end_date=utc_now() + timedelta(hours=6),
-                hours_to_close=6,
-                liquidity=10000,
-                volume=50000,
-                outcome="Yes",
-                price=0.5,
-                token_id=f"token-{i}",
-                score=10 - i,
-                url=f"https://polymarket.com/event/team-{i}",
-                best_bid=0.49,
-                best_ask=0.50,
-                tick_size=0.01,
-                accepts_orders=True,
-            )
-            for i in range(4)
-        ]
-        settings = Settings(
-            smart_noise_fallback_enabled=True,
-            smart_noise_fallback_max_trades_per_tick=2,
-            smart_noise_fallback_max_trade_usd=3,
-            smart_noise_fallback_cash_pressure_pct=0.30,
-            min_open_positions=12,
-        )
-        portfolio = Portfolio(cash=100.0, positions=[])
-
-        picks = _noise_fallback_candidates(settings, portfolio, candidates, open_categories={})
-
-        self.assertEqual([pick.token_id for pick in picks], ["token-0", "token-1"])
-        self.assertEqual(settings.smart_noise_fallback_max_trade_usd, 3)
-
     def test_crypto_allowed_requires_high_buy_price(self):
         candidate = Candidate(
             market_id="1",
@@ -2386,8 +1526,6 @@ class StrategyTests(unittest.TestCase):
     def test_max_trade_percentage_sizing_scales_with_cash(self):
         settings = Settings(
             smart_position_pct=0.10,
-            max_position_usd=100.0,
-            smart_max_trade_usd=100.0,
             smart_max_position_ceiling_usd=50.0,
             smart_crypto_micro_max_trade_usd=5.0,
         )
@@ -2498,160 +1636,6 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(len(portfolio.positions), 1)
         self.assertEqual(portfolio.positions[0]["shares"], 5.0)
 
-    def test_portfolio_update_snapshot_reports_net_today_pnl(self):
-        import json
-        import tempfile
-        from pathlib import Path
-
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            state_path = tmp_path / "state.json"
-            journal_path = tmp_path / "journal.jsonl"
-            now = utc_now()
-            state_path.write_text(json.dumps({
-                "cash": 50.0,
-                "pending_orders": [],
-                "positions": [
-                    {
-                        "status": "open",
-                        "stake": 100.0,
-                        "unrealized_pnl": 25.0,
-                        "realized_pnl": 3.0,
-                    }
-                ],
-            }))
-            journal_path.write_text(json.dumps({
-                "closed_at": now.isoformat(),
-                "realized_pnl": -10.0,
-            }) + "\n")
-
-            snapshot = _portfolio_update_snapshot(
-                Settings(state_path=state_path, trade_journal_path=journal_path)
-            )
-
-        self.assertEqual(snapshot["realized_today_usd"], -10.0)
-        self.assertEqual(snapshot["today_pnl_usd"], 18.0)
-        self.assertEqual(snapshot["total_pnl_usd"], 18.0)
-
-    def test_dynamic_max_trade_uses_cash_floor_to_deploy_idle_cash(self):
-        settings = Settings(
-            smart_position_pct=0.30,
-            max_position_usd=100.0,
-            smart_max_trade_usd=100.0,
-            smart_cash_floor_pct=0.02,
-            smart_max_position_ceiling_usd=150.0,
-            smart_max_position_ceiling_pct=0.40,
-        )
-        signal = {
-            "consensus": 4,
-            "selection_metrics": {"profitable_wallet_count": 4, "copied_usdc": 2000},
-        }
-        portfolio = Portfolio(
-            cash=100.0,
-            positions=[
-                {
-                    "status": "open",
-                    "stake": 100.0,
-                    "current_value": 100.0,
-                    "unrealized_pnl": 0.0,
-                }
-            ],
-        )
-
-        self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=2), 96.0)
-
-    def test_percentage_sizing_never_exceeds_absolute_trade_cap_for_normal_signal(self):
-        settings = Settings(
-            smart_position_pct=0.50,
-            max_position_usd=25.0,
-            smart_max_trade_usd=25.0,
-            smart_max_position_ceiling_usd=150.0,
-            smart_max_position_ceiling_pct=0.80,
-        )
-        signal = {
-            "consensus": 4,
-            "selection_metrics": {"profitable_wallet_count": 4, "copied_usdc": 2000},
-        }
-        portfolio = Portfolio(cash=250.0, positions=[])
-
-        self.assertEqual(_max_trade_for_signal(settings, signal, "smart_money", available_cash=250.0), 25.0)
-        self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=1), 25.0)
-
-    def test_live_profile_sizing_deploys_more_idle_cash_per_signal(self):
-        settings = Settings(
-            smart_position_pct=0.18,
-            max_position_usd=25.0,
-            smart_max_trade_usd=25.0,
-            smart_cash_floor_pct=0.0,
-            smart_max_position_ceiling_usd=35.0,
-            smart_max_position_ceiling_pct=0.14,
-        )
-        signal = {
-            "consensus": 4,
-            "selection_metrics": {"profitable_wallet_count": 4, "copied_usdc": 2000},
-        }
-        portfolio = Portfolio(cash=250.0, positions=[])
-
-        self.assertEqual(_max_trade_for_signal(settings, signal, "smart_money", available_cash=250.0), 25.0)
-        self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=16), 25.0)
-
-    def test_high_conviction_dynamic_sizing_can_exceed_normal_trade_cap(self):
-        settings = Settings(
-            smart_position_pct=0.50,
-            smart_high_conviction_balance_fraction=0.60,
-            max_position_usd=25.0,
-            smart_max_trade_usd=25.0,
-            smart_max_position_ceiling_usd=150.0,
-            smart_max_position_ceiling_pct=0.80,
-            smart_cash_floor_pct=0.0,
-        )
-        signal = {
-            "consensus": 5,
-            "selection_metrics": {"profitable_wallet_count": 5, "copied_usdc": 10000},
-        }
-        portfolio = Portfolio(cash=250.0, positions=[])
-
-        self.assertEqual(_max_trade_for_signal(settings, signal, "smart_money", available_cash=250.0), 150.0)
-        self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=1), 150.0)
-
-    def test_leaderboard_open_position_sizing_targets_thirty_percent_cash(self):
-        settings = Settings(
-            smart_position_pct=0.10,
-            max_position_usd=25.0,
-            smart_max_trade_usd=25.0,
-            smart_leaderboard_position_cash_pct=0.30,
-        )
-        signal = {
-            "consensus": 4,
-            "copied_usdc": 100.0,
-            "selection_metrics": {"leaderboard_open_position": True, "profitable_wallet_count": 4},
-        }
-        portfolio = Portfolio(cash=250.0, positions=[])
-
-        self.assertEqual(
-            _dynamic_max_trade(settings, signal, "leaderboard_open_position", portfolio, remaining_slots=1),
-            75.0,
-        )
-
-    def test_top10_leaderboard_flow_sizing_targets_cash_percentage(self):
-        settings = Settings(
-            smart_position_pct=0.10,
-            max_position_usd=25.0,
-            smart_max_trade_usd=25.0,
-            smart_top10_flow_cash_pct=0.25,
-        )
-        signal = {
-            "consensus": 2,
-            "copied_usdc": 194.0,
-            "selection_metrics": {"profitable_wallet_count": 2},
-        }
-        portfolio = Portfolio(cash=240.0, positions=[])
-
-        self.assertEqual(
-            _dynamic_max_trade(settings, signal, "top10_leaderboard_flow", portfolio, remaining_slots=1),
-            60.0,
-        )
-
 
 class MarketCategoryTests(unittest.TestCase):
     def test_inflation_is_not_sports(self):
@@ -2704,7 +1688,7 @@ class PortfolioDedupTests(unittest.TestCase):
             event_slug=event_slug,
         )
 
-    def test_event_dedupe_allows_non_sports_same_event_until_cap(self):
+    def test_event_dedupe_blocks_no_when_yes_open_on_non_sports_market(self):
         portfolio = Portfolio(cash=50.0, positions=[])
         yes_candidate = self._make_candidate(
             market_id="seoul-yes",
@@ -2719,17 +1703,7 @@ class PortfolioDedupTests(unittest.TestCase):
             token_id="tok-no",
             event_slug="seoul-temp-may-9",
         )
-        self.assertFalse(portfolio.has_open_event_position(no_candidate))
-        self.assertIsNone(_candidate_entry_block_reason(Settings(), portfolio, no_candidate, {}))
-        self.assertEqual(
-            _candidate_entry_block_reason(
-                Settings(smart_non_sports_event_cap_usd=4.0),
-                portfolio,
-                no_candidate,
-                {},
-            ),
-            "non_sports_event_cap_reached",
-        )
+        self.assertTrue(portfolio.has_open_event_position(no_candidate))
 
     def test_event_dedupe_does_not_block_unrelated_event(self):
         portfolio = Portfolio(cash=50.0, positions=[])

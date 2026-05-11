@@ -252,12 +252,13 @@ class TradingSession:
                 order_args_cls = getattr(module, "OrderArgs", None)
                 order_type_cls = getattr(module, "OrderType", None)
                 partial_options_cls = getattr(module, "PartialCreateOrderOptions", None)
-                if order_args_cls and order_type_cls and partial_options_cls:
+                side_cls = getattr(module, "Side", None)
+                if order_args_cls and order_type_cls and partial_options_cls and side_cls:
                     order_args = order_args_cls(
                         token_id=candidate.token_id or "",
                         price=price,
                         size=size,
-                        side=side,
+                        side=getattr(side_cls, side, side),
                     )
                     options = partial_options_cls(
                         tick_size=str(candidate.tick_size or "0.01"),
@@ -269,7 +270,7 @@ class TradingSession:
                         try:
                             response = method(order_args=order_args, options=options, order_type=order_type)
                         except TypeError:
-                            response = method(order_args=order_args, options=options)
+                            response = method(order_args, options, order_type)
                         order_dict = {
                             "tokenId": candidate.token_id,
                             "price": price,
@@ -307,34 +308,27 @@ class TradingSession:
                 market_order_args_cls = getattr(module, "MarketOrderArgs", None)
                 order_type_cls = getattr(module, "OrderType", None)
                 partial_options_cls = getattr(module, "PartialCreateOrderOptions", None)
-                if market_order_args_cls and order_type_cls and partial_options_cls:
+                side_cls = getattr(module, "Side", None)
+                if market_order_args_cls and order_type_cls and partial_options_cls and side_cls:
                     order_args = market_order_args_cls(
                         token_id=candidate.token_id or "",
                         amount=amount,
-                        side=side,
+                        side=getattr(side_cls, side, side),
                         price=price,
+                        order_type=getattr(order_type_cls, "FOK", "FOK"),
+                        user_usdc_balance=amount if side == "BUY" else 0,
                     )
                     options = partial_options_cls(
                         tick_size=str(candidate.tick_size or "0.01"),
                         neg_risk=candidate.neg_risk,
                     )
-                    create_method = getattr(self.sdk_client, "create_market_order", None)
-                    post_method = getattr(self.sdk_client, "post_order", None)
-                    market_method = getattr(self.sdk_client, "create_and_post_market_order", None)
-                    if callable(market_method):
-                        response = market_method(order_args=order_args, options=options, order_type=getattr(order_type_cls, "FOK", "FOK"))
-                        order_dict = {
-                            "tokenId": candidate.token_id,
-                            "amount": amount,
-                            "price": price,
-                            "side": side,
-                            "orderType": "FOK",
-                            "signatureType": self.settings.signature_type,
-                        }
-                        return order_dict, response
-                    if callable(create_method) and callable(post_method):
-                        signed_order = create_method(order_args=order_args, options=options)
-                        response = post_method(signed_order, getattr(order_type_cls, "FOK", "FOK"))
+                    method = getattr(self.sdk_client, "create_and_post_market_order", None)
+                    if callable(method):
+                        response = method(
+                            order_args=order_args,
+                            options=options,
+                            order_type=getattr(order_type_cls, "FOK", "FOK"),
+                        )
                         order_dict = {
                             "tokenId": candidate.token_id,
                             "amount": amount,
@@ -346,29 +340,6 @@ class TradingSession:
                         return order_dict, response
 
         return self.place_live_order(candidate=candidate, price=price, size=amount, side=side)
-
-    def buy_depth_usd(self, candidate: Candidate, max_price: float) -> float | None:
-        token_id = candidate.token_id or ""
-        if not token_id:
-            return None
-        try:
-            book = self.legacy_client.get_order_book(token_id)
-        except Exception:
-            return None
-        asks = book.get("asks") if isinstance(book, dict) else None
-        if not isinstance(asks, list):
-            return None
-        depth = 0.0
-        for level in asks:
-            if not isinstance(level, dict):
-                continue
-            price = _amount(level.get("price") or level.get("p"))
-            size = _amount(level.get("size") or level.get("s"))
-            if price <= 0 or size <= 0:
-                continue
-            if price <= max_price:
-                depth += price * size
-        return round(depth, 2)
 
     def cancel_order(self, order_id: str) -> Any:
         if self.sdk_client is not None:
@@ -504,18 +475,12 @@ def execute_live_trade(
     if live_balance <= 0:
         raise ValueError("no live balance available")
 
-    # Target exposure sizing. Smart-money entries are already sized by the
-    # allocator in main.py, so only reserve the configured cash floor here.
+    # Target exposure sizing: deploy until invested capital reaches the configured equity fraction.
     summary = portfolio.summary()
     current_exposure = float(summary.get("invested", 0.0))
     total_equity = live_balance + current_exposure
-    is_smart_money = bool(strategy and strategy.startswith("smart_money"))
-    if is_smart_money:
-        cash_floor = total_equity * max(0.0, min(settings.smart_cash_floor_pct, 1.0))
-        needed_usd = max(0.0, live_balance - cash_floor)
-    else:
-        target_total_exposure = total_equity * settings.trade_fraction
-        needed_usd = max(0.0, target_total_exposure - current_exposure)
+    target_total_exposure = total_equity * settings.trade_fraction
+    needed_usd = max(0.0, target_total_exposure - current_exposure)
     
     # Sizing logic
     minimum = min_trade_usd if min_trade_usd is not None else settings.btc_min_trade_usd
@@ -536,16 +501,6 @@ def execute_live_trade(
         if _is_high_conviction_signal(signal) and settings.smart_high_conviction_balance_fraction > 0:
             maximum = max(maximum, live_balance * settings.smart_high_conviction_balance_fraction)
             maximum = min(maximum, live_balance)
-        absolute_caps = [cap for cap in (settings.max_position_usd, settings.smart_max_trade_usd) if cap > 0]
-        if absolute_caps:
-            absolute_cap = min(absolute_caps)
-            if strategy == "leaderboard_open_position" and settings.smart_leaderboard_position_cash_pct > 0:
-                absolute_cap = max(absolute_cap, live_balance * settings.smart_leaderboard_position_cash_pct)
-            if strategy == "top10_leaderboard_flow" and settings.smart_top10_flow_cash_pct > 0:
-                absolute_cap = max(absolute_cap, live_balance * settings.smart_top10_flow_cash_pct)
-            if _is_high_conviction_signal(signal) and settings.smart_high_conviction_balance_fraction > 0:
-                absolute_cap = max(absolute_cap, live_balance * settings.smart_high_conviction_balance_fraction)
-            maximum = min(maximum, absolute_cap)
     
     # Use the needed amount, but capped by available balance and max per trade
     stake = min(needed_usd, live_balance, maximum)
@@ -557,16 +512,6 @@ def execute_live_trade(
     min_share_stake = settings.min_order_shares * entry_price
     if stake > 0 and live_balance >= min_share_stake:
         stake = max(stake, min_share_stake)
-
-    if settings.smart_liquidity_sizing_enabled and not settings.dry_run:
-        depth_method = getattr(client, "buy_depth_usd", None)
-        depth_usd = depth_method(candidate, entry_price) if callable(depth_method) else None
-        if depth_usd is not None:
-            haircut = max(0.0, min(settings.smart_liquidity_sizing_haircut, 1.0))
-            fillable_usd = round(depth_usd * haircut, 2)
-            if fillable_usd <= 0:
-                raise ValueError("no visible ask liquidity at price guard")
-            stake = min(stake, fillable_usd)
     
     stake = round(min(stake, live_balance), 2)
     if stake <= 0:
@@ -616,15 +561,9 @@ def execute_live_trade(
             "dry_run": True,
         }
     else:
-        order, response, stake = _place_fok_buy_with_retries(
-            client,
-            candidate=candidate,
-            stake=stake,
-            entry_price=entry_price,
-            side="BUY",
-            minimum_stake=max(minimum, min_share_stake),
-            quiet=settings.quiet,
-        )
+        if not settings.quiet:
+            print("   Sending FOK market order...")
+        order, response = client.place_market_order(candidate=candidate, amount=stake, price=entry_price, side="BUY")
     if isinstance(response, dict) and response.get("success") and not settings.quiet:
         status = str(response.get("status") or "")
         label = "✅ BUY FILLED" if _is_filled_buy_response(response) else "⚠️  BUY NOT FILLED"
@@ -683,79 +622,11 @@ def execute_live_trade(
                 price=float(entry_price),
                 size_usd=float(stake),
                 signal=signal_payload,
-                outcome=str(candidate.outcome or ""),
                 market_url=market_url,
             )
-            if position is not None:
-                position["telegram_buy_notified"] = True
         except Exception as exc:
             print(f"[notif] trade_buy hook failed: {exc}", file=sys.stderr, flush=True)
     return LiveTradeResult(order=order, response=response, candidate=candidate)
-
-
-def _place_fok_buy_with_retries(
-    client: Any,
-    *,
-    candidate: Candidate,
-    stake: float,
-    entry_price: float,
-    side: str,
-    minimum_stake: float,
-    quiet: bool,
-) -> tuple[dict[str, Any], Any, float]:
-    attempts: list[float] = []
-    for amount in (stake, stake * 0.5, stake * 0.25, minimum_stake):
-        rounded = round(amount, 2)
-        if rounded < round(minimum_stake, 2):
-            continue
-        if rounded not in attempts:
-            attempts.append(rounded)
-    if not attempts:
-        attempts.append(round(stake, 2))
-
-    last_error: Exception | None = None
-    last_order: dict[str, Any] = {}
-    last_response: Any = {}
-    for index, amount in enumerate(attempts):
-        if not quiet:
-            suffix = "" if index == 0 else f" retry ${amount}"
-            print(f"   Sending FOK market order{suffix}...")
-        try:
-            order, response = client.place_market_order(
-                candidate=candidate,
-                amount=amount,
-                price=entry_price,
-                side=side,
-            )
-        except Exception as exc:
-            if not _is_unfilled_fok_error(str(exc)) or index == len(attempts) - 1:
-                raise
-            last_error = exc
-            if not quiet:
-                print(f"   FOK not fully filled at ${amount}; retrying smaller...")
-            continue
-        last_order = order
-        last_response = response
-        if _is_filled_buy_response(response) or index == len(attempts) - 1:
-            return order, response, amount
-        if not quiet:
-            print(f"   FOK returned unfilled at ${amount}; retrying smaller...")
-
-    if last_error is not None:
-        raise last_error
-    return last_order, last_response, attempts[-1]
-
-
-def _is_unfilled_fok_error(message: str) -> bool:
-    lowered = message.lower()
-    return any(
-        marker in lowered
-        for marker in (
-            "fully filled or killed",
-            "couldn't be fully filled",
-            "could not be fully filled",
-        )
-    )
 
 
 def _is_filled_buy_response(response: Any) -> bool:
@@ -781,20 +652,13 @@ def _is_high_conviction_signal(signal: dict[str, Any]) -> bool:
     total_trader_pnl = float(metrics.get("total_trader_pnl") or signal.get("total_trader_pnl") or 0.0)
     value_score = float(metrics.get("value_score") or 0.0)
     value_discount_pct = float(metrics.get("value_discount_pct") or 0.0)
-    if consensus >= 5 and copied_usdc >= 5000:
+    if consensus >= 4 and copied_usdc >= 1000:
         return True
-    if consensus >= 4 and copied_usdc >= 10000 and value_discount_pct >= -0.05:
+    if consensus >= 3 and copied_usdc >= 5000:
         return True
-    if consensus >= 3 and copied_usdc >= 15000 and total_trader_pnl >= 250000 and value_discount_pct >= 0:
+    if consensus >= 2 and copied_usdc >= 1000 and total_trader_pnl >= 250000 and value_discount_pct >= -0.10:
         return True
-    return consensus >= 3 and copied_usdc >= 5000 and value_score >= 10 and value_discount_pct >= 0
-
-
-def _amount(value: Any) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return 0.0
+    return consensus >= 2 and copied_usdc >= 250 and value_score >= 10 and value_discount_pct >= 0
 
 
 def execute_live_sell(
