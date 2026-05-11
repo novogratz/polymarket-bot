@@ -30,6 +30,13 @@ from .auto_tuner import apply_overrides, maybe_tune
 from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
 from .config import Settings
 from .dashboard import serve
+from .profiles import (
+    ProfileValidationError,
+    apply_profile_to_env,
+    load_profile,
+    write_snapshot_toml,
+)
+from .live_confirm import build_live_recap, prompt_live_confirmation
 from .gamma import GammaClient
 from .portfolio import Portfolio
 from .models import parse_dt, utc_now
@@ -2317,23 +2324,81 @@ def _root(
 
 
 @app.command("auto-loop")
-def cli_auto_loop() -> None:
-    """Run the live smart-money loop. Requires POLYMARKET_ENABLE_LIVE_TRADING=1 (or POLYMARKET_DRY_RUN=1 to simulate without placing real orders)."""
+def cli_auto_loop(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Mode simulation: aucun ordre envoyé à Polymarket."
+    ),
+    live: bool = typer.Option(
+        False, "--live", help="Mode trading réel. Demande confirmation interactive."
+    ),
+    profile: str = typer.Option(
+        "baseline",
+        "--profile",
+        help="Nom du profil TOML dans configs/profiles/ (sans extension).",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", help="Skip le prompt de confirmation live."
+    ),
+) -> None:
+    """Run the smart-money loop in --dry-run or --live mode."""
+
+    # 1) Validate mode flags.
+    if dry_run and live:
+        typer.echo("--dry-run and --live are mutually exclusive.", err=True)
+        raise typer.Exit(code=2)
+    if not dry_run and not live:
+        typer.echo(
+            "Specify --dry-run or --live (modes are mutually exclusive and required).",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    # 2) Warn on legacy env vars (no longer used to drive mode).
+    if os.getenv("POLYMARKET_DRY_RUN") or os.getenv("POLYMARKET_ENABLE_LIVE_TRADING"):
+        typer.echo(
+            "⚠ POLYMARKET_DRY_RUN / POLYMARKET_ENABLE_LIVE_TRADING are no longer used. "
+            "Pass --dry-run or --live instead.",
+            err=True,
+        )
+
+    # 3) Load profile, apply to env (env vars already set take precedence).
+    repo_root = Path(__file__).resolve().parent.parent
+    profile_path = repo_root / "configs" / "profiles" / f"{profile}.toml"
+    try:
+        loaded = load_profile(profile_path)
+    except ProfileValidationError as exc:
+        typer.echo(f"profile error: {exc}", err=True)
+        raise typer.Exit(code=2)
+    apply_profile_to_env(loaded)
+
+    # 4) Force dry-run env var BEFORE Settings() reads it (so __post_init__ swaps paths).
+    if dry_run:
+        os.environ["POLYMARKET_DRY_RUN"] = "1"
+    else:
+        os.environ.pop("POLYMARKET_DRY_RUN", None)
+
     settings = Settings()
-    if settings.dry_run:
+
+    # 5) Snapshot effective config (next to the active ledger).
+    snapshot_name = "live_config_snapshot.toml" if live else "dry_run_config_snapshot.toml"
+    snapshot_target = settings.state_path.parent / snapshot_name
+    write_snapshot_toml(snapshot_target, source_label=profile_path.name)
+
+    # 6) Live: confirmation gate.
+    if live:
+        recap = build_live_recap(settings, profile_label=profile_path.name)
+        approved = prompt_live_confirmation(recap_text=recap, skip=yes)
+        if not approved:
+            typer.echo("Live launch aborted.", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(f"LIVE — profile={profile_path.name} ledger={settings.state_path}", err=True)
+    else:
         typer.echo(
-            "[DRY-RUN] POLYMARKET_DRY_RUN=1 set — running the smart-money loop without "
-            "placing any real orders. Ledger and journal are written to "
-            f"{settings.state_path} and {settings.trade_journal_path}.",
+            f"[DRY-RUN] profile={profile_path.name} "
+            f"ledger={settings.state_path} starting_cash=${loaded.starting_cash:g}",
             err=True,
         )
-    elif not settings.live_trading_enabled:
-        typer.echo(
-            "Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 (or "
-            "POLYMARKET_DRY_RUN=1 to simulate) to proceed.",
-            err=True,
-        )
-        raise typer.Exit(code=1)
+
     smart_money_loop(settings)
 
 
