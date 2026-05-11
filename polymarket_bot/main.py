@@ -2038,26 +2038,22 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                     "cash_usd": cash_val,
                 },
             )
-            target_hour = int(os.environ.get("TELEGRAM_DAILY_SUMMARY_HOUR", "9"))
-            now_local = dt.datetime.now()
-            if now_local.hour >= target_hour:
-                trades_24h, wins_24h, losses_24h, top_w, top_l, pct_24h = (
-                    _journal_stats_last_24h(settings.trade_journal_path)
-                )
-                notifications.notify_daily_summary(
-                    {
-                        "today": now_local.date().isoformat(),
-                        "equity_usd": equity_val,
-                        "equity_pct_24h": pct_24h,
-                        "cash_usd": cash_val,
-                        "open_positions": open_positions_count,
-                        "trades_24h": trades_24h,
-                        "wins_24h": wins_24h,
-                        "losses_24h": losses_24h,
-                        "top_winner": top_w,
-                        "top_loser": top_l,
-                    }
-                )
+            trades_24h, wins_24h, losses_24h, top_w, top_l, pct_24h = (
+                _journal_stats_last_24h(settings.trade_journal_path)
+            )
+            notifications.notify_heartbeat(
+                {
+                    "equity_usd": equity_val,
+                    "equity_pct_24h": pct_24h,
+                    "cash_usd": cash_val,
+                    "open_positions": open_positions_count,
+                    "trades_24h": trades_24h,
+                    "wins_24h": wins_24h,
+                    "losses_24h": losses_24h,
+                    "top_winner": top_w,
+                    "top_loser": top_l,
+                }
+            )
         except Exception as exc:
             print(f"[notif] post-tick hook failed: {exc}", file=sys.stderr, flush=True)
 
