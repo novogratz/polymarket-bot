@@ -505,7 +505,10 @@ def execute_live_trade(
         if slippage > max_slippage:
             raise ValueError(f"Anti-pump: Entry price {entry_price} is {slippage:.1%} above smart money avg {avg_copy}")
 
-    live_balance = client.live_available_balance()
+    if settings.dry_run:
+        live_balance = portfolio.cash
+    else:
+        live_balance = client.live_available_balance()
     if live_balance <= 0:
         raise ValueError("no live balance available")
 
