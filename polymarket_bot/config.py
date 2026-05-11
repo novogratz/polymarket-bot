@@ -164,6 +164,14 @@ class Settings:
     smart_noise_fallback_max_buy_price: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_BUY_PRICE", 0.80)
     smart_noise_fallback_max_spread: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_MAX_SPREAD", 0.04)
     smart_noise_fallback_cash_pressure_pct: float = _float_env("POLYMARKET_SMART_NOISE_FALLBACK_CASH_PRESSURE_PCT", 0.90)
+    smart_leaderboard_position_enabled: bool = _bool_env("POLYMARKET_SMART_LEADERBOARD_POSITION_ENABLED", False)
+    smart_leaderboard_position_top_n: int = _int_env("POLYMARKET_SMART_LEADERBOARD_POSITION_TOP_N", 50)
+    smart_leaderboard_position_min_wallets: int = _int_env("POLYMARKET_SMART_LEADERBOARD_POSITION_MIN_WALLETS", 3)
+    smart_leaderboard_position_cash_pct: float = _float_env("POLYMARKET_SMART_LEADERBOARD_POSITION_CASH_PCT", 0.30)
+    smart_leaderboard_position_fetch_concurrency: int = _int_env(
+        "POLYMARKET_SMART_LEADERBOARD_POSITION_FETCH_CONCURRENCY",
+        12,
+    )
     smart_high_conviction_balance_fraction: float = _float_env(
         "POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION",
         0.80,

@@ -37,6 +37,7 @@ from .smart_money import (
     DataApiClient,
     analyze_smart_money,
     analyze_smart_money_with_data,
+    choose_leaderboard_open_position,
     fetch_smart_money_data,
     market_category,
     _top_traders,
@@ -295,6 +296,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "cash_pressure": 0,
         "relaxed": 0,
         "deep": 0,
+        "leaderboard_position": 0,
         "candidates_total": len(candidates),
     }
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
@@ -397,6 +399,29 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     signal = report.selected
     strategy = "smart_money"
     opportunities = list(report.opportunities)
+    if settings.smart_leaderboard_position_enabled:
+        _step(
+            settings,
+            f"   leaderboard open-position overlay: top {settings.smart_leaderboard_position_top_n} wallet(s)...",
+        )
+        try:
+            leaderboard_signal = choose_leaderboard_open_position(
+                eligible_candidates,
+                settings,
+                client=DataApiClient(settings.data_api_base_url),
+            )
+        except Exception as exc:
+            leaderboard_signal = None
+            _step(settings, f"   leaderboard open-position overlay skipped: {type(exc).__name__}: {exc}")
+        if leaderboard_signal is not None:
+            _step(settings, "   leaderboard open-position overlay: 1 opportunity")
+            scan_counts["leaderboard_position"] = 1
+            _merge_opportunities(opportunities, [leaderboard_signal])
+            if signal is None or leaderboard_signal.score >= signal.score:
+                signal = leaderboard_signal
+                strategy = "leaderboard_open_position"
+        else:
+            _step(settings, "   leaderboard open-position overlay: 0 opportunities")
     pressure_report = None
     if _smart_cash_pressure_active(settings, portfolio):
         pressure_settings = replace(
@@ -1427,6 +1452,8 @@ def _dynamic_max_trade(
     total_equity = cash + invested + unrealized
     if total_equity <= 0:
         return base
+    if strategy == "leaderboard_open_position" and settings.smart_leaderboard_position_cash_pct > 0:
+        return round(max(base, min(cash, total_equity * settings.smart_leaderboard_position_cash_pct)), 2)
     target_deployed = total_equity * (1.0 - max(0.0, settings.smart_cash_floor_pct))
     remaining_to_deploy = max(0.0, target_deployed - invested)
     if remaining_to_deploy <= 0 or remaining_slots <= 0:
@@ -1462,6 +1489,13 @@ def _trade_cap_for_signal(
     total_equity: float,
 ) -> float:
     cap = _absolute_trade_cap(settings, strategy)
+    if (
+        strategy == "leaderboard_open_position"
+        and settings.smart_leaderboard_position_cash_pct > 0
+        and total_equity > 0
+    ):
+        leaderboard_cap = total_equity * settings.smart_leaderboard_position_cash_pct
+        cap = max(cap, leaderboard_cap) if cap > 0 else leaderboard_cap
     if (
         strategy.startswith("smart_money")
         and _is_high_conviction_smart_signal(signal)

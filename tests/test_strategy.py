@@ -17,7 +17,14 @@ from polymarket_bot.config import Settings
 from polymarket_bot.models import Candidate, utc_now
 from polymarket_bot.polymarket import ApiCreds, PolymarketClient
 from polymarket_bot.portfolio import Portfolio
-from polymarket_bot.smart_money import SmartTrade, SmartTrader, fetch_smart_money_data, market_category, smart_money_signals
+from polymarket_bot.smart_money import (
+    SmartTrade,
+    SmartTrader,
+    choose_leaderboard_open_position,
+    fetch_smart_money_data,
+    market_category,
+    smart_money_signals,
+)
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
 from polymarket_bot.trading import _is_filled_buy_response, execute_live_sell, execute_live_trade
 from polymarket_bot.main import (
@@ -133,6 +140,79 @@ class StrategyTests(unittest.TestCase):
         settings = Settings(smart_discovery_keywords=" election,weather,election, fed ")
 
         self.assertEqual(_smart_discovery_keywords(settings), ["election", "weather", "fed"])
+
+    def test_leaderboard_open_position_picks_most_common_top_50_position(self):
+        class FakeDataClient:
+            def leaderboard(self, *, category, time_period, limit):
+                return [
+                    SmartTrader(f"0x{i}", f"w{i}", 1000.0 - i, 10_000.0, category)
+                    for i in range(50)
+                ]
+
+            def positions(self, *, user, limit=500):
+                index = int(user.replace("0x", ""))
+                if index < 4:
+                    return [{"asset": "common-token", "currentValue": "25"}]
+                if index < 6:
+                    return [{"asset": "other-token", "currentValue": "100"}]
+                return []
+
+        end_date = utc_now() + timedelta(hours=24)
+        common = Candidate(
+            market_id="common",
+            question="Common top wallet position?",
+            slug="common-top-wallet-position",
+            end_date=end_date,
+            hours_to_close=24,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="common-token",
+            score=1,
+            url="https://polymarket.com/event/common",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        other = Candidate(
+            market_id="other",
+            question="Other top wallet position?",
+            slug="other-top-wallet-position",
+            end_date=end_date,
+            hours_to_close=24,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="other-token",
+            score=1,
+            url="https://polymarket.com/event/other",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+
+        signal = choose_leaderboard_open_position(
+            [common, other],
+            Settings(
+                smart_leaderboard_position_enabled=True,
+                smart_leaderboard_position_top_n=50,
+                smart_leaderboard_position_min_wallets=3,
+                smart_leaderboard_position_fetch_concurrency=1,
+                smart_categories="OVERALL",
+                smart_leaderboard_limit=50,
+            ),
+            client=FakeDataClient(),
+        )
+
+        self.assertIsNotNone(signal)
+        self.assertEqual(signal.candidate.token_id, "common-token")
+        self.assertEqual(signal.wallet_count, 4)
+        self.assertEqual(signal.total_position_value, 100.0)
+        self.assertIn("currently hold this same token", signal.to_dict()["selection_reason"])
 
     def test_live_trade_respects_minimum_share_size(self):
         class FakeClient:
@@ -2326,6 +2406,25 @@ class StrategyTests(unittest.TestCase):
 
         self.assertEqual(_max_trade_for_signal(settings, signal, "smart_money", available_cash=250.0), 150.0)
         self.assertEqual(_dynamic_max_trade(settings, signal, "smart_money", portfolio, remaining_slots=1), 150.0)
+
+    def test_leaderboard_open_position_sizing_targets_thirty_percent_cash(self):
+        settings = Settings(
+            smart_position_pct=0.10,
+            max_position_usd=25.0,
+            smart_max_trade_usd=25.0,
+            smart_leaderboard_position_cash_pct=0.30,
+        )
+        signal = {
+            "consensus": 4,
+            "copied_usdc": 100.0,
+            "selection_metrics": {"leaderboard_open_position": True, "profitable_wallet_count": 4},
+        }
+        portfolio = Portfolio(cash=250.0, positions=[])
+
+        self.assertEqual(
+            _dynamic_max_trade(settings, signal, "leaderboard_open_position", portfolio, remaining_slots=1),
+            75.0,
+        )
 
 
 class MarketCategoryTests(unittest.TestCase):

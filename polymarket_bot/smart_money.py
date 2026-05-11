@@ -169,6 +169,64 @@ class SmartMoneyReport:
         }
 
 
+@dataclass(frozen=True)
+class LeaderboardPositionSignal:
+    candidate: Candidate
+    wallets: list[str]
+    wallet_count: int
+    total_position_value: float
+    top_n: int = 50
+    category: str = "OTHER"
+
+    @property
+    def score(self) -> float:
+        return (self.wallet_count * 20.0) + min(self.total_position_value / 25.0, 25.0) - (self.candidate.best_ask or 0.0)
+
+    def to_dict(self) -> dict[str, Any]:
+        spread = (
+            round((self.candidate.best_ask or 0.0) - (self.candidate.best_bid or 0.0), 4)
+            if self.candidate.best_ask is not None and self.candidate.best_bid is not None
+            else 0.0
+        )
+        selection_reason = (
+            f"{self.wallet_count} top leaderboard wallets currently hold this same token, "
+            f"with ${self.total_position_value:.2f} visible open position value; "
+            f"current ask {self.candidate.best_ask} has spread {spread:.4f}, "
+            f"and passed top-{self.top_n} consensus, price band, spread, and duplicate checks."
+        )
+        return {
+            "market_id": self.candidate.market_id,
+            "question": self.candidate.question,
+            "outcome": self.candidate.outcome,
+            "best_ask": self.candidate.best_ask,
+            "best_bid": self.candidate.best_bid,
+            "consensus": self.wallet_count,
+            "copied_usdc": round(self.total_position_value, 2),
+            "avg_copy_price": self.candidate.best_ask,
+            "wallets": self.wallets,
+            "titles": [self.candidate.question],
+            "total_trader_pnl": 0.0,
+            "category": self.category,
+            "score": round(self.score, 4),
+            "selection_reason": selection_reason,
+            "selection_metrics": {
+                "profitable_wallet_count": self.wallet_count,
+                "min_consensus": 1,
+                "copied_usdc": round(self.total_position_value, 2),
+                "avg_copy_price": self.candidate.best_ask,
+                "current_ask": self.candidate.best_ask,
+                "current_bid": self.candidate.best_bid,
+                "spread": spread,
+                "hours_to_close": self.candidate.hours_to_close,
+                "leaderboard_open_position": True,
+                "leaderboard_top_n": self.top_n,
+                "is_crypto_micro": _is_crypto_micro(self.candidate),
+                "category": self.category,
+            },
+            "url": self.candidate.url,
+        }
+
+
 class DataApiClient:
     def __init__(self, base_url: str = "https://data-api.polymarket.com", timeout: int = 15) -> None:
         self.base_url = base_url.rstrip("/")
@@ -409,6 +467,118 @@ def analyze_smart_money(
 ) -> SmartMoneyReport:
     data = fetch_smart_money_data(settings, client=client)
     return analyze_smart_money_with_data(candidates, settings, data)
+
+
+def choose_leaderboard_open_position(
+    candidates: list[Candidate],
+    settings: Settings,
+    *,
+    client: DataApiClient | None = None,
+) -> LeaderboardPositionSignal | None:
+    if not settings.smart_leaderboard_position_enabled:
+        return None
+    client = client or DataApiClient(settings.data_api_base_url)
+    traders = sorted(_top_traders(client, settings), key=lambda trader: trader.pnl, reverse=True)
+    top_n = max(1, settings.smart_leaderboard_position_top_n)
+    traders = traders[:top_n]
+    if not traders:
+        return None
+    positions_by_wallet: list[tuple[SmartTrader, list[dict[str, Any]]]] = []
+
+    def _pull(trader: SmartTrader) -> tuple[SmartTrader, list[dict[str, Any]]]:
+        try:
+            return trader, client.positions(user=trader.wallet)
+        except Exception:
+            return trader, []
+
+    concurrency = max(1, settings.smart_leaderboard_position_fetch_concurrency)
+    if concurrency > 1 and len(traders) > 1:
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = [executor.submit(_pull, trader) for trader in traders]
+            for future in as_completed(futures):
+                positions_by_wallet.append(future.result())
+    else:
+        for trader in traders:
+            positions_by_wallet.append(_pull(trader))
+
+    by_token = {candidate.token_id: candidate for candidate in candidates if candidate.token_id}
+    grouped: dict[str, dict[str, Any]] = {}
+    for trader, positions in positions_by_wallet:
+        wallet_seen: set[str] = set()
+        for position in positions:
+            token_id = _position_token_id(position)
+            if not token_id or token_id in wallet_seen:
+                continue
+            candidate = by_token.get(token_id)
+            if candidate is None or not _leaderboard_position_candidate_allowed(candidate, settings):
+                continue
+            value = _position_value_usd(position)
+            grouped.setdefault(
+                token_id,
+                {"candidate": candidate, "wallets": [], "value": 0.0},
+            )
+            grouped[token_id]["wallets"].append(trader.wallet)
+            grouped[token_id]["value"] += value
+            wallet_seen.add(token_id)
+
+    min_wallets = max(1, settings.smart_leaderboard_position_min_wallets)
+    signals: list[LeaderboardPositionSignal] = []
+    for group in grouped.values():
+        wallets = sorted(set(group["wallets"]))
+        if len(wallets) < min_wallets:
+            continue
+        candidate = group["candidate"]
+        signals.append(
+            LeaderboardPositionSignal(
+                candidate=candidate,
+                wallets=wallets,
+                wallet_count=len(wallets),
+                total_position_value=round(float(group["value"]), 2),
+                top_n=top_n,
+                category=market_category(candidate.question, candidate.slug),
+            )
+        )
+    return sorted(signals, key=lambda signal: signal.score, reverse=True)[0] if signals else None
+
+
+def _position_token_id(position: dict[str, Any]) -> str:
+    for key in ("asset", "token_id", "tokenId", "clobTokenId"):
+        value = position.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def _position_value_usd(position: dict[str, Any]) -> float:
+    value = _float(position.get("currentValue"), 0.0)
+    if value > 0:
+        return value
+    size = _float(position.get("size"), _float(position.get("shares")))
+    price = _float(position.get("currentPrice"), _float(position.get("price")))
+    return max(0.0, size * price)
+
+
+def _leaderboard_position_candidate_allowed(candidate: Candidate, settings: Settings) -> bool:
+    if candidate.best_ask is None or candidate.best_bid is None:
+        return False
+    if candidate.hours_to_close is None or candidate.hours_to_close < settings.smart_min_hours_to_close:
+        return False
+    max_hours = _entry_max_hours_to_close(settings)
+    if max_hours > 0 and candidate.hours_to_close > max_hours:
+        return False
+    if not candidate.accepts_orders or candidate.tick_size is None:
+        return False
+    spread = candidate.best_ask - candidate.best_bid
+    if spread < 0 or spread > settings.smart_max_spread:
+        return False
+    if settings.smart_max_relative_spread > 0 and candidate.best_ask > 0:
+        if (spread / candidate.best_ask) > settings.smart_max_relative_spread:
+            return False
+    if candidate.best_ask < settings.smart_min_buy_price or candidate.best_ask > settings.smart_max_buy_price:
+        return False
+    if _is_crypto_market(candidate) and not settings.smart_allow_crypto:
+        return False
+    return True
 
 
 def smart_money_signals(
