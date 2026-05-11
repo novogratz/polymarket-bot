@@ -1,0 +1,88 @@
+# Profil live-90 — reproduit scripts/run_live_70.sh (bankroll ~$90).
+# C'est la config tournant en LIVE par défaut.
+#
+# NOTE: scripts/run_live_70.sh exporte aussi des variables qui ne sont
+# PAS dans le schéma de profils (polymarket_bot/profiles.py _SCHEMA).
+# Ces variables doivent toujours être passées via l'environnement (ou
+# via le script shell) pour reproduire intégralement la config LIVE :
+#   - POLYMARKET_ENABLE_LIVE_TRADING, POLYMARKET_SYNC_LIVE_POSITIONS
+#   - POLYMARKET_SMART_CATEGORIES, POLYMARKET_SMART_DISCOVERY_KEYWORDS
+#   - POLYMARKET_SMART_TIME_PERIODS
+#   - POLYMARKET_SMART_REVERSE_LOOKUP_* (5 vars)
+#   - POLYMARKET_SMART_ALLOW_CRYPTO, POLYMARKET_SMART_CRYPTO_* (4 vars)
+#   - POLYMARKET_MAX_POSITION_USD, POLYMARKET_SMART_MAX_TRADE_USD
+#   - POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION
+#   - POLYMARKET_BTC_MIN_TRADE_USD, POLYMARKET_BTC_MIN_BUY_PRICE,
+#     POLYMARKET_BTC_MAX_BUY_PRICE, POLYMARKET_BTC_MAX_SPREAD,
+#     POLYMARKET_BTC_MIN_MODEL_PROBABILITY, POLYMARKET_BTC_MIN_HOURS_TO_CLOSE
+#   - POLYMARKET_SMART_NOISE_FALLBACK_MIN_BUY_PRICE,
+#     POLYMARKET_SMART_NOISE_FALLBACK_MAX_BUY_PRICE,
+#     POLYMARKET_SMART_NOISE_FALLBACK_MAX_SPREAD
+#   - POLYMARKET_SMART_FALLBACK_CONSENSUS
+#   - POLYMARKET_SMART_DEEP_FALLBACK_ENABLED,
+#     POLYMARKET_SMART_DEEP_FALLBACK_MIN_COPIED_USDC
+#   - POLYMARKET_SMART_MIN_TRADE_USD, POLYMARKET_SMART_MAX_ENTRY_SLIPPAGE
+#   - POLYMARKET_SMART_PRIORITY_CATEGORY_BONUS,
+#     POLYMARKET_SMART_SPORTS_SCORE_PENALTY,
+#     POLYMARKET_SMART_MAX_SPORTS_POSITIONS
+#   - POLYMARKET_SMART_SOON_HOURS, POLYMARKET_SMART_MIN_HOURS_TO_CLOSE,
+#     POLYMARKET_SMART_MAX_HOURS_TO_CLOSE
+#   - POLYMARKET_SMART_COHORT_EXIT_* (4 vars)
+#   - POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE,
+#     POLYMARKET_SMART_EXIT_MIN_PROFIT,
+#     POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD
+
+[run]
+# Côté live cette valeur est ignorée (cash réel synchronisé depuis Polymarket).
+starting_cash = 100.0
+
+[sizing]
+position_pct = 0.18
+max_position_ceiling_usd = 150.0
+max_position_ceiling_pct = 0.30
+cash_floor_pct = 0.05
+min_open_positions = 7
+assumed_live_balance_usd = 90.0
+
+[trader_cohort]
+leaderboard_window = "MONTH"
+top_n = 100
+min_trader_pnl = 1000.0
+min_trader_volume = 2000.0
+min_trader_roi = 0.03
+trade_fetch_concurrency = 24
+trade_lookback_minutes = 30
+
+[filters]
+min_consensus = 2
+min_copied_usdc = 75.0
+max_chase_premium = 0.13
+price_min = 0.03
+price_max = 0.96
+max_absolute_spread = 0.08
+max_relative_spread = 0.45
+signal_staleness_seconds = 10
+
+[exits]
+take_profit_ladder = "0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15"
+trailing_stop_arm_pct = 0.25
+trailing_stop_giveback = 0.50
+peak_protect_arm_pct = 1.0
+peak_protect_exit_pct = 0.40
+stop_loss_pct = 0.40
+stop_loss_min_age_minutes = 15
+max_hold_hours = 24.0
+
+[btc_edge]
+enabled = true
+per_trade_cap_usd = 5.0
+min_edge_over_market = 0.08
+
+[noise_fallback]
+enabled = true
+max_trades_per_tick = 8
+stake_usd = 15.0
+cash_pressure_threshold = 0.25
+
+[telemetry]
+auto_interval_seconds = 10

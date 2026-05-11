@@ -1,0 +1,81 @@
+# Profil baseline — point de départ raisonnable pour un dry-run actif.
+#
+# Conçu pour qu'un opérateur qui lance
+#     pmbot auto-loop --dry-run --run X --profile baseline
+# voie le bot prendre des paris dès le 1er tick avec un sizing modéré
+# (10% du cash par trade, plafond $25, jusqu'à 5 positions ouvertes).
+#
+# Pour pousser plus loin : voir aggressive.toml (sizing 25%, noise
+# fallback ON) ou live-90.toml (config tournant en prod LIVE).
+#
+# Pour reproduire l'état "neutre/dormant" hardcodé dans config.py
+# (position_pct=0, pas de noise fallback, pas de BTC edge) sans
+# trader : voir neutral.toml si présent, ou passer des env vars
+# explicites au lancement.
+
+[run]
+starting_cash = 100.0
+
+[sizing]
+# 10% du cash par trade -> environ $10 sur $100 de bankroll.
+position_pct = 0.10
+# Plafond absolu par position. Empêche un trade unique de manger
+# tout le ledger même si le sizing dynamique le pousse plus haut.
+max_position_ceiling_usd = 25.0
+# Plafond en % du cash (0 = désactivé).
+max_position_ceiling_pct = 0.30
+# Réserve de cash (5% = ne jamais déployer les derniers 5%).
+cash_floor_pct = 0.05
+# Cible de positions ouvertes : la sizing dynamique s'efforce
+# d'arriver à ce nombre.
+min_open_positions = 5
+# Stake plancher pour amorcer une position depuis 0.
+starter_trade_usd = 5.0
+assumed_live_balance_usd = 0.0
+
+[trader_cohort]
+leaderboard_window = "WEEK"
+top_n = 50
+min_trader_pnl = 500.0
+min_trader_volume = 1000.0
+min_trader_roi = 0.02
+trade_fetch_concurrency = 16
+trade_lookback_minutes = 240
+
+[filters]
+min_consensus = 2
+min_copied_usdc = 50.0
+max_chase_premium = 0.12
+price_min = 0.03
+price_max = 0.97
+max_absolute_spread = 0.10
+max_relative_spread = 0.35
+
+[exits]
+take_profit_ladder = "0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15"
+trailing_stop_arm_pct = 0.25
+trailing_stop_giveback = 0.50
+peak_protect_arm_pct = 1.0
+peak_protect_exit_pct = 0.40
+stop_loss_pct = 0.40
+stop_loss_min_age_minutes = 15
+max_hold_hours = 24.0
+
+[btc_edge]
+enabled = false
+per_trade_cap_usd = 5.0
+min_edge_over_market = 0.08
+
+[noise_fallback]
+enabled = false
+max_trades_per_tick = 2
+stake_usd = 5.0
+cash_pressure_threshold = 0.35
+
+[auto_tune]
+enabled = true
+min_closed_trades = 30
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 10

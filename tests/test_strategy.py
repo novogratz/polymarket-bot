@@ -19,7 +19,12 @@ from polymarket_bot.polymarket import ApiCreds, PolymarketClient
 from polymarket_bot.portfolio import Portfolio
 from polymarket_bot.smart_money import SmartTrade, market_category, smart_money_signals
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
-from polymarket_bot.trading import _is_filled_buy_response, execute_live_sell, execute_live_trade
+from polymarket_bot.trading import (
+    _is_filled_buy_response,
+    build_client,
+    execute_live_sell,
+    execute_live_trade,
+)
 from polymarket_bot.main import (
     _is_unfilled_market_order_error,
     _max_trade_for_signal,
@@ -1594,6 +1599,47 @@ class StrategyTests(unittest.TestCase):
         )
         self.assertEqual(custom.state_path, Path("custom/state.json"))
         self.assertEqual(custom.trade_journal_path, Path("custom/journal.jsonl"))
+
+    def test_dry_run_execute_live_trade_with_real_dry_run_client(self):
+        """Regression: ``_DryRunClient.live_available_balance()`` returns 0.0,
+        but ``execute_live_trade`` must still execute using ``portfolio.cash``
+        as the simulated balance. Otherwise every dry-run buy is rejected with
+        ``no live balance available``."""
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.39,
+            best_ask=0.4,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=100.0, positions=[])
+        settings = Settings(dry_run=True, smart_position_pct=0.10, min_order_shares=5.0)
+        client = build_client(settings)
+        result = execute_live_trade(
+            client,
+            settings,
+            candidate,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=10.0,
+            strategy="smart_money",
+            signal={"consensus": 2, "copied_usdc": 250.0, "selection_metrics": {}},
+        )
+
+        self.assertTrue(result.response.get("dry_run"))
+        self.assertEqual(result.response.get("status"), "matched")
+        self.assertEqual(len(portfolio.positions), 1)
 
     def test_dry_run_execute_live_trade_skips_sdk_call(self):
         class TripwireClient:

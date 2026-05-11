@@ -68,7 +68,10 @@ def build_state(settings: Settings) -> dict[str, Any]:
             balance_source = "live_clob"
         elif isinstance(live_balance, str):
             live_balance_error = live_balance
-    portfolio.save(settings.state_path)
+    # NOTE: read-only dashboard — do NOT persist portfolio here. Writing
+    # state.json on every HTTP refresh races with the auto-loop process,
+    # and (when state.json is missing) seeds the ledger with the dashboard's
+    # default paper_balance_usd instead of the run's actual starting cash.
     positions = portfolio.positions
     recent_trades = sorted(
         positions,
@@ -204,6 +207,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(encoded)))
+        # Le ledger / journal / tick history changent à chaque tick : on
+        # interdit tout cache (browser ou intermédiaire) pour que la page
+        # reflète toujours l'état actuel des fichiers sur disque.
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
         self.wfile.write(encoded)
 
