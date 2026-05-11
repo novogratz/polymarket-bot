@@ -195,38 +195,64 @@ class TestStatePersistence(NotificationsBaseTest):
             self.assertEqual(state.dedupe_seen, {})
 
 
-class TestDedupWindow(NotificationsBaseTest):
-    def test_dedup_skips_repeats_within_window(self) -> None:
+class TestErrorCounter(NotificationsBaseTest):
+    def _setup(self) -> list[dict]:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
         os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
         os.environ["TELEGRAM_DEDUPE_WINDOW_SEC"] = "300"
-
         sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        notifications.set_transport_for_test(lambda payload: sent.append(payload) or True)
+        return sent
 
-        with tempfile.TemporaryDirectory() as td:
-            state_path = Path(td) / "state.json"
-            with patch.object(notifications, "_default_state_path", return_value=state_path):
-                base = 1_000_000.0
-                with patch("time.time", return_value=base):
-                    notifications.notify_error("order_rejected", "balance low", dedupe_key="t1")
-                with patch("time.time", return_value=base + 100):
-                    notifications.notify_error("order_rejected", "balance low", dedupe_key="t1")
-                self.assertEqual(len(sent), 1, "second call within window must be skipped")
+    def test_first_error_no_suffix(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_error("clob_balance", "balance not enough", dedupe_key="k1")
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertIn("❌", text)
+        # NB : "clob_balance" et "balance not enough" sont escapés via _md_escape
+        self.assertIn("clob", text)
+        self.assertIn("balance", text)
+        self.assertNotIn("×", text)
+        self.assertNotIn("\n", text)
 
-                with patch("time.time", return_value=base + 400):
-                    notifications.notify_error("order_rejected", "balance low", dedupe_key="t1")
-                self.assertEqual(len(sent), 2)
+    def test_repeats_in_window_are_silenced(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_error("cat", "msg", dedupe_key="k1")
+                notifications.notify_error("cat", "msg", dedupe_key="k1")
+                notifications.notify_error("cat", "msg", dedupe_key="k1")
+        self.assertEqual(len(sent), 1)
 
-                with patch("time.time", return_value=base + 401):
-                    notifications.notify_error("order_rejected", "msg2", dedupe_key="t2")
-                self.assertEqual(len(sent), 3)
+    def test_after_window_emits_with_count_suffix(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            t0 = 1700000000.0
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                with patch.object(notifications.time, "time", side_effect=[t0, t0 + 1, t0 + 2]):
+                    notifications.notify_error("cat", "msg", dedupe_key="k1")
+                    notifications.notify_error("cat", "msg", dedupe_key="k1")
+                    notifications.notify_error("cat", "msg", dedupe_key="k1")
+                with patch.object(notifications.time, "time", return_value=t0 + 3600):
+                    notifications.notify_error("cat", "msg", dedupe_key="k1")
+        self.assertEqual(len(sent), 2)
+        self.assertIn("×3", sent[1]["text"])
+        self.assertIn("min", sent[1]["text"])
 
-                with patch("time.time", return_value=base + 402):
-                    notifications.notify_error("misc", "anything")
-                with patch("time.time", return_value=base + 403):
-                    notifications.notify_error("misc", "anything")
-                self.assertEqual(len(sent), 5)
+    def test_no_dedupe_key_always_emits(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_error("cat", "msg1")
+                notifications.notify_error("cat", "msg2")
+        self.assertEqual(len(sent), 2)
 
 
 class TestTradeBuyOneLine(NotificationsBaseTest):

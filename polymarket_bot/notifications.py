@@ -339,17 +339,35 @@ def notify_error(category: str, message: str, *, dedupe_key: str | None = None) 
     state = _load_state(path)
     now = time.time()
     window = _dedupe_window_sec()
+
+    suffix = ""
     if dedupe_key:
-        last = state.dedupe_seen.get(dedupe_key)
-        if last is not None and (now - last) < window:
-            return
-        state.dedupe_seen[dedupe_key] = now
-    _prune_dedupe(state, now, window)
-    text = (
-        f"❌ *{_md_escape(category)}*\n"
-        f"{_md_escape(message)}"
-    )
+        entry = state.dedupe_seen.get(dedupe_key)
+        if entry is not None:
+            last_ts = float(entry.get("last_ts", 0))
+            if (now - last_ts) < window:
+                entry["last_ts"] = now
+                entry["count"] = int(entry.get("count", 1)) + 1
+                entry["last_message"] = message
+                state.dedupe_seen[dedupe_key] = entry
+                _save_state(path, state)
+                return
+            prev_count = int(entry.get("count", 1))
+            if prev_count > 1:
+                if window >= 60:
+                    suffix = f" \\(×{prev_count} in {int(window // 60)}min\\)"
+                else:
+                    suffix = f" \\(×{prev_count} in {int(window)}s\\)"
+        state.dedupe_seen[dedupe_key] = {
+            "first_ts": now,
+            "last_ts": now,
+            "count": 1,
+            "last_message": message,
+        }
+
+    text = f"❌ *{_md_escape(category)}* · {_md_escape(message)}{suffix}"
     _post(text)
+    _prune_dedupe(state, now, window)
     _save_state(path, state)
 
 
