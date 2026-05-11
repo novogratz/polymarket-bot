@@ -106,5 +106,68 @@ class CliAutoLoopFlagsTests(unittest.TestCase):
         self.assertEqual(str(settings.state_path), "data/dry_run_state.json")
 
 
+import tempfile
+
+
+class CliAutoLoopIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self._snapshot = dict(os.environ)
+        _clean_env()
+        self._tmp = tempfile.TemporaryDirectory()
+        # Redirect state/journal to the temp dir so the test does not
+        # touch repo-root data/.
+        os.environ["POLYMARKET_STATE_PATH"] = str(Path(self._tmp.name) / "state.json")
+        os.environ["POLYMARKET_TRADE_JOURNAL_PATH"] = str(Path(self._tmp.name) / "journal.jsonl")
+        os.environ["POLYMARKET_STRATEGY_OVERRIDES_PATH"] = str(Path(self._tmp.name) / "overrides.json")
+        os.environ["POLYMARKET_TICK_STATE_PATH"] = str(Path(self._tmp.name) / "last_tick.json")
+        os.environ["POLYMARKET_TICK_HISTORY_PATH"] = str(Path(self._tmp.name) / "tick_history.jsonl")
+        from polymarket_bot.main import app
+        self.app = app
+        try:
+            self.runner = CliRunner(mix_stderr=False)
+        except TypeError:
+            self.runner = CliRunner()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+        _clean_env()
+        for k, v in self._snapshot.items():
+            os.environ[k] = v
+
+    def test_dry_run_baseline_writes_snapshot(self):
+        with patch("polymarket_bot.main.smart_money_loop"):
+            result = self.runner.invoke(
+                self.app, ["auto-loop", "--dry-run", "--profile", "baseline"]
+            )
+        self.assertEqual(result.exit_code, 0, msg=(result.stderr or "") + (result.stdout or ""))
+        # Snapshot lives next to state_path (in tmp).
+        snap = Path(self._tmp.name) / "dry_run_config_snapshot.toml"
+        self.assertTrue(snap.is_file(), f"snapshot not found at {snap}")
+        content = snap.read_text(encoding="utf-8")
+        self.assertIn("# source: baseline.toml", content)
+        self.assertIn("[sizing]", content)
+
+    def test_dry_run_override_env_wins_over_profile(self):
+        # Profile sets position_pct = 0.0 ; we override via env.
+        os.environ["POLYMARKET_SMART_POSITION_PCT"] = "0.33"
+        with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
+            result = self.runner.invoke(
+                self.app, ["auto-loop", "--dry-run", "--profile", "baseline"]
+            )
+        self.assertEqual(result.exit_code, 0, msg=(result.stderr or "") + (result.stdout or ""))
+        settings = loop_mock.call_args.args[0]
+        self.assertAlmostEqual(settings.smart_position_pct, 0.33)
+
+    def test_dry_run_starting_cash_from_profile(self):
+        # baseline.toml sets starting_cash = 100.0
+        with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
+            result = self.runner.invoke(
+                self.app, ["auto-loop", "--dry-run", "--profile", "baseline"]
+            )
+        self.assertEqual(result.exit_code, 0)
+        settings = loop_mock.call_args.args[0]
+        self.assertAlmostEqual(settings.paper_balance_usd, 100.0)
+
+
 if __name__ == "__main__":
     unittest.main()
