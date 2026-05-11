@@ -101,3 +101,43 @@ class WalletHistoryStore:
             except OSError:
                 pass
             raise
+
+
+def compute_persistence(
+    *,
+    wallet: str,
+    in_week: bool,
+    in_month: bool,
+    in_all: bool,
+    cache_presence_days: int,
+    snapshot_count_in_store: int,
+    window_days: int,
+    cache_threshold: float = 0.70,
+    intersect_min: int = 2,
+) -> PersistenceSignal:
+    """Calcule le PersistenceSignal pour un wallet.
+
+    Règles :
+    - intersect_count = nombre de listes (W,M,A) contenant le wallet (0..3)
+    - intersect_score = intersect_count / 3
+    - cache utilisable seulement si snapshot_count_in_store >= window_days/2
+      (sinon cache_score = 0.0 → warmup)
+    - cache_score = cache_presence_days / window_days
+    - qualified = (intersect_count >= intersect_min) OR (cache_score >= cache_threshold)
+    - persistence_score = max(intersect_score, cache_score)
+    """
+    intersect_count = int(in_week) + int(in_month) + int(in_all)
+    intersect_score = intersect_count / 3.0
+    if snapshot_count_in_store >= max(1, window_days // 2):
+        cache_score = max(0.0, min(1.0, cache_presence_days / max(1, window_days)))
+    else:
+        cache_score = 0.0
+    qualified = (intersect_count >= intersect_min) or (cache_score >= cache_threshold)
+    persistence_score = max(intersect_score, cache_score)
+    return PersistenceSignal(
+        wallet=wallet,
+        intersect_score=intersect_score,
+        cache_score=cache_score,
+        persistence_score=persistence_score,
+        qualified=qualified,
+    )

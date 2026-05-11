@@ -6,10 +6,12 @@ import unittest
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 from polymarket_bot.wallet_persistence import (
     PersistenceSignal,
     WalletHistoryStore,
+    compute_persistence,
 )
 
 
@@ -110,6 +112,71 @@ class TestWalletHistoryStoreCount(unittest.TestCase):
             self.assertEqual(store.snapshot_count(), 0)
             store.record_snapshot(date(2026, 5, 11), ["0xa"])
             self.assertEqual(store.snapshot_count(), 1)
+
+
+class TestComputePersistence(unittest.TestCase):
+    def _call(self, **kw: Any) -> PersistenceSignal:
+        defaults = dict(
+            wallet="0xa",
+            in_week=False, in_month=False, in_all=False,
+            cache_presence_days=0,
+            snapshot_count_in_store=0,
+            window_days=30,
+            cache_threshold=0.70,
+            intersect_min=2,
+        )
+        defaults.update(kw)
+        return compute_persistence(**defaults)
+
+    def test_intersect_3_of_3_qualified(self) -> None:
+        sig = self._call(in_week=True, in_month=True, in_all=True)
+        self.assertTrue(sig.qualified)
+        self.assertAlmostEqual(sig.intersect_score, 1.0)
+
+    def test_intersect_2_of_3_qualified(self) -> None:
+        sig = self._call(in_week=False, in_month=True, in_all=True)
+        self.assertTrue(sig.qualified)
+        self.assertAlmostEqual(sig.intersect_score, 2 / 3, places=2)
+
+    def test_intersect_1_of_3_not_qualified_no_cache(self) -> None:
+        sig = self._call(in_week=False, in_month=True, in_all=False)
+        self.assertFalse(sig.qualified)
+
+    def test_cache_path_qualifies(self) -> None:
+        sig = self._call(
+            cache_presence_days=24, snapshot_count_in_store=30, window_days=30
+        )
+        self.assertTrue(sig.qualified)
+        self.assertAlmostEqual(sig.cache_score, 0.80, places=2)
+
+    def test_cache_boundary_at_threshold(self) -> None:
+        sig = self._call(cache_presence_days=21, snapshot_count_in_store=30, window_days=30)
+        self.assertTrue(sig.qualified)
+
+    def test_cache_boundary_below_threshold(self) -> None:
+        sig = self._call(cache_presence_days=20, snapshot_count_in_store=30, window_days=30)
+        self.assertFalse(sig.qualified)
+
+    def test_warmup_disables_cache(self) -> None:
+        sig = self._call(
+            cache_presence_days=10, snapshot_count_in_store=10, window_days=30
+        )
+        self.assertAlmostEqual(sig.cache_score, 0.0)
+        self.assertFalse(sig.qualified)
+
+    def test_intersect_min_3_requires_all_three(self) -> None:
+        sig = self._call(in_week=True, in_month=True, in_all=False, intersect_min=3)
+        self.assertFalse(sig.qualified)
+        sig2 = self._call(in_week=True, in_month=True, in_all=True, intersect_min=3)
+        self.assertTrue(sig2.qualified)
+
+    def test_persistence_score_is_max(self) -> None:
+        sig = self._call(
+            in_week=True, in_month=True, in_all=False,
+            cache_presence_days=15, snapshot_count_in_store=30, window_days=30,
+        )
+        # intersect = 2/3 ≈ 0.667 ; cache = 15/30 = 0.50 → max = 0.667
+        self.assertAlmostEqual(sig.persistence_score, 2 / 3, places=2)
 
 
 if __name__ == "__main__":
