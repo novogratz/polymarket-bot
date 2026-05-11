@@ -68,7 +68,10 @@ def build_state(settings: Settings) -> dict[str, Any]:
             balance_source = "live_clob"
         elif isinstance(live_balance, str):
             live_balance_error = live_balance
-    portfolio.save(settings.state_path)
+    # NOTE: read-only dashboard — do NOT persist portfolio here. Writing
+    # state.json on every HTTP refresh races with the auto-loop process,
+    # and (when state.json is missing) seeds the ledger with the dashboard's
+    # default paper_balance_usd instead of the run's actual starting cash.
     positions = portfolio.positions
     recent_trades = sorted(
         positions,
