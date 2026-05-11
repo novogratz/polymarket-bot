@@ -2484,8 +2484,34 @@ def cli_auto_loop(
 
 
 @app.command()
-def dashboard() -> None:
-    """Serve the read-only HTML dashboard at http://127.0.0.1:8765."""
+def dashboard(
+    run: str | None = typer.Option(
+        None, "--run", help="Cibler un run dry-run nommé (data/dry_runs/<run>/)."
+    ),
+    port: int | None = typer.Option(
+        None, "--port", help="Override le port du dashboard (défaut 8765)."
+    ),
+) -> None:
+    """Serve the read-only HTML dashboard.
+
+    Sans flag : lit le ledger live (data/paper_state.json) sur :8765.
+    Avec --run X : lit data/dry_runs/X/state.json + journal du run.
+    """
+    if run is not None:
+        from polymarket_bot.dry_run_runs import DryRunPaths
+        repo_data = Path(__file__).resolve().parent.parent / "data"
+        paths = DryRunPaths.for_run(repo_data, run)
+        if not paths.metadata.is_file():
+            typer.echo(f"run '{run}' not found in {paths.root}", err=True)
+            raise typer.Exit(code=1)
+        os.environ["POLYMARKET_STATE_PATH"] = str(paths.state)
+        os.environ["POLYMARKET_TRADE_JOURNAL_PATH"] = str(paths.journal)
+        os.environ["POLYMARKET_STRATEGY_OVERRIDES_PATH"] = str(paths.overrides)
+        os.environ["POLYMARKET_TICK_STATE_PATH"] = str(paths.tick_state)
+        os.environ["POLYMARKET_TICK_HISTORY_PATH"] = str(paths.tick_history)
+        os.environ["POLYMARKET_DRY_RUN"] = "1"
+    if port is not None:
+        os.environ["POLYMARKET_DASHBOARD_PORT"] = str(port)
     serve(Settings())
 
 
