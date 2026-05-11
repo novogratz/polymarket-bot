@@ -827,7 +827,7 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
             "",
             f"*Invested* {_md_escape(_fmt_money(invested))}",
             f"*Today* {trades_today} trades ✅ {wins_today} / ❌ {losses_today}",
-            f"*All\\-time* {total_wins + total_losses} trades ✅ {total_wins} / ❌ {total_losses} ({_md_escape(f'{total_wins / max(total_wins + total_losses, 1) * 100.0:.0f}%')})",
+            f"*All\\-time* {total_wins + total_losses} trades ✅ {total_wins} / ❌ {total_losses} \\({_md_escape(f'{total_wins / max(total_wins + total_losses, 1) * 100.0:.0f}%')}\\)",
             f"*Open positions* {len(open_positions)}",
         ]
     ]
