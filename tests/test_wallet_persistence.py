@@ -8,10 +8,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from polymarket_bot.config import Settings
+from polymarket_bot.smart_money import SmartTrader
 from polymarket_bot.wallet_persistence import (
     PersistenceSignal,
     WalletHistoryStore,
     compute_persistence,
+    filter_cohort_by_persistence,
 )
 
 
@@ -177,6 +180,79 @@ class TestComputePersistence(unittest.TestCase):
         )
         # intersect = 2/3 ≈ 0.667 ; cache = 15/30 = 0.50 → max = 0.667
         self.assertAlmostEqual(sig.persistence_score, 2 / 3, places=2)
+
+
+class TestFilterCohort(unittest.TestCase):
+    def _trader(self, wallet: str) -> SmartTrader:
+        return SmartTrader(wallet=wallet, username=wallet, pnl=1000.0, volume=5000.0, category="ALL")
+
+    def _settings(self, **overrides: Any) -> Settings:
+        kw: dict[str, Any] = dict(
+            persistence_enabled=True,
+            persistence_cache_path=Path("/tmp/never-used.json"),
+            persistence_window_days=30,
+            persistence_cache_threshold=0.70,
+            persistence_intersect_periods="WEEK,MONTH,ALL",
+            persistence_intersect_min=2,
+            quiet=True,
+        )
+        kw.update(overrides)
+        return Settings(**kw)
+
+    def test_disabled_bypasses_filter(self) -> None:
+        with TemporaryDirectory() as tmp:
+            store = WalletHistoryStore(Path(tmp) / "h.json")
+            traders = [self._trader("0xa"), self._trader("0xb")]
+            leaderboards = {"WEEK": set(), "MONTH": {"0xa", "0xb"}, "ALL": set()}
+            cohort, signals = filter_cohort_by_persistence(
+                traders,
+                leaderboards=leaderboards,
+                store=store,
+                settings=self._settings(persistence_enabled=False),
+            )
+            self.assertEqual([t.wallet for t in cohort], ["0xa", "0xb"])
+            self.assertEqual(signals, {})
+
+    def test_intersect_filters_correctly(self) -> None:
+        with TemporaryDirectory() as tmp:
+            store = WalletHistoryStore(Path(tmp) / "h.json")
+            traders = [self._trader("0xa"), self._trader("0xb"), self._trader("0xc")]
+            # 0xa dans 3/3, 0xb dans 1/3, 0xc dans 2/3
+            leaderboards = {
+                "WEEK": {"0xa", "0xc"},
+                "MONTH": {"0xa", "0xb", "0xc"},
+                "ALL": {"0xa"},
+            }
+            cohort, signals = filter_cohort_by_persistence(
+                traders,
+                leaderboards=leaderboards,
+                store=store,
+                settings=self._settings(),
+            )
+            kept = {t.wallet for t in cohort}
+            self.assertEqual(kept, {"0xa", "0xc"})
+            self.assertTrue(signals["0xa"].qualified)
+            self.assertTrue(signals["0xc"].qualified)
+            self.assertFalse(signals["0xb"].qualified)
+
+    def test_cache_qualifies_alone(self) -> None:
+        with TemporaryDirectory() as tmp:
+            store = WalletHistoryStore(Path(tmp) / "h.json", window_days=10)
+            # 0xa présent dans 8/10 jours → cache_score 0.80 > 0.70 threshold
+            from datetime import timedelta
+            anchor = date(2026, 5, 1)
+            for offset in range(10):
+                wallets = ["0xa"] if offset < 8 else []
+                store.record_snapshot(anchor + timedelta(days=offset), wallets)
+            traders = [self._trader("0xa")]
+            leaderboards = {"WEEK": set(), "MONTH": set(), "ALL": set()}
+            cohort, _ = filter_cohort_by_persistence(
+                traders,
+                leaderboards=leaderboards,
+                store=store,
+                settings=self._settings(persistence_window_days=10),
+            )
+            self.assertEqual(len(cohort), 1)
 
 
 if __name__ == "__main__":

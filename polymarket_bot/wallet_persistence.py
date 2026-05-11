@@ -141,3 +141,66 @@ def compute_persistence(
         persistence_score=persistence_score,
         qualified=qualified,
     )
+
+
+def filter_cohort_by_persistence(
+    qualified_traders: list[Any],  # list[SmartTrader] — Any pour éviter import circulaire
+    *,
+    leaderboards: dict[str, set[str]],
+    store: WalletHistoryStore,
+    settings: Any,  # Settings
+) -> tuple[list[Any], dict[str, PersistenceSignal]]:
+    """Filtre une cohorte selon les règles de persistance.
+
+    Args:
+        qualified_traders : SmartTraders déjà passés par les seuils PnL/Vol/ROI.
+        leaderboards : mapping {period: set[wallet]} pour le tick courant.
+        store : cache historique des snapshots.
+        settings : Settings (lit persistence_*).
+
+    Returns:
+        (cohort filtrée, dict {wallet: PersistenceSignal}).
+        Si persistence_enabled=False : retourne (traders, {}).
+    """
+    if not getattr(settings, "persistence_enabled", True):
+        return list(qualified_traders), {}
+
+    periods_csv = getattr(settings, "persistence_intersect_periods", "WEEK,MONTH,ALL")
+    intersect_min = int(getattr(settings, "persistence_intersect_min", 2))
+    window_days = int(getattr(settings, "persistence_window_days", 30))
+    cache_threshold = float(getattr(settings, "persistence_cache_threshold", 0.70))
+
+    periods = [p.strip().upper() for p in periods_csv.split(",") if p.strip()]
+    norm_lb: dict[str, set[str]] = {
+        p: {w.lower() for w in leaderboards.get(p, set())} for p in periods
+    }
+    if not norm_lb:
+        return list(qualified_traders), {}
+
+    # Period canonique pour le snapshot du jour : MONTH si présent, sinon la première
+    snapshot_period = "MONTH" if "MONTH" in norm_lb else periods[0]
+    store.record_snapshot(date.today(), sorted(norm_lb.get(snapshot_period, set())))
+
+    snapshot_count = store.snapshot_count()
+
+    signals: dict[str, PersistenceSignal] = {}
+    kept: list[Any] = []
+    for trader in qualified_traders:
+        wallet = trader.wallet.lower()
+        in_flags = {p: (wallet in norm_lb[p]) for p in periods}
+        cache_presence = store.presence_count(wallet, window_days)
+        sig = compute_persistence(
+            wallet=wallet,
+            in_week=in_flags.get("WEEK", False),
+            in_month=in_flags.get("MONTH", False),
+            in_all=in_flags.get("ALL", False),
+            cache_presence_days=cache_presence,
+            snapshot_count_in_store=snapshot_count,
+            window_days=window_days,
+            cache_threshold=cache_threshold,
+            intersect_min=intersect_min,
+        )
+        signals[wallet] = sig
+        if sig.qualified:
+            kept.append(trader)
+    return kept, signals
