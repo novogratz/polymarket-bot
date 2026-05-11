@@ -30,6 +30,7 @@ from .auto_tuner import apply_overrides, maybe_tune
 from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
 from .config import Settings
 from .dashboard import serve
+from .dry_run_cli import app as dry_run_app
 from .dry_run_runs import DryRunPaths, ensure_run_directory, update_tick_metadata
 from .equity_tracker import append_equity_point
 from .profiles import (
@@ -2342,6 +2343,7 @@ app = typer.Typer(
     add_completion=False,
     help="Polymarket smart-money copy-trading bot.",
 )
+app.add_typer(dry_run_app, name="dry-run")
 
 
 def _version_callback(value: bool) -> None:
