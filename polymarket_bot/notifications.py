@@ -647,10 +647,11 @@ def _fmt_delta_suffix(current: float, previous: float | None) -> str:
     return f" \\({_pnl_icon(delta)} {_md_escape(amount)}\\)"
 
 
-def _fmt_equity_delta(label: str, value: float | None) -> str:
+def _fmt_equity_delta(label: str, value: float | None, pct: float | None = None) -> str:
     if value is None:
         return f"{_md_escape(label)} n/a"
-    return f"{_md_escape(label)} {_pnl_icon(value)} {_md_escape(_fmt_money(value, signed=True))}"
+    pct_str = f" \\({_md_escape(f'{pct:+.1f}%')}\\)" if pct is not None else ""
+    return f"{_md_escape(label)} {_pnl_icon(value)} {_md_escape(_fmt_money(value, signed=True))}{pct_str}"
 
 
 def _pnl_icon(value: float) -> str:
@@ -787,22 +788,36 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
         if state.last_portfolio_update_equity_usd is not None
         else None
     )
+    equity_30m_pct = (
+        round(equity_30m_delta / state.last_portfolio_update_equity_usd * 100.0, 1)
+        if equity_30m_delta is not None and state.last_portfolio_update_equity_usd
+        else None
+    )
+    today_pnl_pct = (
+        round(today_pnl / (equity - today_pnl) * 100.0, 1)
+        if today_pnl != 0 and (equity - today_pnl) != 0
+        else None
+    )
+    total_pnl_pct = (
+        round(total_pnl / (equity - total_pnl) * 100.0, 1)
+        if total_pnl != 0 and (equity - total_pnl) != 0
+        else None
+    )
     equity_parts = [
-        _fmt_equity_delta("30m", equity_30m_delta),
-        _fmt_equity_delta("Today", today_pnl),
-        _fmt_equity_delta("All-time", total_pnl),
+        _fmt_equity_delta("30m", equity_30m_delta, pct=equity_30m_pct),
+        _fmt_equity_delta("Today", today_pnl, pct=today_pnl_pct),
+        _fmt_equity_delta("All-time", total_pnl, pct=total_pnl_pct),
     ]
 
     sections: list[list[str]] = [
         [
             f"\U0001f4ca *Director review* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
-            f"*Equity* {_md_escape(_fmt_money(equity))} \\({' / '.join(equity_parts)}\\)",
+            f"{'✅' if total_pnl > 0 else '⚪'} *Equity*",
+            f"{_md_escape(_fmt_money(equity))}",
+            *[f"  — {part}" for part in equity_parts],
+            "",
             f"*Cash* {_md_escape(_fmt_money(cash))}",
             f"*Invested* {_md_escape(_fmt_money(invested))}",
-            f"*PnL unrealized* {_pnl_icon(unrealized)} {_md_escape(_fmt_money(unrealized, signed=True))}{_fmt_delta_suffix(unrealized, state.last_portfolio_update_unrealized_usd)}",
-            f"*PnL today* {_pnl_icon(today_pnl)} {_md_escape(_fmt_money(today_pnl, signed=True))}",
-            f"*PnL all\\-time* {_pnl_icon(total_pnl)} {_md_escape(_fmt_money(total_pnl, signed=True))}",
-            f"*Closed PnL today* {_pnl_icon(realized_today)} {_md_escape(_fmt_money(realized_today, signed=True))}",
             f"*Closed trades today* {trades_today}",
             f"*Open positions* {len(open_positions)}",
         ]
