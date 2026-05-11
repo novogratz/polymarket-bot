@@ -40,11 +40,22 @@ def cmd_list() -> None:
     if not runs:
         typer.echo("(no dry-run runs)")
         return
-    typer.echo(f"{'NAME':<20}  {'PROFILE':<20}  {'STARTING':>10}  {'TICKS':>7}  STARTED_AT")
+    typer.echo(
+        f"{'NAME':<20}  {'PROFILE':<20}  {'STARTING':>10}  {'EQUITY':>10}  "
+        f"{'RETURN':>8}  {'TRADES':>6}  {'WIN%':>5}  {'TICKS':>7}  STARTED_AT"
+    )
     for r in runs:
+        try:
+            s = compute_run_stats(_data_dir(), r.run_name)
+            equity = f"${s.equity:>9.2f}"
+            ret = f"{s.return_pct * 100:>+7.2f}%"
+            trades = f"{s.trades_closed:>6}"
+            win = f"{s.win_rate * 100:>4.0f}%"
+        except Exception:
+            equity, ret, trades, win = "n/a".rjust(10), "n/a".rjust(8), "n/a".rjust(6), "n/a".rjust(5)
         typer.echo(
             f"{r.run_name:<20}  {r.profile_source:<20}  ${r.starting_cash:>9.2f}  "
-            f"{r.total_ticks:>7}  {r.started_at}"
+            f"{equity}  {ret}  {trades}  {win}  {r.total_ticks:>7}  {r.started_at}"
         )
 
 
