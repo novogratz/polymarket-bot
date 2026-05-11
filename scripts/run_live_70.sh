@@ -7,6 +7,7 @@ cd "$(dirname "$0")/.."
 
 export POLYMARKET_ENABLE_LIVE_TRADING=1
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=150
 
 # Override any .env restrictive values back to code defaults
 export POLYMARKET_SMART_MIN_TRADER_PNL=0
