@@ -170,6 +170,24 @@ class Settings:
     smart_min_trader_roi: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_MIN_TRADER_ROI", 0.0))
     smart_min_trader_volume: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_MIN_TRADER_VOLUME", 0.0))
     smart_min_sell_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_MIN_SELL_USD", 1.0))
+
+    # Filtre de persistance d'edge sur la cohorte smart-money
+    persistence_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_PERSISTENCE_ENABLED", True))
+    persistence_cache_path: Path = field(
+        default_factory=lambda: Path(
+            os.environ.get("POLYMARKET_PERSISTENCE_CACHE_PATH", "data/wallet_history.json")
+        )
+    )
+    persistence_window_days: int = field(default_factory=lambda: _int_env("POLYMARKET_PERSISTENCE_WINDOW_DAYS", 30))
+    persistence_cache_threshold: float = field(
+        default_factory=lambda: _float_env("POLYMARKET_PERSISTENCE_CACHE_THRESHOLD", 0.70)
+    )
+    persistence_intersect_periods: str = field(
+        default_factory=lambda: os.environ.get(
+            "POLYMARKET_PERSISTENCE_INTERSECT_PERIODS", "WEEK,MONTH,ALL"
+        )
+    )
+    persistence_intersect_min: int = field(default_factory=lambda: _int_env("POLYMARKET_PERSISTENCE_INTERSECT_MIN", 2))
     smart_exit_minutes_to_close: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE", 20))
     smart_exit_min_profit: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_EXIT_MIN_PROFIT", 0.05))
     smart_pending_order_ttl_seconds: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS", 45))
@@ -211,6 +229,7 @@ class Settings:
             ("strategy_overrides_path", "data/strategy_overrides.json", "data/dry_run_strategy_overrides.json"),
             ("tick_state_path", "data/last_tick.json", "data/dry_run_last_tick.json"),
             ("tick_history_path", "data/tick_history.jsonl", "data/dry_run_tick_history.jsonl"),
+            ("persistence_cache_path", "data/wallet_history.json", "data/dry_run_wallet_history.json"),
         )
         for attr, live_default, dry_run_value in swaps:
             if str(getattr(self, attr)) == live_default:

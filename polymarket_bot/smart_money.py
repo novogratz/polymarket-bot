@@ -16,11 +16,16 @@ import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from .config import Settings
 from .models import Candidate
+from .wallet_persistence import (
+    PersistenceSignal,
+    WalletHistoryStore,
+    filter_cohort_by_persistence,
+)
 
 
 @dataclass(frozen=True)
@@ -275,6 +280,9 @@ class SmartMoneyData:
     pnl_by_wallet: dict[str, float]
     traders_used: int
     leaderboard_error: str | None = None
+    persistence_signals: dict[str, PersistenceSignal] = field(default_factory=dict)
+    cohort_before_persistence: int = 0
+    cohort_after_persistence: int = 0
 
 
 def fetch_smart_money_data(
@@ -284,7 +292,17 @@ def fetch_smart_money_data(
 ) -> SmartMoneyData:
     client = client or DataApiClient(settings.data_api_base_url)
     try:
-        traders = _top_traders(client, settings)
+        traders_by_period = _top_traders(client, settings)
+        # Liste plate dédupée pour le pipeline existant (compat ascendante)
+        seen_wallets: set[str] = set()
+        traders: list[SmartTrader] = []
+        for period_traders in traders_by_period.values():
+            for t in period_traders:
+                key = t.wallet.lower()
+                if key in seen_wallets:
+                    continue
+                seen_wallets.add(key)
+                traders.append(t)
     except Exception as exc:
         return SmartMoneyData(
             traders=[],
@@ -306,7 +324,49 @@ def fetch_smart_money_data(
                 return False
         return True
 
+    cohort_before_prefilter = len(traders)
     qualified = [t for t in traders if _qualifies(t)]
+
+    # Filtre persistance d'edge — branché entre pré-filtre PnL/Vol/ROI et fetch trades
+    cohort_before = len(qualified)
+    persistence_signals: dict[str, PersistenceSignal] = {}
+    if settings.persistence_enabled:
+        leaderboards_sets: dict[str, set[str]] = {
+            period: {t.wallet.lower() for t in period_traders}
+            for period, period_traders in traders_by_period.items()
+        }
+        store = WalletHistoryStore(
+            settings.persistence_cache_path,
+            window_days=settings.persistence_window_days,
+        )
+        qualified, persistence_signals = filter_cohort_by_persistence(
+            qualified,
+            leaderboards=leaderboards_sets,
+            store=store,
+            settings=settings,
+        )
+        if not settings.quiet:
+            n_cache = sum(
+                1 for s in persistence_signals.values()
+                if s.cache_score >= settings.persistence_cache_threshold
+            )
+            n_intersect = sum(
+                1 for s in persistence_signals.values()
+                if s.intersect_score * 3 >= settings.persistence_intersect_min
+            )
+            n_both = sum(
+                1 for s in persistence_signals.values()
+                if s.cache_score >= settings.persistence_cache_threshold
+                and s.intersect_score * 3 >= settings.persistence_intersect_min
+            )
+            print(
+                f"      cohort: {cohort_before_prefilter} → {cohort_before} "
+                f"(PnL/Vol/ROI) → {len(qualified)} "
+                f"(persistence: {n_cache} cache, {n_intersect} intersect, {n_both} both)",
+                flush=True,
+            )
+    cohort_after = len(qualified)
+
     if qualified and not settings.quiet:
         print(
             f"      pulling trades for {len(qualified)} qualified trader(s)"
@@ -353,6 +413,9 @@ def fetch_smart_money_data(
         trades=trades,
         pnl_by_wallet=pnl_by_wallet,
         traders_used=traders_used,
+        persistence_signals=persistence_signals,
+        cohort_before_persistence=cohort_before,
+        cohort_after_persistence=cohort_after,
     )
 
 
@@ -528,9 +591,15 @@ def _time_periods(settings: Settings) -> list[str]:
     return [settings.smart_time_period.strip().upper() or "WEEK"]
 
 
-def _top_traders(client: DataApiClient, settings: Settings) -> list[SmartTrader]:
-    seen: set[str] = set()
-    traders: list[SmartTrader] = []
+def _top_traders(client: DataApiClient, settings: Settings) -> dict[str, list[SmartTrader]]:
+    """Retourne un dict {period: traders} (au lieu d'une liste dédupée).
+
+    La déduplication par wallet est désormais responsabilité du consommateur,
+    qui peut ainsi calculer les croisements multi-période (filtre persistance).
+    Dédup interne par période (un même wallet dans plusieurs catégories
+    n'apparaît qu'une fois dans la liste de cette période).
+    """
+    result: dict[str, list[SmartTrader]] = {}
     categories = _categories(settings)
     periods = _time_periods(settings)
     combos = [(period, category) for period in periods for category in categories]
@@ -549,16 +618,19 @@ def _top_traders(client: DataApiClient, settings: Settings) -> list[SmartTrader]
                 flush=True,
             )
             continue
+        bucket = result.setdefault(period, [])
+        seen = {t.wallet.lower() for t in bucket}
         added = 0
         for trader in category_traders:
-            if trader.wallet.lower() in seen:
+            key = trader.wallet.lower()
+            if key in seen:
                 continue
-            seen.add(trader.wallet.lower())
-            traders.append(trader)
+            seen.add(key)
+            bucket.append(trader)
             added += 1
         if not settings.quiet:
-            print(f"         +{added} new (total {len(traders)})", flush=True)
-    return traders
+            print(f"         +{added} new in {period} (period total {len(bucket)})", flush=True)
+    return result
 
 
 def _categories(settings: Settings) -> list[str]:

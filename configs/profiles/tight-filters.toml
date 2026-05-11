@@ -10,6 +10,9 @@ max_position_ceiling_usd = 100.0
 cash_floor_pct = 0.10
 min_open_positions = 3
 
+[trader_cohort]
+leaderboard_windows = "WEEK,MONTH,ALL"
+
 [filters]
 min_consensus = 3
 min_copied_usdc = 250.0
@@ -40,3 +43,11 @@ enabled = false
 [auto_tune]
 enabled = true
 min_closed_trades = 30
+
+[persistence]
+# Strict : 3/3 sur intersection ET cache à 80%.
+enabled = true
+window_days = 30
+cache_threshold = 0.80
+intersect_periods = "WEEK,MONTH,ALL"
+intersect_min = 3

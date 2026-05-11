@@ -43,6 +43,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
     },
     "trader_cohort": {
         "leaderboard_window": ("POLYMARKET_SMART_TIME_PERIOD", "str"),
+        "leaderboard_windows": ("POLYMARKET_SMART_TIME_PERIODS", "str"),
         "top_n": ("POLYMARKET_SMART_LEADERBOARD_LIMIT", "int"),
         "min_trader_pnl": ("POLYMARKET_SMART_MIN_TRADER_PNL", "float"),
         "min_trader_volume": ("POLYMARKET_SMART_MIN_TRADER_VOLUME", "float"),
@@ -84,6 +85,13 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
     "auto_tune": {
         "enabled": ("POLYMARKET_SMART_AUTO_TUNE_ENABLED", "bool"),
         "min_closed_trades": ("POLYMARKET_SMART_AUTO_TUNE_MIN_TRADES", "int"),
+    },
+    "persistence": {
+        "enabled": ("POLYMARKET_PERSISTENCE_ENABLED", "bool"),
+        "window_days": ("POLYMARKET_PERSISTENCE_WINDOW_DAYS", "int"),
+        "cache_threshold": ("POLYMARKET_PERSISTENCE_CACHE_THRESHOLD", "float"),
+        "intersect_periods": ("POLYMARKET_PERSISTENCE_INTERSECT_PERIODS", "str"),
+        "intersect_min": ("POLYMARKET_PERSISTENCE_INTERSECT_MIN", "int"),
     },
     "telemetry": {
         "quiet": ("POLYMARKET_QUIET", "bool"),

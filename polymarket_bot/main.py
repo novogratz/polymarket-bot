@@ -566,6 +566,27 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 )
                 signal = opportunity
                 signal_payload = opportunity_payload
+                # Stash persistence_score on the just-created position so it
+                # propagates to the trade journal on close.
+                _persistence_score = max(
+                    (
+                        smart_data.persistence_signals[w.lower()].persistence_score
+                        for w in opportunity.wallets
+                        if w.lower() in smart_data.persistence_signals
+                    ),
+                    default=0.0,
+                )
+                _new_pos = next(
+                    (
+                        p
+                        for p in portfolio.positions
+                        if p.get("status") == "open"
+                        and p.get("market_id") == opportunity.candidate.market_id
+                    ),
+                    None,
+                )
+                if _new_pos is not None:
+                    _new_pos["persistence_score"] = _persistence_score
                 trade_payload = {
                     "strategy": strategy,
                     "signal": signal_payload,
@@ -1854,6 +1875,7 @@ def _append_trade_journal(settings: Settings, position: dict[str, object], reaso
         "avg_copy_price": metrics.get("avg_copy_price"),
         "score": signal.get("score") if isinstance(signal, dict) else None,
         "wallets": signal.get("wallets") if isinstance(signal, dict) else None,
+        "persistence_score": float(position.get("persistence_score") or 0.0),
         "exit_count": len(exits),
     }
     try:
@@ -2394,8 +2416,16 @@ def cli_auto_loop(
         "--run",
         help="Nom du dossier de simulation dans data/dry_runs/. Dry-run only.",
     ),
+    no_persistence: bool = typer.Option(
+        False,
+        "--no-persistence",
+        help="Désactive le filtre de persistance d'edge (pour A/B test).",
+    ),
 ) -> None:
     """Run the smart-money loop in --dry-run or --live mode."""
+
+    if no_persistence:
+        os.environ["POLYMARKET_PERSISTENCE_ENABLED"] = "false"
 
     # 1) Validate mode flags.
     if dry_run and live:
