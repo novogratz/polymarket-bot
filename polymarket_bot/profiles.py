@@ -3,8 +3,9 @@
 Profiles are TOML files in ``configs/profiles/`` that group strategy
 parameters under thematic sections. This module is responsible for
 reading one, validating its structure against the supported schema, and
-producing a :class:`ProfileConfig` that other code can apply to the
-environment (see :func:`apply_profile_to_env`).
+producing a :class:`ProfileConfig`. Other modules consume the resulting
+``values`` dict to drive ``os.environ`` updates — this module does not
+write to the environment itself.
 
 Adding a new tunable: register it in ``_SCHEMA`` below with the matching
 environment variable name. The schema is the single source of truth.
@@ -90,6 +91,9 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
 }
 
 
+DEFAULT_STARTING_CASH = 100.0
+
+
 @dataclass(frozen=True)
 class ProfileConfig:
     """Result of parsing a TOML profile.
@@ -102,7 +106,7 @@ class ProfileConfig:
     """
 
     source_path: Path
-    starting_cash: float = 100.0
+    starting_cash: float = DEFAULT_STARTING_CASH
     values: dict[str, str] = field(default_factory=dict)
 
 
@@ -154,7 +158,7 @@ def load_profile(path: Path) -> ProfileConfig:
         raise ProfileValidationError(f"{path}: invalid TOML — {exc}") from exc
 
     values: dict[str, str] = {}
-    starting_cash = 100.0
+    starting_cash = DEFAULT_STARTING_CASH
 
     for section, body in raw.items():
         if section not in _SCHEMA:
