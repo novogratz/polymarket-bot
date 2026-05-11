@@ -284,5 +284,30 @@ class WriteSnapshotTests(unittest.TestCase):
         self.assertIn(r'\"quotes\"', text)
 
 
+class ProfilesDirectoryTests(unittest.TestCase):
+    """Sanity check: configs/profiles/*.toml all load without error."""
+
+    def test_all_shipped_profiles_load(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        profiles_dir = repo_root / "configs" / "profiles"
+        profiles = sorted(profiles_dir.glob("*.toml"))
+        self.assertGreaterEqual(len(profiles), 4, f"expected 4+ profiles, got {profiles}")
+        for path in profiles:
+            with self.subTest(profile=path.name):
+                profile = load_profile(path)
+                self.assertGreater(len(profile.values), 0, f"{path.name} produced no values")
+
+    def test_baseline_has_expected_keys(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        path = repo_root / "configs" / "profiles" / "baseline.toml"
+        profile = load_profile(path)
+        self.assertEqual(profile.starting_cash, 20.0)
+        self.assertIn("POLYMARKET_SMART_POSITION_PCT", profile.values)
+        self.assertIn("POLYMARKET_SMART_MIN_CONSENSUS", profile.values)
+        self.assertIn("POLYMARKET_SMART_STOP_LOSS_PCT", profile.values)
+        self.assertIn("POLYMARKET_BTC_EDGE_INTEGRATED", profile.values)
+        self.assertIn("POLYMARKET_SMART_NOISE_FALLBACK_ENABLED", profile.values)
+
+
 if __name__ == "__main__":
     unittest.main()

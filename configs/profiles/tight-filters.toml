@@ -1,0 +1,42 @@
+# Profil tight-filters — filtres serrés, sizing modéré.
+# À utiliser pour ne prendre que les meilleurs signaux.
+
+[run]
+starting_cash = 100.0
+
+[sizing]
+position_pct = 0.10
+max_position_ceiling_usd = 100.0
+cash_floor_pct = 0.10
+min_open_positions = 3
+
+[filters]
+min_consensus = 3
+min_copied_usdc = 250.0
+max_chase_premium = 0.08
+price_min = 0.05
+price_max = 0.95
+max_absolute_spread = 0.05
+max_relative_spread = 0.20
+
+[exits]
+take_profit_ladder = "0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15"
+trailing_stop_arm_pct = 0.20
+trailing_stop_giveback = 0.40
+peak_protect_arm_pct = 0.75
+peak_protect_exit_pct = 0.30
+stop_loss_pct = 0.30
+stop_loss_min_age_minutes = 15
+max_hold_hours = 24.0
+
+[btc_edge]
+enabled = true
+per_trade_cap_usd = 3.0
+min_edge_over_market = 0.10
+
+[noise_fallback]
+enabled = false
+
+[auto_tune]
+enabled = true
+min_closed_trades = 30

@@ -1,0 +1,47 @@
+# Profil aggressive — sizing élevé, filtres standard.
+# À utiliser pour tester l'effet du levier sans toucher aux filtres.
+
+[run]
+starting_cash = 100.0
+
+[sizing]
+position_pct = 0.25
+max_position_ceiling_usd = 200.0
+max_position_ceiling_pct = 0.40
+cash_floor_pct = 0.05
+min_open_positions = 5
+starter_trade_usd = 25.0
+
+[filters]
+min_consensus = 2
+min_copied_usdc = 50.0
+max_chase_premium = 0.15
+price_min = 0.03
+price_max = 0.97
+max_absolute_spread = 0.10
+max_relative_spread = 0.40
+
+[exits]
+take_profit_ladder = "0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15"
+trailing_stop_arm_pct = 0.25
+trailing_stop_giveback = 0.50
+peak_protect_arm_pct = 1.0
+peak_protect_exit_pct = 0.40
+stop_loss_pct = 0.40
+stop_loss_min_age_minutes = 15
+max_hold_hours = 24.0
+
+[btc_edge]
+enabled = true
+per_trade_cap_usd = 5.0
+min_edge_over_market = 0.08
+
+[noise_fallback]
+enabled = true
+max_trades_per_tick = 4
+stake_usd = 10.0
+cash_pressure_threshold = 0.35
+
+[auto_tune]
+enabled = true
+min_closed_trades = 30

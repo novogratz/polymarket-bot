@@ -1,0 +1,65 @@
+# Profil baseline — reproduit les valeurs par défaut codées dans
+# polymarket_bot/config.py. Charger ce profil ne change pas le
+# comportement existant ; il sert de point de référence et d'exemple
+# pour les profils dérivés.
+
+[run]
+# Défaut code : POLYMARKET_PAPER_BALANCE_USD = 20.0
+starting_cash = 20.0
+
+[sizing]
+position_pct = 0.0
+max_position_ceiling_usd = 50.0
+max_position_ceiling_pct = 0.0
+cash_floor_pct = 0.0
+min_open_positions = 3
+starter_trade_usd = 25.0
+assumed_live_balance_usd = 0.0
+
+[trader_cohort]
+leaderboard_window = "WEEK"
+top_n = 25
+min_trader_pnl = 0.0
+min_trader_volume = 0.0
+min_trader_roi = 0.0
+trade_fetch_concurrency = 16
+trade_lookback_minutes = 240
+
+[filters]
+min_consensus = 2
+min_copied_usdc = 50.0
+max_chase_premium = 0.10
+price_min = 0.02
+price_max = 0.98
+max_absolute_spread = 0.10
+max_relative_spread = 0.30
+signal_staleness_seconds = 0
+
+[exits]
+take_profit_ladder = "0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15"
+trailing_stop_arm_pct = 0.25
+trailing_stop_giveback = 0.50
+peak_protect_arm_pct = 1.0
+peak_protect_exit_pct = 0.40
+stop_loss_pct = 0.40
+stop_loss_min_age_minutes = 15
+max_hold_hours = 0.0
+
+[btc_edge]
+enabled = false
+per_trade_cap_usd = 5.0
+min_edge_over_market = 0.08
+
+[noise_fallback]
+enabled = false
+max_trades_per_tick = 2
+stake_usd = 5.0
+cash_pressure_threshold = 0.35
+
+[auto_tune]
+enabled = true
+min_closed_trades = 30
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 10
