@@ -33,6 +33,8 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - `polymarket_bot/models.py` — shared dataclasses and parsing helpers.
 - `scripts/run_live_70.sh` — canonical live runner for ~$90 bankroll.
 - `tests/test_strategy.py` — 52 tests covering scoring, sizing, exit plans, auto-tuner rules.
+- `docs/PROFILES.md` — référence exhaustive des clés TOML des profils (sections, types, défauts, rôles).
+- `docs/STRATEGIES.md` — document maître des 6 lanes d'achat et des 9 conditions d'exit.
 
 ## Development workflow
 
