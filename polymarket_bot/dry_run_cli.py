@@ -41,21 +41,33 @@ def cmd_list() -> None:
         typer.echo("(no dry-run runs)")
         return
     typer.echo(
-        f"{'NAME':<20}  {'PROFILE':<20}  {'STARTING':>10}  {'EQUITY':>10}  "
-        f"{'RETURN':>8}  {'TRADES':>6}  {'WIN%':>5}  {'TICKS':>7}  STARTED_AT"
+        f"{'NAME':<20}  {'PROFILE':<20}  {'STARTING':>10}  {'CASH':>10}  {'INV':>10}  "
+        f"{'POS':>3}  {'EQUITY':>10}  {'RETURN':>8}  {'TRADES':>6}  {'WIN%':>5}  "
+        f"{'TICKS':>7}  STARTED_AT"
     )
     for r in runs:
         try:
             s = compute_run_stats(_data_dir(), r.run_name)
-            equity = f"${s.equity:>9.2f}"
+            cash = f"{s.cash:>9.2f}$"
+            inv = f"{s.invested:>9.2f}$"
+            pos = f"{s.open_positions:>3}"
+            equity = f"{s.equity:>9.2f}$"
             ret = f"{s.return_pct * 100:>+7.2f}%"
             trades = f"{s.trades_closed:>6}"
             win = f"{s.win_rate * 100:>4.0f}%"
         except Exception:
-            equity, ret, trades, win = "n/a".rjust(10), "n/a".rjust(8), "n/a".rjust(6), "n/a".rjust(5)
+            cash = "n/a".rjust(10)
+            inv = "n/a".rjust(10)
+            pos = "n/a".rjust(3)
+            equity = "n/a".rjust(10)
+            ret = "n/a".rjust(8)
+            trades = "n/a".rjust(6)
+            win = "n/a".rjust(5)
+        starting = f"{r.starting_cash:>9.2f}$"
         typer.echo(
-            f"{r.run_name:<20}  {r.profile_source:<20}  ${r.starting_cash:>9.2f}  "
-            f"{equity}  {ret}  {trades}  {win}  {r.total_ticks:>7}  {r.started_at}"
+            f"{r.run_name:<20}  {r.profile_source:<20}  {starting}  "
+            f"{cash}  {inv}  {pos}  {equity}  {ret}  {trades}  {win}  "
+            f"{r.total_ticks:>7}  {r.started_at}"
         )
 
 
@@ -75,11 +87,12 @@ def cmd_show(run: str = typer.Argument(..., help="Run name")) -> None:
     typer.echo(f"Profile:       {metadata.profile_source}")
     typer.echo(f"Git sha:       {metadata.git_sha or '(unknown)'}")
     typer.echo("")
-    typer.echo(f"Starting cash: ${stats.starting_cash:.2f}")
-    typer.echo(f"Cash now:      ${stats.cash:.2f}")
-    typer.echo(f"Invested:      ${stats.invested:.2f}")
-    typer.echo(f"Unrealized:    {stats.unrealized:+.2f}")
-    typer.echo(f"Equity:        ${stats.equity:.2f}")
+    typer.echo(f"Starting cash: {stats.starting_cash:.2f}$")
+    typer.echo(f"Cash now:      {stats.cash:.2f}$")
+    typer.echo(f"Invested:      {stats.invested:.2f}$")
+    typer.echo(f"Open pos.:     {stats.open_positions}")
+    typer.echo(f"Unrealized:    {stats.unrealized:+.2f}$")
+    typer.echo(f"Equity:        {stats.equity:.2f}$")
     typer.echo(f"Return:        {stats.return_pct * 100:+.2f}%")
     typer.echo("")
     typer.echo(f"Trades closed: {stats.trades_closed}")

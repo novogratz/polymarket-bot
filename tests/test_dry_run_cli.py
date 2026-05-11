@@ -61,7 +61,7 @@ class DryRunCliTests(unittest.TestCase):
         result = self.runner.invoke(self.app, ["dry-run", "show", "alpha"])
         self.assertEqual(result.exit_code, 0)
         self.assertIn("Run:           alpha", result.stdout)
-        self.assertIn("Starting cash: $100.00", result.stdout)
+        self.assertIn("Starting cash: 100.00$", result.stdout)
 
     def test_show_unknown(self):
         result = self.runner.invoke(self.app, ["dry-run", "show", "ghost"])
@@ -99,8 +99,8 @@ class DryRunCliTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, msg=result.stdout + result.stderr)
         self.assertIn("alpha", result.stdout)
         self.assertIn("beta", result.stdout)
-        self.assertIn("$100.00", result.stdout)
-        self.assertIn("$50.00", result.stdout)
+        self.assertIn("100.00$", result.stdout)
+        self.assertIn("50.00$", result.stdout)
 
 
 class ImportLegacyTests(unittest.TestCase):

@@ -52,6 +52,7 @@ from .smart_money import (
     _top_traders,
 )
 from .trading import build_client, execute_live_sell, execute_live_trade
+from .pricing import ensure_open_positions_in_pool
 from .strategy import rank_markets
 
 
@@ -221,7 +222,8 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
     candidates = load_btc_candidates(settings)
     btc_model = CoinbaseBtcClient().model(settings)
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
-    portfolio.mark_to_market(candidates)
+    pricing_pool = ensure_open_positions_in_pool(settings, portfolio, candidates)
+    portfolio.mark_to_market(pricing_pool)
 
     eligible_candidates = [
         candidate
@@ -313,7 +315,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         _step(settings, f"   sync actions: {len(sync_report)}")
     else:
         sync_report = []
-    portfolio.mark_to_market(candidates)
+    pricing_pool = ensure_open_positions_in_pool(settings, portfolio, candidates)
+    portfolio.mark_to_market(pricing_pool)
     open_count = portfolio.summary()["open_positions"]
     _step(settings, f"   open positions: {open_count}")
 
@@ -336,7 +339,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         client,
         settings,
         portfolio,
-        candidates,
+        pricing_pool,
         cohort_exit_tokens=cohort_exit_tokens,
     )
     sells = sum(1 for e in exit_report if e.get("action") == "sell")

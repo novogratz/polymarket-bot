@@ -48,6 +48,7 @@ class ComputeRunStatsTests(unittest.TestCase):
             self.assertAlmostEqual(stats.equity, 110.0)
             self.assertAlmostEqual(stats.cash, 33.0)  # 110 * 0.3
             self.assertAlmostEqual(stats.invested, 77.0)  # 110 * 0.7
+            self.assertEqual(stats.open_positions, 1)
             self.assertAlmostEqual(stats.return_pct, 0.10)
 
     def test_compute_run_without_state(self):
@@ -59,6 +60,7 @@ class ComputeRunStatsTests(unittest.TestCase):
             self.assertEqual(stats.equity, 100.0)  # fallback to starting_cash
             self.assertEqual(stats.cash, 100.0)
             self.assertEqual(stats.invested, 0.0)
+            self.assertEqual(stats.open_positions, 0)
 
 
 class FormatComparisonTableTests(unittest.TestCase):
@@ -68,14 +70,14 @@ class FormatComparisonTableTests(unittest.TestCase):
             cash=70.0, invested=40.0, unrealized=5.0, equity=115.0, return_pct=0.15,
             total_ticks=100, started_at="2026-05-10T00:00:00+00:00",
             realized_pnl=10.0, trades_closed=8, win_rate=0.625, max_drawdown=-5.0,
-            avg_pnl=1.25,
+            avg_pnl=1.25, open_positions=3,
         )
         stats_b = RunStats(
             run_name="b", profile_source="aggressive.toml", starting_cash=100.0,
             cash=20.0, invested=70.0, unrealized=-2.0, equity=88.0, return_pct=-0.12,
             total_ticks=80, started_at="2026-05-10T00:00:00+00:00",
             realized_pnl=-10.0, trades_closed=12, win_rate=0.333, max_drawdown=-15.0,
-            avg_pnl=-0.83,
+            avg_pnl=-0.83, open_positions=5,
         )
         text = format_comparison_table([stats_a, stats_b])
         self.assertIn("a", text)

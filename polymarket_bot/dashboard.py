@@ -27,6 +27,7 @@ from .dashboard_html import HTML
 from .gamma import GammaClient
 from .models import utc_now
 from .portfolio import Portfolio
+from .pricing import ensure_open_positions_in_pool
 from .strategy import rank_markets
 from . import tick_state
 from .trading import build_client
@@ -56,7 +57,8 @@ def build_state(settings: Settings) -> dict[str, Any]:
         settings,
     )
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
-    portfolio.mark_to_market(candidates)
+    pricing_pool = ensure_open_positions_in_pool(settings, portfolio, candidates)
+    portfolio.mark_to_market(pricing_pool)
     balance_source = "dry_run_ledger" if settings.dry_run else "local_ledger"
     live_balance_error = None
     if settings.dry_run:

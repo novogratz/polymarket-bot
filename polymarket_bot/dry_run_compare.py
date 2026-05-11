@@ -32,6 +32,7 @@ class RunStats:
     win_rate: float
     max_drawdown: float
     avg_pnl: float
+    open_positions: int = 0
 
 
 def _read_journal_stats(journal_path: Path) -> dict:
@@ -59,16 +60,18 @@ def compute_run_stats(base_dir: Path, run_name: str) -> RunStats:
     cash = float(metadata.starting_cash)
     invested = 0.0
     unrealized = 0.0
+    open_positions = 0
     if paths.state.is_file():
         state = json.loads(paths.state.read_text(encoding="utf-8"))
         cash = float(state.get("cash", cash))
         positions = state.get("positions", [])
         for p in positions:
             stake = float(p.get("stake", 0.0))
-            if stake <= 0:
+            if stake <= 0 or p.get("status") not in (None, "open"):
                 continue
             invested += stake
             unrealized += float(p.get("unrealized_pnl", 0.0))
+            open_positions += 1
 
     equity = cash + invested + unrealized
     return_pct = (equity - metadata.starting_cash) / metadata.starting_cash if metadata.starting_cash else 0.0
@@ -91,6 +94,7 @@ def compute_run_stats(base_dir: Path, run_name: str) -> RunStats:
         win_rate=round(j["win_rate"], 3),
         max_drawdown=round(j["max_drawdown"], 2),
         avg_pnl=round(j["avg_pnl"], 2),
+        open_positions=open_positions,
     )
 
 
@@ -101,11 +105,12 @@ def format_comparison_table(stats_list: list[RunStats]) -> str:
 
     rows: list[tuple[str, list[str]]] = [
         ("Profile",       [s.profile_source for s in stats_list]),
-        ("Starting cash", [f"${s.starting_cash:.2f}" for s in stats_list]),
-        ("Cash now",      [f"${s.cash:.2f}" for s in stats_list]),
-        ("Invested",      [f"${s.invested:.2f}" for s in stats_list]),
-        ("Unrealized",    [f"{s.unrealized:+.2f}" for s in stats_list]),
-        ("Equity",        [f"${s.equity:.2f}" for s in stats_list]),
+        ("Starting cash", [f"{s.starting_cash:.2f}$" for s in stats_list]),
+        ("Cash now",      [f"{s.cash:.2f}$" for s in stats_list]),
+        ("Invested",      [f"{s.invested:.2f}$" for s in stats_list]),
+        ("Open pos.",     [str(s.open_positions) for s in stats_list]),
+        ("Unrealized",    [f"{s.unrealized:+.2f}$" for s in stats_list]),
+        ("Equity",        [f"{s.equity:.2f}$" for s in stats_list]),
         ("Return",        [f"{s.return_pct * 100:+.2f}%" for s in stats_list]),
         ("Ticks",         [str(s.total_ticks) for s in stats_list]),
         ("",              ["" for _ in stats_list]),
