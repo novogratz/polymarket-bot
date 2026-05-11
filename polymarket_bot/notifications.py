@@ -651,7 +651,10 @@ def _fmt_equity_delta(label: str, value: float | None, pct: float | None = None)
     if value is None:
         return f"{_md_escape(label)} n/a"
     pct_str = f" \\({_md_escape(f'{pct:+.1f}%')}\\)" if pct is not None else ""
-    return f"{_md_escape(label)} {_pnl_icon(value)} {_md_escape(_fmt_money(value, signed=True))}{pct_str}"
+    amount = _md_escape(_fmt_money(value, signed=True))
+    if value >= 0:
+        amount = f"*{amount}*"
+    return f"{_md_escape(label)} {_pnl_icon(value)} {amount}{pct_str}"
 
 
 def _pnl_icon(value: float) -> str:
@@ -810,11 +813,12 @@ def notify_portfolio_update(snapshot: dict[str, Any]) -> None:
     ]
 
     equity_pct_str = f" \\({_md_escape(f'{total_pnl_pct:+.1f}%')}\\)" if total_pnl_pct is not None else ""
+    equity_amount = _md_escape(_fmt_money(equity)) if total_pnl <= 0 else f"*{_md_escape(_fmt_money(equity))}*"
     sections: list[list[str]] = [
         [
             f"\U0001f4ca *Director review* — {_md_escape(str(snapshot.get('timestamp') or ''))}",
             "",
-            f"{'✅' if total_pnl > 0 else '⚪'} *Equity* {_md_escape(_fmt_money(equity))}{equity_pct_str} — *Cash* {_md_escape(_fmt_money(cash))}",
+            f"{'✅' if total_pnl > 0 else '⚪'} *Equity* {equity_amount}{equity_pct_str} — *Cash* {_md_escape(_fmt_money(cash))}",
             *[f"  — {part}" for part in equity_parts],
             "",
             f"*Invested* {_md_escape(_fmt_money(invested))}",
