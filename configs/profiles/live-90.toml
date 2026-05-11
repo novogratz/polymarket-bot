@@ -115,7 +115,7 @@ min_hours_to_close = 0.5
 volatility_days = 7
 
 [noise_fallback]
-enabled = true
+enabled = false
 max_trades_per_tick = 8
 stake_usd = 15.0
 cash_pressure_threshold = 0.25
