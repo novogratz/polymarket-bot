@@ -49,7 +49,7 @@ Dashboard, journal stats, manual auto-tuner, bootstrap-creds, and reset-ledger: 
 bash scripts/run_live_70.sh
 ```
 
-Pierre's proven config: smart-money only, $7 max trade, 18% position pct, noise fallback enabled, BTC edge enabled. See `CLAUDE.md` for the full parameter list.
+Pierre's proven config: smart-money only (no leaderboard, no top10, no noise fallback), $7 max trade, 18% position pct, BTC edge enabled. See `CLAUDE.md` for the full parameter list.
 
 ## Winning strategy
 

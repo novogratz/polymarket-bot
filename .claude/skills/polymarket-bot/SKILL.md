@@ -34,7 +34,7 @@ POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop          # simulated, no SDK calls, 
 
 Canonical live config: `bash scripts/run_live_70.sh`
 
-Pierre's proven config: $7 max trade, 18% position pct, 15% high-conviction fraction, $1k PnL floor, $2k volume floor, 3% ROI floor, 10 min signal age, noise fallback enabled ($10/trade, 4/tick), BTC edge enabled ($5 max).
+Pierre's proven config: $7 max trade, 18% position pct, 15% high-conviction fraction, $1k PnL floor, $2k volume floor, 3% ROI floor, 10 min signal age, BTC edge enabled ($5 max). Smart-money only — no leaderboard_position, no top10_flow, no noise fallback.
 
 CLI surface: 9 Typer commands (`auto-loop`, `dashboard`, `doctor`, `status`, `positions`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`) plus the global `--version` / `-V` option. The Typer app is exposed as the `pmbot` console script via `[project.scripts]`; `python -m polymarket_bot.main <cmd>` continues to work as a fallback. `status` and `positions` are read-only — no SDK calls, no network — and automatically pick up the dry-run ledger when `POLYMARKET_DRY_RUN=1` is set. ANSI colors auto-disable when stdout is not a TTY (or when `NO_COLOR=1`); set `POLYMARKET_FORCE_COLOR=1` to keep them through pipes.
 
@@ -63,7 +63,6 @@ Smart-money copy-trading:
 8. Multi-level exits (run before every entry): take-profit ladder +50/+100/+200/+300, trailing stop, peak-protect, stop-loss, cohort-sell, cohort-silent, near-expiry, max-hold-time (24h).
 9. No duplicate per market_id, per token, or per event-slug (sports). Per-category cap on sports.
 10. BTC edge integrated after the smart-money tick ($5 max, 8% edge).
-11. Noise fallback ($10 max, 4 per tick) when 0 smart-money signal qualifies AND (positions below min=7 OR cash above 35% of equity).
 
 ## Defensive auto-tuner
 

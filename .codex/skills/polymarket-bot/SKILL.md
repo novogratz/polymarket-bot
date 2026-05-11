@@ -53,7 +53,6 @@ Smart-money copy-trading:
 7. Multi-level exits before every new entry: take-profit ladder +50/+100/+200/+300, trailing stop, peak-protect, stop-loss, cohort-sell, cohort-silent, near-expiry, max-hold-time.
 8. No duplicate per market_id, per token, per event-slug. Per-category cap on sports.
 9. BTC edge integrated after the smart-money tick ($5 max, 8% edge).
-10. Noise fallback ($10 max, 4 per tick) when 0 smart-money signal qualifies AND (positions below min=7 OR cash above 35% of equity).
 
 ## Money-making logic
 
