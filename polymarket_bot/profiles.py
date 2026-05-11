@@ -206,3 +206,79 @@ def apply_profile_to_env(profile: ProfileConfig, *, override: bool = False) -> N
 def snapshot_effective_env() -> dict[str, str]:
     """Return all ``POLYMARKET_*`` env vars currently set."""
     return {k: v for k, v in os.environ.items() if k.startswith("POLYMARKET_")}
+
+
+def _reverse_schema() -> dict[str, tuple[str, str, str]]:
+    """env_var -> (section, toml_key, value_type)."""
+    reverse: dict[str, tuple[str, str, str]] = {}
+    for section, body in _SCHEMA.items():
+        for toml_key, (env_var, value_type) in body.items():
+            reverse[env_var] = (section, toml_key, value_type)
+    return reverse
+
+
+def _format_toml_value(raw: str, expected: str) -> str:
+    """Format a stringified env value back into TOML literal syntax."""
+    if expected == "bool":
+        return "true" if raw in ("1", "true", "True", "yes") else "false"
+    if expected == "int":
+        return str(int(float(raw)))
+    if expected == "float":
+        return str(float(raw))
+    if expected == "str":
+        escaped = raw.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    return f'"{raw}"'
+
+
+def write_snapshot_toml(path: Path, *, source_label: str) -> None:
+    """Write a TOML snapshot of the current POLYMARKET_* environment.
+
+    Grouped by schema section. Unknown keys (not in ``_SCHEMA``) are
+    dumped into an ``[extras]`` section as raw strings so the snapshot
+    remains lossless without breaking ``load_profile``.
+
+    The output is a valid input to :func:`load_profile` provided no
+    ``[extras]`` section is present (extras are for audit, not replay).
+    """
+    reverse = _reverse_schema()
+    current = snapshot_effective_env()
+
+    grouped: dict[str, list[tuple[str, str]]] = {}
+    extras: list[tuple[str, str]] = []
+
+    for env_var, value in sorted(current.items()):
+        if env_var == "POLYMARKET_SKIP_DOTENV":
+            continue
+        match = reverse.get(env_var)
+        if match is None:
+            extras.append((env_var, value))
+            continue
+        section, toml_key, value_type = match
+        grouped.setdefault(section, []).append(
+            (toml_key, _format_toml_value(value, value_type))
+        )
+
+    lines: list[str] = [
+        f"# source: {source_label}",
+        "# Auto-generated snapshot — do not edit by hand.",
+        "",
+    ]
+    for section in _SCHEMA.keys():
+        rows = grouped.get(section)
+        if not rows:
+            continue
+        lines.append(f"[{section}]")
+        for toml_key, formatted in rows:
+            lines.append(f"{toml_key} = {formatted}")
+        lines.append("")
+    if extras:
+        lines.append("[extras]")
+        lines.append("# These env vars are not part of the profile schema; preserved for audit.")
+        for env_var, value in extras:
+            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+            lines.append(f'{env_var} = "{escaped}"')
+        lines.append("")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")

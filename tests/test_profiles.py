@@ -13,6 +13,7 @@ from polymarket_bot.profiles import (
     apply_profile_to_env,
     load_profile,
     snapshot_effective_env,
+    write_snapshot_toml,
 )
 
 
@@ -214,6 +215,73 @@ class ApplyProfileTests(unittest.TestCase):
         self.assertEqual(snap.get("POLYMARKET_SMART_POSITION_PCT"), "0.18")
         self.assertEqual(snap.get("POLYMARKET_FOO_BAR"), "x")
         self.assertNotIn("UNRELATED_VAR", snap)
+
+
+class WriteSnapshotTests(unittest.TestCase):
+    def setUp(self):
+        self._snapshot = dict(os.environ)
+        for k in [k for k in os.environ if k.startswith("POLYMARKET_")]:
+            if k != "POLYMARKET_SKIP_DOTENV":
+                del os.environ[k]
+
+    def tearDown(self):
+        for k in list(os.environ.keys()):
+            if k not in self._snapshot:
+                del os.environ[k]
+            elif os.environ[k] != self._snapshot[k]:
+                os.environ[k] = self._snapshot[k]
+
+    def test_writes_known_keys_grouped_by_section(self):
+        os.environ["POLYMARKET_SMART_POSITION_PCT"] = "0.18"
+        os.environ["POLYMARKET_SMART_MIN_CONSENSUS"] = "2"
+        os.environ["POLYMARKET_PAPER_BALANCE_USD"] = "100.0"
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "snapshot.toml"
+            write_snapshot_toml(out, source_label="baseline.toml")
+            text = out.read_text(encoding="utf-8")
+        self.assertIn("# source: baseline.toml", text)
+        self.assertIn("[run]", text)
+        self.assertIn("starting_cash = 100.0", text)
+        self.assertIn("[sizing]", text)
+        self.assertIn("position_pct = 0.18", text)
+        self.assertIn("[filters]", text)
+        self.assertIn("min_consensus = 2", text)
+
+    def test_writes_unknown_keys_to_extras_section(self):
+        os.environ["POLYMARKET_NOT_IN_SCHEMA"] = "abc"
+        os.environ["POLYMARKET_SMART_POSITION_PCT"] = "0.20"
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "snapshot.toml"
+            write_snapshot_toml(out, source_label="env")
+            text = out.read_text(encoding="utf-8")
+        self.assertIn("[extras]", text)
+        self.assertIn('POLYMARKET_NOT_IN_SCHEMA = "abc"', text)
+
+    def test_roundtrip_with_load_profile(self):
+        os.environ["POLYMARKET_SMART_POSITION_PCT"] = "0.18"
+        os.environ["POLYMARKET_PAPER_BALANCE_USD"] = "100.0"
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "snapshot.toml"
+            write_snapshot_toml(out, source_label="test")
+            reloaded = load_profile(out)
+        self.assertEqual(reloaded.starting_cash, 100.0)
+        self.assertEqual(reloaded.values["POLYMARKET_SMART_POSITION_PCT"], "0.18")
+
+    def test_creates_parent_directory(self):
+        os.environ["POLYMARKET_SMART_POSITION_PCT"] = "0.18"
+        with tempfile.TemporaryDirectory() as tmp:
+            nested = Path(tmp) / "nested" / "sub" / "snapshot.toml"
+            write_snapshot_toml(nested, source_label="test")
+            self.assertTrue(nested.is_file())
+
+    def test_handles_string_with_quotes_in_extras(self):
+        os.environ["POLYMARKET_NOT_IN_SCHEMA"] = 'value with "quotes"'
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "snapshot.toml"
+            write_snapshot_toml(out, source_label="test")
+            text = out.read_text(encoding="utf-8")
+        # Roundtrip should preserve via TOML escaping.
+        self.assertIn(r'\"quotes\"', text)
 
 
 if __name__ == "__main__":
