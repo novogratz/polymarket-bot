@@ -13,6 +13,7 @@ environment variable name. The schema is the single source of truth.
 
 from __future__ import annotations
 
+import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -185,3 +186,23 @@ def load_profile(path: Path) -> ProfileConfig:
                 starting_cash = float(value)
 
     return ProfileConfig(source_path=path, starting_cash=starting_cash, values=values)
+
+
+def apply_profile_to_env(profile: ProfileConfig, *, override: bool = False) -> None:
+    """Push profile values into ``os.environ``.
+
+    By default, only sets a variable if it is missing or empty in
+    ``os.environ`` — this preserves explicit CLI env overrides
+    (``POLYMARKET_SMART_POSITION_PCT=0.25 pmbot auto-loop ...``).
+
+    Pass ``override=True`` to force-overwrite (used by ``--reset`` flows
+    in later plans).
+    """
+    for key, value in profile.values.items():
+        if override or not os.environ.get(key):
+            os.environ[key] = value
+
+
+def snapshot_effective_env() -> dict[str, str]:
+    """Return all ``POLYMARKET_*`` env vars currently set."""
+    return {k: v for k, v in os.environ.items() if k.startswith("POLYMARKET_")}

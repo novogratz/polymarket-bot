@@ -10,7 +10,9 @@ from pathlib import Path
 from polymarket_bot.profiles import (
     ProfileConfig,
     ProfileValidationError,
+    apply_profile_to_env,
     load_profile,
+    snapshot_effective_env,
 )
 
 
@@ -159,6 +161,59 @@ class LoadProfileTests(unittest.TestCase):
         )
         profile = load_profile(path)
         self.assertEqual(profile.starting_cash, 100.0)
+
+
+class ApplyProfileTests(unittest.TestCase):
+    def setUp(self):
+        self._snapshot = dict(os.environ)
+
+    def tearDown(self):
+        for k in list(os.environ.keys()):
+            if k not in self._snapshot:
+                del os.environ[k]
+            elif os.environ[k] != self._snapshot[k]:
+                os.environ[k] = self._snapshot[k]
+
+    def _make_profile(self, **values) -> ProfileConfig:
+        return ProfileConfig(
+            source_path=Path("dummy.toml"),
+            starting_cash=100.0,
+            values=values,
+        )
+
+    def test_apply_sets_env_when_missing(self):
+        os.environ.pop("POLYMARKET_SMART_POSITION_PCT", None)
+        profile = self._make_profile(POLYMARKET_SMART_POSITION_PCT="0.18")
+        apply_profile_to_env(profile)
+        self.assertEqual(os.environ["POLYMARKET_SMART_POSITION_PCT"], "0.18")
+
+    def test_apply_preserves_existing_env_by_default(self):
+        os.environ["POLYMARKET_SMART_POSITION_PCT"] = "0.25"
+        profile = self._make_profile(POLYMARKET_SMART_POSITION_PCT="0.18")
+        apply_profile_to_env(profile)
+        self.assertEqual(os.environ["POLYMARKET_SMART_POSITION_PCT"], "0.25")
+
+    def test_apply_overrides_when_requested(self):
+        os.environ["POLYMARKET_SMART_POSITION_PCT"] = "0.25"
+        profile = self._make_profile(POLYMARKET_SMART_POSITION_PCT="0.18")
+        apply_profile_to_env(profile, override=True)
+        self.assertEqual(os.environ["POLYMARKET_SMART_POSITION_PCT"], "0.18")
+
+    def test_apply_overrides_empty_string(self):
+        # Empty string env vars are treated as "missing" so the profile fills them.
+        os.environ["POLYMARKET_SMART_POSITION_PCT"] = ""
+        profile = self._make_profile(POLYMARKET_SMART_POSITION_PCT="0.18")
+        apply_profile_to_env(profile)
+        self.assertEqual(os.environ["POLYMARKET_SMART_POSITION_PCT"], "0.18")
+
+    def test_snapshot_returns_only_polymarket_keys(self):
+        os.environ["POLYMARKET_SMART_POSITION_PCT"] = "0.18"
+        os.environ["POLYMARKET_FOO_BAR"] = "x"
+        os.environ["UNRELATED_VAR"] = "ignore-me"
+        snap = snapshot_effective_env()
+        self.assertEqual(snap.get("POLYMARKET_SMART_POSITION_PCT"), "0.18")
+        self.assertEqual(snap.get("POLYMARKET_FOO_BAR"), "x")
+        self.assertNotIn("UNRELATED_VAR", snap)
 
 
 if __name__ == "__main__":
