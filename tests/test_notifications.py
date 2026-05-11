@@ -44,7 +44,7 @@ class TestDisabled(NotificationsBaseTest):
         )
         notifications.notify_error("test", "should not send")
         notifications.notify_threshold("drawdown", {"pct": -10})
-        notifications.notify_daily_summary({"equity": 90.0})
+        notifications.notify_heartbeat({"equity_usd": 90.0})
 
         self.assertEqual(sent, [])
 
@@ -167,15 +167,27 @@ class TestStatePersistence(NotificationsBaseTest):
             state = notifications._State(
                 equity_peak_usd=92.10,
                 equity_floor_breached=False,
-                last_daily_summary_date="2026-05-09",
-                dedupe_seen={"order_rejected:0xtoken": 1715250400.0},
+                last_heartbeat_ts=1715250500.0,
+                dedupe_seen={
+                    "order_rejected:0xtoken": {
+                        "first_ts": 1715250400.0,
+                        "last_ts": 1715250400.0,
+                        "count": 1,
+                        "last_message": "balance low",
+                    },
+                },
             )
             notifications._save_state(path, state)
             loaded = notifications._load_state(path)
             self.assertEqual(loaded.equity_peak_usd, 92.10)
             self.assertFalse(loaded.equity_floor_breached)
-            self.assertEqual(loaded.last_daily_summary_date, "2026-05-09")
-            self.assertEqual(loaded.dedupe_seen.get("order_rejected:0xtoken"), 1715250400.0)
+            self.assertEqual(loaded.last_heartbeat_ts, 1715250500.0)
+            entry = loaded.dedupe_seen.get("order_rejected:0xtoken")
+            self.assertIsNotNone(entry)
+            self.assertEqual(entry["first_ts"], 1715250400.0)
+            self.assertEqual(entry["last_ts"], 1715250400.0)
+            self.assertEqual(entry["count"], 1)
+            self.assertEqual(entry["last_message"], "balance low")
 
     def test_state_path_routing(self) -> None:
         os.environ["POLYMARKET_DRY_RUN"] = "1"
@@ -191,7 +203,7 @@ class TestStatePersistence(NotificationsBaseTest):
             state = notifications._load_state(path)
             self.assertIsNone(state.equity_peak_usd)
             self.assertFalse(state.equity_floor_breached)
-            self.assertIsNone(state.last_daily_summary_date)
+            self.assertIsNone(state.last_heartbeat_ts)
             self.assertEqual(state.dedupe_seen, {})
 
 
@@ -510,33 +522,90 @@ class TestThresholdOneLine(NotificationsBaseTest):
         self.assertEqual(sent, [])
 
 
-class TestDailySummary(NotificationsBaseTest):
-    def test_summary_sent_once_per_day(self) -> None:
+class TestHeartbeat(NotificationsBaseTest):
+    def _setup(self) -> list[dict]:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
         os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
         sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
-        with tempfile.TemporaryDirectory() as td:
-            path = Path(td) / "state.json"
+        notifications.set_transport_for_test(lambda payload: sent.append(payload) or True)
+        return sent
+
+    def _snapshot(self, **overrides) -> dict:
+        base: dict = {
+            "equity_usd": 87.40,
+            "equity_pct_24h": 2.1,
+            "cash_usd": 12.0,
+            "open_positions": 7,
+            "trades_24h": 4,
+            "wins_24h": 3,
+            "losses_24h": 1,
+            "top_winner": {"pnl_usd": 4.20, "title": "X"},
+            "top_loser": {"pnl_usd": -1.10, "title": "Y"},
+        }
+        base.update(overrides)
+        return base
+
+    def test_heartbeat_one_line_with_all_fields(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
             with patch.object(notifications, "_default_state_path", return_value=path):
-                snap = {
-                    "equity_usd": 92.10, "equity_pct_24h": 2.3,
-                    "cash_usd": 8.40, "open_positions": 7,
-                    "trades_24h": 18, "wins_24h": 12, "losses_24h": 6,
-                    "top_winner": {"title": "BTC EOY", "pnl_usd": 5.20},
-                    "top_loser": {"title": "NBA Finals", "pnl_usd": -3.10},
-                    "today": "2026-05-09",
-                }
-                notifications.notify_daily_summary(snap)
-                self.assertEqual(len(sent), 1)
-                self.assertIn("Daily summary", sent[0]["text"])
-                # Second appel le même jour: skip
-                notifications.notify_daily_summary(snap)
-                self.assertEqual(len(sent), 1)
-                # Lendemain: nouvel envoi
-                snap_next = dict(snap, today="2026-05-10")
-                notifications.notify_daily_summary(snap_next)
-                self.assertEqual(len(sent), 2)
+                notifications.notify_heartbeat(self._snapshot())
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertNotIn("\n", text)
+        self.assertIn("💓", text)
+        # Vérification par sous-chaînes en tenant compte de _md_escape
+        # (les "." sont escapés en "\.", donc on cherche "87" et "40" séparés)
+        self.assertIn("87", text)
+        self.assertIn("40", text)
+        self.assertIn("2", text)  # +2.1% 24h
+        self.assertIn("7pos", text)
+        self.assertIn("3W/1L", text)
+        self.assertIn("75%", text)
+
+    def test_heartbeat_respects_interval(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_HEARTBEAT_MINUTES"] = "30"
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            t0 = 1700000000.0
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                with patch.object(notifications.time, "time", return_value=t0):
+                    notifications.notify_heartbeat(self._snapshot())
+                with patch.object(notifications.time, "time", return_value=t0 + 600):
+                    notifications.notify_heartbeat(self._snapshot())
+                with patch.object(notifications.time, "time", return_value=t0 + 31 * 60):
+                    notifications.notify_heartbeat(self._snapshot())
+        self.assertEqual(len(sent), 2)
+
+    def test_heartbeat_disabled_by_toggle(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_ALERT_HEARTBEAT"] = "0"
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_heartbeat(self._snapshot())
+        self.assertEqual(sent, [])
+
+    def test_heartbeat_no_trades_clean_format(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_heartbeat(
+                    self._snapshot(trades_24h=0, wins_24h=0, losses_24h=0,
+                                   top_winner={}, top_loser={}),
+                )
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertNotIn("\n", text)
+        self.assertIn("0W/0L", text)
+
+
+class TestDailySummaryRemoved(NotificationsBaseTest):
+    def test_function_removed(self) -> None:
+        self.assertFalse(hasattr(notifications, "notify_daily_summary"))
 
 
 class TestStateMigration(NotificationsBaseTest):

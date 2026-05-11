@@ -7,7 +7,6 @@ remontée — toute erreur est loggée sur stdout puis ignorée.
 
 from __future__ import annotations
 
-import datetime as dt
 import json
 import os
 import sys
@@ -458,45 +457,56 @@ def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
     # big_win / big_loss : intégrés à notify_trade_sell, ignorés ici
 
 
-def notify_daily_summary(snapshot: dict[str, Any]) -> None:
-    if not is_enabled() or not _flag("TELEGRAM_ALERT_DAILY_SUMMARY"):
+def notify_heartbeat(snapshot: dict[str, Any]) -> None:
+    if not is_enabled() or not _flag("TELEGRAM_ALERT_HEARTBEAT"):
         return
-    today = str(snapshot.get("today") or dt.date.today().isoformat())
+    try:
+        interval_min = float(os.environ.get("TELEGRAM_HEARTBEAT_MINUTES", "30"))
+    except ValueError:
+        interval_min = 30.0
+    if interval_min <= 0:
+        interval_min = 30.0
     path = _default_state_path()
     state = _load_state(path)
-    if state.last_daily_summary_date == today:
+    now = time.time()
+    if state.last_heartbeat_ts is not None and (now - state.last_heartbeat_ts) < interval_min * 60:
         return
-    equity = float(snapshot.get("equity_usd", 0))
-    pct_24h = float(snapshot.get("equity_pct_24h", 0))
+
+    equity = float(snapshot.get("equity_usd", 0) or 0)
+    pct_24h = float(snapshot.get("equity_pct_24h", 0) or 0)
+    cash = float(snapshot.get("cash_usd", 0) or 0)
+    positions = int(snapshot.get("open_positions", 0) or 0)
+    trades = int(snapshot.get("trades_24h", 0) or 0)
+    wins = int(snapshot.get("wins_24h", 0) or 0)
+    losses = int(snapshot.get("losses_24h", 0) or 0)
+    win_rate = (wins / trades * 100.0) if trades > 0 else 0.0
+
     sign = "+" if pct_24h >= 0 else "-"
     pct_str = _md_escape(f"{sign}{abs(pct_24h):.1f}%")
-    cash = float(snapshot.get("cash_usd", 0))
-    positions = int(snapshot.get("open_positions", 0))
-    trades = int(snapshot.get("trades_24h", 0))
-    wins = int(snapshot.get("wins_24h", 0))
-    losses = int(snapshot.get("losses_24h", 0))
-    win_rate = (wins / trades * 100) if trades > 0 else 0.0
-
-    lines = [
-        f"\U0001f4ca *Daily summary* — {_md_escape(today)}",
-        f"Equity: *{_md_escape(f'${equity:.2f}')}* \\({pct_str} 24h\\)",
-        f"Cash: {_md_escape(f'${cash:.2f}')} — Positions: {positions}",
-        f"Trades 24h: {trades} \\({wins}W / {losses}L\\) — Win rate {_md_escape(f'{win_rate:.0f}%')}",
+    parts = [
+        f"💓 eq *{_md_escape(_fmt_amount(equity))}* \\({pct_str} 24h\\)",
+        f"cash {_md_escape(_fmt_amount(cash))}",
+        f"{positions}pos",
     ]
-    top_w = snapshot.get("top_winner")
+    if trades > 0:
+        parts.append(f"24h: {wins}W/{losses}L {_md_escape(f'{win_rate:.0f}%')}")
+    else:
+        parts.append("24h: 0W/0L")
+
+    top_w = snapshot.get("top_winner") or {}
+    top_l = snapshot.get("top_loser") or {}
     if isinstance(top_w, dict) and top_w:
-        pnl_w = float(top_w.get("pnl_usd", 0))
-        lines.append(
-            f"Top winner: *{_md_escape(f'+${pnl_w:.2f}')}* "
-            f"on {_md_escape(str(top_w.get('title', '')))}"
-        )
-    top_l = snapshot.get("top_loser")
+        pnl_w = float(top_w.get("pnl_usd", 0) or 0)
+        top_str = f"\\+{_md_escape(_fmt_amount(abs(pnl_w)))}"
+    else:
+        top_str = "—"
     if isinstance(top_l, dict) and top_l:
-        pnl_l = float(top_l.get("pnl_usd", 0))
-        lines.append(
-            f"Top loser: *{_md_escape(f'-${abs(pnl_l):.2f}')}* "
-            f"on {_md_escape(str(top_l.get('title', '')))}"
-        )
-    if _post("\n".join(lines)):
-        state.last_daily_summary_date = today
+        pnl_l = float(top_l.get("pnl_usd", 0) or 0)
+        bot_str = f"\\-{_md_escape(_fmt_amount(abs(pnl_l)))}"
+    else:
+        bot_str = "—"
+    parts.append(f"top {top_str}/{bot_str}")
+
+    if _post(" · ".join(parts)):
+        state.last_heartbeat_ts = now
         _save_state(path, state)
