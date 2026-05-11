@@ -300,40 +300,113 @@ class TestTradeBuyOneLine(NotificationsBaseTest):
         self.assertEqual(sent, [])
 
 
-class TestBigWinLoss(NotificationsBaseTest):
-    def _setup_enabled(self) -> list[dict]:
+class TestTradeSellOneLine(NotificationsBaseTest):
+    def _setup(self) -> list[dict]:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
         os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
-        os.environ["TELEGRAM_BIG_WIN_USD"] = "10.0"
-        os.environ["TELEGRAM_BIG_LOSS_USD"] = "5.0"
         sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        notifications.set_transport_for_test(lambda payload: sent.append(payload) or True)
         return sent
 
-    def test_big_win_above_threshold(self) -> None:
-        sent = self._setup_enabled()
-        notifications.notify_threshold("big_win", {
-            "market_title": "BTC EOY", "pnl_usd": 12.40, "reason": "peak_protect",
-            "held_seconds": 100000,
-        })
+    def test_standard_sell_one_line(self) -> None:
+        sent = self._setup()
+        notifications.notify_trade_sell(
+            market_title="Trump 2028 GOP",
+            token_id="0xabc",
+            price=0.41,
+            size_usd=14.20,
+            realized_pnl_usd=1.70,
+            realized_pnl_pct=13.6,
+            reason="tp_ladder",
+            held_seconds=4920,
+        )
         self.assertEqual(len(sent), 1)
-        self.assertIn("BIG WIN", sent[0]["text"])
-        self.assertIn("12\\.40", sent[0]["text"])
+        text = sent[0]["text"]
+        self.assertNotIn("\n", text)
+        self.assertIn("🔴", text)
+        self.assertIn("SELL", text)
+        self.assertIn("Trump 2028 GOP", text)
+        self.assertIn("13\\.6%", text)
+        self.assertIn("1h22m", text)
+        self.assertIn("tp\\_ladder", text)
 
-    def test_big_win_below_threshold_skips(self) -> None:
-        sent = self._setup_enabled()
-        notifications.notify_threshold("big_win", {
-            "market_title": "x", "pnl_usd": 5.0, "reason": "tp",
-        })
+    def test_big_win_replaces_sell_when_above_threshold(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_BIG_WIN_USD"] = "10"
+        notifications.notify_trade_sell(
+            market_title="Trump 2028 GOP",
+            token_id="0xabc",
+            price=0.41,
+            size_usd=14.20,
+            realized_pnl_usd=12.40,
+            realized_pnl_pct=87.3,
+            reason="peak_protect",
+            held_seconds=14400,
+        )
+        self.assertEqual(len(sent), 1, "un seul message, pas deux")
+        text = sent[0]["text"]
+        self.assertIn("💰", text)
+        self.assertIn("BIG WIN", text)
+        self.assertNotIn("🔴", text)
+        self.assertNotIn("SELL", text)
+
+    def test_big_loss_replaces_sell_when_below_threshold(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_BIG_LOSS_USD"] = "5"
+        notifications.notify_trade_sell(
+            market_title="NFL Chiefs",
+            token_id="0xabc",
+            price=0.22,
+            size_usd=7.80,
+            realized_pnl_usd=-6.10,
+            realized_pnl_pct=-43.9,
+            reason="stop_loss",
+            held_seconds=1080,
+        )
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertIn("💸", text)
+        self.assertIn("BIG LOSS", text)
+        self.assertNotIn("🔴", text)
+        self.assertNotIn("SELL", text)
+
+    def test_below_threshold_uses_standard_sell(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_BIG_WIN_USD"] = "10"
+        notifications.notify_trade_sell(
+            market_title="x", token_id="0xabc",
+            price=0.5, size_usd=10.0,
+            realized_pnl_usd=2.50, realized_pnl_pct=25.0,
+            reason="tp_ladder",
+        )
+        text = sent[0]["text"]
+        self.assertIn("🔴", text)
+        self.assertNotIn("💰", text)
+
+    def test_thresholds_disabled_falls_back_to_sell(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_BIG_WIN_USD"] = "10"
+        os.environ["TELEGRAM_ALERT_THRESHOLDS"] = "0"
+        notifications.notify_trade_sell(
+            market_title="x", token_id="0xabc",
+            price=0.5, size_usd=10.0,
+            realized_pnl_usd=20.0, realized_pnl_pct=200.0,
+            reason="peak_protect",
+        )
+        text = sent[0]["text"]
+        self.assertIn("🔴", text)
+        self.assertNotIn("💰", text)
+
+    def test_trades_disabled_no_send(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_ALERT_TRADES"] = "0"
+        notifications.notify_trade_sell(
+            market_title="x", token_id="0xabc",
+            price=0.5, size_usd=10.0,
+            realized_pnl_usd=20.0, realized_pnl_pct=200.0,
+            reason="peak_protect",
+        )
         self.assertEqual(sent, [])
-
-    def test_big_loss_below_negative_threshold(self) -> None:
-        sent = self._setup_enabled()
-        notifications.notify_threshold("big_loss", {
-            "market_title": "x", "pnl_usd": -7.0, "reason": "stop_loss",
-        })
-        self.assertEqual(len(sent), 1)
-        self.assertIn("BIG LOSS", sent[0]["text"])
 
 
 class TestDrawdownArming(NotificationsBaseTest):

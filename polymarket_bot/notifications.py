@@ -300,21 +300,36 @@ def notify_trade_sell(
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
         return
+    win_thresh = _float_env("TELEGRAM_BIG_WIN_USD", 10.0)
+    loss_thresh = _float_env("TELEGRAM_BIG_LOSS_USD", 5.0)
+    thresholds_on = _flag("TELEGRAM_ALERT_THRESHOLDS")
+    if thresholds_on and realized_pnl_usd >= win_thresh:
+        emoji, label = "💰", "BIG WIN"
+    elif thresholds_on and realized_pnl_usd <= -loss_thresh:
+        emoji, label = "💸", "BIG LOSS"
+    else:
+        emoji, label = "🔴", "SELL"
+
+    title = _truncate(market_title or "", 40)
+    size_str = _md_escape(_fmt_amount(size_usd))
+    price_str = _md_escape(f"{price:.2f}")
     sign = "+" if realized_pnl_usd >= 0 else "-"
-    pnl_abs = abs(realized_pnl_usd)
-    pnl_str = f"{_md_escape(sign)}\\${_md_escape(f'{pnl_abs:.2f}')}"
+    pnl_abs_str = _fmt_amount(abs(realized_pnl_usd))
+    pnl_str = f"{_md_escape(sign)}{_md_escape(pnl_abs_str)}"
     pct_str = ""
     if realized_pnl_pct is not None:
         sign_pct = "+" if realized_pnl_pct >= 0 else "-"
         pct_str = f" \\({_md_escape(f'{sign_pct}{abs(realized_pnl_pct):.1f}%')}\\)"
     held_str = _fmt_held(held_seconds)
-    held_line = f" — held {_md_escape(held_str)}" if held_str else ""
-    lines = [
-        f"\U0001f534 *SELL* `${_md_escape(f'{size_usd:.2f}')}` @ `{_md_escape(f'{price:.2f}')}` — `{reason}`",
-        f"*{_md_escape(market_title)}*",
-        f"PnL: *{pnl_str}*{pct_str}{held_line}",
+    held_part = f" {_md_escape(held_str)}" if held_str else ""
+
+    parts = [
+        f"{emoji} *{label}* `{size_str}` @ `{price_str}`",
+        f"*{_md_escape(title)}*",
+        f"{pnl_str}{pct_str}{held_part}",
+        f"`{_md_escape(reason)}`",
     ]
-    _post("\n".join(lines))
+    _post(" · ".join(parts))
 
 
 def notify_error(category: str, message: str, *, dedupe_key: str | None = None) -> None:
