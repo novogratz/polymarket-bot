@@ -66,5 +66,51 @@ class TestWalletHistoryStoreRecord(unittest.TestCase):
             self.assertEqual(data["snapshots"][0]["wallets"], ["0xa"])
 
 
+class TestWalletHistoryStoreCount(unittest.TestCase):
+    def _populate(self, store: WalletHistoryStore, wallet: str, days: list[int]) -> None:
+        """Enregistre `wallet` pour les jours (offsets depuis 2026-06-01)."""
+        from datetime import timedelta
+        anchor = date(2026, 6, 1)
+        for offset in sorted(set(days)):
+            store.record_snapshot(anchor + timedelta(days=offset), [wallet])
+
+    def test_presence_count_full_window(self) -> None:
+        with TemporaryDirectory() as tmp:
+            store = WalletHistoryStore(Path(tmp) / "h.json", window_days=10)
+            # wallet présent sur 7 jours sur les 10 derniers
+            self._populate(store, "0xa", list(range(7)))
+            self.assertEqual(store.snapshot_count(), 7)
+            self.assertEqual(store.presence_count("0xa", 10), 7)
+            self.assertEqual(store.presence_count("0xa", 5), 5)  # 5 derniers
+            self.assertEqual(store.presence_count("unknown", 10), 0)
+
+    def test_presence_count_case_insensitive(self) -> None:
+        with TemporaryDirectory() as tmp:
+            store = WalletHistoryStore(Path(tmp) / "h.json", window_days=5)
+            store.record_snapshot(date(2026, 5, 11), ["0xABC"])
+            self.assertEqual(store.presence_count("0xabc", 5), 1)
+            self.assertEqual(store.presence_count("0xABC", 5), 1)
+
+    def test_purge_beyond_2x_window(self) -> None:
+        with TemporaryDirectory() as tmp:
+            store = WalletHistoryStore(Path(tmp) / "h.json", window_days=3)
+            # 10 snapshots > 2*3=6 → seuls les 6 derniers sont gardés
+            from datetime import timedelta
+            anchor = date(2026, 5, 1)
+            for offset in range(10):
+                store.record_snapshot(anchor + timedelta(days=offset), ["0xa"])
+            self.assertEqual(store.snapshot_count(), 6)
+
+    def test_corrupted_file_safe(self) -> None:
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "h.json"
+            path.write_text("not json at all")
+            store = WalletHistoryStore(path, window_days=5)
+            # n'efface pas mais lit comme vide ; record écrit propre par-dessus
+            self.assertEqual(store.snapshot_count(), 0)
+            store.record_snapshot(date(2026, 5, 11), ["0xa"])
+            self.assertEqual(store.snapshot_count(), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
