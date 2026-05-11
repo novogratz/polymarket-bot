@@ -1,0 +1,77 @@
+# Profil aggressive-live — config canonique du script live (live-90)
+# adaptée pour dry-run équitable.
+#
+# Différences vs baseline :
+#   - position_pct 18% (vs 10%)
+#   - ceiling $150/30% equity (vs $25/30%)
+#   - min_open_positions 7 (vs 5)
+#   - leaderboard MONTH/100/PnL≥1k/vol≥2k (vs WEEK/50/500/1000)
+#   - take_profit_ladder sans tier 0.25 (commence à 0.5)
+#   - noise_fallback activé : 4 trades à $10 (vs OFF)
+#   - btc_edge activé (vs OFF)
+#   - signal_staleness 10min (vs default)
+#
+# NOTE : certaines env vars de la config live ne sont PAS couvertes par
+# le schéma TOML (POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION,
+# POLYMARKET_SMART_REVERSE_LOOKUP_*, POLYMARKET_SMART_DEEP_FALLBACK_*,
+# etc.). Elles sont exportées par scripts/run_dry_aggressive.sh avant
+# le lancement.
+
+[run]
+starting_cash = 100.0
+
+[sizing]
+position_pct = 0.18
+max_position_ceiling_usd = 150.0
+max_position_ceiling_pct = 0.30
+cash_floor_pct = 0.05
+min_open_positions = 7
+assumed_live_balance_usd = 0.0
+
+[trader_cohort]
+leaderboard_window = "MONTH"
+top_n = 100
+min_trader_pnl = 1000.0
+min_trader_volume = 2000.0
+min_trader_roi = 0.03
+trade_fetch_concurrency = 24
+trade_lookback_minutes = 30
+
+[filters]
+min_consensus = 2
+min_copied_usdc = 75.0
+max_chase_premium = 0.13
+price_min = 0.03
+price_max = 0.96
+max_absolute_spread = 0.08
+max_relative_spread = 0.45
+signal_staleness_seconds = 10
+
+[exits]
+take_profit_ladder = "0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15"
+trailing_stop_arm_pct = 0.25
+trailing_stop_giveback = 0.50
+peak_protect_arm_pct = 1.0
+peak_protect_exit_pct = 0.40
+stop_loss_pct = 0.40
+stop_loss_min_age_minutes = 15
+max_hold_hours = 24.0
+
+[btc_edge]
+enabled = true
+per_trade_cap_usd = 5.0
+min_edge_over_market = 0.08
+
+[noise_fallback]
+enabled = true
+max_trades_per_tick = 4
+stake_usd = 10.0
+cash_pressure_threshold = 0.35
+
+[auto_tune]
+enabled = true
+min_closed_trades = 30
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 20
