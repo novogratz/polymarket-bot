@@ -23,7 +23,7 @@ class PersistenceSignal:
     wallet: str
     intersect_score: float
     cache_score: float
-    persistance_score: float
+    persistence_score: float
     qualified: bool
 
 

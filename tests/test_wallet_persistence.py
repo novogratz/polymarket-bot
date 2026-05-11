@@ -19,13 +19,13 @@ class TestPersistenceSignal(unittest.TestCase):
             wallet="0xabc",
             intersect_score=0.67,
             cache_score=0.80,
-            persistance_score=0.80,
+            persistence_score=0.80,
             qualified=True,
         )
         self.assertEqual(sig.wallet, "0xabc")
         self.assertAlmostEqual(sig.intersect_score, 0.67)
         self.assertAlmostEqual(sig.cache_score, 0.80)
-        self.assertAlmostEqual(sig.persistance_score, 0.80)
+        self.assertAlmostEqual(sig.persistence_score, 0.80)
         self.assertTrue(sig.qualified)
 
 
