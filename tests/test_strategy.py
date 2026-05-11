@@ -20,7 +20,13 @@ from polymarket_bot.portfolio import Portfolio
 from polymarket_bot.smart_money import SmartTrade, market_category, smart_money_signals
 from polymarket_bot.strategy import rank_markets, stake_for_candidate
 from polymarket_bot.trading import _is_filled_buy_response, execute_live_sell, execute_live_trade
-from polymarket_bot.main import _is_unfilled_market_order_error, _max_trade_for_signal, _sell_plan, _smart_discovery_keywords
+from polymarket_bot.main import (
+    _is_unfilled_market_order_error,
+    _max_trade_for_signal,
+    _sell_plan,
+    _smart_discovery_keywords,
+    load_btc_candidates,
+)
 
 
 class StrategyTests(unittest.TestCase):
@@ -817,6 +823,50 @@ class StrategyTests(unittest.TestCase):
             BtcModel(spot=105000, annual_volatility=0.4, fetched_at=utc_now()),
         )
         self.assertIsNone(signal)
+
+    def test_load_btc_candidates_queries_btc_keywords(self):
+        end_date = (utc_now() + timedelta(hours=3)).isoformat()
+
+        class FakeGammaClient:
+            calls = []
+
+            def __init__(self, base_url):
+                self.base_url = base_url
+
+            def get_markets(self, **kwargs):
+                self.calls.append(kwargs)
+                if kwargs.get("question_contains") not in {"bitcoin", "btc"}:
+                    return []
+                return [
+                    {
+                        "id": kwargs["question_contains"],
+                        "question": "Will Bitcoin be above $100,000 today?",
+                        "slug": "will-bitcoin-be-above-100000-today",
+                        "endDate": end_date,
+                        "liquidity": "10000",
+                        "volume": "20000",
+                        "bestBid": "0.79",
+                        "bestAsk": "0.80",
+                        "orderPriceMinTickSize": "0.01",
+                        "acceptingOrders": True,
+                        "outcomes": '["Yes","No"]',
+                        "outcomePrices": '["0.80","0.20"]',
+                        "clobTokenIds": '["yes-token","no-token"]',
+                    }
+                ]
+
+        import polymarket_bot.main as main_module
+
+        original_client = main_module.GammaClient
+        try:
+            main_module.GammaClient = FakeGammaClient
+            candidates = load_btc_candidates(Settings(min_liquidity_usd=0, min_volume_usd=0, soon_hours=24))
+        finally:
+            main_module.GammaClient = original_client
+
+        keywords = {call.get("question_contains") for call in FakeGammaClient.calls if call.get("question_contains")}
+        self.assertEqual(keywords, {"bitcoin", "btc"})
+        self.assertTrue(any(candidate.token_id == "yes-token" for candidate in candidates))
 
     def test_smart_money_requires_consensus(self):
         candidate = Candidate(
