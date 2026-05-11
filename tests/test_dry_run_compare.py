@@ -49,6 +49,7 @@ class ComputeRunStatsTests(unittest.TestCase):
             self.assertAlmostEqual(stats.cash, 33.0)  # 110 * 0.3
             self.assertAlmostEqual(stats.invested, 77.0)  # 110 * 0.7
             self.assertEqual(stats.open_positions, 1)
+            self.assertEqual(stats.mode, "dry-run")
             self.assertAlmostEqual(stats.return_pct, 0.10)
 
     def test_compute_run_without_state(self):

@@ -2376,6 +2376,19 @@ app = typer.Typer(
 app.add_typer(dry_run_app, name="dry-run")
 
 
+@app.command("list")
+def cmd_list_all() -> None:
+    """Lister le ledger live + tous les runs dry-run.
+
+    Alias top-level de ``pmbot dry-run list`` — ce dernier reste valable
+    pour rétro-compatibilité. La sortie inclut une ligne ``(live)`` quand
+    ``data/paper_state.json`` existe, suivie des runs nommés.
+    """
+    from .dry_run_cli import cmd_list as _cmd_list
+
+    _cmd_list()
+
+
 def _version_callback(value: bool) -> None:
     if value:
         from . import __version__

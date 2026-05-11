@@ -14,7 +14,12 @@ from pathlib import Path
 
 import typer
 
-from polymarket_bot.dry_run_compare import compute_run_stats, format_comparison_table
+from polymarket_bot.dry_run_compare import (
+    RunStats,
+    compute_live_stats,
+    compute_run_stats,
+    format_comparison_table,
+)
 from polymarket_bot.dry_run_runs import (
     DryRunPaths,
     ensure_run_directory,
@@ -35,40 +40,48 @@ def _data_dir() -> Path:
 
 @app.command("list")
 def cmd_list() -> None:
-    """List every run in data/dry_runs/."""
+    """List the live ledger (if present) and every run in data/dry_runs/."""
     runs = list_runs(_data_dir())
-    if not runs:
-        typer.echo("(no dry-run runs)")
+    live = compute_live_stats(_data_dir())
+    if not runs and live is None:
+        typer.echo("(no dry-run runs and no live ledger)")
         return
     typer.echo(
-        f"{'NAME':<20}  {'PROFILE':<20}  {'STARTING':>10}  {'CASH':>10}  {'INV':>10}  "
-        f"{'POS':>3}  {'EQUITY':>10}  {'RETURN':>8}  {'TRADES':>6}  {'WIN%':>5}  "
-        f"{'TICKS':>7}  STARTED_AT"
+        f"{'NAME':<20}  {'PROFILE':<20}  {'MODE':<8}  {'STARTING':>10}  "
+        f"{'CASH':>10}  {'INV':>10}  {'POS':>3}  {'EQUITY':>10}  {'RETURN':>8}  "
+        f"{'TRADES':>6}  {'WIN%':>5}  {'TICKS':>7}  STARTED_AT"
     )
-    for r in runs:
-        try:
-            s = compute_run_stats(_data_dir(), r.run_name)
-            cash = f"{s.cash:>9.2f}$"
-            inv = f"{s.invested:>9.2f}$"
-            pos = f"{s.open_positions:>3}"
-            equity = f"{s.equity:>9.2f}$"
-            ret = f"{s.return_pct * 100:>+7.2f}%"
-            trades = f"{s.trades_closed:>6}"
-            win = f"{s.win_rate * 100:>4.0f}%"
-        except Exception:
-            cash = "n/a".rjust(10)
-            inv = "n/a".rjust(10)
+
+    def _emit(name: str, profile: str, mode: str, starting: float, ticks: int, started_at: str, stats: RunStats | None) -> None:
+        if stats is None:
+            cash = inv = equity = "n/a".rjust(10)
             pos = "n/a".rjust(3)
-            equity = "n/a".rjust(10)
             ret = "n/a".rjust(8)
             trades = "n/a".rjust(6)
             win = "n/a".rjust(5)
-        starting = f"{r.starting_cash:>9.2f}$"
+        else:
+            cash = f"{stats.cash:>9.2f}$"
+            inv = f"{stats.invested:>9.2f}$"
+            pos = f"{stats.open_positions:>3}"
+            equity = f"{stats.equity:>9.2f}$"
+            ret = f"{stats.return_pct * 100:>+7.2f}%"
+            trades = f"{stats.trades_closed:>6}"
+            win = f"{stats.win_rate * 100:>4.0f}%"
+        starting_s = f"{starting:>9.2f}$"
         typer.echo(
-            f"{r.run_name:<20}  {r.profile_source:<20}  {starting}  "
+            f"{name:<20}  {profile:<20}  {mode:<8}  {starting_s}  "
             f"{cash}  {inv}  {pos}  {equity}  {ret}  {trades}  {win}  "
-            f"{r.total_ticks:>7}  {r.started_at}"
+            f"{ticks:>7}  {started_at}"
         )
+
+    if live is not None:
+        _emit(live.run_name, live.profile_source, live.mode, live.starting_cash, live.total_ticks, live.started_at, live)
+    for r in runs:
+        try:
+            s = compute_run_stats(_data_dir(), r.run_name)
+        except Exception:
+            s = None
+        _emit(r.run_name, r.profile_source, s.mode if s else "dry-run", r.starting_cash, r.total_ticks, r.started_at, s)
 
 
 @app.command("show")
@@ -85,6 +98,7 @@ def cmd_show(run: str = typer.Argument(..., help="Run name")) -> None:
     typer.echo(f"Last tick:     {metadata.last_tick_at or '(never)'}")
     typer.echo(f"Total ticks:   {metadata.total_ticks}")
     typer.echo(f"Profile:       {metadata.profile_source}")
+    typer.echo(f"Mode:          {metadata.mode}")
     typer.echo(f"Git sha:       {metadata.git_sha or '(unknown)'}")
     typer.echo("")
     typer.echo(f"Starting cash: {stats.starting_cash:.2f}$")

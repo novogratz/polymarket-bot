@@ -33,6 +33,7 @@ class RunStats:
     max_drawdown: float
     avg_pnl: float
     open_positions: int = 0
+    mode: str = "dry-run"
 
 
 def _read_journal_stats(journal_path: Path) -> dict:
@@ -95,6 +96,67 @@ def compute_run_stats(base_dir: Path, run_name: str) -> RunStats:
         max_drawdown=round(j["max_drawdown"], 2),
         avg_pnl=round(j["avg_pnl"], 2),
         open_positions=open_positions,
+        mode=metadata.mode,
+    )
+
+
+def compute_live_stats(base_dir: Path) -> RunStats | None:
+    """Build a synthetic ``RunStats`` for the live paper-trading ledger.
+
+    Reads ``data/paper_state.json`` + ``data/trade_journal.jsonl`` (paths
+    relative to ``base_dir``) and returns a row that can be displayed
+    alongside the dry-run runs. Returns ``None`` if no live ledger file
+    exists.
+
+    Note: live ``starting_cash`` is unknown (no metadata file), so we
+    seed it with current equity; ``return_pct`` will therefore read as
+    +0% on the live row. ``total_ticks`` and ``started_at`` are filled
+    from the trade journal when possible.
+    """
+    state_path = base_dir / "paper_state.json"
+    journal_path = base_dir / "trade_journal.jsonl"
+    if not state_path.is_file():
+        return None
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    cash = float(state.get("cash", 0.0))
+    invested = 0.0
+    unrealized = 0.0
+    open_positions = 0
+    for p in state.get("positions", []):
+        stake = float(p.get("stake", 0.0))
+        if stake <= 0 or p.get("status") not in (None, "open"):
+            continue
+        invested += stake
+        unrealized += float(p.get("unrealized_pnl", 0.0))
+        open_positions += 1
+    equity = cash + invested + unrealized
+    j = _read_journal_stats(journal_path)
+    started_at = "-"
+    if journal_path.is_file():
+        first_line = next((l for l in journal_path.read_text(encoding="utf-8").splitlines() if l.strip()), None)
+        if first_line:
+            try:
+                started_at = str(json.loads(first_line).get("opened_at") or "-")
+            except Exception:
+                pass
+    return RunStats(
+        run_name="(live)",
+        profile_source="-",
+        starting_cash=round(equity, 2),
+        cash=round(cash, 2),
+        invested=round(invested, 2),
+        unrealized=round(unrealized, 2),
+        equity=round(equity, 2),
+        return_pct=0.0,
+        total_ticks=0,
+        started_at=started_at,
+        realized_pnl=round(j["realized_pnl"], 2),
+        trades_closed=j["trades_closed"],
+        win_rate=round(j["win_rate"], 3),
+        max_drawdown=round(j["max_drawdown"], 2),
+        avg_pnl=round(j["avg_pnl"], 2),
+        open_positions=open_positions,
+        mode="live",
     )
 
 
@@ -105,6 +167,7 @@ def format_comparison_table(stats_list: list[RunStats]) -> str:
 
     rows: list[tuple[str, list[str]]] = [
         ("Profile",       [s.profile_source for s in stats_list]),
+        ("Mode",          [s.mode for s in stats_list]),
         ("Starting cash", [f"{s.starting_cash:.2f}$" for s in stats_list]),
         ("Cash now",      [f"{s.cash:.2f}$" for s in stats_list]),
         ("Invested",      [f"{s.invested:.2f}$" for s in stats_list]),
