@@ -7,7 +7,12 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 ## Safety
 
 - Never reveal `.env` values, private keys, API secrets, or passphrases.
-- Do not bypass `POLYMARKET_ENABLE_LIVE_TRADING=1` (the only safe simulation toggle is `POLYMARKET_DRY_RUN=1`, which short-circuits all SDK BUY/SELL calls and writes to a separate dry-run ledger).
+- Never run `pmbot auto-loop --live --yes` from a chat session. Live trading
+  requires the user-initiated interactive prompt (or an explicit script
+  invocation like `bash scripts/run_live_70.sh`). The `--yes` flag exists
+  only for that script and automation.
+- `POLYMARKET_DRY_RUN` and `POLYMARKET_ENABLE_LIVE_TRADING` env vars are
+  no longer consulted. Use `--dry-run` or `--live` flags.
 - Do not implement random or unfiltered live trades. The `noise_fallback` path is the only forced-trade lane and is hard-capped at $10/trade and 4 trades/tick.
 - Preserve the local ledger `data/paper_state.json` unless the user explicitly asks for a reset.
 - Preserve `data/trade_journal.jsonl` and `data/strategy_overrides.json` unless explicitly asked to reset them.
@@ -46,7 +51,7 @@ uv run pmbot --version           # version
 ```
 
 `status` and `positions` automatically read the dry-run ledger when
-`POLYMARKET_DRY_RUN=1` is set. Output is colorized on a TTY; `NO_COLOR=1`
+the `--dry-run` flag is passed. Output is colorized on a TTY; `NO_COLOR=1`
 disables ANSI codes, `POLYMARKET_FORCE_COLOR=1` forces them through pipes.
 
 Dashboard:
@@ -67,17 +72,18 @@ Run the auto-tuner manually (writes `data/strategy_overrides.json`):
 uv run pmbot tune-strategy
 ```
 
-Live smart-money loop:
+Live smart-money loop (interactive confirmation requested unless `--yes` is
+passed; the `--yes` flag is intended for scripts and automation only):
 
 ```bash
-POLYMARKET_ENABLE_LIVE_TRADING=1 uv run pmbot auto-loop
+uv run pmbot auto-loop --live --profile live-90
 ```
 
 Dry-run smart-money loop (simulates orders without spending any cash;
 writes a separate ledger and journal):
 
 ```bash
-POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop
+uv run pmbot auto-loop --dry-run --profile baseline
 ```
 
 In dry-run mode every BUY/SELL is short-circuited (no SDK call), live
@@ -92,13 +98,13 @@ BUY/SELL JSON dumps; the full tick payload is no longer printed in this
 mode):
 
 ```bash
-POLYMARKET_QUIET=1 uv run pmbot auto-loop
+POLYMARKET_QUIET=1 uv run pmbot auto-loop --live --profile live-90
 ```
 
 Combine with dry-run for a clean simulation feed:
 
 ```bash
-POLYMARKET_DRY_RUN=1 POLYMARKET_QUIET=1 uv run pmbot auto-loop
+POLYMARKET_QUIET=1 uv run pmbot auto-loop --dry-run --profile baseline
 ```
 
 ## Recommended live command
@@ -166,7 +172,7 @@ Risks the strategy avoids:
 - Enough copied USDC, scaled by conviction tier.
 - Tradable market: tight absolute and relative spreads, ask within configured price band, not too close to expiry.
 - No existing open position on the same market or token. Sports respect a per-event concentration cap.
-- Explicit `POLYMARKET_ENABLE_LIVE_TRADING=1`.
+- Explicit `--live` flag on `pmbot auto-loop` (with `--yes` only when invoked from a script).
 - Conviction-weighted sizing: weak signals near the floor; very-high-conviction signals (5+ wallets, $5k+ copied) up to 2.5× the base, capped by the per-position ceiling.
 
 ### Exits (run before every new entry)
