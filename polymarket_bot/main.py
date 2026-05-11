@@ -2416,8 +2416,16 @@ def cli_auto_loop(
         "--run",
         help="Nom du dossier de simulation dans data/dry_runs/. Dry-run only.",
     ),
+    no_persistence: bool = typer.Option(
+        False,
+        "--no-persistence",
+        help="Désactive le filtre de persistance d'edge (pour A/B test).",
+    ),
 ) -> None:
     """Run the smart-money loop in --dry-run or --live mode."""
+
+    if no_persistence:
+        os.environ["POLYMARKET_PERSISTENCE_ENABLED"] = "false"
 
     # 1) Validate mode flags.
     if dry_run and live:
