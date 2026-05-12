@@ -187,6 +187,42 @@ class EnsureOpenPositionsInPoolTests(unittest.TestCase):
         self.assertAlmostEqual(toks[0].price, 0.50)  # scan
         self.assertAlmostEqual(toks[1].price, 0.55)  # CLOB wins
 
+    def test_clob_pricing_inherits_tick_size_from_scan(self):
+        """CLOB endpoints don't return tick_size / neg_risk; when a matching
+        scan candidate exists, the CLOB-built candidate must inherit that
+        metadata so downstream sells aren't blocked by a missing tick_size.
+        """
+        portfolio = Portfolio(
+            cash=100.0,
+            positions=[{
+                "status": "open", "token_id": "tok-a", "stake": 10.0,
+                "market_id": "m1", "outcome": "Yes",
+            }],
+            pending_orders=[],
+        )
+        # Scan candidate carries tick_size=0.005 and neg_risk=True.
+        scan_cand = Candidate(
+            market_id="m1", question="q", slug="s",
+            end_date=utc_now() + timedelta(hours=10), hours_to_close=10.0,
+            liquidity=1000.0, volume=2000.0, outcome="Yes", price=0.50,
+            token_id="tok-a", score=1.0, url="https://polymarket.com",
+            best_bid=0.49, best_ask=0.50, tick_size=0.005, neg_risk=True,
+            accepts_orders=True, event_slug="",
+        )
+        fake = _FakeClobClient(
+            midpoints={"tok-a": "0.55"},
+            prices={"tok-a": {"BUY": "0.54", "SELL": "0.56"}},
+        )
+        mod, orig = self._patch_clob(fake)
+        try:
+            result = ensure_open_positions_in_pool(self._settings(), portfolio, [scan_cand])
+        finally:
+            mod.ClobClient = orig
+
+        clob_cand = next(c for c in result if c.token_id == "tok-a" and c.score == 0.0)
+        self.assertAlmostEqual(clob_cand.tick_size, 0.005)
+        self.assertTrue(clob_cand.neg_risk)
+
     def test_falls_back_to_gamma_when_clob_has_no_data(self):
         portfolio = Portfolio(
             cash=100.0,
