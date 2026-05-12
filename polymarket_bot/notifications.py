@@ -326,8 +326,10 @@ def notify_trade_sell(
     win_thresh = _float_env("TELEGRAM_BIG_WIN_USD", 10.0)
     loss_thresh = _float_env("TELEGRAM_BIG_LOSS_USD", 5.0)
     thresholds_on = _flag("TELEGRAM_ALERT_THRESHOLDS")
+    is_big_win = False
     if thresholds_on and realized_pnl_usd >= win_thresh:
-        emoji, label = "💰", "BIG WIN"
+        emoji, label = "💰", "BIG WINZZZZ"
+        is_big_win = True
     elif thresholds_on and realized_pnl_usd <= -loss_thresh:
         emoji, label = "💸", "BIG LOSS"
     elif realized_pnl_usd > 0:
@@ -344,17 +346,30 @@ def notify_trade_sell(
     pnl_abs_str = _fmt_amount(abs(realized_pnl_usd))
     pnl_str = _md_escape(f"{sign}{pnl_abs_str}")
     pnl_emoji = "📉" if realized_pnl_usd < 0 else "📈"
-    head_extras: list[str] = [pnl_str]
+    pct_str = ""
     if realized_pnl_pct is not None:
         sign_pct = "+" if realized_pnl_pct >= 0 else "-"
-        head_extras.append(_md_escape(f"({sign_pct}{abs(realized_pnl_pct):.1f}%)"))
+        pct_str = _md_escape(f"({sign_pct}{abs(realized_pnl_pct):.1f}%)")
     held_str = _fmt_held(held_seconds)
-    if held_str:
-        head_extras.append(_md_escape(held_str))
-    action_line = (
-        f"{emoji} *{label}* 💵 {size_str} @ {price_str} "
-        f"{pnl_emoji} {' '.join(head_extras)}"
-    )
+    held_md = _md_escape(held_str) if held_str else ""
+
+    if is_big_win:
+        banner = "🟢💰🟢💰🟢💰🟢💰"
+        head_line = f"{banner} *{label}* {banner}"
+        money_line_extras = " ".join(part for part in (pct_str, held_md) if part)
+        money_line = f"💚🤑💵 *{pnl_str}* {money_line_extras} 💵🤑💚".replace("  ", " ")
+        size_line = f"🟢 {size_str} @ {price_str} 🟢"
+        action_line = "\n".join((head_line, money_line, size_line))
+    else:
+        head_extras: list[str] = [pnl_str]
+        if pct_str:
+            head_extras.append(pct_str)
+        if held_md:
+            head_extras.append(held_md)
+        action_line = (
+            f"{emoji} *{label}* 💵 {size_str} @ {price_str} "
+            f"{pnl_emoji} {' '.join(head_extras)}"
+        )
 
     outcome_str = _md_escape(outcome or "")
     tag_line = f"🏷️ {_md_escape(reason)}"
