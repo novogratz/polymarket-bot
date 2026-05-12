@@ -36,6 +36,22 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - `docs/PROFILES.md` — référence exhaustive des clés TOML des profils (sections, types, défauts, rôles).
 - `docs/STRATEGIES.md` — document maître des 6 lanes d'achat et des 9 conditions d'exit.
 
+## Off-line analysis tools (read-only, no SDK calls)
+
+Scripts dans `scripts/` qui produisent des CSV (`data/`, gitignored) et des
+rapports markdown (`reports/`). Ils n'utilisent que les APIs publiques
+Polymarket et ne modifient **jamais** `polymarket_bot/*.py`.
+
+- `wallet_history_ytd.py` — ranking YTD des wallets leaderboard (FIFO)
+- `analyze_top_wallets.py` — cohortes, distribution PnL, suggestions de filtres
+- `market_reaction_time.py` — détection des jumps endogènes ≥5¢
+- `news_reaction.py` — latence news-ancrée (BLS/FOMC/Truth Social)
+- `wallet_edge_directional.py` — Étude C, edge directionnel par BUY (pct_ahead, mean_edge)
+- `analyze_wallet_8b52.py` — profil détaillé d'un wallet (positions, distribution, top markets)
+- `rank_copyable_wallets.py` — classement composite Z-score pct_ahead + mean_edge
+
+56 tests synthétiques dans `tests/test_{wallet_history_ytd,market_reaction_time,news_reaction,wallet_edge_directional}.py`.
+
 ## Development workflow
 
 Run tests:
