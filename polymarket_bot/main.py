@@ -2013,6 +2013,12 @@ def _update_position_from_live_api(position: dict[str, object], item: dict[str, 
     position["synced_from_polymarket"] = True
     if item.get("eventSlug"):
         position["event_slug"] = str(item.get("eventSlug") or "")
+    if item.get("slug"):
+        position["slug"] = str(item.get("slug") or "")
+    event_slug = str(position.get("event_slug") or item.get("eventSlug") or "")
+    slug = str(position.get("slug") or item.get("slug") or "")
+    if event_slug or slug:
+        position["url"] = f"https://polymarket.com/event/{event_slug or slug}"
 
 
 def _float(value, default: float = 0.0) -> float:
