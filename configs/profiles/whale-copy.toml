@@ -1,0 +1,140 @@
+# Whale Copy Strategy — copy trades from specific known high-volume traders.
+#
+# This strategy:
+#   - Targets a hardcoded list of known active/profitable traders (whales)
+#   - Does NOT require multi-wallet consensus (single whale = signal)
+#   - Uses VERY short lookback window to catch only fresh trades
+#   - Skips leaderboard scanning and persistence filters entirely
+#
+# Suitable for dry-run testing of "follow the whales" hypothesis.
+
+[run]
+starting_cash = 100.0
+
+[sizing]
+position_pct = 0.10
+max_position_ceiling_usd = 25.0
+max_position_ceiling_pct = 0.30
+max_trade_usd = 5.0
+high_conviction_balance_fraction = 0.20
+cash_floor_pct = 0.05
+min_open_positions = 5
+starter_trade_usd = 2.0
+assumed_live_balance_usd = 0.0
+
+[trader_cohort]
+leaderboard_window = "DAY"
+top_n = 50
+min_trader_pnl = 0.0
+min_trader_volume = 0.0
+min_trader_roi = 0.0
+trade_fetch_concurrency = 16
+trade_lookback_minutes = 15
+
+whale_usernames = """
+bossoskil1,
+swisstony,
+RN1,
+jdsahgf,
+surfandturf,
+Pestle,
+JewishNinja,
+everydaymortgage,
+yaya88888,
+beachboy4,
+Golgatha,
+VPenguin,
+frankfrankfrank,
+anoin123,
+wan123,
+downtownfee,
+Oddn,
+Supah9ga,
+Talvez10,
+0x492442EaB586F242B53bDa933fD5dE859c8A3782
+"""
+
+[discovery]
+scan_limit = 1000
+soon_hours = 72
+fresh_signal_bonus = 12.0
+priority_category_bonus = 6.0
+
+[market_filters]
+min_liquidity_usd = 200.0
+min_volume_usd = 500.0
+
+[filters]
+min_consensus = 1
+fallback_consensus = 1
+min_copied_usdc = 5.0
+min_trade_usd = 1.0
+max_chase_premium = 0.15
+price_min = 0.05
+price_max = 0.95
+max_absolute_spread = 0.10
+max_relative_spread = 0.30
+signal_staleness_seconds = 15
+min_hours_to_close = 0.25
+max_hours_to_close = 72.0
+max_orders_per_tick = 2
+max_sports_positions = 3
+sports_score_penalty = 8.0
+
+[crypto]
+min_buy_price = 0.70
+min_hours_to_close = 6.0
+max_hours_to_close = 48.0
+min_copied_usdc = 100.0
+min_consensus = 1
+micro_min_consensus = 1
+micro_max_entry_slippage = 0.05
+micro_max_trade_usd = 5.0
+
+[execution]
+max_entry_slippage = 0.10
+pending_order_ttl_seconds = 45
+min_sell_usd = 1.0
+
+[exits]
+take_profit_ladder = "0.25:0.20,0.5:0.30,1.0:0.50,2.0:0.25"
+trailing_stop_arm_pct = 0.20
+trailing_stop_giveback = 0.40
+peak_protect_arm_pct = 0.80
+peak_protect_exit_pct = 0.40
+stop_loss_pct = 0.35
+stop_loss_min_age_minutes = 10
+max_hold_hours = 12.0
+near_expiry_min_profit = 0.03
+near_expiry_minutes_to_close = 20
+resolved_market_threshold = 0.97
+
+[cohort_exit]
+enabled = false
+
+[deep_fallback]
+enabled = false
+min_copied_usdc = 100.0
+
+[reverse_lookup]
+enabled = true
+max_tokens = 30
+min_copied_usdc = 10.0
+min_liquidity_usd = 100.0
+min_volume_usd = 200.0
+
+[btc_edge]
+enabled = false
+
+[noise_fallback]
+enabled = false
+
+[auto_tune]
+enabled = false
+
+[persistence]
+enabled = false
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 20
