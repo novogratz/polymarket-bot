@@ -328,6 +328,44 @@ class TestMirrorOnce(MirrorBaseTest):
         self.assertEqual(r2["scan_counts"]["mirrored"], 0)
         self.assertEqual(r2["scan_counts"]["eligible"], 0)
 
+    def test_duplicate_open_event_skips_buy_cleanly(self) -> None:
+        # Pre-seed an open position on the same event as the incoming trade.
+        # The mirror must short-circuit with a structured skip instead of
+        # letting execute_live_trade raise duplicate_open_sports_event.
+        self.state_path.write_text(
+            json.dumps(
+                {
+                    "cash": 100.0,
+                    "pending_orders": [],
+                    "positions": [
+                        {
+                            "status": "open",
+                            "market_id": "market-existing",
+                            "token_id": "tok-existing",
+                            "event_slug": "event-tok-abc",
+                            "url": "https://polymarket.com/event/event-tok-abc",
+                            "outcome": "No",
+                            "shares": 10.0,
+                            "stake": 5.0,
+                        }
+                    ],
+                }
+            )
+        )
+        trade = _trade(asset="tok-abc", side="BUY", price=0.40, usdc_size=100.0, timestamp=650)
+        candidate = _candidate(token_id="tok-abc", best_ask=0.41)
+
+        with mock.patch.object(
+            mirror.DataApiClient, "trades", return_value=[trade]
+        ), mock.patch.object(
+            mirror, "_candidate_for_token", return_value=candidate
+        ):
+            result = mirror.mirror_once(self.settings)
+
+        self.assertEqual(result["scan_counts"]["mirrored"], 0)
+        self.assertEqual(result["actions"][0]["action"], "skip")
+        self.assertEqual(result["actions"][0]["reason"], "duplicate_open_event")
+
     def test_chase_premium_blocks_buy(self) -> None:
         # Wallet bought at 0.40, current ask 0.50 → premium 25% > 10% threshold.
         trade = _trade(price=0.40, usdc_size=100.0, timestamp=700)

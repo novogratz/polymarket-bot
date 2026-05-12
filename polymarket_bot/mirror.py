@@ -251,6 +251,18 @@ def _mirror_buy(
     trade: SmartTrade,
     target_short: str,
 ) -> dict[str, Any]:
+    if portfolio.has_open_position(candidate.market_id, candidate.outcome):
+        return {
+            "action": "skip",
+            "reason": "duplicate_open_position",
+            "token_id": trade.asset,
+        }
+    if portfolio.has_open_event_position(candidate):
+        return {
+            "action": "skip",
+            "reason": "duplicate_open_event",
+            "token_id": trade.asset,
+        }
     if candidate.best_ask and trade.price > 0:
         premium = (candidate.best_ask - trade.price) / trade.price
         if premium > settings.mirror_max_chase_premium:
