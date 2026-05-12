@@ -1,0 +1,51 @@
+# Profil mirror — top 6 wallets recommandés par l'analyse Étude C.
+#
+# Source : data/copyable_wallets_ranked.csv (généré le 2026-05-11).
+# Critères de sélection : score Z combiné pct_ahead + mean_edge > 0,
+# n_trades_analyzed >= 50, pct_nojump <= 85%.
+#
+# Usage dry-run (recommandé pour valider) :
+#   uv run pmbot auto-loop --profile copy-top6 --dry-run --run mirror-top6
+#
+# Usage live (à lancer manuellement, jamais via Claude) :
+#   uv run pmbot auto-loop --profile copy-top6 --live
+
+[run]
+starting_cash = 100.0
+mode = "mirror"
+
+[mirror]
+# Top 6 wallets — classés par score Z combiné (pct_ahead + mean_edge).
+#
+# Mapping wallet → username → profil :
+#   1. 0x8b52...568e → (anon, FINANCE)    — n=1370, %ahead=58, edge=0.34, WR=76%, hold=36 min   — score +1.76
+#   2. 0xbaa2...2c73 → denizz (OTHER)     — n=2000, %ahead=13, edge=0.79, WR=56%, hold=90 h     — score +1.03  [positional]
+#   3. 0x9f2f...2ca8 → surfandturf (SPRT) — n=239,  %ahead=30, edge=0.41, WR=80%, hold=2,5 h    — score +0.83
+#   4. 0xe72b...b0a0 → norrisfan (SPORTS) — n=957,  %ahead=18, edge=0.57, WR=75%, hold=2,6 h    — score +0.68
+#   5. 0x24c8...23e1 → debased (OTHER)    — n=2000, %ahead=8,  edge=0.64, WR=52%, hold=105 h    — score +0.49  [positional]
+#   6. 0x57cd...a0fb → Supah9ga (SPORTS)  — n=522,  %ahead=17, edge=0.33, WR=88%, hold=3 h      — score +0.11
+#
+# Note : denizz et debased ont des hold-times très longs (4-5 jours). Le mirror
+# va copier leurs BUY mais les SELL arriveront tard — adapté à un bankroll
+# patient. Les 4 autres tournent en heures.
+target = "0x8b5239494dd65eed682f0d9f0481ddeae4ff568e, 0xbaa2bcb5439e985ce4ccf815b4700027d1b92c73, 0x9f2fe025f84839ca81dd8e0338892605702d2ca8, 0xe72bb501df5306c75c89383d48a1e81073fbb0a0, 0x24c8cf69a0e0a17eee21f69d29752bfa32e823e1, 0x57cd939930fd119067ca9dc42b22b3e15708a0fb"
+
+# Taille fixe par BUY mirroré ($). 6 wallets → cap modéré.
+size_usd = 8.0
+# Copier aussi les SELL (indispensable pour les positions courtes des wallets sports).
+mirror_sells = true
+# Filtre micro-positions côté wallet cible (en USD).
+min_target_stake_usd = 75.0
+# Anti-chase : skip si notre ask est > target_price * (1 + 0.05).
+max_chase_premium = 0.05
+# Bande de prix acceptables pour les BUY.
+min_buy_price = 0.03
+max_buy_price = 0.97
+# Âge max d'un trade cible pour être copié (en secondes). À 30s on tolère
+# un tick raté (intervalle 10s) sans rejouer un backlog. Évite que le bootstrap
+# du premier tick déclenche un torrent d'ordres sur des trades vieilles de jours.
+max_trade_age_seconds = 30
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 10
