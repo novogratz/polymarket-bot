@@ -196,16 +196,17 @@ def _get_transport() -> Transport:
 
 
 def _run_prefix() -> str:
-    """Retourne ``*\\[<run>\\]* `` si ``POLYMARKET_RUN_NAME`` est défini.
+    """Retourne ``*\\[<run>\\]*\\n`` si ``POLYMARKET_RUN_NAME`` est défini.
 
     Utilisé par ``_post`` pour préfixer chaque message Telegram avec le
-    nom du run/contexte (``baseline-A``, ``test-noise``, ``live``, …),
-    pratique pour distinguer plusieurs auto-loop tournant en parallèle.
+    nom du run/contexte (``baseline-A``, ``test-noise``, ``live``, …)
+    sur sa propre ligne, pratique pour distinguer plusieurs auto-loop
+    tournant en parallèle.
     """
     run = os.environ.get("POLYMARKET_RUN_NAME", "").strip()
     if not run:
         return ""
-    return f"*\\[{_md_escape(run)}\\]* "
+    return f"*\\[{_md_escape(run)}\\]*\n"
 
 
 def _post(text: str) -> bool:
@@ -286,21 +287,25 @@ def notify_trade_buy(
     else:
         signal_part = None
 
-    title = _truncate(market_title or "", 40)
+    title = market_title or ""
     size_str = _md_escape(_fmt_amount(size_usd))
     price_str = _md_escape(f"{price:.2f}")
-    outcome_str = _md_escape(_truncate(outcome or "", 18))
-    head = f"🛒 *BUY {outcome_str}*" if outcome_str else "🛒 *BUY*"
-    parts = [
-        head,
-        f"{size_str} @ {price_str}",
-        _md_escape(title),
-    ]
+    outcome_str = _md_escape(outcome or "")
+    footer_parts: list[str] = []
     if signal_part:
-        parts.append(signal_part)
+        footer_parts.append(signal_part)
     if market_url:
-        parts.append(f"[🔗]({market_url})")
-    _post(" — ".join(parts))
+        footer_parts.append(f"[🔗]({market_url})")
+    lines = [f"🛒 *BUY* 💵 {size_str} @ {price_str}"]
+    if title and outcome_str:
+        lines.append(f"🎯 _{_md_escape(title)}_ 👍 *{outcome_str}*")
+    elif title:
+        lines.append(f"🎯 _{_md_escape(title)}_")
+    elif outcome_str:
+        lines.append(f"👍 *{outcome_str}*")
+    if footer_parts:
+        lines.append(f"🏷️ {' • '.join(footer_parts)}")
+    _post("\n".join(lines))
 
 
 def notify_trade_sell(
@@ -314,6 +319,7 @@ def notify_trade_sell(
     reason: str,
     outcome: str | None = None,
     held_seconds: int | None = None,
+    market_url: str | None = None,
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
         return
@@ -331,28 +337,38 @@ def notify_trade_sell(
     else:
         emoji, label = "⚪", "SELL"
 
-    title = _truncate(market_title or "", 40)
+    title = market_title or ""
+    size_str = _md_escape(_fmt_amount(size_usd))
+    price_str = _md_escape(f"{price:.2f}")
     sign = "+" if realized_pnl_usd >= 0 else "-"
     pnl_abs_str = _fmt_amount(abs(realized_pnl_usd))
     pnl_str = _md_escape(f"{sign}{pnl_abs_str}")
-    metrics_parts: list[str] = [pnl_str]
+    pnl_emoji = "📉" if realized_pnl_usd < 0 else "📈"
+    head_extras: list[str] = [pnl_str]
     if realized_pnl_pct is not None:
         sign_pct = "+" if realized_pnl_pct >= 0 else "-"
-        metrics_parts.append(_md_escape(f"({sign_pct}{abs(realized_pnl_pct):.1f}%)"))
+        head_extras.append(_md_escape(f"({sign_pct}{abs(realized_pnl_pct):.1f}%)"))
     held_str = _fmt_held(held_seconds)
     if held_str:
-        metrics_parts.append(_md_escape(held_str))
-    metrics = " ".join(metrics_parts)
+        head_extras.append(_md_escape(held_str))
+    action_line = (
+        f"{emoji} *{label}* 💵 {size_str} @ {price_str} "
+        f"{pnl_emoji} {' '.join(head_extras)}"
+    )
 
-    outcome_str = _md_escape(_truncate(outcome or "", 18))
-    head = f"{emoji} *{label} {outcome_str}*" if outcome_str else f"{emoji} *{label}*"
-    parts = [
-        head,
-        metrics,
-        _md_escape(title),
-        _md_escape(reason),
-    ]
-    _post(" — ".join(parts))
+    outcome_str = _md_escape(outcome or "")
+    tag_line = f"🏷️ {_md_escape(reason)}"
+    if market_url:
+        tag_line += f" • [🔗]({market_url})"
+    lines = [action_line]
+    if title and outcome_str:
+        lines.append(f"🎯 _{_md_escape(title)}_ 👍 *{outcome_str}*")
+    elif title:
+        lines.append(f"🎯 _{_md_escape(title)}_")
+    elif outcome_str:
+        lines.append(f"👍 *{outcome_str}*")
+    lines.append(tag_line)
+    _post("\n".join(lines))
 
 
 def notify_error(category: str, message: str, *, dedupe_key: str | None = None) -> None:

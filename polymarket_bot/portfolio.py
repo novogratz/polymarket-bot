@@ -237,6 +237,7 @@ class Portfolio:
                 reason=str(reason or ""),
                 outcome=str(position.get("outcome", "") or ""),
                 held_seconds=held_seconds,
+                market_url=str(position.get("url") or "") or None,
             )
         except Exception as exc:
             print(f"[notif] trade_sell hook failed: {exc}", file=sys.stderr, flush=True)

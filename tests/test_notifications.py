@@ -139,8 +139,8 @@ class TestChatIdRouting(NotificationsBaseTest):
         notifications._post("hello")
 
         self.assertEqual(len(sent), 1)
-        # MarkdownV2: brackets and hyphen escaped, wrapped in bold.
-        self.assertEqual(sent[0]["text"], "*\\[baseline\\-A\\]* hello")
+        # Run name sur sa propre ligne, brackets/hyphen escapés MarkdownV2.
+        self.assertEqual(sent[0]["text"], "*\\[baseline\\-A\\]*\nhello")
 
     def test_no_prefix_when_run_name_absent(self) -> None:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
@@ -311,7 +311,8 @@ class TestTradeBuyOneLine(NotificationsBaseTest):
         )
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
-        self.assertNotIn("\n", text)
+        # Format carte multi-lignes : header, montant, marché, footer.
+        self.assertIn("\n", text)
         self.assertIn("🛒", text)
         self.assertIn("BUY", text)
         # Montants et prix : escapés MdV2 (point devient \.).
@@ -322,8 +323,6 @@ class TestTradeBuyOneLine(NotificationsBaseTest):
         self.assertIn("$1\\.2k", text)
         self.assertIn("🔗", text)
         self.assertIn("polymarket.com", text)
-        # Séparateur em-dash entre segments.
-        self.assertIn(" — ", text)
 
     def test_buy_with_tag(self) -> None:
         sent = self._setup()
@@ -336,11 +335,12 @@ class TestTradeBuyOneLine(NotificationsBaseTest):
         )
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
-        self.assertNotIn("\n", text)
+        # Format carte : plusieurs lignes.
+        self.assertIn("\n", text)
         # tag\=btc\_edge en MdV2 (= et _ échappés).
         self.assertIn("tag\\=btc\\_edge", text)
 
-    def test_buy_truncates_long_title(self) -> None:
+    def test_buy_does_not_truncate_long_title(self) -> None:
         sent = self._setup()
         notifications.notify_trade_buy(
             market_title="X" * 60,
@@ -350,7 +350,9 @@ class TestTradeBuyOneLine(NotificationsBaseTest):
             signal={"wallets": 2, "copied_usdc": 250},
         )
         text = sent[0]["text"]
-        self.assertIn("…", text)
+        # Telegram autorise 4096 chars/msg ; on n'a aucune raison de tronquer.
+        self.assertIn("X" * 60, text)
+        self.assertNotIn("…", text)
 
     def test_buy_disabled_by_toggle(self) -> None:
         sent = self._setup()
@@ -384,7 +386,8 @@ class TestTradeSellOneLine(NotificationsBaseTest):
         )
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
-        self.assertNotIn("\n", text)
+        # Format carte multi-lignes.
+        self.assertIn("\n", text)
         # Profit positif (1.70 USD) sous le seuil BIG WIN → SELL vert.
         self.assertIn("🟢", text)
         self.assertIn("SELL", text)
