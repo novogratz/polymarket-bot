@@ -68,7 +68,7 @@ def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Cand
                     price=price,
                     token_id=token_ids[index] if index < len(token_ids) else None,
                     score=score,
-                    url=f"https://polymarket.com/event/{slug}" if slug else "https://polymarket.com",
+                    url=f"https://polymarket.com/event/{event_slug or slug}" if (event_slug or slug) else "https://polymarket.com",
                     best_bid=best_bid,
                     best_ask=best_ask,
                     tick_size=tick_size,
@@ -79,6 +79,69 @@ def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Cand
             )
 
     return sorted(candidates, key=lambda item: item.score, reverse=True)
+
+
+def build_pricing_candidates(markets: list[dict[str, Any]]) -> list[Candidate]:
+    """Build Candidate instances purely for mark-to-market / exit pricing.
+
+    Unlike :func:`rank_markets`, this skips the horizon and
+    liquidity/volume filters — we need the current price of every open
+    position regardless of how illiquid or close-to-expiry its market has
+    become. Score is set to 0.0 so these candidates never bubble to the
+    top of an entry ranking if they accidentally leak into one.
+    """
+    now = utc_now()
+    candidates: list[Candidate] = []
+
+    for market in markets:
+        end_date = parse_dt(market.get("endDate"))
+        liquidity = as_float(market.get("liquidity") or market.get("liquidityNum"))
+        volume = as_float(market.get("volume") or market.get("volumeNum"))
+
+        market_best_bid = as_float(market.get("bestBid"), default=None) if market.get("bestBid") is not None else None
+        market_best_ask = as_float(market.get("bestAsk"), default=None) if market.get("bestAsk") is not None else None
+        tick_size = as_float(market.get("orderPriceMinTickSize"), default=None) if market.get("orderPriceMinTickSize") is not None else None
+        neg_risk = bool(market.get("negRisk"))
+        accepts_orders = bool(market.get("acceptingOrders"))
+        outcomes = [str(item) for item in parse_json_list(market.get("outcomes"))]
+        prices = [as_float(item, -1.0) for item in parse_json_list(market.get("outcomePrices"))]
+        token_ids = [str(item) for item in parse_json_list(market.get("clobTokenIds"))]
+        if not outcomes or len(outcomes) != len(prices):
+            continue
+
+        hours = max((end_date - now).total_seconds() / 3600.0, 0.0) if end_date else 0.0
+        slug = str(market.get("slug") or market.get("id") or "")
+        event_slug = _event_slug(market)
+
+        for index, outcome in enumerate(outcomes):
+            price = prices[index]
+            if price <= 0.0 or price >= 1.0:
+                continue
+            best_bid, best_ask = _quote_for_outcome(index, len(outcomes), market_best_bid, market_best_ask)
+            candidates.append(
+                Candidate(
+                    market_id=str(market.get("id") or ""),
+                    question=str(market.get("question") or ""),
+                    slug=slug,
+                    end_date=end_date,
+                    hours_to_close=hours,
+                    liquidity=liquidity,
+                    volume=volume,
+                    outcome=outcome,
+                    price=price,
+                    token_id=token_ids[index] if index < len(token_ids) else None,
+                    score=0.0,
+                    url=f"https://polymarket.com/event/{event_slug or slug}" if (event_slug or slug) else "https://polymarket.com",
+                    best_bid=best_bid,
+                    best_ask=best_ask,
+                    tick_size=tick_size,
+                    neg_risk=neg_risk,
+                    accepts_orders=accepts_orders,
+                    event_slug=event_slug,
+                )
+            )
+
+    return candidates
 
 
 def _event_slug(market: dict[str, Any]) -> str:

@@ -235,17 +235,9 @@ class Portfolio:
                 realized_pnl_usd=float(realized_pnl),
                 realized_pnl_pct=pnl_pct,
                 reason=str(reason or ""),
+                outcome=str(position.get("outcome", "") or ""),
                 held_seconds=held_seconds,
-            )
-            kind = "big_win" if realized_pnl > 0 else "big_loss"
-            notifications.notify_threshold(
-                kind,
-                {
-                    "market_title": title,
-                    "pnl_usd": float(realized_pnl),
-                    "reason": str(reason or ""),
-                    "held_seconds": held_seconds,
-                },
+                market_url=str(position.get("url") or "") or None,
             )
         except Exception as exc:
             print(f"[notif] trade_sell hook failed: {exc}", file=sys.stderr, flush=True)

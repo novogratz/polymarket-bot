@@ -55,3 +55,7 @@ docs/superpowers/
 !.claude/skills/
 .codex/*
 !.codex/skills/
+
+# Auto-generated config snapshots (one per mode).
+data/live_config_snapshot.toml
+data/dry_run_config_snapshot.toml

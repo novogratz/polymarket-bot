@@ -27,6 +27,7 @@ from .dashboard_html import HTML
 from .gamma import GammaClient
 from .models import utc_now
 from .portfolio import Portfolio
+from .pricing import ensure_open_positions_in_pool
 from .strategy import rank_markets
 from . import tick_state
 from .trading import build_client
@@ -56,7 +57,8 @@ def build_state(settings: Settings) -> dict[str, Any]:
         settings,
     )
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
-    portfolio.mark_to_market(candidates)
+    pricing_pool = ensure_open_positions_in_pool(settings, portfolio, candidates)
+    portfolio.mark_to_market(pricing_pool)
     balance_source = "dry_run_ledger" if settings.dry_run else "local_ledger"
     live_balance_error = None
     if settings.dry_run:
@@ -68,7 +70,10 @@ def build_state(settings: Settings) -> dict[str, Any]:
             balance_source = "live_clob"
         elif isinstance(live_balance, str):
             live_balance_error = live_balance
-    portfolio.save(settings.state_path)
+    # NOTE: read-only dashboard — do NOT persist portfolio here. Writing
+    # state.json on every HTTP refresh races with the auto-loop process,
+    # and (when state.json is missing) seeds the ledger with the dashboard's
+    # default paper_balance_usd instead of the run's actual starting cash.
     positions = portfolio.positions
     recent_trades = sorted(
         positions,
@@ -204,6 +209,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(encoded)))
+        # Le ledger / journal / tick history changent à chaque tick : on
+        # interdit tout cache (browser ou intermédiaire) pour que la page
+        # reflète toujours l'état actuel des fichiers sur disque.
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
         self.wfile.write(encoded)
 

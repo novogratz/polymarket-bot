@@ -30,6 +30,16 @@ from .auto_tuner import apply_overrides, maybe_tune
 from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
 from .config import Settings
 from .dashboard import serve
+from .dry_run_cli import app as dry_run_app
+from .dry_run_runs import DryRunPaths, ensure_run_directory, update_tick_metadata
+from .equity_tracker import append_equity_point
+from .profiles import (
+    ProfileValidationError,
+    apply_profile_to_env,
+    load_profile,
+    write_snapshot_toml,
+)
+from .live_confirm import build_live_recap, prompt_live_confirmation
 from .gamma import GammaClient
 from .portfolio import Portfolio
 from .models import parse_dt, utc_now
@@ -42,6 +52,7 @@ from .smart_money import (
     _top_traders,
 )
 from .trading import build_client, execute_live_sell, execute_live_trade
+from .pricing import ensure_open_positions_in_pool
 from .strategy import rank_markets
 
 
@@ -190,6 +201,8 @@ def bootstrap_creds(settings: Settings) -> dict[str, str]:
 
 
 def require_saved_api_creds(settings: Settings) -> None:
+    if settings.dry_run:
+        return
     if settings.api_key and settings.api_secret and settings.api_passphrase:
         return
     if settings.relayer_api_key or settings.relayer_api_key_address:
@@ -209,7 +222,8 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
     candidates = load_btc_candidates(settings)
     btc_model = CoinbaseBtcClient().model(settings)
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
-    portfolio.mark_to_market(candidates)
+    pricing_pool = ensure_open_positions_in_pool(settings, portfolio, candidates)
+    portfolio.mark_to_market(pricing_pool)
 
     eligible_candidates = [
         candidate
@@ -301,7 +315,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         _step(settings, f"   sync actions: {len(sync_report)}")
     else:
         sync_report = []
-    portfolio.mark_to_market(candidates)
+    pricing_pool = ensure_open_positions_in_pool(settings, portfolio, candidates)
+    portfolio.mark_to_market(pricing_pool)
     open_count = portfolio.summary()["open_positions"]
     _step(settings, f"   open positions: {open_count}")
 
@@ -324,19 +339,22 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         client,
         settings,
         portfolio,
-        candidates,
+        pricing_pool,
         cohort_exit_tokens=cohort_exit_tokens,
     )
     sells = sum(1 for e in exit_report if e.get("action") == "sell")
     if sells:
         _step(settings, f"   sells executed: {sells}")
 
-    try:
-        live_cash = client.live_available_balance()
-        portfolio.cash = round(live_cash, 2)
-        _step(settings, f"   live cash: ${portfolio.cash:.2f}")
-    except Exception as exc:
-        print(f"   live cash refresh failed: {type(exc).__name__}: {exc}")
+    if not settings.dry_run:
+        try:
+            live_cash = client.live_available_balance()
+            portfolio.cash = round(live_cash, 2)
+            _step(settings, f"   live cash: ${portfolio.cash:.2f}")
+        except Exception as exc:
+            print(f"   live cash refresh failed: {type(exc).__name__}: {exc}")
+    else:
+        _step(settings, f"   [DRY-RUN] cash: ${portfolio.cash:.2f} (simulated ledger)")
 
     # 2. CATEGORY DIVERSIFICATION: Count open categories
     open_categories: dict[str, int] = {}
@@ -464,9 +482,13 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     stop_reason: str | None = None
     rejected_signals: list[dict[str, object]] = []
     if opportunities:
-        # Gracefully wait if out of funds
-        live_cash = client.live_available_balance()
-        portfolio.cash = round(live_cash, 2)
+        # Gracefully wait if out of funds.
+        # In dry-run, trust the local ledger (no live CLOB to query).
+        if settings.dry_run:
+            live_cash = portfolio.cash
+        else:
+            live_cash = client.live_available_balance()
+            portfolio.cash = round(live_cash, 2)
         if live_cash < 1.0:
             portfolio.save(settings.state_path)
             return {
@@ -547,6 +569,27 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 )
                 signal = opportunity
                 signal_payload = opportunity_payload
+                # Stash persistence_score on the just-created position so it
+                # propagates to the trade journal on close.
+                _persistence_score = max(
+                    (
+                        smart_data.persistence_signals[w.lower()].persistence_score
+                        for w in opportunity.wallets
+                        if w.lower() in smart_data.persistence_signals
+                    ),
+                    default=0.0,
+                )
+                _new_pos = next(
+                    (
+                        p
+                        for p in portfolio.positions
+                        if p.get("status") == "open"
+                        and p.get("market_id") == opportunity.candidate.market_id
+                    ),
+                    None,
+                )
+                if _new_pos is not None:
+                    _new_pos["persistence_score"] = _persistence_score
                 trade_payload = {
                     "strategy": strategy,
                     "signal": signal_payload,
@@ -706,7 +749,48 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         except Exception as exc:
             print(f"   btc-edge tick failed: {type(exc).__name__}: {exc}")
             response["btc_edge"] = {"error": f"{type(exc).__name__}: {exc}"}
+
+    # Dry-run only: append a point on the equity curve and bump tick metadata.
+    if settings.dry_run:
+        try:
+            _append_dry_run_equity_point(settings, portfolio)
+        except Exception as exc:  # never fail the tick on tracing errors
+            print(f"   equity-tracker append failed: {type(exc).__name__}: {exc}")
+
     return response
+
+
+def _append_dry_run_equity_point(settings: Settings, portfolio: Portfolio) -> None:
+    """Append one equity-curve point to the active dry-run directory and
+    bump ``total_ticks`` in its metadata.
+
+    Layout assumption: ``settings.state_path`` lives at
+    ``<base>/dry_runs/<run>/state.json``. The run name is the parent
+    directory; the base is two levels up.
+    """
+    run_root = settings.state_path.parent
+    run_name = run_root.name
+    base_dir = run_root.parent.parent
+    paths = DryRunPaths.for_run(base_dir, run_name)
+    if not paths.metadata.is_file():
+        # Run wasn't provisioned via the CLI (e.g. legacy code path); skip silently.
+        return
+    open_positions = [
+        p for p in portfolio.positions
+        if p.get("status") == "open" and float(p.get("stake", 0) or 0) > 0
+    ]
+    invested = sum(float(p.get("stake", 0) or 0) for p in open_positions)
+    unrealized = sum(float(p.get("unrealized_pnl", 0) or 0) for p in open_positions)
+    metadata_raw = json.loads(paths.metadata.read_text(encoding="utf-8"))
+    tick_idx = int(metadata_raw.get("total_ticks", 0)) + 1
+    append_equity_point(
+        paths.equity_curve,
+        tick=tick_idx,
+        cash=float(portfolio.cash),
+        invested=invested,
+        unrealized=unrealized,
+    )
+    update_tick_metadata(paths)
 
 
 def _execute_sell_strategy(
@@ -1794,6 +1878,7 @@ def _append_trade_journal(settings: Settings, position: dict[str, object], reaso
         "avg_copy_price": metrics.get("avg_copy_price"),
         "score": signal.get("score") if isinstance(signal, dict) else None,
         "wallets": signal.get("wallets") if isinstance(signal, dict) else None,
+        "persistence_score": float(position.get("persistence_score") or 0.0),
         "exit_count": len(exits),
     }
     try:
@@ -2038,26 +2123,22 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                     "cash_usd": cash_val,
                 },
             )
-            target_hour = int(os.environ.get("TELEGRAM_DAILY_SUMMARY_HOUR", "9"))
-            now_local = dt.datetime.now()
-            if now_local.hour >= target_hour:
-                trades_24h, wins_24h, losses_24h, top_w, top_l, pct_24h = (
-                    _journal_stats_last_24h(settings.trade_journal_path)
-                )
-                notifications.notify_daily_summary(
-                    {
-                        "today": now_local.date().isoformat(),
-                        "equity_usd": equity_val,
-                        "equity_pct_24h": pct_24h,
-                        "cash_usd": cash_val,
-                        "open_positions": open_positions_count,
-                        "trades_24h": trades_24h,
-                        "wins_24h": wins_24h,
-                        "losses_24h": losses_24h,
-                        "top_winner": top_w,
-                        "top_loser": top_l,
-                    }
-                )
+            trades_24h, wins_24h, losses_24h, top_w, top_l, pct_24h = (
+                _journal_stats_last_24h(settings.trade_journal_path)
+            )
+            notifications.notify_heartbeat(
+                {
+                    "equity_usd": equity_val,
+                    "equity_pct_24h": pct_24h,
+                    "cash_usd": cash_val,
+                    "open_positions": open_positions_count,
+                    "trades_24h": trades_24h,
+                    "wins_24h": wins_24h,
+                    "losses_24h": losses_24h,
+                    "top_winner": top_w,
+                    "top_loser": top_l,
+                }
+            )
         except Exception as exc:
             print(f"[notif] post-tick hook failed: {exc}", file=sys.stderr, flush=True)
 
@@ -2292,6 +2373,20 @@ app = typer.Typer(
     add_completion=False,
     help="Polymarket smart-money copy-trading bot.",
 )
+app.add_typer(dry_run_app, name="dry-run")
+
+
+@app.command("list")
+def cmd_list_all() -> None:
+    """Lister le ledger live + tous les runs dry-run.
+
+    Alias top-level de ``pmbot dry-run list`` — ce dernier reste valable
+    pour rétro-compatibilité. La sortie inclut une ligne ``(live)`` quand
+    ``data/paper_state.json`` existe, suivie des runs nommés.
+    """
+    from .dry_run_cli import cmd_list as _cmd_list
+
+    _cmd_list()
 
 
 def _version_callback(value: bool) -> None:
@@ -2317,29 +2412,150 @@ def _root(
 
 
 @app.command("auto-loop")
-def cli_auto_loop() -> None:
-    """Run the live smart-money loop. Requires POLYMARKET_ENABLE_LIVE_TRADING=1 (or POLYMARKET_DRY_RUN=1 to simulate without placing real orders)."""
+def cli_auto_loop(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Mode simulation: aucun ordre envoyé à Polymarket."
+    ),
+    live: bool = typer.Option(
+        False, "--live", help="Mode trading réel. Demande confirmation interactive."
+    ),
+    profile: str = typer.Option(
+        "baseline",
+        "--profile",
+        help="Nom du profil TOML dans configs/profiles/ (sans extension).",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", help="Skip le prompt de confirmation live."
+    ),
+    run: str = typer.Option(
+        "default",
+        "--run",
+        help="Nom du dossier de simulation dans data/dry_runs/. Dry-run only.",
+    ),
+    no_persistence: bool = typer.Option(
+        False,
+        "--no-persistence",
+        help="Désactive le filtre de persistance d'edge (pour A/B test).",
+    ),
+) -> None:
+    """Run the smart-money loop in --dry-run or --live mode."""
+
+    if no_persistence:
+        os.environ["POLYMARKET_PERSISTENCE_ENABLED"] = "false"
+
+    # 1) Validate mode flags.
+    if dry_run and live:
+        typer.echo("--dry-run and --live are mutually exclusive.", err=True)
+        raise typer.Exit(code=2)
+    if not dry_run and not live:
+        typer.echo(
+            "Specify --dry-run or --live (modes are mutually exclusive and required).",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if live and run != "default":
+        typer.echo("--run is dry-run only.", err=True)
+        raise typer.Exit(code=2)
+
+    # 2) Warn on legacy env vars (no longer used to drive mode).
+    if os.getenv("POLYMARKET_DRY_RUN") or os.getenv("POLYMARKET_ENABLE_LIVE_TRADING"):
+        typer.echo(
+            "⚠ POLYMARKET_DRY_RUN / POLYMARKET_ENABLE_LIVE_TRADING are no longer used. "
+            "Pass --dry-run or --live instead.",
+            err=True,
+        )
+
+    # 3) Load profile, apply to env (env vars already set take precedence).
+    repo_root = Path(__file__).resolve().parent.parent
+    profile_path = repo_root / "configs" / "profiles" / f"{profile}.toml"
+    try:
+        loaded = load_profile(profile_path)
+    except ProfileValidationError as exc:
+        typer.echo(f"profile error: {exc}", err=True)
+        raise typer.Exit(code=2)
+    apply_profile_to_env(loaded)
+
+    # 4) Dry-run: provision the named run directory and inject paths into env
+    #    BEFORE Settings() reads them (so every component points to the run dir).
+    paths: DryRunPaths | None = None
+    if dry_run:
+        try:
+            paths = ensure_run_directory(
+                repo_root / "data",
+                run,
+                starting_cash=loaded.starting_cash,
+                profile_source=profile_path.name,
+            )
+        except ValueError as exc:
+            typer.echo(f"invalid --run name: {exc}", err=True)
+            raise typer.Exit(code=2)
+        os.environ["POLYMARKET_STATE_PATH"] = str(paths.state)
+        os.environ["POLYMARKET_TRADE_JOURNAL_PATH"] = str(paths.journal)
+        os.environ["POLYMARKET_STRATEGY_OVERRIDES_PATH"] = str(paths.overrides)
+        os.environ["POLYMARKET_TICK_STATE_PATH"] = str(paths.tick_state)
+        os.environ["POLYMARKET_TICK_HISTORY_PATH"] = str(paths.tick_history)
+        os.environ["POLYMARKET_DRY_RUN"] = "1"
+        os.environ["POLYMARKET_RUN_NAME"] = run
+    else:
+        os.environ.pop("POLYMARKET_DRY_RUN", None)
+        os.environ["POLYMARKET_RUN_NAME"] = "live"
+
     settings = Settings()
-    if settings.dry_run:
+
+    # 5) Snapshot effective config.
+    if dry_run and paths is not None:
+        snapshot_target = paths.config_snapshot
+    else:
+        snapshot_target = settings.state_path.parent / "live_config_snapshot.toml"
+    write_snapshot_toml(snapshot_target, source_label=profile_path.name)
+
+    # 6) Live: confirmation gate.
+    if live:
+        recap = build_live_recap(settings, profile_label=profile_path.name)
+        approved = prompt_live_confirmation(recap_text=recap, skip=yes)
+        if not approved:
+            typer.echo("Live launch aborted.", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(f"LIVE — profile={profile_path.name} ledger={settings.state_path}", err=True)
+    else:
         typer.echo(
-            "[DRY-RUN] POLYMARKET_DRY_RUN=1 set — running the smart-money loop without "
-            "placing any real orders. Ledger and journal are written to "
-            f"{settings.state_path} and {settings.trade_journal_path}.",
+            f"[DRY-RUN] run={run} profile={profile_path.name} "
+            f"ledger={settings.state_path} starting_cash=${loaded.starting_cash:g}",
             err=True,
         )
-    elif not settings.live_trading_enabled:
-        typer.echo(
-            "Live trading is disabled. Set POLYMARKET_ENABLE_LIVE_TRADING=1 (or "
-            "POLYMARKET_DRY_RUN=1 to simulate) to proceed.",
-            err=True,
-        )
-        raise typer.Exit(code=1)
+
     smart_money_loop(settings)
 
 
 @app.command()
-def dashboard() -> None:
-    """Serve the read-only HTML dashboard at http://127.0.0.1:8765."""
+def dashboard(
+    run: str | None = typer.Option(
+        None, "--run", help="Cibler un run dry-run nommé (data/dry_runs/<run>/)."
+    ),
+    port: int | None = typer.Option(
+        None, "--port", help="Override le port du dashboard (défaut 8765)."
+    ),
+) -> None:
+    """Serve the read-only HTML dashboard.
+
+    Sans flag : lit le ledger live (data/paper_state.json) sur :8765.
+    Avec --run X : lit data/dry_runs/X/state.json + journal du run.
+    """
+    if run is not None:
+        from polymarket_bot.dry_run_runs import DryRunPaths
+        repo_data = Path(__file__).resolve().parent.parent / "data"
+        paths = DryRunPaths.for_run(repo_data, run)
+        if not paths.metadata.is_file():
+            typer.echo(f"run '{run}' not found in {paths.root}", err=True)
+            raise typer.Exit(code=1)
+        os.environ["POLYMARKET_STATE_PATH"] = str(paths.state)
+        os.environ["POLYMARKET_TRADE_JOURNAL_PATH"] = str(paths.journal)
+        os.environ["POLYMARKET_STRATEGY_OVERRIDES_PATH"] = str(paths.overrides)
+        os.environ["POLYMARKET_TICK_STATE_PATH"] = str(paths.tick_state)
+        os.environ["POLYMARKET_TICK_HISTORY_PATH"] = str(paths.tick_history)
+        os.environ["POLYMARKET_DRY_RUN"] = "1"
+    if port is not None:
+        os.environ["POLYMARKET_DASHBOARD_PORT"] = str(port)
     serve(Settings())
 
 

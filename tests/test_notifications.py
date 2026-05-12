@@ -20,7 +20,7 @@ class NotificationsBaseTest(unittest.TestCase):
         self._env_patch = mock.patch.dict(os.environ, {}, clear=False)
         self._env_patch.start()
         for key in list(os.environ):
-            if key.startswith("TELEGRAM_") or key == "POLYMARKET_DRY_RUN":
+            if key.startswith("TELEGRAM_") or key in ("POLYMARKET_DRY_RUN", "POLYMARKET_RUN_NAME"):
                 os.environ.pop(key, None)
         notifications._reset_for_tests()
 
@@ -44,7 +44,7 @@ class TestDisabled(NotificationsBaseTest):
         )
         notifications.notify_error("test", "should not send")
         notifications.notify_threshold("drawdown", {"pct": -10})
-        notifications.notify_daily_summary({"equity": 90.0})
+        notifications.notify_heartbeat({"equity_usd": 90.0})
 
         self.assertEqual(sent, [])
 
@@ -63,6 +63,47 @@ class TestMdEscape(NotificationsBaseTest):
         self.assertEqual(notifications._md_escape(""), "")
         # Single non-special char
         self.assertEqual(notifications._md_escape("a"), "a")
+
+
+class TestFmtAmount(NotificationsBaseTest):
+    def test_below_1000_uses_two_decimals(self) -> None:
+        self.assertEqual(notifications._fmt_amount(0), "$0.00")
+        self.assertEqual(notifications._fmt_amount(12.5), "$12.50")
+        self.assertEqual(notifications._fmt_amount(999.99), "$999.99")
+
+    def test_at_or_above_1000_uses_k_suffix(self) -> None:
+        self.assertEqual(notifications._fmt_amount(1000), "$1.0k")
+        self.assertEqual(notifications._fmt_amount(1234), "$1.2k")
+        self.assertEqual(notifications._fmt_amount(12500), "$12.5k")
+
+    def test_negative_below_1000(self) -> None:
+        self.assertEqual(notifications._fmt_amount(-50.25), "$-50.25")
+
+    def test_negative_above_1000(self) -> None:
+        # Le signe est porté par |amount| >= 1000 → format -X.Yk
+        self.assertEqual(notifications._fmt_amount(-2500), "$-2.5k")
+
+
+class TestTruncate(NotificationsBaseTest):
+    def test_short_string_unchanged(self) -> None:
+        self.assertEqual(notifications._truncate("hello", 40), "hello")
+
+    def test_exact_length_unchanged(self) -> None:
+        text = "x" * 40
+        self.assertEqual(notifications._truncate(text, 40), text)
+
+    def test_long_string_truncated_with_ellipsis(self) -> None:
+        text = "x" * 50
+        result = notifications._truncate(text, 40)
+        self.assertEqual(len(result), 40)
+        self.assertTrue(result.endswith("…"))
+
+    def test_empty_string(self) -> None:
+        self.assertEqual(notifications._truncate("", 40), "")
+
+    def test_default_max_len_40(self) -> None:
+        text = "y" * 50
+        self.assertEqual(notifications._truncate(text), notifications._truncate(text, 40))
 
 
 class TestChatIdRouting(NotificationsBaseTest):
@@ -87,6 +128,30 @@ class TestChatIdRouting(NotificationsBaseTest):
         self.assertEqual(sent[0]["chat_id"], "111")
         self.assertEqual(sent[0]["text"], "hello")
         self.assertEqual(sent[0]["parse_mode"], "MarkdownV2")
+
+    def test_prefixes_run_name_when_env_set(self) -> None:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        os.environ["POLYMARKET_RUN_NAME"] = "baseline-A"
+        transport, sent = self._capture()
+        notifications.set_transport_for_test(transport)
+
+        notifications._post("hello")
+
+        self.assertEqual(len(sent), 1)
+        # Run name sur sa propre ligne, brackets/hyphen escapés MarkdownV2.
+        self.assertEqual(sent[0]["text"], "*\\[baseline\\-A\\]*\nhello")
+
+    def test_no_prefix_when_run_name_absent(self) -> None:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        # POLYMARKET_RUN_NAME is unset by setUp.
+        transport, sent = self._capture()
+        notifications.set_transport_for_test(transport)
+
+        notifications._post("hello")
+
+        self.assertEqual(sent[0]["text"], "hello")
 
     def test_routes_to_dry_run_chat_when_dry_run(self) -> None:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
@@ -126,15 +191,27 @@ class TestStatePersistence(NotificationsBaseTest):
             state = notifications._State(
                 equity_peak_usd=92.10,
                 equity_floor_breached=False,
-                last_daily_summary_date="2026-05-09",
-                dedupe_seen={"order_rejected:0xtoken": 1715250400.0},
+                last_heartbeat_ts=1715250500.0,
+                dedupe_seen={
+                    "order_rejected:0xtoken": {
+                        "first_ts": 1715250400.0,
+                        "last_ts": 1715250400.0,
+                        "count": 1,
+                        "last_message": "balance low",
+                    },
+                },
             )
             notifications._save_state(path, state)
             loaded = notifications._load_state(path)
             self.assertEqual(loaded.equity_peak_usd, 92.10)
             self.assertFalse(loaded.equity_floor_breached)
-            self.assertEqual(loaded.last_daily_summary_date, "2026-05-09")
-            self.assertEqual(loaded.dedupe_seen.get("order_rejected:0xtoken"), 1715250400.0)
+            self.assertEqual(loaded.last_heartbeat_ts, 1715250500.0)
+            entry = loaded.dedupe_seen.get("order_rejected:0xtoken")
+            self.assertIsNotNone(entry)
+            self.assertEqual(entry["first_ts"], 1715250400.0)
+            self.assertEqual(entry["last_ts"], 1715250400.0)
+            self.assertEqual(entry["count"], 1)
+            self.assertEqual(entry["last_message"], "balance low")
 
     def test_state_path_routing(self) -> None:
         os.environ["POLYMARKET_DRY_RUN"] = "1"
@@ -150,261 +227,490 @@ class TestStatePersistence(NotificationsBaseTest):
             state = notifications._load_state(path)
             self.assertIsNone(state.equity_peak_usd)
             self.assertFalse(state.equity_floor_breached)
-            self.assertIsNone(state.last_daily_summary_date)
+            self.assertIsNone(state.last_heartbeat_ts)
             self.assertEqual(state.dedupe_seen, {})
 
 
-class TestDedupWindow(NotificationsBaseTest):
-    def test_dedup_skips_repeats_within_window(self) -> None:
+class TestErrorCounter(NotificationsBaseTest):
+    def _setup(self) -> list[dict]:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
         os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
         os.environ["TELEGRAM_DEDUPE_WINDOW_SEC"] = "300"
-
         sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        notifications.set_transport_for_test(lambda payload: sent.append(payload) or True)
+        return sent
 
-        with tempfile.TemporaryDirectory() as td:
-            state_path = Path(td) / "state.json"
-            with patch.object(notifications, "_default_state_path", return_value=state_path):
-                base = 1_000_000.0
-                with patch("time.time", return_value=base):
-                    notifications.notify_error("order_rejected", "balance low", dedupe_key="t1")
-                with patch("time.time", return_value=base + 100):
-                    notifications.notify_error("order_rejected", "balance low", dedupe_key="t1")
-                self.assertEqual(len(sent), 1, "second call within window must be skipped")
+    def test_first_error_no_suffix(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_error("clob_balance", "balance not enough", dedupe_key="k1")
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertIn("❌", text)
+        # NB : "clob_balance" et "balance not enough" sont escapés via _md_escape
+        self.assertIn("clob", text)
+        self.assertIn("balance", text)
+        self.assertNotIn("×", text)
+        self.assertNotIn("\n", text)
 
-                with patch("time.time", return_value=base + 400):
-                    notifications.notify_error("order_rejected", "balance low", dedupe_key="t1")
-                self.assertEqual(len(sent), 2)
+    def test_repeats_in_window_are_silenced(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_error("cat", "msg", dedupe_key="k1")
+                notifications.notify_error("cat", "msg", dedupe_key="k1")
+                notifications.notify_error("cat", "msg", dedupe_key="k1")
+        self.assertEqual(len(sent), 1)
 
-                with patch("time.time", return_value=base + 401):
-                    notifications.notify_error("order_rejected", "msg2", dedupe_key="t2")
-                self.assertEqual(len(sent), 3)
+    def test_after_window_emits_with_count_suffix(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            t0 = 1700000000.0
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                with patch.object(notifications.time, "time", side_effect=[t0, t0 + 1, t0 + 2]):
+                    notifications.notify_error("cat", "msg", dedupe_key="k1")
+                    notifications.notify_error("cat", "msg", dedupe_key="k1")
+                    notifications.notify_error("cat", "msg", dedupe_key="k1")
+                with patch.object(notifications.time, "time", return_value=t0 + 3600):
+                    notifications.notify_error("cat", "msg", dedupe_key="k1")
+        self.assertEqual(len(sent), 2)
+        self.assertIn("×3", sent[1]["text"])
+        self.assertIn("min", sent[1]["text"])
 
-                with patch("time.time", return_value=base + 402):
-                    notifications.notify_error("misc", "anything")
-                with patch("time.time", return_value=base + 403):
-                    notifications.notify_error("misc", "anything")
-                self.assertEqual(len(sent), 5)
+    def test_no_dedupe_key_always_emits(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_error("cat", "msg1")
+                notifications.notify_error("cat", "msg2")
+        self.assertEqual(len(sent), 2)
 
 
-class TestTradeFormats(NotificationsBaseTest):
-    def _setup_enabled(self) -> list[dict]:
+class TestTradeBuyOneLine(NotificationsBaseTest):
+    def _setup(self) -> list[dict]:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
         os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
         sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        notifications.set_transport_for_test(lambda payload: sent.append(payload) or True)
         return sent
 
-    def test_buy_format_contains_key_fields(self) -> None:
-        sent = self._setup_enabled()
+    def test_buy_one_line_with_signal(self) -> None:
+        sent = self._setup()
         notifications.notify_trade_buy(
-            market_title="Trump 2028 nominee",
+            market_title="Trump 2028 GOP",
             token_id="0xabc",
-            price=0.42,
-            size_usd=14.20,
-            signal={"wallets": 4, "copied_usdc": 2100.0},
-            market_url="https://polymarket.com/event/foo",
+            price=0.34,
+            size_usd=12.50,
+            signal={"wallets": 3, "copied_usdc": 1200},
+            market_url="https://polymarket.com/event/x",
         )
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
+        # Format carte multi-lignes : header, montant, marché, footer.
+        self.assertIn("\n", text)
+        self.assertIn("🛒", text)
         self.assertIn("BUY", text)
-        self.assertIn("14\\.20", text)  # MarkdownV2 escape du point
-        self.assertIn("0\\.42", text)
-        self.assertIn("Trump 2028 nominee", text)
-        self.assertIn("4 wallets", text)
+        # Montants et prix : escapés MdV2 (point devient \.).
+        self.assertIn("12\\.50", text)
+        self.assertIn("0\\.34", text)
+        self.assertIn("Trump 2028 GOP", text)
+        self.assertIn("3w", text)
+        self.assertIn("$1\\.2k", text)
+        self.assertIn("🔗", text)
+        self.assertIn("polymarket.com", text)
 
-    def test_sell_format_contains_pnl(self) -> None:
-        sent = self._setup_enabled()
-        notifications.notify_trade_sell(
-            market_title="Bitcoin EOY",
+    def test_buy_with_tag(self) -> None:
+        sent = self._setup()
+        notifications.notify_trade_buy(
+            market_title="BTC ≥ $120k Dec",
             token_id="0xabc",
-            price=0.51,
-            size_usd=18.50,
-            realized_pnl_usd=4.30,
-            realized_pnl_pct=30.3,
-            reason="take_profit_ladder",
-            held_seconds=8040,
+            price=0.52,
+            size_usd=5.0,
+            signal={"tag": "btc_edge"},
         )
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
-        self.assertIn("SELL", text)
-        self.assertIn("take_profit_ladder", text)
-        self.assertIn("Bitcoin EOY", text)
-        self.assertIn("\\+\\$4\\.30", text)
+        # Format carte : plusieurs lignes.
+        self.assertIn("\n", text)
+        # tag\=btc\_edge en MdV2 (= et _ échappés).
+        self.assertIn("tag\\=btc\\_edge", text)
 
-    def test_trades_disabled_flag_skips(self) -> None:
-        sent = self._setup_enabled()
+    def test_buy_does_not_truncate_long_title(self) -> None:
+        sent = self._setup()
+        notifications.notify_trade_buy(
+            market_title="X" * 60,
+            token_id="0xabc",
+            price=0.5,
+            size_usd=10.0,
+            signal={"wallets": 2, "copied_usdc": 250},
+        )
+        text = sent[0]["text"]
+        # Telegram autorise 4096 chars/msg ; on n'a aucune raison de tronquer.
+        self.assertIn("X" * 60, text)
+        self.assertNotIn("…", text)
+
+    def test_buy_disabled_by_toggle(self) -> None:
+        sent = self._setup()
         os.environ["TELEGRAM_ALERT_TRADES"] = "0"
         notifications.notify_trade_buy(
-            market_title="x", token_id="t", price=0.5, size_usd=1.0,
-            signal={"wallets": 1, "copied_usdc": 100},
+            market_title="x", token_id="0xabc",
+            price=0.5, size_usd=10.0, signal={"wallets": 2, "copied_usdc": 250},
         )
         self.assertEqual(sent, [])
 
 
-class TestBigWinLoss(NotificationsBaseTest):
-    def _setup_enabled(self) -> list[dict]:
-        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
-        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
-        os.environ["TELEGRAM_BIG_WIN_USD"] = "10.0"
-        os.environ["TELEGRAM_BIG_LOSS_USD"] = "5.0"
-        sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
-        return sent
-
-    def test_big_win_above_threshold(self) -> None:
-        sent = self._setup_enabled()
-        notifications.notify_threshold("big_win", {
-            "market_title": "BTC EOY", "pnl_usd": 12.40, "reason": "peak_protect",
-            "held_seconds": 100000,
-        })
-        self.assertEqual(len(sent), 1)
-        self.assertIn("BIG WIN", sent[0]["text"])
-        self.assertIn("12\\.40", sent[0]["text"])
-
-    def test_big_win_below_threshold_skips(self) -> None:
-        sent = self._setup_enabled()
-        notifications.notify_threshold("big_win", {
-            "market_title": "x", "pnl_usd": 5.0, "reason": "tp",
-        })
-        self.assertEqual(sent, [])
-
-    def test_big_loss_below_negative_threshold(self) -> None:
-        sent = self._setup_enabled()
-        notifications.notify_threshold("big_loss", {
-            "market_title": "x", "pnl_usd": -7.0, "reason": "stop_loss",
-        })
-        self.assertEqual(len(sent), 1)
-        self.assertIn("BIG LOSS", sent[0]["text"])
-
-
-class TestDrawdownArming(NotificationsBaseTest):
-    def _setup(self) -> list[dict]:
-        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
-        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
-        os.environ["TELEGRAM_DRAWDOWN_PCT"] = "10.0"
-        sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
-        return sent
-
-    def test_drawdown_alerts_only_after_arming(self) -> None:
-        sent = self._setup()
-        with tempfile.TemporaryDirectory() as td:
-            path = Path(td) / "state.json"
-            with patch.object(notifications, "_default_state_path", return_value=path):
-                # Premier appel: equity 100 → pic 100, pas de drawdown
-                notifications.notify_threshold("drawdown", {"equity_usd": 100.0})
-                self.assertEqual(len(sent), 0)
-
-                # Equity tombe à 95 (-5%): sous le seuil 10%, pas d'alerte
-                notifications.notify_threshold("drawdown", {"equity_usd": 95.0})
-                self.assertEqual(len(sent), 0)
-
-                # Equity tombe à 88 (-12%): alerte
-                notifications.notify_threshold("drawdown", {"equity_usd": 88.0})
-                self.assertEqual(len(sent), 1)
-                self.assertIn("Drawdown", sent[0]["text"])
-
-                # Encore à 85 (-15%): pas de re-alerte (déjà armé)
-                notifications.notify_threshold("drawdown", {"equity_usd": 85.0})
-                self.assertEqual(len(sent), 1)
-
-                # Remonte à 102 (nouveau pic): re-arme
-                notifications.notify_threshold("drawdown", {"equity_usd": 102.0})
-                self.assertEqual(len(sent), 1)
-
-                # Re-tombe à 89 (-12.7% du nouveau pic): re-alerte
-                notifications.notify_threshold("drawdown", {"equity_usd": 89.0})
-                self.assertEqual(len(sent), 2)
-
-
-class TestEquityFloor(NotificationsBaseTest):
-    def test_floor_one_shot_with_hysteresis(self) -> None:
-        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
-        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
-        os.environ["TELEGRAM_EQUITY_FLOOR_USD"] = "50.0"
-        sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
-        with tempfile.TemporaryDirectory() as td:
-            path = Path(td) / "state.json"
-            with patch.object(notifications, "_default_state_path", return_value=path):
-                # Au-dessus du seuil: rien
-                notifications.notify_threshold("equity_floor", {"equity_usd": 60.0, "open_positions": 5, "cash_usd": 10})
-                self.assertEqual(sent, [])
-                # Cassure: alerte
-                notifications.notify_threshold("equity_floor", {"equity_usd": 48.0, "open_positions": 6, "cash_usd": 12})
-                self.assertEqual(len(sent), 1)
-                self.assertIn("Equity floor", sent[0]["text"])
-                # Toujours en-dessous: pas de re-alerte
-                notifications.notify_threshold("equity_floor", {"equity_usd": 47.0, "open_positions": 6, "cash_usd": 12})
-                self.assertEqual(len(sent), 1)
-                # Remonte juste au seuil (50): pas de re-arm (hystérésis × 1.05 = 52.5)
-                notifications.notify_threshold("equity_floor", {"equity_usd": 51.0, "open_positions": 6, "cash_usd": 12})
-                self.assertEqual(len(sent), 1)
-                # Re-tombe à 48: pas de re-alerte (pas re-armé)
-                notifications.notify_threshold("equity_floor", {"equity_usd": 48.0, "open_positions": 6, "cash_usd": 12})
-                self.assertEqual(len(sent), 1)
-                # Remonte au-dessus de 52.5: re-arme
-                notifications.notify_threshold("equity_floor", {"equity_usd": 53.0, "open_positions": 6, "cash_usd": 12})
-                self.assertEqual(len(sent), 1)
-                # Re-tombe en-dessous: re-alerte
-                notifications.notify_threshold("equity_floor", {"equity_usd": 47.0, "open_positions": 6, "cash_usd": 12})
-                self.assertEqual(len(sent), 2)
-
-
-class TestDailySummary(NotificationsBaseTest):
-    def test_summary_sent_once_per_day(self) -> None:
-        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
-        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
-        sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
-        with tempfile.TemporaryDirectory() as td:
-            path = Path(td) / "state.json"
-            with patch.object(notifications, "_default_state_path", return_value=path):
-                snap = {
-                    "equity_usd": 92.10, "equity_pct_24h": 2.3,
-                    "cash_usd": 8.40, "open_positions": 7,
-                    "trades_24h": 18, "wins_24h": 12, "losses_24h": 6,
-                    "top_winner": {"title": "BTC EOY", "pnl_usd": 5.20},
-                    "top_loser": {"title": "NBA Finals", "pnl_usd": -3.10},
-                    "today": "2026-05-09",
-                }
-                notifications.notify_daily_summary(snap)
-                self.assertEqual(len(sent), 1)
-                self.assertIn("Daily summary", sent[0]["text"])
-                # Second appel le même jour: skip
-                notifications.notify_daily_summary(snap)
-                self.assertEqual(len(sent), 1)
-                # Lendemain: nouvel envoi
-                snap_next = dict(snap, today="2026-05-10")
-                notifications.notify_daily_summary(snap_next)
-                self.assertEqual(len(sent), 2)
-
-
-class TestAutoTuneDiff(NotificationsBaseTest):
+class TestTradeSellOneLine(NotificationsBaseTest):
     def _setup(self) -> list[dict]:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
         os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
         sent: list[dict] = []
-        notifications.set_transport_for_test(lambda p: sent.append(p) or True)
+        notifications.set_transport_for_test(lambda payload: sent.append(payload) or True)
         return sent
 
-    def test_skips_when_no_changes(self) -> None:
+    def test_standard_sell_one_line(self) -> None:
         sent = self._setup()
-        notifications.notify_threshold("auto_tune_change", {"changes": []})
-        self.assertEqual(sent, [])
-
-    def test_sends_with_changes(self) -> None:
-        sent = self._setup()
-        notifications.notify_threshold("auto_tune_change", {
-            "changes": [
-                {"param": "MIN_CONSENSUS", "old": 2, "new": 3},
-                {"param": "MAX_CHASE_PREMIUM", "old": 0.13, "new": 0.104},
-            ]
-        })
+        notifications.notify_trade_sell(
+            market_title="Trump 2028 GOP",
+            token_id="0xabc",
+            price=0.41,
+            size_usd=14.20,
+            realized_pnl_usd=1.70,
+            realized_pnl_pct=13.6,
+            reason="tp_ladder",
+            held_seconds=4920,
+        )
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
-        self.assertIn("Auto\\-tune", text)
-        self.assertIn("MIN_CONSENSUS", text)
-        self.assertIn("MAX_CHASE_PREMIUM", text)
+        # Format carte multi-lignes.
+        self.assertIn("\n", text)
+        # Profit positif (1.70 USD) sous le seuil BIG WIN → SELL vert.
+        self.assertIn("🟢", text)
+        self.assertIn("SELL", text)
+        self.assertIn("Trump 2028 GOP", text)
+        self.assertIn("13\\.6%", text)
+        self.assertIn("1h22m", text)
+        self.assertIn("tp\\_ladder", text)
+
+    def test_big_win_replaces_sell_when_above_threshold(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_BIG_WIN_USD"] = "10"
+        notifications.notify_trade_sell(
+            market_title="Trump 2028 GOP",
+            token_id="0xabc",
+            price=0.41,
+            size_usd=14.20,
+            realized_pnl_usd=12.40,
+            realized_pnl_pct=87.3,
+            reason="peak_protect",
+            held_seconds=14400,
+        )
+        self.assertEqual(len(sent), 1, "un seul message, pas deux")
+        text = sent[0]["text"]
+        self.assertIn("💰", text)
+        self.assertIn("BIG WIN", text)
+        self.assertNotIn("🔴", text)
+        self.assertNotIn("SELL", text)
+
+    def test_big_loss_replaces_sell_when_below_threshold(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_BIG_LOSS_USD"] = "5"
+        notifications.notify_trade_sell(
+            market_title="NFL Chiefs",
+            token_id="0xabc",
+            price=0.22,
+            size_usd=7.80,
+            realized_pnl_usd=-6.10,
+            realized_pnl_pct=-43.9,
+            reason="stop_loss",
+            held_seconds=1080,
+        )
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertIn("💸", text)
+        self.assertIn("BIG LOSS", text)
+        self.assertNotIn("🔴", text)
+        self.assertNotIn("SELL", text)
+
+    def test_below_threshold_uses_standard_sell(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_BIG_WIN_USD"] = "10"
+        notifications.notify_trade_sell(
+            market_title="x", token_id="0xabc",
+            price=0.5, size_usd=10.0,
+            realized_pnl_usd=2.50, realized_pnl_pct=25.0,
+            reason="tp_ladder",
+        )
+        text = sent[0]["text"]
+        # Profit positif sous seuil → SELL vert, pas BIG WIN.
+        self.assertIn("🟢", text)
+        self.assertNotIn("💰", text)
+
+    def test_thresholds_disabled_falls_back_to_sell(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_BIG_WIN_USD"] = "10"
+        os.environ["TELEGRAM_ALERT_THRESHOLDS"] = "0"
+        notifications.notify_trade_sell(
+            market_title="x", token_id="0xabc",
+            price=0.5, size_usd=10.0,
+            realized_pnl_usd=20.0, realized_pnl_pct=200.0,
+            reason="peak_protect",
+        )
+        text = sent[0]["text"]
+        # Seuils désactivés : on retombe sur SELL coloré par PnL (profit → vert).
+        self.assertIn("🟢", text)
+        self.assertNotIn("💰", text)
+
+    def test_trades_disabled_no_send(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_ALERT_TRADES"] = "0"
+        notifications.notify_trade_sell(
+            market_title="x", token_id="0xabc",
+            price=0.5, size_usd=10.0,
+            realized_pnl_usd=20.0, realized_pnl_pct=200.0,
+            reason="peak_protect",
+        )
+        self.assertEqual(sent, [])
+
+
+class TestThresholdOneLine(NotificationsBaseTest):
+    def _setup(self) -> list[dict]:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        sent: list[dict] = []
+        notifications.set_transport_for_test(lambda payload: sent.append(payload) or True)
+        return sent
+
+    def test_drawdown_one_line(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_threshold("drawdown", {"equity_usd": 100.0})
+                notifications.notify_threshold("drawdown", {"equity_usd": 85.0})
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertNotIn("\n", text)
+        self.assertIn("⚠️", text)
+        self.assertIn("DD", text)
+        self.assertIn("\\-15\\.0%", text)
+
+    def test_equity_floor_one_line(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_threshold(
+                    "equity_floor",
+                    {"equity_usd": 48.0, "cash_usd": 4.0, "open_positions": 5},
+                )
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertNotIn("\n", text)
+        self.assertIn("🚨", text)
+        self.assertIn("Floor", text)
+        self.assertIn("5pos", text)
+
+    def test_auto_tune_one_line(self) -> None:
+        sent = self._setup()
+        notifications.notify_threshold(
+            "auto_tune_change",
+            {
+                "changes": [
+                    {"param": "MIN_CONSENSUS", "old": 2, "new": 3},
+                    {"param": "POSITION_PCT", "old": 0.18, "new": 0.14},
+                ],
+            },
+        )
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertNotIn("\n", text)
+        self.assertIn("🛠", text)
+        self.assertIn("Tune", text)
+        self.assertIn("MIN\\_CONSENSUS", text)
+        self.assertIn("2→3", text)
+        self.assertIn("POSITION\\_PCT", text)
+
+    def test_big_win_threshold_kind_is_noop(self) -> None:
+        sent = self._setup()
+        notifications.notify_threshold(
+            "big_win",
+            {"market_title": "x", "pnl_usd": 100.0, "reason": "tp_ladder"},
+        )
+        self.assertEqual(sent, [])
+
+    def test_big_loss_threshold_kind_is_noop(self) -> None:
+        sent = self._setup()
+        notifications.notify_threshold(
+            "big_loss",
+            {"market_title": "x", "pnl_usd": -100.0, "reason": "stop_loss"},
+        )
+        self.assertEqual(sent, [])
+
+
+class TestHeartbeat(NotificationsBaseTest):
+    def _setup(self) -> list[dict]:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        sent: list[dict] = []
+        notifications.set_transport_for_test(lambda payload: sent.append(payload) or True)
+        return sent
+
+    def _snapshot(self, **overrides) -> dict:
+        base: dict = {
+            "equity_usd": 87.40,
+            "equity_pct_24h": 2.1,
+            "cash_usd": 12.0,
+            "open_positions": 7,
+            "trades_24h": 4,
+            "wins_24h": 3,
+            "losses_24h": 1,
+            "top_winner": {"pnl_usd": 4.20, "title": "X"},
+            "top_loser": {"pnl_usd": -1.10, "title": "Y"},
+        }
+        base.update(overrides)
+        return base
+
+    def test_heartbeat_one_line_with_all_fields(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_heartbeat(self._snapshot())
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertNotIn("\n", text)
+        self.assertIn("💓", text)
+        # Vérification par sous-chaînes en tenant compte de _md_escape
+        # (les "." sont escapés en "\.", donc on cherche "87" et "40" séparés)
+        self.assertIn("87", text)
+        self.assertIn("40", text)
+        self.assertIn("2", text)  # +2.1% 24h
+        self.assertIn("7pos", text)
+        self.assertIn("3W/1L", text)
+        self.assertIn("75%", text)
+
+    def test_heartbeat_respects_interval(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_HEARTBEAT_MINUTES"] = "30"
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            t0 = 1700000000.0
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                with patch.object(notifications.time, "time", return_value=t0):
+                    notifications.notify_heartbeat(self._snapshot())
+                with patch.object(notifications.time, "time", return_value=t0 + 600):
+                    notifications.notify_heartbeat(self._snapshot())
+                with patch.object(notifications.time, "time", return_value=t0 + 31 * 60):
+                    notifications.notify_heartbeat(self._snapshot())
+        self.assertEqual(len(sent), 2)
+
+    def test_heartbeat_disabled_by_toggle(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_ALERT_HEARTBEAT"] = "0"
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_heartbeat(self._snapshot())
+        self.assertEqual(sent, [])
+
+    def test_heartbeat_no_trades_clean_format(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_heartbeat(
+                    self._snapshot(trades_24h=0, wins_24h=0, losses_24h=0,
+                                   top_winner={}, top_loser={}),
+                )
+        self.assertEqual(len(sent), 1)
+        text = sent[0]["text"]
+        self.assertNotIn("\n", text)
+        self.assertIn("0W/0L", text)
+
+
+class TestDailySummaryRemoved(NotificationsBaseTest):
+    def test_function_removed(self) -> None:
+        self.assertFalse(hasattr(notifications, "notify_daily_summary"))
+
+
+class TestStateMigration(NotificationsBaseTest):
+    def test_loads_old_dedupe_seen_float_format(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "state.json"
+            path.write_text(json.dumps({
+                "equity_peak_usd": 100.0,
+                "dedupe_seen": {"err_a": 1700000000.0, "err_b": 1700000050.5},
+            }))
+            state = notifications._load_state(path)
+        self.assertEqual(state.equity_peak_usd, 100.0)
+        self.assertIn("err_a", state.dedupe_seen)
+        self.assertEqual(state.dedupe_seen["err_a"]["count"], 1)
+        self.assertEqual(state.dedupe_seen["err_a"]["first_ts"], 1700000000.0)
+        self.assertEqual(state.dedupe_seen["err_a"]["last_ts"], 1700000000.0)
+        self.assertEqual(state.dedupe_seen["err_a"]["last_message"], "")
+
+    def test_loads_new_dedupe_seen_dict_format(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "state.json"
+            path.write_text(json.dumps({
+                "dedupe_seen": {
+                    "err_a": {
+                        "first_ts": 1.0, "last_ts": 5.0,
+                        "count": 3, "last_message": "boom",
+                    },
+                },
+            }))
+            state = notifications._load_state(path)
+        entry = state.dedupe_seen["err_a"]
+        self.assertEqual(entry["count"], 3)
+        self.assertEqual(entry["last_message"], "boom")
+        self.assertEqual(entry["first_ts"], 1.0)
+        self.assertEqual(entry["last_ts"], 5.0)
+
+    def test_ignores_legacy_last_daily_summary_date(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "state.json"
+            path.write_text(json.dumps({"last_daily_summary_date": "2024-01-01"}))
+            state = notifications._load_state(path)
+        self.assertFalse(hasattr(state, "last_daily_summary_date"))
+
+    def test_loads_last_heartbeat_ts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "state.json"
+            path.write_text(json.dumps({"last_heartbeat_ts": 1700000000.0}))
+            state = notifications._load_state(path)
+        self.assertEqual(state.last_heartbeat_ts, 1700000000.0)
+
+    def test_save_round_trip_preserves_new_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "state.json"
+            state = notifications._State(
+                equity_peak_usd=200.0,
+                last_heartbeat_ts=1700000123.0,
+                dedupe_seen={
+                    "err_a": {"first_ts": 1.0, "last_ts": 2.0, "count": 4, "last_message": "x"},
+                },
+            )
+            notifications._save_state(path, state)
+            loaded = notifications._load_state(path)
+        self.assertEqual(loaded.equity_peak_usd, 200.0)
+        self.assertEqual(loaded.last_heartbeat_ts, 1700000123.0)
+        self.assertEqual(loaded.dedupe_seen["err_a"]["count"], 4)
+
+    def test_prune_dedupe_removes_old_entries(self) -> None:
+        state = notifications._State(
+            dedupe_seen={
+                "old": {"first_ts": 0.0, "last_ts": 0.0, "count": 1, "last_message": ""},
+                "new": {"first_ts": 1500.0, "last_ts": 1500.0, "count": 1, "last_message": ""},
+            },
+        )
+        # window=300, window*4=1200, cutoff = now - 1200 = 800
+        # "old" last_ts=0 < 800 → supprimé ; "new" last_ts=1500 ≥ 800 → gardé
+        notifications._prune_dedupe(state, now=2000.0, window=300.0)
+        self.assertNotIn("old", state.dedupe_seen)
+        self.assertIn("new", state.dedupe_seen)
