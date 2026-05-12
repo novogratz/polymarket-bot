@@ -1,5 +1,5 @@
-"""Tests for the equity-curve hook fired at the end of smart_money_once
-in dry-run mode."""
+"""Tests for the equity-curve hook fired after each successful tick
+in dry-run mode (runs for any strategy: smart-money, mirror, …)."""
 
 import os
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
@@ -20,12 +20,9 @@ from polymarket_bot.dry_run_runs import (
 from polymarket_bot.main import _append_dry_run_equity_point
 
 
-class _FakePortfolio:
-    """Minimal portfolio stand-in mimicking the real Portfolio dataclass."""
-
-    def __init__(self, cash: float, positions: list[dict]):
-        self.cash = cash
-        self.positions = positions
+def _write_state(path: Path, cash: float, positions: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"cash": cash, "positions": positions, "pending_orders": []}))
 
 
 class AppendDryRunEquityPointTests(unittest.TestCase):
@@ -35,18 +32,20 @@ class AppendDryRunEquityPointTests(unittest.TestCase):
             paths = ensure_run_directory(
                 base, "sim1", starting_cash=100.0, profile_source="baseline.toml"
             )
-            settings = SimpleNamespace(dry_run=True, state_path=paths.state)
-            portfolio = _FakePortfolio(
+            _write_state(
+                paths.state,
                 cash=70.0,
                 positions=[
                     {"status": "open", "stake": 18.0, "unrealized_pnl": 2.5},
                     {"status": "open", "stake": 12.0, "unrealized_pnl": -1.0},
-                    # Closed (stake=0) should be excluded.
                     {"status": "open", "stake": 0.0, "unrealized_pnl": 5.0},
                 ],
             )
+            settings = SimpleNamespace(
+                dry_run=True, state_path=paths.state, paper_balance_usd=100.0
+            )
 
-            _append_dry_run_equity_point(settings, portfolio)
+            _append_dry_run_equity_point(settings)
 
             self.assertTrue(paths.equity_curve.is_file())
             lines = paths.equity_curve.read_text(encoding="utf-8").strip().splitlines()
@@ -68,11 +67,13 @@ class AppendDryRunEquityPointTests(unittest.TestCase):
             paths = ensure_run_directory(
                 base, "sim2", starting_cash=100.0, profile_source="baseline.toml"
             )
-            settings = SimpleNamespace(dry_run=True, state_path=paths.state)
-            portfolio = _FakePortfolio(cash=100.0, positions=[])
+            _write_state(paths.state, cash=100.0, positions=[])
+            settings = SimpleNamespace(
+                dry_run=True, state_path=paths.state, paper_balance_usd=100.0
+            )
 
             for _ in range(3):
-                _append_dry_run_equity_point(settings, portfolio)
+                _append_dry_run_equity_point(settings)
 
             lines = paths.equity_curve.read_text(encoding="utf-8").strip().splitlines()
             self.assertEqual(len(lines), 3)
@@ -82,14 +83,15 @@ class AppendDryRunEquityPointTests(unittest.TestCase):
             self.assertEqual(metadata.total_ticks, 3)
 
     def test_no_metadata_file_is_silent_noop(self):
-        # If state_path points to a directory without metadata.json, the
-        # hook short-circuits without raising and writes nothing.
         with tempfile.TemporaryDirectory() as tmp:
             stray = Path(tmp) / "stray"
             stray.mkdir()
-            settings = SimpleNamespace(dry_run=True, state_path=stray / "state.json")
-            portfolio = _FakePortfolio(cash=100.0, positions=[])
-            _append_dry_run_equity_point(settings, portfolio)
+            settings = SimpleNamespace(
+                dry_run=True,
+                state_path=stray / "state.json",
+                paper_balance_usd=100.0,
+            )
+            _append_dry_run_equity_point(settings)
             self.assertFalse((stray / "equity_curve.jsonl").exists())
 
 

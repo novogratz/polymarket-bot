@@ -21,6 +21,7 @@ for _k in [k for k in os.environ if k.startswith("POLYMARKET_") and k != "POLYMA
 
 from polymarket_bot import notifications  # noqa: E402
 from polymarket_bot.config import Settings  # noqa: E402
+from polymarket_bot.dry_run_runs import ensure_run_directory, load_metadata  # noqa: E402
 from polymarket_bot.main import strategy_loop  # noqa: E402
 
 
@@ -122,6 +123,76 @@ class StrategyLoopErrorPathTests(unittest.TestCase):
 
             self.assertEqual(mock_write_tick.call_count, 1)
             self.assertIn("trade-fn boom", stdout.getvalue())
+
+
+class StrategyLoopDryRunMetadataTests(unittest.TestCase):
+    """Lock that ``strategy_loop`` bumps ``total_ticks`` after each
+    successful dry-run tick, regardless of which tick_fn ran. This is
+    what makes mirror-mode runs visible in ``pmbot list``.
+    """
+
+    def test_successful_dry_run_tick_bumps_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            paths = ensure_run_directory(
+                base, "sim", starting_cash=100.0, profile_source="baseline.toml"
+            )
+            paths.state.write_text('{"cash": 100.0, "positions": [], "pending_orders": []}')
+            settings = Settings(
+                auto_max_ticks=1,
+                auto_interval_seconds=0,
+                state_path=paths.state,
+                trade_journal_path=paths.journal,
+                tick_state_path=paths.tick_state,
+                tick_history_path=paths.tick_history,
+                dry_run=True,
+                paper_balance_usd=100.0,
+            )
+
+            def fake_tick(_settings: Settings) -> dict:
+                return {"summary": {"equity": 100.0, "cash": 100.0, "open_positions": 0}}
+
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                strategy_loop(settings, "mirror", fake_tick)
+
+            metadata = load_metadata(paths)
+            self.assertEqual(metadata.total_ticks, 1)
+            self.assertIsNotNone(metadata.last_tick_at)
+            self.assertTrue(paths.equity_curve.is_file())
+
+    def test_failed_dry_run_tick_does_not_bump_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            paths = ensure_run_directory(
+                base, "sim", starting_cash=100.0, profile_source="baseline.toml"
+            )
+            paths.state.write_text('{"cash": 100.0, "positions": [], "pending_orders": []}')
+            settings = Settings(
+                auto_max_ticks=1,
+                auto_interval_seconds=0,
+                state_path=paths.state,
+                trade_journal_path=paths.journal,
+                tick_state_path=paths.tick_state,
+                tick_history_path=paths.tick_history,
+                dry_run=True,
+                paper_balance_usd=100.0,
+            )
+
+            def boom(_settings: Settings) -> dict:
+                raise RuntimeError("kaboom")
+
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with (
+                mock.patch("polymarket_bot.main.notifications.notify_error"),
+                redirect_stdout(stdout),
+                redirect_stderr(stderr),
+            ):
+                strategy_loop(settings, "mirror", boom)
+
+            metadata = load_metadata(paths)
+            self.assertEqual(metadata.total_ticks, 0)
+            self.assertIsNone(metadata.last_tick_at)
 
 
 if __name__ == "__main__":
