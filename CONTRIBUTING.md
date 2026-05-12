@@ -28,7 +28,7 @@ Run lint:
 ruff check polymarket_bot tests
 ```
 
-CI runs the same commands on Python 3.10 / 3.11 / 3.12 against every push.
+CI runs the same commands on Python 3.11 / 3.12 against every push.
 
 ## Pull request checklist
 

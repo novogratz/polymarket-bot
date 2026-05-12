@@ -9,7 +9,7 @@ description = "Polymarket smart-money copy-trading bot with auto-tuner, trade jo
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Benoit Floc'h" }]
-requires-python = ">=3.9.10"
+requires-python = ">=3.11"
 keywords = ["polymarket", "trading", "smart-money", "copy-trading", "prediction-markets"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -17,8 +17,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Office/Business :: Financial",

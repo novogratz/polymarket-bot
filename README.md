@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/novogratz/polymarket-bot/actions/workflows/test.yml/badge.svg)](https://github.com/novogratz/polymarket-bot/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
 Polymarket smart-money copy-trading bot with a local dashboard, persistent ledger, trade journal, defensive auto-tuner, and an optional BTC edge model. The default strategy watches recent buys from profitable leaderboard wallets, requires multi-wallet consensus on the same token, applies tight execution filters (absolute spread, relative spread, price band, freshness, chase premium), then sizes each trade as a percentage of the bankroll weighted by signal conviction. Exits run before each new entry: take-profit ladder, trailing stop, peak-protect, stop-loss, cohort-sell.
 
@@ -351,7 +351,7 @@ Open `http://127.0.0.1:8765`. Refreshes every 5 seconds: bot mode, equity, open 
 python3 -B -m unittest discover -s tests
 ```
 
-GitHub Actions runs the full test suite on Python 3.10 / 3.11 / 3.12 and `ruff` lint on every push (see `.github/workflows/test.yml`).
+GitHub Actions runs the full test suite on Python 3.11 / 3.12 and `ruff` lint on every push (see `.github/workflows/test.yml`).
 
 ## Versioning and changelog
 
