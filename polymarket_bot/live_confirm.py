@@ -38,6 +38,11 @@ def prompt_live_confirmation(
     The timeout dimension described in the spec is intentionally not
     implemented here (would require ``select`` or threading). The
     operator must respond or Ctrl-C. A later plan can add a timeout.
+
+    Non-TTY safety: if stdin is not a TTY we refuse rather than block
+    on readline. This covers ``nohup``, detached tmux without ``-d``,
+    cron, and CI runners — situations where a blind ``readline`` would
+    suspend the process indefinitely.
     """
     if skip:
         return True
@@ -47,8 +52,9 @@ def prompt_live_confirmation(
 
     if not stream_in.isatty():
         stream_out.write(
-            "Live trading requires interactive confirmation. "
-            "Re-run with --yes for non-TTY automation.\n"
+            "Live trading requires interactive confirmation on a TTY. "
+            "Re-run with --yes for non-TTY automation (scripts), or "
+            "attach to a terminal before launching.\n"
         )
         return False
 

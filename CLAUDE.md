@@ -12,7 +12,11 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
   invocation like `bash scripts/run_live_70.sh`). The `--yes` flag exists
   only for that script and automation.
 - `POLYMARKET_DRY_RUN` and `POLYMARKET_ENABLE_LIVE_TRADING` env vars are
-  no longer consulted. Use `--dry-run` or `--live` flags.
+  no longer accepted as user input — `pmbot` warns if they are set in
+  the environment. Use `--dry-run` or `--live` flags instead. Internally
+  the bot still propagates the `--dry-run` flag to a few modules
+  (notifications, dashboard, doctor) via `POLYMARKET_DRY_RUN`; this is an
+  implementation detail, not a user-facing toggle.
 - Do not implement random or unfiltered live trades. The `noise_fallback` path is the only forced-trade lane and is hard-capped at $10/trade and 4 trades/tick.
 - Preserve the local ledger `data/paper_state.json` unless the user explicitly asks for a reset.
 - Preserve `data/trade_journal.jsonl` and `data/strategy_overrides.json` unless explicitly asked to reset them.
@@ -143,7 +147,7 @@ The script is the single source of truth for the live config. Current settings:
 - Three-pass scan per tick: strict → relaxed → deep fallback.
 - Exits: take-profit ladder `0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15`, peak-protect arming at +100% and exiting below +40%, trailing stop arming at +25% with 50% giveback, stop-loss -40% (after 15 min in position), resolved-market exit when bid ≥ 0.97, max-hold-time 24h, cohort-sell exit (active SELL detection in 120 min lookback, parallel fetch), near-expiry positive exit. SELLs that are rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
 - BTC edge integrated: at the end of every smart-money tick `btc_edge_once` runs with $5/trade cap and 8% minimum modeled edge over market.
-- Noise fallback: up to 4 trades at $10 each when all three smart-money scans return 0 AND (positions below `MIN_OPEN_POSITIONS` OR cash share above 35% of equity). Tagged `noise_fallback` in the journal.
+- Noise fallback: up to 4 trades at $10 each, **only when smart-money executed zero trades in the tick** AND (positions below `MIN_OPEN_POSITIONS` OR cash share above 35% of equity). Tagged `noise_fallback` in the journal.
 - Auto-tune: `SMART_AUTO_TUNE_ENABLED=1` (paused below 30 closed trades; defensive only).
 
 Dashboard at `http://127.0.0.1:8765` by default.
@@ -161,7 +165,7 @@ Each tick prints structured progress to stdout, followed by a JSON summary. Orde
 7. Smart-money scan: strict → relaxed → deep fallback. One leaderboard+trades fetch shared across all three.
 8. Reverse-lookup high-flow tokens not in current candidates; merge into the eligible pool.
 9. Place trades from the opportunity list with dynamic per-slot sizing toward the cash floor.
-10. Noise fallback if enabled and either below `MIN_OPEN_POSITIONS` or cash share above the cash-pressure threshold.
+10. Noise fallback if enabled, smart-money fired zero trades this tick, and either below `MIN_OPEN_POSITIONS` or cash share above the cash-pressure threshold.
 11. BTC edge tick if enabled.
 12. Persist portfolio + write journal entries for any closed positions.
 13. Print JSON result, sleep `AUTO_INTERVAL_SECONDS`.

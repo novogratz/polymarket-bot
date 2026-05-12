@@ -17,11 +17,16 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+from ._atomic_io import atomic_write_text
 from .smart_money import DataApiClient
+
+_RESOLVE_CONCURRENCY = 6
 
 _ADDRESS_RE = re.compile(r"^0[xX][0-9a-fA-F]{40}$")
 _URL_ADDRESS_RE = re.compile(r"(0[xX][0-9a-fA-F]{40})")
@@ -56,9 +61,8 @@ def load_cache(path: Path) -> dict[str, str]:
 
 
 def save_cache(path: Path, cache: dict[str, str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {k.lower(): v.lower() for k, v in cache.items()}
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True))
 
 
 def resolve_username(
@@ -143,6 +147,12 @@ def resolve_all(
 ) -> tuple[list[str], list[str]]:
     """Resolve a CSV of mixed tokens into ``(addresses, unresolved)``.
 
+    Addresses and profile URLs are extracted locally; only true usernames
+    hit the API. Username resolutions run in parallel (concurrency 6) so
+    18 mirror targets don't block the loop for ~10s at startup. The
+    shared cache is protected by a lock so threads don't trample each
+    other's writes.
+
     Side effects: writes the updated cache back to ``cache_path``.
     """
     if not raw:
@@ -150,13 +160,46 @@ def resolve_all(
     tokens = [t.strip() for t in raw.split(",") if t.strip()]
     api = api or DataApiClient()
     cache = load_cache(cache_path)
+    cache_lock = threading.Lock()
+
+    # Pre-pass: resolve cheap tokens (addresses, URLs) locally.
+    cheap: dict[int, str | None] = {}
+    usernames: list[tuple[int, str]] = []
+    for idx, token in enumerate(tokens):
+        if is_address(token):
+            cheap[idx] = token.lower()
+            continue
+        url_addr = extract_address_from_url(token)
+        if url_addr:
+            cheap[idx] = url_addr
+            continue
+        usernames.append((idx, token))
+
+    def _resolve_one(idx_token: tuple[int, str]) -> tuple[int, str | None]:
+        idx, token = idx_token
+        with cache_lock:
+            cache_snapshot = dict(cache)
+        addr = resolve_username(
+            token, api, cache_snapshot, verbose=verbose, sleep_between=sleep_between
+        )
+        # Fold the thread-local cache writes back into the shared cache.
+        with cache_lock:
+            for k, v in cache_snapshot.items():
+                cache.setdefault(k, v)
+        return idx, addr
+
+    username_results: dict[int, str | None] = {}
+    if usernames:
+        concurrency = min(_RESOLVE_CONCURRENCY, len(usernames))
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            for idx, addr in executor.map(_resolve_one, usernames):
+                username_results[idx] = addr
+
     resolved: list[str] = []
     seen: set[str] = set()
     unresolved: list[str] = []
-    for token in tokens:
-        addr = resolve_target(
-            token, api, cache, verbose=verbose, sleep_between=sleep_between
-        )
+    for idx, token in enumerate(tokens):
+        addr = cheap.get(idx) or username_results.get(idx)
         if not addr:
             unresolved.append(token)
             continue

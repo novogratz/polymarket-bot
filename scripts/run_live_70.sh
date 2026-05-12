@@ -4,6 +4,11 @@
 # vit dans configs/profiles/live-90.toml. Ce script complète avec les env vars
 # hors schéma (discovery, reverse-lookup, crypto cohort, cohort exit, sport
 # penalty, etc.) — TODO: les migrer progressivement dans le profil.
+#
+# Ce script passe --yes : la confirmation interactive est skipée, donc aucun
+# besoin de TTY. Pour une exécution sans --yes (auto-loop --live tout court),
+# l'opérateur DOIT être attaché à un TTY ; sans cela, prompt_live_confirmation
+# refuse et abort proprement (cf. live_confirm.py:48).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
