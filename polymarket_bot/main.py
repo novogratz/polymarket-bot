@@ -2438,7 +2438,12 @@ def cli_auto_loop(
         help="Désactive le filtre de persistance d'edge (pour A/B test).",
     ),
 ) -> None:
-    """Run the smart-money loop in --dry-run or --live mode."""
+    """Run the strategy loop in --dry-run or --live mode.
+
+    The strategy is selected by ``[run].mode`` in the profile:
+    ``smart_money`` (default) or ``mirror`` (copy-trade a single wallet
+    configured in the ``[mirror]`` section).
+    """
 
     if no_persistence:
         os.environ["POLYMARKET_PERSISTENCE_ENABLED"] = "false"
@@ -2524,7 +2529,18 @@ def cli_auto_loop(
             err=True,
         )
 
-    smart_money_loop(settings)
+    if (settings.run_mode or "smart_money").lower() == "mirror":
+        from . import mirror as mirror_module
+
+        if not settings.mirror_target:
+            typer.echo(
+                "mirror mode requires [mirror].target in the profile (or POLYMARKET_MIRROR_TARGET).",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        mirror_module.mirror_loop(settings)
+    else:
+        smart_money_loop(settings)
 
 
 @app.command()
