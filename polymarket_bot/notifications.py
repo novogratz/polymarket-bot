@@ -195,13 +195,26 @@ def _get_transport() -> Transport:
     return _transport_override if _transport_override is not None else _default_transport
 
 
+def _run_prefix() -> str:
+    """Retourne ``*\\[<run>\\]* `` si ``POLYMARKET_RUN_NAME`` est défini.
+
+    Utilisé par ``_post`` pour préfixer chaque message Telegram avec le
+    nom du run/contexte (``baseline-A``, ``test-noise``, ``live``, …),
+    pratique pour distinguer plusieurs auto-loop tournant en parallèle.
+    """
+    run = os.environ.get("POLYMARKET_RUN_NAME", "").strip()
+    if not run:
+        return ""
+    return f"*\\[{_md_escape(run)}\\]* "
+
+
 def _post(text: str) -> bool:
     """Envoi best-effort. Retourne False sur erreur, jamais d'exception."""
     if not is_enabled():
         return False
     payload = {
         "chat_id": _chat_id(),
-        "text": text,
+        "text": _run_prefix() + text,
         "parse_mode": "MarkdownV2",
         "disable_web_page_preview": True,
     }

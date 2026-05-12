@@ -20,7 +20,7 @@ class NotificationsBaseTest(unittest.TestCase):
         self._env_patch = mock.patch.dict(os.environ, {}, clear=False)
         self._env_patch.start()
         for key in list(os.environ):
-            if key.startswith("TELEGRAM_") or key == "POLYMARKET_DRY_RUN":
+            if key.startswith("TELEGRAM_") or key in ("POLYMARKET_DRY_RUN", "POLYMARKET_RUN_NAME"):
                 os.environ.pop(key, None)
         notifications._reset_for_tests()
 
@@ -128,6 +128,30 @@ class TestChatIdRouting(NotificationsBaseTest):
         self.assertEqual(sent[0]["chat_id"], "111")
         self.assertEqual(sent[0]["text"], "hello")
         self.assertEqual(sent[0]["parse_mode"], "MarkdownV2")
+
+    def test_prefixes_run_name_when_env_set(self) -> None:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        os.environ["POLYMARKET_RUN_NAME"] = "baseline-A"
+        transport, sent = self._capture()
+        notifications.set_transport_for_test(transport)
+
+        notifications._post("hello")
+
+        self.assertEqual(len(sent), 1)
+        # MarkdownV2: brackets and hyphen escaped, wrapped in bold.
+        self.assertEqual(sent[0]["text"], "*\\[baseline\\-A\\]* hello")
+
+    def test_no_prefix_when_run_name_absent(self) -> None:
+        os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "111"
+        # POLYMARKET_RUN_NAME is unset by setUp.
+        transport, sent = self._capture()
+        notifications.set_transport_for_test(transport)
+
+        notifications._post("hello")
+
+        self.assertEqual(sent[0]["text"], "hello")
 
     def test_routes_to_dry_run_chat_when_dry_run(self) -> None:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"

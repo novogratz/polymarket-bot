@@ -2495,8 +2495,10 @@ def cli_auto_loop(
         os.environ["POLYMARKET_TICK_STATE_PATH"] = str(paths.tick_state)
         os.environ["POLYMARKET_TICK_HISTORY_PATH"] = str(paths.tick_history)
         os.environ["POLYMARKET_DRY_RUN"] = "1"
+        os.environ["POLYMARKET_RUN_NAME"] = run
     else:
         os.environ.pop("POLYMARKET_DRY_RUN", None)
+        os.environ["POLYMARKET_RUN_NAME"] = "live"
 
     settings = Settings()
 
