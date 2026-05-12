@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from polymarket_bot.dry_run_runs import DryRunPaths, load_metadata
@@ -34,6 +35,7 @@ class RunStats:
     avg_pnl: float
     open_positions: int = 0
     mode: str = "dry-run"
+    last_tick_at: str | None = None
 
 
 def _read_journal_stats(journal_path: Path) -> dict:
@@ -97,6 +99,7 @@ def compute_run_stats(base_dir: Path, run_name: str) -> RunStats:
         avg_pnl=round(j["avg_pnl"], 2),
         open_positions=open_positions,
         mode=metadata.mode,
+        last_tick_at=metadata.last_tick_at,
     )
 
 
@@ -117,6 +120,14 @@ def compute_live_stats(base_dir: Path) -> RunStats | None:
     journal_path = base_dir / "trade_journal.jsonl"
     if not state_path.is_file():
         return None
+    # Live mode has no RunMetadata: paper_state.json mtime is the closest
+    # proxy for "last tick" since it's rewritten at the end of every tick.
+    try:
+        last_tick_at: str | None = datetime.fromtimestamp(
+            state_path.stat().st_mtime, tz=timezone.utc
+        ).isoformat(timespec="seconds")
+    except OSError:
+        last_tick_at = None
     state = json.loads(state_path.read_text(encoding="utf-8"))
     cash = float(state.get("cash", 0.0))
     invested = 0.0
@@ -157,6 +168,7 @@ def compute_live_stats(base_dir: Path) -> RunStats | None:
         avg_pnl=round(j["avg_pnl"], 2),
         open_positions=open_positions,
         mode="live",
+        last_tick_at=last_tick_at,
     )
 
 
