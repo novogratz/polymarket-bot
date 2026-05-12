@@ -41,6 +41,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "max_chase_premium": ("POLYMARKET_MIRROR_MAX_CHASE_PREMIUM", "float"),
         "min_buy_price": ("POLYMARKET_MIRROR_MIN_BUY_PRICE", "float"),
         "max_buy_price": ("POLYMARKET_MIRROR_MAX_BUY_PRICE", "float"),
+        "max_trade_age_seconds": ("POLYMARKET_MIRROR_MAX_TRADE_AGE_SECONDS", "int"),
     },
     "sizing": {
         "position_pct": ("POLYMARKET_SMART_POSITION_PCT", "float"),

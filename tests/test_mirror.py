@@ -106,6 +106,7 @@ class MirrorBaseTest(unittest.TestCase):
                 "POLYMARKET_MIRROR_MAX_CHASE_PREMIUM": "0.10",
                 "POLYMARKET_MIRROR_MIN_BUY_PRICE": "0.05",
                 "POLYMARKET_MIRROR_MAX_BUY_PRICE": "0.95",
+                "POLYMARKET_MIRROR_MAX_TRADE_AGE_SECONDS": "0",
                 "POLYMARKET_PAPER_BALANCE_USD": "100.0",
             },
             clear=False,
@@ -237,6 +238,46 @@ class TestSelectEligible(MirrorBaseTest):
         weird = _trade(side="HEDGE", usdc_size=100.0)
         eligible = self._eligible([weird])
         self.assertEqual(eligible, [])
+
+    def test_skips_trades_older_than_max_age(self) -> None:
+        with mock.patch.dict(
+            os.environ, {"POLYMARKET_MIRROR_MAX_TRADE_AGE_SECONDS": "30"}, clear=False
+        ):
+            self.settings = Settings()
+        now = 2_000_000_000
+        old = _trade(timestamp=now - 120, usdc_size=100.0)
+        recent = _trade(timestamp=now - 10, usdc_size=100.0, asset="tok-recent")
+        eligible = mirror._select_eligible(
+            [old, recent],
+            target=self.TARGET,
+            last_ts=0,
+            seen=set(),
+            settings=self.settings,
+            now_ts=now,
+        )
+        self.assertEqual([t.asset for t in eligible], ["tok-recent"])
+
+    def test_max_age_zero_disables_filter(self) -> None:
+        now = 2_000_000_000
+        very_old = _trade(timestamp=now - 86400, usdc_size=100.0)
+        eligible = mirror._select_eligible(
+            [very_old],
+            target=self.TARGET,
+            last_ts=0,
+            seen=set(),
+            settings=self.settings,
+            now_ts=now,
+        )
+        self.assertEqual(len(eligible), 1)
+
+    def test_default_max_age_is_60_seconds(self) -> None:
+        # Verrouille le contrat : sans env var ni profil, défaut = 60s.
+        env_keys_to_clear = [k for k in os.environ if k.startswith("POLYMARKET_MIRROR_")]
+        with mock.patch.dict(os.environ, {}, clear=False):
+            for k in env_keys_to_clear:
+                os.environ.pop(k, None)
+            settings = Settings()
+        self.assertEqual(settings.mirror_max_trade_age_seconds, 60)
 
 
 class TestMirrorOnce(MirrorBaseTest):

@@ -220,6 +220,7 @@ class Settings:
     mirror_max_chase_premium: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MAX_CHASE_PREMIUM", 0.05))
     mirror_min_buy_price: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MIN_BUY_PRICE", 0.02))
     mirror_max_buy_price: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MAX_BUY_PRICE", 0.98))
+    mirror_max_trade_age_seconds: int = field(default_factory=lambda: int(_float_env("POLYMARKET_MIRROR_MAX_TRADE_AGE_SECONDS", 60)))
     mirror_state_path: Path = field(default_factory=lambda: Path(os.getenv("POLYMARKET_MIRROR_STATE_PATH", "data/mirror_state.json")))
 
     def __post_init__(self) -> None:

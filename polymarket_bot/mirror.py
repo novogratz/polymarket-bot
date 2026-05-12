@@ -220,10 +220,15 @@ def _select_eligible(
     last_ts: int,
     seen: set[str],
     settings: Settings,
+    now_ts: int | None = None,
 ) -> list[SmartTrade]:
     eligible: list[SmartTrade] = []
+    max_age = max(0, int(settings.mirror_max_trade_age_seconds))
+    cutoff_ts = (now_ts if now_ts is not None else int(time.time())) - max_age if max_age else 0
     for trade in trades:
         if trade.timestamp <= last_ts:
+            continue
+        if max_age and trade.timestamp < cutoff_ts:
             continue
         if _trade_key(target, trade) in seen:
             continue
@@ -361,6 +366,7 @@ def mirror_once(settings: Settings) -> dict[str, Any]:
     )
 
     api = DataApiClient(settings.data_api_base_url)
+    now_ts = int(time.time())
     all_eligible: list[tuple[str, SmartTrade]] = []
     polled = 0
     for target in targets:
@@ -368,7 +374,7 @@ def mirror_once(settings: Settings) -> dict[str, Any]:
         polled += len(target_trades)
         last_ts = _last_ts_for(state, target)
         for trade in _select_eligible(
-            target_trades, target=target, last_ts=last_ts, seen=seen, settings=settings
+            target_trades, target=target, last_ts=last_ts, seen=seen, settings=settings, now_ts=now_ts
         ):
             all_eligible.append((target, trade))
 
