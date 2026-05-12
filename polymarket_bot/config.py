@@ -212,6 +212,16 @@ class Settings:
     dry_run: bool = field(default_factory=lambda: _bool_env("POLYMARKET_DRY_RUN", False))
     quiet: bool = field(default_factory=lambda: _bool_env("POLYMARKET_QUIET", False))
 
+    run_mode: str = field(default_factory=lambda: os.getenv("POLYMARKET_RUN_MODE", "smart_money"))
+    mirror_target: str = field(default_factory=lambda: os.getenv("POLYMARKET_MIRROR_TARGET", ""))
+    mirror_size_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_SIZE_USD", 5.0))
+    mirror_mirror_sells: bool = field(default_factory=lambda: _bool_env("POLYMARKET_MIRROR_MIRROR_SELLS", True))
+    mirror_min_target_stake_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MIN_TARGET_STAKE_USD", 50.0))
+    mirror_max_chase_premium: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MAX_CHASE_PREMIUM", 0.05))
+    mirror_min_buy_price: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MIN_BUY_PRICE", 0.02))
+    mirror_max_buy_price: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MAX_BUY_PRICE", 0.98))
+    mirror_state_path: Path = field(default_factory=lambda: Path(os.getenv("POLYMARKET_MIRROR_STATE_PATH", "data/mirror_state.json")))
+
     def __post_init__(self) -> None:
         """Swap ledger, journal, overrides, and tick-state paths to dry-run files.
 
@@ -230,6 +240,7 @@ class Settings:
             ("tick_state_path", "data/last_tick.json", "data/dry_run_last_tick.json"),
             ("tick_history_path", "data/tick_history.jsonl", "data/dry_run_tick_history.jsonl"),
             ("persistence_cache_path", "data/wallet_history.json", "data/dry_run_wallet_history.json"),
+            ("mirror_state_path", "data/mirror_state.json", "data/dry_run_mirror_state.json"),
         )
         for attr, live_default, dry_run_value in swaps:
             if str(getattr(self, attr)) == live_default:

@@ -31,6 +31,16 @@ class ProfileValidationError(Exception):
 _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
     "run": {
         "starting_cash": ("POLYMARKET_PAPER_BALANCE_USD", "float"),
+        "mode": ("POLYMARKET_RUN_MODE", "str"),
+    },
+    "mirror": {
+        "target": ("POLYMARKET_MIRROR_TARGET", "str"),
+        "size_usd": ("POLYMARKET_MIRROR_SIZE_USD", "float"),
+        "mirror_sells": ("POLYMARKET_MIRROR_MIRROR_SELLS", "bool"),
+        "min_target_stake_usd": ("POLYMARKET_MIRROR_MIN_TARGET_STAKE_USD", "float"),
+        "max_chase_premium": ("POLYMARKET_MIRROR_MAX_CHASE_PREMIUM", "float"),
+        "min_buy_price": ("POLYMARKET_MIRROR_MIN_BUY_PRICE", "float"),
+        "max_buy_price": ("POLYMARKET_MIRROR_MAX_BUY_PRICE", "float"),
     },
     "sizing": {
         "position_pct": ("POLYMARKET_SMART_POSITION_PCT", "float"),
