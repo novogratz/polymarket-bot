@@ -257,6 +257,32 @@ class TestSelectEligible(MirrorBaseTest):
         )
         self.assertEqual([t.asset for t in eligible], ["tok-recent"])
 
+    def test_max_age_boundary_kept_and_filtered(self) -> None:
+        # Verrouille l'inégalité stricte : trade.timestamp < cutoff_ts.
+        # À la frontière exacte (timestamp == cutoff_ts) → KEPT.
+        # Une seconde en-dessous → FILTERED.
+        with mock.patch.dict(
+            os.environ, {"POLYMARKET_MIRROR_MAX_TRADE_AGE_SECONDS": "30"}, clear=False
+        ):
+            self.settings = Settings()
+        now = 2_000_000_000
+        max_age = 30
+        on_boundary = _trade(
+            timestamp=now - max_age, usdc_size=100.0, asset="tok-boundary"
+        )
+        one_below = _trade(
+            timestamp=now - max_age - 1, usdc_size=100.0, asset="tok-old"
+        )
+        eligible = mirror._select_eligible(
+            [on_boundary, one_below],
+            target=self.TARGET,
+            last_ts=0,
+            seen=set(),
+            settings=self.settings,
+            now_ts=now,
+        )
+        self.assertEqual([t.asset for t in eligible], ["tok-boundary"])
+
     def test_max_age_zero_disables_filter(self) -> None:
         now = 2_000_000_000
         very_old = _trade(timestamp=now - 86400, usdc_size=100.0)

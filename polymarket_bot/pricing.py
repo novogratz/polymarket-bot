@@ -56,8 +56,8 @@ def _position_tick_size(position: dict[str, Any], scan: Candidate | None) -> flo
 
 
 def _position_neg_risk(position: dict[str, Any], scan: Candidate | None) -> bool:
-    if scan:
-        return bool(scan.neg_risk)
+    if scan and scan.neg_risk:
+        return True
     return bool(position.get("neg_risk"))
 
 

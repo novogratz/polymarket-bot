@@ -640,6 +640,18 @@ class TestHeartbeat(NotificationsBaseTest):
         self.assertIn("aucune position ouverte", text)
         self.assertNotIn("non\\-réalisé", text)
 
+    def test_heartbeat_single_position_uses_singular(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_heartbeat(
+                    self._snapshot(open_positions=1, unrealized_pnl_usd=1.20),
+                )
+        text = sent[0]["text"]
+        self.assertIn("1 position —", text)
+        self.assertNotIn("1 positions", text)
+
     def test_heartbeat_no_loser_keeps_winner(self) -> None:
         sent = self._setup()
         with tempfile.TemporaryDirectory() as tmpd:
