@@ -61,12 +61,37 @@ def _humanize_age(iso_ts: str | None) -> str:
 
 
 @app.command("list")
-def cmd_list() -> None:
-    """List the live ledger (if present) and every run in data/dry_runs/."""
-    runs = list_runs(_data_dir())
+def cmd_list(
+    all_: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Inclure les runs sans activité (jamais lancés ou reset non relancés).",
+    ),
+) -> None:
+    """List the live ledger (if present) and every run in data/dry_runs/.
+
+    Par défaut, les runs sans activité (``total_ticks == 0`` et
+    ``last_tick_at`` absent — typiquement un run fraîchement reset ou
+    créé mais jamais lancé) sont masqués. Utiliser ``--all`` pour
+    forcer leur affichage.
+    """
+    all_runs = list_runs(_data_dir())
+    if all_:
+        runs = all_runs
+        hidden = 0
+    else:
+        runs = [r for r in all_runs if r.total_ticks > 0 or r.last_tick_at is not None]
+        hidden = len(all_runs) - len(runs)
     live = compute_live_stats(_data_dir())
     if not runs and live is None:
-        typer.echo("(no dry-run runs and no live ledger)")
+        if hidden:
+            typer.echo(
+                f"(no active dry-run runs and no live ledger; "
+                f"{hidden} reset/never-launched run(s) hidden — use --all to show)"
+            )
+        else:
+            typer.echo("(no dry-run runs and no live ledger)")
         return
     typer.echo(
         f"{'NAME':<20}  {'PROFILE':<20}  {'MODE':<8}  {'STARTING':>10}  "
@@ -106,6 +131,10 @@ def cmd_list() -> None:
         except Exception:
             s = None
         _emit(r.run_name, r.profile_source, s.mode if s else "dry-run", r.starting_cash, r.total_ticks, r.started_at, s)
+    if hidden:
+        typer.echo(
+            f"({hidden} reset/never-launched run(s) hidden — use --all to show)"
+        )
 
 
 @app.command("show")
