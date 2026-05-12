@@ -2383,7 +2383,14 @@ app.add_typer(dry_run_app, name="dry-run")
 
 
 @app.command("list")
-def cmd_list_all() -> None:
+def cmd_list_all(
+    all_: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Inclure les runs sans activité (jamais lancés ou reset non relancés).",
+    ),
+) -> None:
     """Lister le ledger live + tous les runs dry-run.
 
     Alias top-level de ``pmbot dry-run list`` — ce dernier reste valable
@@ -2392,7 +2399,7 @@ def cmd_list_all() -> None:
     """
     from .dry_run_cli import cmd_list as _cmd_list
 
-    _cmd_list()
+    _cmd_list(all_=all_)
 
 
 def _version_callback(value: bool) -> None:

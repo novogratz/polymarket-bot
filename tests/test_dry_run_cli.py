@@ -96,6 +96,30 @@ class DryRunCliTests(unittest.TestCase):
         self.assertNotIn("alpha", result.stdout)
         self.assertIn("hidden", result.stdout)
 
+    def test_top_level_list_alias_filters_idle_runs(self):
+        # Non-régression : `pmbot list` (alias top-level) doit hériter du
+        # filtre des runs inactifs comme `pmbot dry-run list`. Régression
+        # initiale : l'alias appelait cmd_list() sans argument, et le défaut
+        # typer.Option(False) est en réalité un OptionInfo truthy, donc
+        # `if all_:` court-circuitait le filtre.
+        self._seed_run("alpha")  # 0 ticks -> caché par défaut
+        self._seed_run("beta", ticks=42)
+        result = self.runner.invoke(self.app, ["list"])
+        self.assertEqual(result.exit_code, 0, msg=result.stdout + result.stderr)
+        self.assertNotIn("alpha", result.stdout)
+        self.assertIn("beta", result.stdout)
+        self.assertIn("hidden", result.stdout)
+
+    def test_top_level_list_alias_all_flag(self):
+        # `pmbot list --all` doit forwarder le flag et tout afficher.
+        self._seed_run("alpha")  # 0 ticks
+        self._seed_run("beta", ticks=42)
+        result = self.runner.invoke(self.app, ["list", "--all"])
+        self.assertEqual(result.exit_code, 0, msg=result.stdout + result.stderr)
+        self.assertIn("alpha", result.stdout)
+        self.assertIn("beta", result.stdout)
+        self.assertNotIn("hidden", result.stdout)
+
     def test_show_run(self):
         self._seed_run("alpha", starting_cash=100.0)
         result = self.runner.invoke(self.app, ["dry-run", "show", "alpha"])
