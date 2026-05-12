@@ -93,14 +93,21 @@ def _build_clob_candidates(
     portfolio: Portfolio,
     midpoints: dict[str, float],
     bid_ask: dict[str, tuple[float | None, float | None]],
+    scan_by_token: dict[str, Candidate] | None = None,
 ) -> list[Candidate]:
     """Build pricing-only ``Candidate``s from CLOB midpoint + bid/ask.
 
     Outcome / market_id / slug / end_date are pulled from the open
     position itself — the CLOB endpoints don't return that metadata.
     Only positions for which we have a midpoint are emitted.
+
+    ``scan_by_token`` provides per-token metadata that the CLOB
+    endpoints don't expose (``tick_size``, ``neg_risk``). When a
+    matching scan candidate exists we inherit those fields so
+    downstream sells aren't blocked by a missing tick_size.
     """
     out: list[Candidate] = []
+    scan_by_token = scan_by_token or {}
     for position in portfolio.positions:
         if position.get("status") != "open":
             continue
@@ -115,6 +122,9 @@ def _build_clob_candidates(
             continue
         bid, ask = bid_ask.get(tok_str, (None, None))
         end_date: datetime | None = parse_dt(str(position.get("end_date") or "")) if position.get("end_date") else None
+        scan = scan_by_token.get(tok_str)
+        tick_size = scan.tick_size if scan and scan.tick_size else None
+        neg_risk = bool(scan.neg_risk) if scan else False
         out.append(
             Candidate(
                 market_id=str(position.get("market_id") or ""),
@@ -131,8 +141,8 @@ def _build_clob_candidates(
                 url=str(position.get("url") or "https://polymarket.com"),
                 best_bid=bid,
                 best_ask=ask,
-                tick_size=None,
-                neg_risk=False,
+                tick_size=tick_size,
+                neg_risk=neg_risk,
                 accepts_orders=False,
                 event_slug=str(position.get("event_slug") or ""),
             )
@@ -164,8 +174,9 @@ def ensure_open_positions_in_pool(
     if not open_tokens:
         return list(candidates)
 
+    scan_by_token = {c.token_id: c for c in candidates if c.token_id}
     midpoints, bid_ask = _fetch_clob_quotes(settings, open_tokens)
-    pricing = _build_clob_candidates(portfolio, midpoints, bid_ask)
+    pricing = _build_clob_candidates(portfolio, midpoints, bid_ask, scan_by_token=scan_by_token)
     priced_tokens = {c.token_id for c in pricing if c.token_id}
     if not settings.quiet:
         print(

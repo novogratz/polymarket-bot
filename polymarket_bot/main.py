@@ -809,7 +809,7 @@ def _execute_sell_strategy(
             continue
         token_id = position.get("token_id")
         candidate = by_token.get(token_id)
-        if candidate is None or candidate.best_bid is None:
+        if candidate is None or candidate.best_bid is None or candidate.best_bid <= 0:
             continue
 
         entry_price = float(position.get("entry_price", 0.0))
