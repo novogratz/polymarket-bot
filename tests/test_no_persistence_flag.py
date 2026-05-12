@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import os
+import re
 import unittest
 from unittest.mock import patch
 
 from typer.testing import CliRunner
 
 from polymarket_bot.main import app
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 _CLEANUP_KEYS = (
@@ -36,7 +40,9 @@ class TestNoPersistenceFlag(unittest.TestCase):
         """--no-persistence doit apparaître dans la help text de auto-loop."""
         runner = CliRunner()
         result = runner.invoke(app, ["auto-loop", "--help"])
-        self.assertIn("--no-persistence", result.output)
+        # Rich/Typer en CI insère des codes ANSI au milieu des mots —
+        # strip avant de chercher la chaîne.
+        self.assertIn("--no-persistence", _ANSI_RE.sub("", result.output))
 
     def test_flag_sets_env_var_false(self) -> None:
         """Avec --no-persistence, POLYMARKET_PERSISTENCE_ENABLED=false avant le tick."""
