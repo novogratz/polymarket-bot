@@ -178,22 +178,12 @@ def ensure_open_positions_in_pool(
     midpoints, bid_ask = _fetch_clob_quotes(settings, open_tokens)
     pricing = _build_clob_candidates(portfolio, midpoints, bid_ask, scan_by_token=scan_by_token)
     priced_tokens = {c.token_id for c in pricing if c.token_id}
-    if not settings.quiet:
-        print(
-            f"   pricing-refresh: {len(priced_tokens)}/{len(open_tokens)} positions priced via CLOB",
-            flush=True,
-        )
 
     # Fallback Gamma for tokens the CLOB couldn't price.
     missing = sorted(set(open_tokens) - priced_tokens)
     scan_tokens = {c.token_id for c in candidates if c.token_id}
     missing = [t for t in missing if t not in scan_tokens]
     if missing:
-        if not settings.quiet:
-            print(
-                f"   pricing-refresh: {len(missing)} token(s) without CLOB price, falling back to Gamma",
-                flush=True,
-            )
         try:
             extra_markets = GammaClient(settings.gamma_base_url).get_markets_by_clob_token_ids(missing)
             pricing.extend(build_pricing_candidates(extra_markets))
