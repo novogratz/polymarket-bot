@@ -809,7 +809,7 @@ def _execute_sell_strategy(
             continue
         token_id = position.get("token_id")
         candidate = by_token.get(token_id)
-        if candidate is None or candidate.best_bid is None:
+        if candidate is None or candidate.best_bid is None or candidate.best_bid <= 0:
             continue
 
         entry_price = float(position.get("entry_price", 0.0))
@@ -2013,6 +2013,12 @@ def _update_position_from_live_api(position: dict[str, object], item: dict[str, 
     position["synced_from_polymarket"] = True
     if item.get("eventSlug"):
         position["event_slug"] = str(item.get("eventSlug") or "")
+    if item.get("slug"):
+        position["slug"] = str(item.get("slug") or "")
+    event_slug = str(position.get("event_slug") or item.get("eventSlug") or "")
+    slug = str(position.get("slug") or item.get("slug") or "")
+    if event_slug or slug:
+        position["url"] = f"https://polymarket.com/event/{event_slug or slug}"
 
 
 def _float(value, default: float = 0.0) -> float:
@@ -2438,7 +2444,12 @@ def cli_auto_loop(
         help="Désactive le filtre de persistance d'edge (pour A/B test).",
     ),
 ) -> None:
-    """Run the smart-money loop in --dry-run or --live mode."""
+    """Run the strategy loop in --dry-run or --live mode.
+
+    The strategy is selected by ``[run].mode`` in the profile:
+    ``smart_money`` (default) or ``mirror`` (copy-trade a single wallet
+    configured in the ``[mirror]`` section).
+    """
 
     if no_persistence:
         os.environ["POLYMARKET_PERSISTENCE_ENABLED"] = "false"
@@ -2524,7 +2535,18 @@ def cli_auto_loop(
             err=True,
         )
 
-    smart_money_loop(settings)
+    if (settings.run_mode or "smart_money").lower() == "mirror":
+        from . import mirror as mirror_module
+
+        if not settings.mirror_target:
+            typer.echo(
+                "mirror mode requires [mirror].target in the profile (or POLYMARKET_MIRROR_TARGET).",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        mirror_module.mirror_loop(settings)
+    else:
+        smart_money_loop(settings)
 
 
 @app.command()

@@ -1,0 +1,55 @@
+# Profil mirror — copy-trade multi-wallets.
+#
+# Liste agrégée résolue via DataApiClient.leaderboard (multi catégories × périodes).
+# Usage :
+#   uv run pmbot auto-loop --profile copy-0x4924 --dry-run --run mirror-pool
+#
+# Pour ajouter/retirer un wallet : éditer la liste `target` (CSV).
+# Pour changer le sizing : `size_usd` (cap par BUY mirroré).
+
+[run]
+starting_cash = 100.0
+mode = "mirror"
+
+[mirror]
+# 18 wallets — 17 résolus depuis usernames + 1 fournie en 0x.
+# Wallets non résolus (pas dans top 500 de leaderboard tous catégories/périodes) :
+#   - jdsahgf
+#   - downtownfee
+# Si tu connais leurs adresses 0x, ajoute-les à la liste.
+target = "0xa5ea13a81d2b7e8e424b182bdc1db08e756bd96a, 0x204f72f35326db932158cba6adff0b9a1da95e14, 0x2005d16a84ceefa912d4e380cd32e7ff827875ea, 0x9f2fe025f84839ca81dd8e0338892605702d2ca8, 0x241f846866c2de4fb67cdb0ca6b963d85e56ef50, 0xa380c504a480f591c7dfbf9944fac3994b9b21ff, 0x91eee6b7cea1916214daebec3b92b7513079c5b8, 0xce9d175628fb6eb014636cf9e3e2976779eff402, 0xc2e7800b5af46e6093872b177b7a5e7f0563be51, 0xbc7ab79192c6aa7c961eb89260b38ec049a96940, 0xfbf3d501e88815464642d0e913f15379c3eeb218, 0xea2b4224411e723499a803ce3f4758779fb31fc6, 0x96489abcb9f583d6835c8ef95ffc923d05a86825, 0xde7be6d489bce070a959e0cb813128ae659b5f4b, 0xa53c26443fb636d8ae31ac24f62fc1d5ef8f67a5, 0x57cd939930fd119067ca9dc42b22b3e15708a0fb, 0xa71093cafc0c099b4ccab24c3cb8018d817923c4, 0x492442EaB586F242B53bDa933fD5dE859c8A3782"
+
+# Mapping username → adresse (référence) :
+#   bossoskil1       → 0xa5ea13a8...756bd96a
+#   swisstony        → 0x204f72f3...1da95e14
+#   RN1              → 0x2005d16a...f827875ea
+#   surfandturf      → 0x9f2fe025...702d2ca8
+#   Pestle           → 0x241f8468...85e56ef50
+#   JewishNinja      → 0xa380c504...994b9b21ff
+#   everydaymortgage → 0x91eee6b7...513079c5b8
+#   yaya88888        → 0xce9d1756...779eff402
+#   beachboy4        → 0xc2e7800b...7f0563be51
+#   Golgatha         → 0xbc7ab791...049a96940
+#   VPenguin         → 0xfbf3d501...9c3eeb218
+#   frankfrankfrank  → 0xea2b4224...779fb31fc6
+#   anoin123         → 0x96489abc...d05a86825
+#   wan123           → 0xde7be6d4...ae659b5f4b
+#   Oddn             → 0xa53c2644...5ef8f67a5
+#   Supah9ga         → 0x57cd9399...e15708a0fb
+#   Talvez10         → 0xa71093ca...8d817923c4
+
+# Taille fixe par BUY mirroré ($). Avec 18 wallets très actifs, garde un cap bas.
+size_usd = 5.0
+# Copier aussi les SELL.
+mirror_sells = true
+# Filtre micro-positions côté wallet cible (en USD).
+min_target_stake_usd = 50.0
+# Anti-chase : skip si notre ask est > target_price * (1 + 0.05).
+max_chase_premium = 0.05
+# Bande de prix acceptables pour les BUY.
+min_buy_price = 0.03
+max_buy_price = 0.97
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 10

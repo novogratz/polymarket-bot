@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
@@ -38,6 +39,27 @@ def _data_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "data"
 
 
+def _humanize_age(iso_ts: str | None) -> str:
+    """Compact relative age (``12s``, ``3m``, ``1.5h``, ``4d``) from an ISO ts."""
+    if not iso_ts:
+        return "-"
+    try:
+        ts = datetime.fromisoformat(iso_ts)
+    except ValueError:
+        return "-"
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    delta = datetime.now(timezone.utc) - ts
+    seconds = max(0.0, delta.total_seconds())
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    if seconds < 3600:
+        return f"{int(seconds / 60)}m"
+    if seconds < 86400:
+        return f"{seconds / 3600:.1f}h"
+    return f"{seconds / 86400:.1f}d"
+
+
 @app.command("list")
 def cmd_list() -> None:
     """List the live ledger (if present) and every run in data/dry_runs/."""
@@ -49,7 +71,7 @@ def cmd_list() -> None:
     typer.echo(
         f"{'NAME':<20}  {'PROFILE':<20}  {'MODE':<8}  {'STARTING':>10}  "
         f"{'CASH':>10}  {'INV':>10}  {'POS':>3}  {'EQUITY':>10}  {'RETURN':>8}  "
-        f"{'TRADES':>6}  {'WIN%':>5}  {'TICKS':>7}  STARTED_AT"
+        f"{'TRADES':>6}  {'WIN%':>5}  {'TICKS':>7}  {'LAST_TICK':>9}  STARTED_AT"
     )
 
     def _emit(name: str, profile: str, mode: str, starting: float, ticks: int, started_at: str, stats: RunStats | None) -> None:
@@ -59,6 +81,7 @@ def cmd_list() -> None:
             ret = "n/a".rjust(8)
             trades = "n/a".rjust(6)
             win = "n/a".rjust(5)
+            last_tick = "-".rjust(9)
         else:
             cash = f"{stats.cash:>9.2f}$"
             inv = f"{stats.invested:>9.2f}$"
@@ -67,11 +90,12 @@ def cmd_list() -> None:
             ret = f"{stats.return_pct * 100:>+7.2f}%"
             trades = f"{stats.trades_closed:>6}"
             win = f"{stats.win_rate * 100:>4.0f}%"
+            last_tick = f"{_humanize_age(stats.last_tick_at):>9}"
         starting_s = f"{starting:>9.2f}$"
         typer.echo(
             f"{name:<20}  {profile:<20}  {mode:<8}  {starting_s}  "
             f"{cash}  {inv}  {pos}  {equity}  {ret}  {trades}  {win}  "
-            f"{ticks:>7}  {started_at}"
+            f"{ticks:>7}  {last_tick}  {started_at}"
         )
 
     if live is not None:

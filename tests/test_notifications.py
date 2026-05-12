@@ -416,6 +416,30 @@ class TestTradeSellOneLine(NotificationsBaseTest):
         self.assertNotIn("🔴", text)
         self.assertNotIn("SELL", text)
 
+    def test_big_win_message_drips_green_and_money(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_BIG_WIN_USD"] = "10"
+        notifications.notify_trade_sell(
+            market_title="Trump 2028 GOP",
+            token_id="0xabc",
+            price=0.41,
+            size_usd=14.20,
+            realized_pnl_usd=42.50,
+            realized_pnl_pct=180.0,
+            reason="peak_protect",
+            held_seconds=14400,
+        )
+        text = sent[0]["text"]
+        self.assertIn("BIG WINZZZZ", text)
+        self.assertGreaterEqual(text.count("💰"), 4)
+        self.assertGreaterEqual(text.count("🟢"), 4)
+        self.assertIn("💚", text)
+        self.assertIn("🤑", text)
+        # Pas de "SELL" ni de rouge dans un BIG WIN.
+        self.assertNotIn("SELL", text)
+        self.assertNotIn("🔴", text)
+        self.assertNotIn("📉", text)
+
     def test_big_loss_replaces_sell_when_below_threshold(self) -> None:
         sent = self._setup()
         os.environ["TELEGRAM_BIG_LOSS_USD"] = "5"

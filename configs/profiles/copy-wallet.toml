@@ -1,0 +1,36 @@
+# Profil mirror — copie un wallet unique sur Polymarket.
+#
+# Au lieu d'attendre un consensus smart-money de plusieurs wallets, ce
+# mode poll les trades d'UN wallet cible (mode=mirror) et mirror chaque
+# BUY/SELL avec un sizing fixe.
+#
+# Usage :
+#   uv run pmbot auto-loop --profile copy-wallet --dry-run --run mirror-jdoe
+#
+# Édite [mirror].target avant lancement. Les sections smart_money sont
+# inutiles dans ce mode mais on garde un starting_cash de référence.
+
+[run]
+starting_cash = 100.0
+mode = "mirror"
+
+[mirror]
+# Adresse 0x du wallet à copier (proxyWallet Polymarket).
+target = "0x0000000000000000000000000000000000000000"
+# Taille fixe en USD pour chaque BUY mirroré.
+size_usd = 5.0
+# Copier aussi les SELL ? Si false, seuls les BUY sont mirrorés.
+mirror_sells = true
+# Ignore les trades du wallet cible en-dessous de ce stake (en USD).
+# Filtre les micro-positions parasites.
+min_target_stake_usd = 50.0
+# Écart maximal toléré entre le prix d'exécution du wallet cible et notre
+# prix d'entrée. 0.05 = 5%. Au-delà, on skip (anti-chase).
+max_chase_premium = 0.05
+# Bande de prix acceptables pour mirror les BUY (filtre extremes).
+min_buy_price = 0.03
+max_buy_price = 0.97
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 10
