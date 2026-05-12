@@ -48,6 +48,17 @@ class DryRunCliTests(unittest.TestCase):
         self.assertIn("no dry-run runs", result.stdout)
 
     def test_list_with_runs(self):
+        # Happy path: both runs have ticks > 0 -> both visible, no footer.
+        self._seed_run("alpha", ticks=1)
+        self._seed_run("beta", starting_cash=50.0, ticks=42)
+        result = self.runner.invoke(self.app, ["dry-run", "list"])
+        self.assertEqual(result.exit_code, 0, msg=result.stdout + result.stderr)
+        self.assertIn("alpha", result.stdout)
+        self.assertIn("beta", result.stdout)
+        self.assertIn("42", result.stdout)
+        self.assertNotIn("hidden", result.stdout)
+
+    def test_list_hides_idle_runs_by_default(self):
         # alpha has 0 ticks -> hidden by default; beta has 42 ticks -> shown.
         self._seed_run("alpha")
         self._seed_run("beta", starting_cash=50.0, ticks=42)
