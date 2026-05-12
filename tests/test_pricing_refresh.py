@@ -155,7 +155,32 @@ class EnsureOpenPositionsInPoolTests(unittest.TestCase):
         self.assertAlmostEqual(priced[0].price, 0.4275, places=4)
         self.assertAlmostEqual(priced[0].best_bid, 0.42, places=4)
         self.assertAlmostEqual(priced[0].best_ask, 0.43, places=4)
+        self.assertAlmostEqual(priced[0].tick_size, 0.01, places=4)
         self.assertEqual(priced[0].score, 0.0)
+
+    def test_clob_pricing_uses_stored_position_tick_size_without_scan_match(self):
+        portfolio = Portfolio(
+            cash=100.0,
+            positions=[{
+                "status": "open", "token_id": "tok-a", "stake": 10.0,
+                "market_id": "m1", "outcome": "Yes", "tick_size": 0.001,
+                "neg_risk": True,
+            }],
+            pending_orders=[],
+        )
+        fake = _FakeClobClient(
+            midpoints={"tok-a": "0.4275"},
+            prices={"tok-a": {"BUY": "0.42", "SELL": "0.43"}},
+        )
+        mod, orig = self._patch_clob(fake)
+        try:
+            result = ensure_open_positions_in_pool(self._settings(), portfolio, [])
+        finally:
+            mod.ClobClient = orig
+
+        priced = next(c for c in result if c.token_id == "tok-a")
+        self.assertAlmostEqual(priced.tick_size, 0.001, places=4)
+        self.assertTrue(priced.neg_risk)
 
     def test_clob_pricing_overrides_scan_candidate(self):
         """When the smart-money scan returns a cached price and CLOB

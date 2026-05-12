@@ -46,6 +46,21 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
+def _position_tick_size(position: dict[str, Any], scan: Candidate | None) -> float:
+    if scan and scan.tick_size and scan.tick_size > 0:
+        return scan.tick_size
+    stored = _safe_float(position.get("tick_size"))
+    if stored and stored > 0:
+        return stored
+    return 0.01
+
+
+def _position_neg_risk(position: dict[str, Any], scan: Candidate | None) -> bool:
+    if scan:
+        return bool(scan.neg_risk)
+    return bool(position.get("neg_risk"))
+
+
 def _fetch_clob_quotes(
     settings: Settings, token_ids: list[str]
 ) -> tuple[dict[str, float], dict[str, tuple[float | None, float | None]]]:
@@ -123,8 +138,8 @@ def _build_clob_candidates(
         bid, ask = bid_ask.get(tok_str, (None, None))
         end_date: datetime | None = parse_dt(str(position.get("end_date") or "")) if position.get("end_date") else None
         scan = scan_by_token.get(tok_str)
-        tick_size = scan.tick_size if scan and scan.tick_size else None
-        neg_risk = bool(scan.neg_risk) if scan else False
+        tick_size = _position_tick_size(position, scan)
+        neg_risk = _position_neg_risk(position, scan)
         out.append(
             Candidate(
                 market_id=str(position.get("market_id") or ""),
