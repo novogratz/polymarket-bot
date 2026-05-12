@@ -270,6 +270,15 @@ class TestSelectEligible(MirrorBaseTest):
         )
         self.assertEqual(len(eligible), 1)
 
+    def test_default_max_age_is_60_seconds(self) -> None:
+        # Verrouille le contrat : sans env var ni profil, défaut = 60s.
+        env_keys_to_clear = [k for k in os.environ if k.startswith("POLYMARKET_MIRROR_")]
+        with mock.patch.dict(os.environ, {}, clear=False):
+            for k in env_keys_to_clear:
+                os.environ.pop(k, None)
+            settings = Settings()
+        self.assertEqual(settings.mirror_max_trade_age_seconds, 60)
+
 
 class TestMirrorOnce(MirrorBaseTest):
     def test_empty_target_returns_noop(self) -> None:
