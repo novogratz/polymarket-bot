@@ -750,31 +750,26 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             print(f"   btc-edge tick failed: {type(exc).__name__}: {exc}")
             response["btc_edge"] = {"error": f"{type(exc).__name__}: {exc}"}
 
-    # Dry-run only: append a point on the equity curve and bump tick metadata.
-    if settings.dry_run:
-        try:
-            _append_dry_run_equity_point(settings, portfolio)
-        except Exception as exc:  # never fail the tick on tracing errors
-            print(f"   equity-tracker append failed: {type(exc).__name__}: {exc}")
-
     return response
 
 
-def _append_dry_run_equity_point(settings: Settings, portfolio: Portfolio) -> None:
+def _append_dry_run_equity_point(settings: Settings) -> None:
     """Append one equity-curve point to the active dry-run directory and
     bump ``total_ticks`` in its metadata.
 
     Layout assumption: ``settings.state_path`` lives at
     ``<base>/dry_runs/<run>/state.json``. The run name is the parent
-    directory; the base is two levels up.
+    directory; the base is two levels up. The portfolio is reloaded from
+    disk so this function works for any strategy (smart-money, mirror, …)
+    as long as the tick persisted the portfolio before returning.
     """
     run_root = settings.state_path.parent
     run_name = run_root.name
     base_dir = run_root.parent.parent
     paths = DryRunPaths.for_run(base_dir, run_name)
     if not paths.metadata.is_file():
-        # Run wasn't provisioned via the CLI (e.g. legacy code path); skip silently.
         return
+    portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
     open_positions = [
         p for p in portfolio.positions
         if p.get("status") == "open" and float(p.get("stake", 0) or 0) > 0
@@ -2085,6 +2080,12 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
             result["result"] = tick_result
         else:
             result["error"] = error
+
+        if settings.dry_run and error is None:
+            try:
+                _append_dry_run_equity_point(settings)
+            except Exception as exc:
+                print(f"   equity-tracker append failed: {type(exc).__name__}: {exc}")
 
         try:
             tick_state.write_tick(
