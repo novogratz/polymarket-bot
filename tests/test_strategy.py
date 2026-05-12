@@ -570,6 +570,55 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(position["exits"][0]["order_id"], "sell-1")
         self.assertEqual(portfolio.cash, 20.0)
 
+    def test_live_sell_clamps_price_to_polymarket_max(self):
+        class FakeClient:
+            def place_live_order(self, *, candidate, price, size, side="BUY"):
+                return {"price": price, "size": size, "side": side}, {"success": True, "orderID": "sell-1"}
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.999,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.999,
+            best_ask=1.0,
+            tick_size=0.001,
+            accepts_orders=True,
+        )
+        position = {
+            "status": "open",
+            "live": True,
+            "market_id": "1",
+            "outcome": "Yes",
+            "token_id": "token",
+            "entry_price": 0.5,
+            "stake": 10.0,
+            "shares": 20.0,
+            "initial_shares": 20.0,
+        }
+        portfolio = Portfolio(cash=0.0, positions=[position])
+
+        result = execute_live_sell(
+            FakeClient(),
+            Settings(min_order_shares=5.0, smart_min_sell_usd=1.0),
+            candidate,
+            portfolio,
+            position,
+            shares=10.0,
+            reason="take_profit_25pct",
+        )
+
+        self.assertEqual(result.order["price"], 0.99)
+        self.assertEqual(position["exits"][0]["exit_price"], 0.99)
+
     def test_sell_plan_uses_profit_tiers_and_peak_protection(self):
         position = {
             "shares": 100.0,

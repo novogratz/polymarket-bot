@@ -714,7 +714,7 @@ def execute_live_sell(
     if candidate.tick_size is None or candidate.tick_size <= 0:
         raise ValueError("candidate has no tick size")
 
-    sell_price = round(max(candidate.best_bid, candidate.tick_size), 3)
+    sell_price = round(min(max(candidate.best_bid, candidate.tick_size), 0.99), 3)
     available_shares = float(position.get("shares", 0.0))
     size = round(min(shares, available_shares), 6)
     if size <= 0:
