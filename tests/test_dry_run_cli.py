@@ -48,13 +48,53 @@ class DryRunCliTests(unittest.TestCase):
         self.assertIn("no dry-run runs", result.stdout)
 
     def test_list_with_runs(self):
-        self._seed_run("alpha")
+        # Happy path: both runs have ticks > 0 -> both visible, no footer.
+        self._seed_run("alpha", ticks=1)
         self._seed_run("beta", starting_cash=50.0, ticks=42)
         result = self.runner.invoke(self.app, ["dry-run", "list"])
         self.assertEqual(result.exit_code, 0, msg=result.stdout + result.stderr)
         self.assertIn("alpha", result.stdout)
         self.assertIn("beta", result.stdout)
         self.assertIn("42", result.stdout)
+        self.assertNotIn("hidden", result.stdout)
+
+    def test_list_hides_idle_runs_by_default(self):
+        # alpha has 0 ticks -> hidden by default; beta has 42 ticks -> shown.
+        self._seed_run("alpha")
+        self._seed_run("beta", starting_cash=50.0, ticks=42)
+        result = self.runner.invoke(self.app, ["dry-run", "list"])
+        self.assertEqual(result.exit_code, 0, msg=result.stdout + result.stderr)
+        self.assertNotIn("alpha", result.stdout)
+        self.assertIn("beta", result.stdout)
+        self.assertIn("42", result.stdout)
+        self.assertIn("hidden", result.stdout)
+
+    def test_list_all_includes_idle_runs(self):
+        # With --all, even 0-tick runs are shown.
+        self._seed_run("alpha")
+        self._seed_run("beta", starting_cash=50.0, ticks=42)
+        result = self.runner.invoke(self.app, ["dry-run", "list", "--all"])
+        self.assertEqual(result.exit_code, 0, msg=result.stdout + result.stderr)
+        self.assertIn("alpha", result.stdout)
+        self.assertIn("beta", result.stdout)
+        self.assertNotIn("hidden", result.stdout)
+
+    def test_list_empty_after_reset_hides_run(self):
+        # A reset run keeps metadata but has total_ticks=0 + last_tick_at=None.
+        # It must be hidden by default with an informative footer.
+        from polymarket_bot.dry_run_runs import DryRunPaths, reset_run
+        paths = self._seed_run("alpha", ticks=10)
+        # Mark as having ticked.
+        from polymarket_bot.dry_run_runs import load_metadata, save_metadata
+        md = load_metadata(paths)
+        md.last_tick_at = "2026-01-01T00:00:00+00:00"
+        save_metadata(paths, md)
+        # Reset wipes total_ticks back to 0 and last_tick_at to None.
+        reset_run(paths)
+        result = self.runner.invoke(self.app, ["dry-run", "list"])
+        self.assertEqual(result.exit_code, 0, msg=result.stdout + result.stderr)
+        self.assertNotIn("alpha", result.stdout)
+        self.assertIn("hidden", result.stdout)
 
     def test_show_run(self):
         self._seed_run("alpha", starting_cash=100.0)
