@@ -1791,10 +1791,9 @@ def format_suggestions(suggestions: list[dict[str, object]]) -> list[str]:
 def _journal_stats_last_24h(
     path: Path,
 ) -> tuple[int, int, int, dict | None, dict | None, float]:
-    """Lit le journal et retourne (trades, wins, losses, top_winner, top_loser, pct_24h).
+    """Lit le journal et retourne (trades, wins, losses, top_winner, top_loser, realized_pnl).
 
-    ``pct_24h`` est un best-effort basé sur la somme des PnL réalisés des 24 dernières
-    heures. Sans source d'equity historique fiable disponible localement, retourne 0.0.
+    ``realized_pnl`` est la somme des PnL réalisés sur les 24 dernières heures.
     """
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)
     trades: list[dict] = []
@@ -1827,6 +1826,7 @@ def _journal_stats_last_24h(
 
     wins = sum(1 for r in trades if float(r.get("realized_pnl", 0)) > 0)
     losses = sum(1 for r in trades if float(r.get("realized_pnl", 0)) < 0)
+    realized_total = sum(float(r.get("realized_pnl", 0) or 0) for r in trades)
     top_w_rec = max(trades, key=lambda r: float(r.get("realized_pnl", 0)))
     top_l_rec = min(trades, key=lambda r: float(r.get("realized_pnl", 0)))
 
@@ -1838,7 +1838,7 @@ def _journal_stats_last_24h(
     top_w = _shape(top_w_rec) if float(top_w_rec.get("realized_pnl", 0)) > 0 else None
     top_l = _shape(top_l_rec) if float(top_l_rec.get("realized_pnl", 0)) < 0 else None
 
-    return len(trades), wins, losses, top_w, top_l, 0.0
+    return len(trades), wins, losses, top_w, top_l, realized_total
 
 
 def _append_trade_journal(settings: Settings, position: dict[str, object], reason: str) -> None:
@@ -2119,6 +2119,7 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                 summary_snap = {}
             equity_val = float(summary_snap.get("equity", 0) or 0)
             cash_val = float(summary_snap.get("cash", 0) or 0)
+            unrealized_val = float(summary_snap.get("unrealized_pnl", 0) or 0)
             open_positions_count = int(summary_snap.get("open_positions", 0) or 0)
             notifications.notify_threshold("drawdown", {"equity_usd": equity_val})
             notifications.notify_threshold(
@@ -2129,18 +2130,19 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                     "cash_usd": cash_val,
                 },
             )
-            trades_24h, wins_24h, losses_24h, top_w, top_l, pct_24h = (
+            trades_24h, wins_24h, losses_24h, top_w, top_l, realized_24h = (
                 _journal_stats_last_24h(settings.trade_journal_path)
             )
             notifications.notify_heartbeat(
                 {
                     "equity_usd": equity_val,
-                    "equity_pct_24h": pct_24h,
                     "cash_usd": cash_val,
+                    "unrealized_pnl_usd": unrealized_val,
                     "open_positions": open_positions_count,
                     "trades_24h": trades_24h,
                     "wins_24h": wins_24h,
                     "losses_24h": losses_24h,
+                    "realized_pnl_24h_usd": realized_24h,
                     "top_winner": top_w,
                     "top_loser": top_l,
                 }

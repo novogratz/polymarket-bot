@@ -587,19 +587,20 @@ class TestHeartbeat(NotificationsBaseTest):
     def _snapshot(self, **overrides) -> dict:
         base: dict = {
             "equity_usd": 87.40,
-            "equity_pct_24h": 2.1,
             "cash_usd": 12.0,
+            "unrealized_pnl_usd": 3.40,
             "open_positions": 7,
             "trades_24h": 4,
             "wins_24h": 3,
             "losses_24h": 1,
-            "top_winner": {"pnl_usd": 4.20, "title": "X"},
-            "top_loser": {"pnl_usd": -1.10, "title": "Y"},
+            "realized_pnl_24h_usd": 3.30,
+            "top_winner": {"pnl_usd": 4.20, "title": "Trump 2028 GOP nominee"},
+            "top_loser": {"pnl_usd": -1.10, "title": "BTC >120k Friday"},
         }
         base.update(overrides)
         return base
 
-    def test_heartbeat_one_line_with_all_fields(self) -> None:
+    def test_heartbeat_multiline_with_all_fields(self) -> None:
         sent = self._setup()
         with tempfile.TemporaryDirectory() as tmpd:
             path = Path(tmpd) / "s.json"
@@ -607,16 +608,60 @@ class TestHeartbeat(NotificationsBaseTest):
                 notifications.notify_heartbeat(self._snapshot())
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
-        self.assertNotIn("\n", text)
-        self.assertIn("💓", text)
-        # Vérification par sous-chaînes en tenant compte de _md_escape
-        # (les "." sont escapés en "\.", donc on cherche "87" et "40" séparés)
-        self.assertIn("87", text)
-        self.assertIn("40", text)
-        self.assertIn("2", text)  # +2.1% 24h
-        self.assertIn("7pos", text)
+        # Header + 3 lignes corps + ligne vide + 2 lignes top/flop = 6 sauts
+        self.assertGreaterEqual(text.count("\n"), 5)
+        self.assertIn("💓 *Bilan*", text)
+        # Convention FR : signe `$` après le nombre
+        self.assertIn("87\\.40$", text)  # equity
+        self.assertIn("12\\.00$", text)  # cash
+        self.assertIn("14%", text)        # cash_pct = 12/87.4 = 13.7 → 14%
+        self.assertIn("\\+3\\.40$", text) # non-réalisé
+        self.assertIn("7 positions", text)
+        self.assertIn("\\+3\\.30$", text) # réalisé 24h
         self.assertIn("3W/1L", text)
         self.assertIn("75%", text)
+        # Top / flop avec titre
+        self.assertIn("🏆", text)
+        self.assertIn("💸", text)
+        self.assertIn("Trump 2028 GOP nominee", text)
+        self.assertIn("BTC \\>120k Friday", text)
+        self.assertIn("\\+4\\.20$", text)
+        self.assertIn("\\-1\\.10$", text)
+
+    def test_heartbeat_no_positions(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_heartbeat(
+                    self._snapshot(open_positions=0, unrealized_pnl_usd=0.0),
+                )
+        text = sent[0]["text"]
+        self.assertIn("aucune position ouverte", text)
+        self.assertNotIn("non\\-réalisé", text)
+
+    def test_heartbeat_no_loser_keeps_winner(self) -> None:
+        sent = self._setup()
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_heartbeat(self._snapshot(top_loser={}))
+        text = sent[0]["text"]
+        self.assertIn("🏆", text)
+        self.assertNotIn("💸", text)
+
+    def test_heartbeat_truncates_long_title(self) -> None:
+        sent = self._setup()
+        long_title = "A" * 80
+        with tempfile.TemporaryDirectory() as tmpd:
+            path = Path(tmpd) / "s.json"
+            with patch.object(notifications, "_default_state_path", return_value=path):
+                notifications.notify_heartbeat(
+                    self._snapshot(top_winner={"pnl_usd": 5.0, "title": long_title}),
+                )
+        text = sent[0]["text"]
+        self.assertIn("…", text)
+        self.assertNotIn("A" * 80, text)
 
     def test_heartbeat_respects_interval(self) -> None:
         sent = self._setup()
@@ -648,13 +693,22 @@ class TestHeartbeat(NotificationsBaseTest):
             path = Path(tmpd) / "s.json"
             with patch.object(notifications, "_default_state_path", return_value=path):
                 notifications.notify_heartbeat(
-                    self._snapshot(trades_24h=0, wins_24h=0, losses_24h=0,
-                                   top_winner={}, top_loser={}),
+                    self._snapshot(
+                        trades_24h=0,
+                        wins_24h=0,
+                        losses_24h=0,
+                        realized_pnl_24h_usd=0.0,
+                        top_winner={},
+                        top_loser={},
+                    ),
                 )
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
-        self.assertNotIn("\n", text)
-        self.assertIn("0W/0L", text)
+        self.assertIn("aucun trade clôturé", text)
+        # Pas de section top/flop quand aucun trade
+        self.assertNotIn("🏆", text)
+        self.assertNotIn("💸", text)
+        self.assertNotIn("W/", text)
 
 
 class TestDailySummaryRemoved(NotificationsBaseTest):

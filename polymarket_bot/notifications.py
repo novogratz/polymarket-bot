@@ -251,6 +251,22 @@ def _fmt_amount(amount: float) -> str:
     return f"${amount:.2f}"
 
 
+def _fmt_money_fr(amount: float) -> str:
+    """Convention FR : signe `$` après le nombre (`92.34$`, `-1.20$`, `1.2k$`)."""
+    abs_amt = abs(amount)
+    sign = "-" if amount < 0 else ""
+    if abs_amt >= 1000:
+        return f"{sign}{abs_amt/1000:.1f}k$"
+    return f"{sign}{abs_amt:.2f}$"
+
+
+def _fmt_signed_money_fr(amount: float) -> str:
+    """Montant signé FR : `+3.40$`, `-1.20$`, `0.00$` (sans signe quand nul)."""
+    if amount > 0:
+        return f"+{_fmt_money_fr(amount)}"
+    return _fmt_money_fr(amount)
+
+
 def _truncate(text: str, max_len: int = 40) -> str:
     """Tronque avec ellipse `…` si > max_len ; longueur résultante == max_len."""
     if not text:
@@ -512,6 +528,22 @@ def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
     # big_win / big_loss : intégrés à notify_trade_sell, ignorés ici
 
 
+_HEARTBEAT_TITLE_MAX = 38
+
+
+def _heartbeat_top_line(emoji: str, entry: dict[str, Any]) -> str | None:
+    """Construit la ligne `🏆 +X$ _titre_` pour top winner/loser. None si pas d'entrée."""
+    if not isinstance(entry, dict) or not entry:
+        return None
+    pnl = float(entry.get("pnl_usd", 0) or 0)
+    amount = _md_escape(_fmt_signed_money_fr(pnl))
+    title_raw = str(entry.get("title") or "").strip()
+    title_short = _truncate(title_raw, _HEARTBEAT_TITLE_MAX)
+    if title_short:
+        return f"{emoji} *{amount}* _{_md_escape(title_short)}_"
+    return f"{emoji} *{amount}*"
+
+
 def notify_heartbeat(snapshot: dict[str, Any]) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_HEARTBEAT"):
         return
@@ -528,40 +560,50 @@ def notify_heartbeat(snapshot: dict[str, Any]) -> None:
         return
 
     equity = float(snapshot.get("equity_usd", 0) or 0)
-    pct_24h = float(snapshot.get("equity_pct_24h", 0) or 0)
     cash = float(snapshot.get("cash_usd", 0) or 0)
+    unrealized = float(snapshot.get("unrealized_pnl_usd", 0) or 0)
     positions = int(snapshot.get("open_positions", 0) or 0)
     trades = int(snapshot.get("trades_24h", 0) or 0)
     wins = int(snapshot.get("wins_24h", 0) or 0)
     losses = int(snapshot.get("losses_24h", 0) or 0)
+    realized_24h = float(snapshot.get("realized_pnl_24h_usd", 0) or 0)
     win_rate = (wins / trades * 100.0) if trades > 0 else 0.0
 
-    sign = "+" if pct_24h >= 0 else "-"
-    pct_str = _md_escape(f"{sign}{abs(pct_24h):.1f}%")
-    parts = [
-        f"💓 eq *{_md_escape(_fmt_amount(equity))}* \\({pct_str} 24h\\)",
-        f"cash {_md_escape(_fmt_amount(cash))}",
-        f"{positions}pos",
-    ]
+    cash_pct = (cash / equity * 100.0) if equity > 0 else 0.0
+    stamp = time.strftime("%Hh%M", time.localtime(now))
+
+    lines: list[str] = [f"💓 *Bilan* · {_md_escape(stamp)}", ""]
+
+    equity_str = _md_escape(_fmt_money_fr(equity))
+    cash_str = _md_escape(_fmt_money_fr(cash))
+    cash_pct_str = _md_escape(f"{cash_pct:.0f}%")
+    lines.append(
+        f"💰 Equity *{equity_str}* — cash {cash_str} \\({cash_pct_str}\\)"
+    )
+
+    if positions > 0:
+        unreal_str = _md_escape(_fmt_signed_money_fr(unrealized))
+        lines.append(f"📦 {positions} positions — non\\-réalisé *{unreal_str}*")
+    else:
+        lines.append("📦 aucune position ouverte")
+
     if trades > 0:
-        parts.append(f"24h: {wins}W/{losses}L {_md_escape(f'{win_rate:.0f}%')}")
+        realized_str = _md_escape(_fmt_signed_money_fr(realized_24h))
+        wl_str = _md_escape(f"{wins}W/{losses}L")
+        rate_str = _md_escape(f"({win_rate:.0f}%)")
+        lines.append(f"📊 24h: réalisé *{realized_str}* — {wl_str} {rate_str}")
     else:
-        parts.append("24h: 0W/0L")
+        lines.append("📊 24h: aucun trade clôturé")
 
-    top_w = snapshot.get("top_winner") or {}
-    top_l = snapshot.get("top_loser") or {}
-    if isinstance(top_w, dict) and top_w:
-        pnl_w = float(top_w.get("pnl_usd", 0) or 0)
-        top_str = f"\\+{_md_escape(_fmt_amount(abs(pnl_w)))}"
-    else:
-        top_str = "—"
-    if isinstance(top_l, dict) and top_l:
-        pnl_l = float(top_l.get("pnl_usd", 0) or 0)
-        bot_str = f"\\-{_md_escape(_fmt_amount(abs(pnl_l)))}"
-    else:
-        bot_str = "—"
-    parts.append(f"top {top_str}/{bot_str}")
+    top_w_line = _heartbeat_top_line("🏆", snapshot.get("top_winner") or {})
+    top_l_line = _heartbeat_top_line("💸", snapshot.get("top_loser") or {})
+    if top_w_line or top_l_line:
+        lines.append("")
+        if top_w_line:
+            lines.append(top_w_line)
+        if top_l_line:
+            lines.append(top_l_line)
 
-    if _post(" · ".join(parts)):
+    if _post("\n".join(lines)):
         state.last_heartbeat_ts = now
         _save_state(path, state)
