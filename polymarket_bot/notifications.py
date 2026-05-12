@@ -266,6 +266,7 @@ def notify_trade_buy(
     price: float,
     size_usd: float,
     signal: dict[str, Any],
+    outcome: str | None = None,
     market_url: str | None = None,
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
@@ -288,15 +289,18 @@ def notify_trade_buy(
     title = _truncate(market_title or "", 40)
     size_str = _md_escape(_fmt_amount(size_usd))
     price_str = _md_escape(f"{price:.2f}")
+    outcome_str = _md_escape(_truncate(outcome or "", 18))
+    head = f"🛒 *BUY {outcome_str}*" if outcome_str else "🛒 *BUY*"
     parts = [
-        f"🟢 *BUY* `{size_str}` @ `{price_str}`",
-        f"*{_md_escape(title)}*",
+        head,
+        f"{size_str} @ {price_str}",
+        _md_escape(title),
     ]
     if signal_part:
         parts.append(signal_part)
     if market_url:
         parts.append(f"[🔗]({market_url})")
-    _post(" · ".join(parts))
+    _post(" — ".join(parts))
 
 
 def notify_trade_sell(
@@ -308,6 +312,7 @@ def notify_trade_sell(
     realized_pnl_usd: float,
     realized_pnl_pct: float | None,
     reason: str,
+    outcome: str | None = None,
     held_seconds: int | None = None,
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
@@ -319,29 +324,35 @@ def notify_trade_sell(
         emoji, label = "💰", "BIG WIN"
     elif thresholds_on and realized_pnl_usd <= -loss_thresh:
         emoji, label = "💸", "BIG LOSS"
-    else:
+    elif realized_pnl_usd > 0:
+        emoji, label = "🟢", "SELL"
+    elif realized_pnl_usd < 0:
         emoji, label = "🔴", "SELL"
+    else:
+        emoji, label = "⚪", "SELL"
 
     title = _truncate(market_title or "", 40)
-    size_str = _md_escape(_fmt_amount(size_usd))
-    price_str = _md_escape(f"{price:.2f}")
     sign = "+" if realized_pnl_usd >= 0 else "-"
     pnl_abs_str = _fmt_amount(abs(realized_pnl_usd))
-    pnl_str = f"{_md_escape(sign)}{_md_escape(pnl_abs_str)}"
-    pct_str = ""
+    pnl_str = _md_escape(f"{sign}{pnl_abs_str}")
+    metrics_parts: list[str] = [pnl_str]
     if realized_pnl_pct is not None:
         sign_pct = "+" if realized_pnl_pct >= 0 else "-"
-        pct_str = f" \\({_md_escape(f'{sign_pct}{abs(realized_pnl_pct):.1f}%')}\\)"
+        metrics_parts.append(_md_escape(f"({sign_pct}{abs(realized_pnl_pct):.1f}%)"))
     held_str = _fmt_held(held_seconds)
-    held_part = f" {_md_escape(held_str)}" if held_str else ""
+    if held_str:
+        metrics_parts.append(_md_escape(held_str))
+    metrics = " ".join(metrics_parts)
 
+    outcome_str = _md_escape(_truncate(outcome or "", 18))
+    head = f"{emoji} *{label} {outcome_str}*" if outcome_str else f"{emoji} *{label}*"
     parts = [
-        f"{emoji} *{label}* `{size_str}` @ `{price_str}`",
-        f"*{_md_escape(title)}*",
-        f"{pnl_str}{pct_str}{held_part}",
-        f"`{_md_escape(reason)}`",
+        head,
+        metrics,
+        _md_escape(title),
+        _md_escape(reason),
     ]
-    _post(" · ".join(parts))
+    _post(" — ".join(parts))
 
 
 def notify_error(category: str, message: str, *, dedupe_key: str | None = None) -> None:

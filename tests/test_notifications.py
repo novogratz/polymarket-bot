@@ -312,7 +312,7 @@ class TestTradeBuyOneLine(NotificationsBaseTest):
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
         self.assertNotIn("\n", text)
-        self.assertIn("🟢", text)
+        self.assertIn("🛒", text)
         self.assertIn("BUY", text)
         # Montants et prix : escapés MdV2 (point devient \.).
         self.assertIn("12\\.50", text)
@@ -322,8 +322,8 @@ class TestTradeBuyOneLine(NotificationsBaseTest):
         self.assertIn("$1\\.2k", text)
         self.assertIn("🔗", text)
         self.assertIn("polymarket.com", text)
-        # Séparateur middle-dot entre segments.
-        self.assertIn(" · ", text)
+        # Séparateur em-dash entre segments.
+        self.assertIn(" — ", text)
 
     def test_buy_with_tag(self) -> None:
         sent = self._setup()
@@ -385,7 +385,8 @@ class TestTradeSellOneLine(NotificationsBaseTest):
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
         self.assertNotIn("\n", text)
-        self.assertIn("🔴", text)
+        # Profit positif (1.70 USD) sous le seuil BIG WIN → SELL vert.
+        self.assertIn("🟢", text)
         self.assertIn("SELL", text)
         self.assertIn("Trump 2028 GOP", text)
         self.assertIn("13\\.6%", text)
@@ -442,7 +443,8 @@ class TestTradeSellOneLine(NotificationsBaseTest):
             reason="tp_ladder",
         )
         text = sent[0]["text"]
-        self.assertIn("🔴", text)
+        # Profit positif sous seuil → SELL vert, pas BIG WIN.
+        self.assertIn("🟢", text)
         self.assertNotIn("💰", text)
 
     def test_thresholds_disabled_falls_back_to_sell(self) -> None:
@@ -456,7 +458,8 @@ class TestTradeSellOneLine(NotificationsBaseTest):
             reason="peak_protect",
         )
         text = sent[0]["text"]
-        self.assertIn("🔴", text)
+        # Seuils désactivés : on retombe sur SELL coloré par PnL (profit → vert).
+        self.assertIn("🟢", text)
         self.assertNotIn("💰", text)
 
     def test_trades_disabled_no_send(self) -> None:

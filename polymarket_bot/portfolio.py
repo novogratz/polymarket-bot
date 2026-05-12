@@ -235,6 +235,7 @@ class Portfolio:
                 realized_pnl_usd=float(realized_pnl),
                 realized_pnl_pct=pnl_pct,
                 reason=str(reason or ""),
+                outcome=str(position.get("outcome", "") or ""),
                 held_seconds=held_seconds,
             )
         except Exception as exc:

@@ -659,6 +659,7 @@ def execute_live_trade(
                 price=float(entry_price),
                 size_usd=float(stake),
                 signal=signal_payload,
+                outcome=str(candidate.outcome or ""),
                 market_url=market_url,
             )
         except Exception as exc:
