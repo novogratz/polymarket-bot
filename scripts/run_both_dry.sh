@@ -31,7 +31,11 @@ POLYMARKET_QUIET=1 uv run pmbot auto-loop --dry-run --profile baseline --run bas
     2>&1 | sed -u 's/^/[baseline] /' &
 
 # Sidecar leaderboard with Telegram broadcast every 15 min.
-uv run pmbot leaderboard --runs news,edge,baseline --interval 15 --telegram \
+# POLYMARKET_DRY_RUN=1 forces the notifications module to use
+# TELEGRAM_CHAT_ID_DRY_RUN — otherwise leaderboard messages leak into
+# the live channel because this subprocess has no dry-run context.
+POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
+    --runs news,edge,baseline --interval 15 --telegram \
     2>&1 | sed -u 's/^/[board]    /' &
 
 wait
