@@ -258,6 +258,11 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "breakout_min_volume": ("POLYMARKET_RACE_BREAKOUT_MIN_VOLUME", "float"),
         "late_favorite_min_bid": ("POLYMARKET_RACE_LATE_FAVORITE_MIN_BID", "float"),
         "late_favorite_max_hours": ("POLYMARKET_RACE_LATE_FAVORITE_MAX_HOURS", "float"),
+        "panic_fade_min_move": ("POLYMARKET_RACE_PANIC_FADE_MIN_MOVE", "float"),
+        "panic_fade_min_volume": ("POLYMARKET_RACE_PANIC_FADE_MIN_VOLUME", "float"),
+        "underdog_max_ask": ("POLYMARKET_RACE_UNDERDOG_MAX_ASK", "float"),
+        "underdog_min_momentum": ("POLYMARKET_RACE_UNDERDOG_MIN_MOMENTUM", "float"),
+        "underdog_min_volume": ("POLYMARKET_RACE_UNDERDOG_MIN_VOLUME", "float"),
     },
     "persistence": {
         "enabled": ("POLYMARKET_PERSISTENCE_ENABLED", "bool"),

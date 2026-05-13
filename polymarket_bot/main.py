@@ -2690,6 +2690,14 @@ def cli_auto_loop(
         from . import race_strategies as race_module
 
         race_module.late_favorite_loop(settings)
+    elif mode == "panic_fade":
+        from . import race_strategies as race_module
+
+        race_module.panic_fade_loop(settings)
+    elif mode == "underdog":
+        from . import race_strategies as race_module
+
+        race_module.underdog_loop(settings)
     else:
         smart_money_loop(settings)
 

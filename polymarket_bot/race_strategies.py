@@ -254,6 +254,81 @@ def select_breakout(
     return picks
 
 
+def select_panic_fade(
+    eligible: list[tuple[Candidate, float]],
+    n: int,
+    min_panic_move: float,
+    min_volume_24h: float,
+) -> list[Candidate]:
+    """Fade emotional overreaction: bet against EXTREME intraday moves.
+
+    Inspired by HFT microstructure literature (the "panic fade" thesis):
+    short-term overreaction in low-liquidity prediction markets reverts
+    when the aggression exhausts. Our polling-based version can't see
+    sub-second taker exhaustion, but a ≥15% one-day move is a strong
+    proxy for emotional flow that often partially mean-reverts before
+    expiry.
+
+    Only fires on volume-confirmed panics — a 15% move on $100 of
+    volume is one whale tantrum, not market-wide overreaction.
+    """
+    qualified = [
+        (c, -mom)  # We want to fade the WINNING side, so flip momentum sign.
+        for c, mom in eligible
+        if -mom >= min_panic_move and (c.volume or 0) >= min_volume_24h
+    ]
+    qualified.sort(key=lambda t: t[1], reverse=True)
+    seen: set[str] = set()
+    picks: list[Candidate] = []
+    for c, _ in qualified:
+        if c.market_id in seen:
+            continue
+        seen.add(c.market_id)
+        picks.append(c)
+        if len(picks) >= n:
+            break
+    return picks
+
+
+def select_underdog_momentum(
+    eligible: list[tuple[Candidate, float]],
+    n: int,
+    max_ask: float,
+    min_momentum: float,
+    min_volume_24h: float,
+) -> list[Candidate]:
+    """Asymmetric payoff hunter: cheap underdogs gaining momentum.
+
+    Thesis: when an underdog (ask ≤ ~30¢) starts gaining ground intraday
+    AND volume is unusually high, that's often informed flow front-running
+    a resolution. The payoff is asymmetric: ~3-4x return if we win,
+    ~1x loss if we don't. Even at a 30% true win rate the EV is
+    positive after fees.
+
+    Fresh angle — none of the other strategies in the race specifically
+    target cheap-but-rising markets with volume confirmation.
+    """
+    qualified = [
+        (c, mom)
+        for c, mom in eligible
+        if (c.best_ask or 1.0) <= max_ask
+        and mom >= min_momentum
+        and (c.volume or 0) >= min_volume_24h
+    ]
+    # Rank by edge magnitude: how much momentum per dollar of risk.
+    qualified.sort(key=lambda t: t[1] / max(t[0].best_ask or 0.01, 0.01), reverse=True)
+    seen: set[str] = set()
+    picks: list[Candidate] = []
+    for c, _ in qualified:
+        if c.market_id in seen:
+            continue
+        seen.add(c.market_id)
+        picks.append(c)
+        if len(picks) >= n:
+            break
+    return picks
+
+
 def select_late_favorite(
     eligible: list[tuple[Candidate, float]],
     n: int,
@@ -569,6 +644,45 @@ def breakout_once(settings: Settings) -> dict[str, Any]:
             settings.race_breakout_min_volume,
         ),
     )
+
+
+def panic_fade_once(settings: Settings) -> dict[str, Any]:
+    return _run_race_tick(
+        settings,
+        "panic_fade",
+        lambda eligible: select_panic_fade(
+            eligible,
+            settings.race_max_orders_per_tick,
+            settings.race_panic_fade_min_move,
+            settings.race_panic_fade_min_volume,
+        ),
+    )
+
+
+def underdog_once(settings: Settings) -> dict[str, Any]:
+    return _run_race_tick(
+        settings,
+        "underdog",
+        lambda eligible: select_underdog_momentum(
+            eligible,
+            settings.race_max_orders_per_tick,
+            settings.race_underdog_max_ask,
+            settings.race_underdog_min_momentum,
+            settings.race_underdog_min_volume,
+        ),
+    )
+
+
+def panic_fade_loop(settings: Settings) -> None:
+    from .main import strategy_loop
+
+    strategy_loop(settings, "panic_fade", panic_fade_once)
+
+
+def underdog_loop(settings: Settings) -> None:
+    from .main import strategy_loop
+
+    strategy_loop(settings, "underdog", underdog_once)
 
 
 def late_favorite_once(settings: Settings) -> dict[str, Any]:

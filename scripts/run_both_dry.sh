@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# La grande race dry-run — 8 stratégies en parallèle + leaderboard sidecar.
+# La grande race dry-run — 10 stratégies + leaderboard sidecar.
 #
-# Strategies (each $100 starting cash, own ledger + journal):
-#   1. [news]          — momentum on near-expiry markets
-#   2. [edge]          — multi-lane: arb + crypto + near-cert
-#   3. [baseline]      — smart-money default (conservative)
-#   4. [random]        — control group: random picks
-#   5. [contrarian]    — bet against today's momentum (mean reversion)
-#   6. [favorite]      — buy heavy favorites (bid ≥ 0.65)
-#   7. [breakout]      — momentum + volume confirmed (≥5¢ + ≥$5k vol)
-#   8. [late_fav]      — favorites in last 30min (resolution edge)
+# Each $100 starting cash, own ledger + journal:
+#   1.  [news]       — momentum on near-expiry markets
+#   2.  [edge]       — multi-lane: arb + crypto + near-cert
+#   3.  [baseline]   — smart-money default (conservative)
+#   4.  [random]     — control: random picks
+#   5.  [contra]     — bet against today's momentum
+#   6.  [favorite]   — buy heavy favorites (bid ≥ 0.65)
+#   7.  [breakout]   — momentum + volume confirmed
+#   8.  [late_fav]   — favorites < 30min to expiry
+#   9.  [panic_fade] — fade extreme intraday moves (≥15¢)
+#   10. [underdog]   — buy rising underdogs (ask ≤ 0.30 + momentum)
 #
 # Plus :
-#   9. [board]         — leaderboard refresh toutes les 15min (+ Telegram)
+#   [board]          — leaderboard refresh every 15 min (+ Telegram)
 #
 # Ctrl+C arrête tout. Logs interleaved préfixés.
 set -euo pipefail
@@ -36,20 +38,20 @@ run_bot() {
         2>&1 | sed -u "s/^/[${prefix}] /" &
 }
 
-run_bot news          news          "news     "
-run_bot edge          edge          "edge     "
-run_bot baseline      baseline      "baseline "
-run_bot random        random        "random   "
-run_bot contrarian    contrarian    "contra   "
-run_bot favorite      favorite      "favorite "
-run_bot breakout      breakout      "breakout "
-run_bot late_favorite late_favorite "late_fav "
+run_bot news          news          "news      "
+run_bot edge          edge          "edge      "
+run_bot baseline      baseline      "baseline  "
+run_bot random        random        "random    "
+run_bot contrarian    contrarian    "contra    "
+run_bot favorite      favorite      "favorite  "
+run_bot breakout      breakout      "breakout  "
+run_bot late_favorite late_favorite "late_fav  "
+run_bot panic_fade    panic_fade    "panic_fade"
+run_bot underdog      underdog      "underdog  "
 
-# Sidecar leaderboard with Telegram broadcast every 15 min.
-# POLYMARKET_DRY_RUN=1 forces notifications to use TELEGRAM_CHAT_ID_DRY_RUN.
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
-    --runs news,edge,baseline,random,contrarian,favorite,breakout,late_favorite \
+    --runs news,edge,baseline,random,contrarian,favorite,breakout,late_favorite,panic_fade,underdog \
     --interval 15 --telegram \
-    2>&1 | sed -u 's/^/[board]    /' &
+    2>&1 | sed -u 's/^/[board]     /' &
 
 wait
