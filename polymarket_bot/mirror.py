@@ -22,7 +22,7 @@ from .config import Settings
 from .gamma import GammaClient
 from .models import Candidate
 from .portfolio import Portfolio
-from .smart_money import DataApiClient, SmartTrade, market_category, fetch_smart_money_data
+from .smart_money import DataApiClient, SmartTrade, market_category, fetch_smart_money_data, _top_traders
 from .strategy import build_pricing_candidates
 from .trading import build_client, execute_live_sell, execute_live_trade
 from .wallet_resolver import resolve_all, resolve_target
@@ -152,27 +152,38 @@ def _discovery_tick(settings: Settings, state: dict[str, Any], api: DataApiClien
     if now - state.get("last_discovery_ts", 0) < interval_sec:
         return
 
-    print(f"[mirror] running target discovery...", flush=True)
-    data = fetch_smart_money_data(settings, client=api)
-    new_targets: list[str] = []
+    print(f"[mirror] running target discovery (leaderboard scan)...", flush=True)
+    # Use leaderboard-only scan — no trade fetch. fetch_smart_money_data also
+    # pulls trades for every scored trader which can take minutes at 800+ wallets.
+    traders_by_period = _top_traders(api, settings)
+    seen_wallets: set[str] = set()
+    all_traders = []
+    for period_traders in traders_by_period.values():
+        for t in period_traders:
+            key = t.wallet.lower()
+            if key not in seen_wallets:
+                seen_wallets.add(key)
+                all_traders.append(t)
+
     min_pnl = settings.mirror_min_whale_pnl
     min_roi = getattr(settings, "smart_min_trader_roi", 0.0)
-    
-    for trader in data.traders:
+    new_targets: list[str] = []
+    whale_pnls_cache: dict[str, float] = {}
+    for trader in all_traders:
+        addr = trader.wallet.lower()
+        whale_pnls_cache[addr] = trader.pnl
         if trader.pnl >= min_pnl:
             roi = trader.pnl / trader.volume if trader.volume > 0 else 0.0
             if roi < min_roi:
                 continue
-            addr = trader.wallet.lower()
             if addr not in state["discovered_targets"]:
                 new_targets.append(addr)
-    
+
     if new_targets:
-        print(f"[mirror] discovered {len(new_targets)} new high-PnL target(s)", flush=True)
+        print(f"[mirror] discovered {len(new_targets)} new target(s) (total {len(state['discovered_targets']) + len(new_targets)})", flush=True)
         state["discovered_targets"].extend(new_targets)
 
-    # Cache PnLs so the tick loop doesn't need to re-fetch them for tiered sizing.
-    state["whale_pnls_cache"] = {t.wallet.lower(): t.pnl for t in data.traders}
+    state["whale_pnls_cache"] = whale_pnls_cache
     state["last_discovery_ts"] = now
 
 

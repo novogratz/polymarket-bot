@@ -34,9 +34,8 @@ starting_cash = 1000.0
 mode = "mirror"
 
 [mirror]
-# Core named accounts known for live sports/event trading.
-# Additional wallets surface via discovery every 2h.
-target = "bossoskil1, Pestle, surfandturf, JewishNinja, swisstony, RN1, Oddn, anoin123, wan123, Talvez10, Treyshon, SamM, roarke22, JohnW, kayabey, Poyo, mattyb, miso, Firebolt, polywhale"
+# Verified static accounts — discovery adds hundreds more every hour.
+target = "bossoskil1, Pestle, surfandturf, JewishNinja, swisstony, RN1, Oddn, anoin123, wan123, Talvez10"
 
 discovery_enabled = true
 discovery_interval_hours = 1
