@@ -1957,7 +1957,11 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
                 pending["filled_at"] = utc_now().isoformat()
         if position is not None and position.get("pending_sell_order_id"):
             pending_id = position.pop("pending_sell_order_id", None)
-            report.append({"action": "pending_sell_still_active", "token_id": token_id, "order_id": pending_id})
+            report.append({"action": "pending_sell_skip_update", "token_id": token_id, "order_id": pending_id})
+            continue
+        if position is not None and position.get("status") == "closed" and position.get("exits"):
+            report.append({"action": "skip_closed_with_exit", "token_id": token_id})
+            continue
         if position is None:
             position = _position_from_live_api(item)
             portfolio.positions.append(position)
