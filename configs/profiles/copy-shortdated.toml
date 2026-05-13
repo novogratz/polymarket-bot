@@ -1,0 +1,110 @@
+# Short-dated whale copy — mirror only trades on markets resolving in ≤ 2h.
+#
+# Thesis: top-PnL whales betting on markets that resolve within a couple
+# hours are typically informed (in-progress sports, late-breaking news,
+# end-of-day political events). Bag-hold risk is bounded by time and the
+# journal's strongest exit (positive_pnl_before_expiry: 87.5% win rate over
+# 40 trades, +$126 net) does the heavy lifting. The journal's biggest leak
+# (stop_loss: 19 trades, 0% wins, -$211 net) is neutralized by disabling
+# stop-loss outright — positions resolve before a stop could meaningfully
+# fire, and on this horizon a stop just locks in the worst tick of noise.
+#
+# Usage:
+#   uv run pmbot auto-loop --profile copy-shortdated --dry-run --run shortdated
+#   uv run pmbot auto-loop --profile copy-shortdated --live --yes
+#
+# Diff vs copy-advanced (which has been net-losing in the journal):
+#   expiry       max_hours_to_expiry = 2 (HARD GATE — user requirement)
+#   filters      min_target_stake 100->200 (whale conviction floor)
+#                min_whale_pnl 10k->25k (only proven operators)
+#                price band 0.15-0.85 -> 0.30-0.80
+#                max_chase 0.05->0.03 (no time to recover from overpaying)
+#                max_trade_age 3600->600 (short-dated trades are time-sensitive)
+#                max_open 12->6 (concentrate on best signals)
+#   sizing       copy_ratio 0.50->0.20, max_position_pct 0.50->0.15,
+#                size_usd 500->100 (smaller until this earns its ratio back)
+#   exits        stop_loss disabled (the biggest journal leak)
+#                near_expiry lock-in armed at 30min, 2% min profit
+#                resolved_market exit at 92¢ (no point waiting the last 8¢)
+#                take_profit ladder only at +100%/+200%/+300% (let winners
+#                run; sub-100% partials defeat the short-dated thesis)
+
+[run]
+starting_cash = 1000.0
+mode = "mirror"
+
+[mirror]
+target = "bossoskil1, Pestle, surfandturf, JewishNinja, swisstony, RN1, Oddn, anoin123, wan123, Talvez10"
+
+discovery_enabled = true
+discovery_interval_hours = 6
+min_whale_pnl = 25000.0
+
+# Sizing — small until the strategy earns trust.
+copy_ratio = 0.20
+tiered_copy_ratios = "0.0:0.15,25000:0.25,100000:0.35"
+size_usd = 100.0
+max_position_pct = 0.15
+
+# Filters
+min_target_stake_usd = 200.0
+min_liquidity_usd = 10000.0
+max_chase_premium = 0.03
+min_buy_price = 0.30
+max_buy_price = 0.80
+max_open_positions = 6
+max_category_exposure_pct = 1.50
+max_trade_age_seconds = 600
+
+# Hard gate: only mirror markets resolving within this many hours.
+# Disables max_days_to_expiry when > 0.
+max_hours_to_expiry = 2
+max_days_to_expiry = 0
+
+# Journal-driven exclusions: FINANCE 10 trades avg -$6, ECONOMICS 1 trade -$28.
+excluded_categories = "FINANCE,ECONOMICS"
+
+# Drawdown
+daily_loss_limit_pct = 0.05
+weekly_loss_limit_pct = 0.12
+
+[exits]
+# Stop loss disabled. On a <2h horizon, every stop is a forced sell at the
+# worst tick of noise — and the journal proves it (-$211 net, 0% wins).
+# Loss is naturally bounded by position size + 2h max hold.
+stop_loss_pct = 0.0
+stop_loss_min_age_minutes = 999
+
+# Aggressive lock-in 30min before market close. Journal:
+# positive_pnl_before_expiry = 87.5% win rate, +$3.15 / trade avg, +$126 net.
+near_expiry_minutes_to_close = 30
+near_expiry_min_profit = 0.02
+
+# Exit when the YES side is trading at 92¢+ (near-certain win). Don't wait
+# the last 8¢ when the market has already decided.
+resolved_market_threshold = 0.92
+
+# Take-profit only on real winners. Sub-100% partials trim winners before
+# resolution does its job — defeats the short-dated thesis.
+take_profit_ladder = "1.0:0.50,2.0:0.30,3.0:0.20"
+
+# Trailing/peak-protect still arm late so a 4x doesn't round-trip.
+trailing_stop_arm_pct = 1.50
+trailing_stop_giveback = 0.40
+peak_protect_arm_pct = 2.00
+peak_protect_exit_pct = 0.80
+
+# No forced max-hold — the 2h expiry gate already bounds hold time.
+max_hold_hours = 0.0
+
+[filters]
+# Bump consensus floor: journal shows consensus=2 leaks -$3.50 / trade
+# (13 sample). 3+ wallets is the real signal.
+min_consensus = 3
+
+[persistence]
+enabled = false
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 30
