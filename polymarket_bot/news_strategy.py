@@ -4,19 +4,29 @@ Self-contained alternative to the smart-money copy strategy. The only hard
 rule is the expiry window — every other knob is a tunable filter. Pulls
 Gamma markets that close within ``settings.news_max_hours``, picks
 outcomes with positive momentum and tight execution, and opens small
-positions until the per-tick cap is hit. Exits run before entries with
-its own short-window ladder (tight take-profit, soft stop-loss,
-near-expiry flush).
+positions until the per-tick cap is hit.
 
-Designed to coexist with smart-money: separate ``run_mode=news`` branch,
-its own profile schema section, its own runner scripts, but reuses
-``execute_live_trade`` / ``execute_live_sell`` / ``Portfolio`` so the
-dashboard, journal, and notification pipeline work unchanged.
+Features:
+- Per-asset dedupe (max one BTC, ETH, SOL, XRP… position at a time).
+- Smart-money flow bonus: candidates that leaderboard wallets are also
+  buying in the last lookback window get a score multiplier and bigger
+  stake. Best-effort; if the fetch fails the strategy still runs.
+- Conviction-weighted sizing: $5 baseline, up to $12 on strong signals.
+- Partial take-profit at +25% (sells half), then trailing stop on the
+  remainder so winners can ride to resolution.
+- Time-adaptive stop-loss: -25% with > 1h to expire, tightens to -15%
+  inside 1h, -10% inside 30 min.
+- Cash floor: stops opening new positions when cash falls below
+  ``news_cash_floor_pct`` of equity.
+
+Reuses ``execute_live_trade`` / ``execute_live_sell`` / ``Portfolio`` so
+the dashboard, journal, and notification pipeline work unchanged.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import re
 from datetime import timedelta
 from typing import Any
 
@@ -26,7 +36,24 @@ from .gamma import GammaClient
 from .models import Candidate, as_float, parse_dt, parse_json_list, utc_now
 from .portfolio import Portfolio
 from .pricing import ensure_open_positions_in_pool
+from .smart_money import SmartMoneyData, fetch_smart_money_data
 from .trading import build_client, execute_live_sell, execute_live_trade
+
+
+# Asset detection: maps regex on question text to a stable asset key.
+# Order matters — longer / more specific patterns first.
+_ASSET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bbitcoin\b|\bbtc\b", re.I), "BTC"),
+    (re.compile(r"\bethereum\b|\beth\b", re.I), "ETH"),
+    (re.compile(r"\bsolana\b|\bsol\b", re.I), "SOL"),
+    (re.compile(r"\bxrp\b|\bripple\b", re.I), "XRP"),
+    (re.compile(r"\bdogecoin\b|\bdoge\b", re.I), "DOGE"),
+    (re.compile(r"\bcardano\b|\bada\b", re.I), "ADA"),
+    (re.compile(r"\bavalanche\b|\bavax\b", re.I), "AVAX"),
+    (re.compile(r"\bpolygon\b|\bmatic\b", re.I), "MATIC"),
+    (re.compile(r"\bchainlink\b|\blink\b", re.I), "LINK"),
+    (re.compile(r"\bpolkadot\b|\bdot\b", re.I), "DOT"),
+]
 
 
 def _step(settings: Settings, msg: str) -> None:
@@ -34,16 +61,35 @@ def _step(settings: Settings, msg: str) -> None:
         print(msg, flush=True)
 
 
+def _asset_key(question: str, event_slug: str) -> str | None:
+    """Map a market to a stable underlying-asset key for dedupe.
+
+    Crypto markets share an asset (BTC/ETH/SOL/...) across multiple
+    expiry windows (e.g. "Bitcoin Up or Down - 8AM ET" and "Bitcoin Up
+    or Down - 8AM-12PM ET"). Without grouping, the bot stacks parallel
+    bets on the same underlying — catastrophic if the asset moves
+    against us. Returns ``None`` when no canonical asset is detected;
+    the caller falls back to event_slug for dedupe.
+    """
+    for pattern, key in _ASSET_PATTERNS:
+        if pattern.search(question):
+            return f"crypto:{key}"
+    if event_slug:
+        return f"event:{event_slug}"
+    return None
+
+
+def _position_asset_key(position: dict[str, Any]) -> str | None:
+    question = str(position.get("question") or "")
+    event_slug = str(position.get("event_slug") or "")
+    return _asset_key(question, event_slug)
+
+
 def _build_news_candidates(
     markets: list[dict[str, Any]],
     settings: Settings,
 ) -> list[tuple[Candidate, float]]:
-    """Filter + score Gamma markets for the news strategy.
-
-    Returns a list of ``(candidate, score)`` tuples ranked by descending
-    score. Per-outcome filtering: each side of a binary market is
-    evaluated independently so we can chase the side that has momentum.
-    """
+    """Filter + score Gamma markets for the news strategy."""
     now = utc_now()
     earliest = now + timedelta(hours=settings.news_min_hours)
     horizon = now + timedelta(hours=settings.news_max_hours)
@@ -80,7 +126,6 @@ def _build_news_candidates(
         prices = [as_float(item, -1.0) for item in parse_json_list(market.get("outcomePrices"))]
         token_ids = [str(item) for item in parse_json_list(market.get("clobTokenIds"))]
         if not outcomes or len(outcomes) != len(prices) or len(outcomes) != 2:
-            # Only support binary markets to make per-outcome quotes clean.
             continue
 
         neg_risk = bool(market.get("negRisk"))
@@ -116,17 +161,12 @@ def _build_news_candidates(
             if relative_spread > settings.news_max_relative_spread:
                 continue
 
-            # YES side (index 0) inherits one_day_change directly; NO side
-            # (index 1) gets the inverse.
             outcome_momentum = one_day_change if index == 0 else -one_day_change
             if settings.news_require_positive_momentum and outcome_momentum <= 0:
                 continue
             if abs(outcome_momentum) < settings.news_min_abs_momentum:
                 continue
 
-            # Score: momentum (price move today) + liquidity-normalized volume
-            # + urgency. Urgency dominates as expiry approaches so we shift
-            # capital toward the markets that resolve soonest.
             urgency = 4.0 / max(hours_to_close, 0.25)
             volume_score = volume_24h / max(price * 50_000.0, 1.0)
             momentum_score = outcome_momentum * 50.0
@@ -195,7 +235,6 @@ def _load_news_markets(settings: Settings) -> list[dict[str, Any]]:
     now = utc_now()
     horizon = now + timedelta(hours=settings.news_max_hours)
     batches: list[list[dict[str, Any]]] = []
-    # Primary fetch: ordered by end_date ascending — most urgent first.
     try:
         batches.append(
             client.get_markets(
@@ -208,8 +247,6 @@ def _load_news_markets(settings: Settings) -> list[dict[str, Any]]:
         )
     except Exception as exc:
         print(f"⚠️  Gamma news batch failed: {type(exc).__name__}: {exc}")
-    # Secondary fetch: ordered by volume — catches high-flow markets the
-    # ascending pull might cut off at the limit.
     try:
         batches.append(
             client.get_markets(
@@ -229,6 +266,76 @@ def _load_news_markets(settings: Settings) -> list[dict[str, Any]]:
             if key and key not in merged:
                 merged[key] = market
     return list(merged.values())
+
+
+def _smart_money_flow_by_token(
+    settings: Settings,
+) -> dict[str, float]:
+    """Best-effort: total USD smart-money BUY flow per token, last lookback window.
+
+    Reuses ``fetch_smart_money_data`` so leaderboard wallets, persistence
+    filter, and concurrency are shared with the smart-money strategy.
+    On any failure we return an empty dict — the news strategy still
+    runs, just without the boost.
+    """
+    if not settings.news_smart_money_boost_enabled:
+        return {}
+    try:
+        data: SmartMoneyData = fetch_smart_money_data(settings)
+    except Exception as exc:
+        print(f"   news: smart-money flow fetch failed: {type(exc).__name__}: {exc}")
+        return {}
+    flow: dict[str, float] = {}
+    for trade in data.trades or []:
+        if (trade.side or "").upper() != "BUY":
+            continue
+        asset = getattr(trade, "asset", None)
+        if not asset:
+            continue
+        flow[asset] = flow.get(asset, 0.0) + float(getattr(trade, "usdc_size", 0.0) or 0.0)
+    return flow
+
+
+def _conviction_tier(
+    candidate: Candidate,
+    score: float,
+    smart_money_flow_usd: float,
+    settings: Settings,
+) -> tuple[str, float]:
+    """Return (tier_name, stake_usd) for a candidate.
+
+    Three tiers based on conviction:
+
+    - **high**: smart-money flow ≥ threshold AND (price < 0.40 OR score is top-tier)
+    - **mid**: smart-money flow ≥ threshold/2 OR price < 0.40
+    - **low**: everything else
+    """
+    base = settings.news_stake_usd
+    high = settings.news_max_stake_usd
+    low = max(settings.news_min_stake_usd, base * 0.75)
+    has_flow = smart_money_flow_usd >= settings.news_smart_money_min_flow_usd
+    half_flow = smart_money_flow_usd >= settings.news_smart_money_min_flow_usd * 0.5
+    low_price = (candidate.best_ask or 1.0) < 0.40
+
+    if has_flow and (low_price or score >= 6.0):
+        return "high", high
+    if has_flow or half_flow or low_price:
+        return "mid", base
+    return "low", low
+
+
+def _adaptive_stop_pct(hours_to_close: float | None, settings: Settings) -> float:
+    """Tighten the stop-loss as expiry approaches.
+
+    Premise: with 3h left we can recover from a drawdown; with 20 min
+    left we can't. Returns the absolute fraction (e.g. 0.25 = -25%).
+    """
+    h = float(hours_to_close or 0.0)
+    if h <= settings.news_very_tight_stop_hours:
+        return settings.news_very_tight_stop_pct
+    if h <= settings.news_tight_stop_hours:
+        return settings.news_tight_stop_pct
+    return settings.news_stop_loss_pct
 
 
 def _position_age_minutes(position: dict[str, Any]) -> float:
@@ -252,22 +359,66 @@ def _minutes_to_close(position: dict[str, Any]) -> float | None:
     return (end_dt - utc_now()).total_seconds() / 60.0
 
 
+def _hours_to_close_from_position(position: dict[str, Any]) -> float | None:
+    minutes = _minutes_to_close(position)
+    if minutes is None:
+        return None
+    return minutes / 60.0
+
+
 def _news_sell_plan(
     position: dict[str, Any],
     current_pnl_pct: float,
     settings: Settings,
 ) -> dict[str, Any] | None:
+    """Multi-tier exit plan: partial TP, trailing stop, adaptive SL.
+
+    Order of checks:
+    1. Partial take-profit at +TP% (sell half, mark tier hit).
+    2. Trailing stop after partial TP arms (sell remainder if peak
+       gives back ``trailing_giveback_pct`` while still > 0).
+    3. Adaptive stop-loss (tightens near expiry).
+    4. Near-expiry positive flush.
+    """
     shares = float(position.get("shares", 0.0) or 0.0)
     if shares <= 0:
         return None
-    if current_pnl_pct >= settings.news_take_profit_pct:
-        return {"reason": "news_take_profit", "shares": shares}
+
+    tier_hit = position.get("news_tier_hit") or ""
+    peak_pnl_pct = float(position.get("peak_pnl_pct", current_pnl_pct) or 0.0)
+
+    # 1. Partial take-profit (first time only).
+    if (
+        tier_hit != "tp1"
+        and settings.news_partial_tp_fraction > 0
+        and current_pnl_pct >= settings.news_take_profit_pct
+    ):
+        return {
+            "reason": "news_take_profit",
+            "shares": shares * settings.news_partial_tp_fraction,
+            "tier": "tp1",
+        }
+
+    # 2. Trailing stop on remainder, after partial TP.
+    if tier_hit == "tp1" and peak_pnl_pct >= settings.news_trailing_arm_pct:
+        floor_pct = peak_pnl_pct * (1.0 - settings.news_trailing_giveback_pct)
+        if current_pnl_pct <= max(0.0, floor_pct):
+            return {
+                "reason": "news_trailing_stop",
+                "shares": shares,
+            }
+
+    # 3. Adaptive stop-loss.
+    hours_left = _hours_to_close_from_position(position)
+    sl_pct = _adaptive_stop_pct(hours_left, settings)
     age_minutes = _position_age_minutes(position)
     if (
-        current_pnl_pct <= -settings.news_stop_loss_pct
+        current_pnl_pct <= -sl_pct
         and age_minutes >= settings.news_stop_loss_min_age_minutes
     ):
         return {"reason": "news_stop_loss", "shares": shares}
+
+    # 4. Near-expiry flush if positive.
     minutes_left = _minutes_to_close(position)
     if (
         minutes_left is not None
@@ -336,6 +487,8 @@ def _execute_news_exits(
                 }
             )
             continue
+        if plan.get("tier"):
+            position["news_tier_hit"] = str(plan["tier"])
         portfolio.save(settings.state_path)
         exits.append(
             {
@@ -352,13 +505,19 @@ def _execute_news_exits(
     return exits
 
 
-def news_once(settings: Settings) -> dict[str, Any]:
-    """Single tick of the news strategy.
+def _open_asset_keys(portfolio: Portfolio) -> set[str]:
+    keys: set[str] = set()
+    for position in portfolio.positions:
+        if position.get("status") != "open":
+            continue
+        key = _position_asset_key(position)
+        if key:
+            keys.add(key)
+    return keys
 
-    Loads expiring-within-window markets, runs the news-specific exit
-    ladder against open positions, then opens up to
-    ``news_max_orders_per_tick`` new positions ranked by momentum.
-    """
+
+def news_once(settings: Settings) -> dict[str, Any]:
+    """Single tick of the news strategy."""
     print("▶  news tick start", flush=True)
     _step(settings, "   loading expiring markets...")
     markets = _load_news_markets(settings)
@@ -386,24 +545,35 @@ def news_once(settings: Settings) -> dict[str, Any]:
         except Exception as exc:
             print(f"   live cash refresh failed: {type(exc).__name__}: {exc}")
 
+    # Pull smart-money flow once per tick (best-effort).
+    flow_by_token = _smart_money_flow_by_token(settings)
+    if flow_by_token:
+        _step(settings, f"   smart-money flow on {len(flow_by_token)} token(s)")
+
     executed_trades: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     stop_reason: str | None = None
 
+    summary = portfolio.summary()
+    equity = float(summary.get("equity", 0.0) or 0.0)
+    cash_floor_usd = equity * settings.news_cash_floor_pct if equity > 0 else 0.0
     available_cash = portfolio.cash
-    if available_cash < 1.0:
+    if available_cash < max(1.0, cash_floor_usd):
         portfolio.save(settings.state_path)
         return {
             "trade": None,
             "strategy": "news",
-            "status": "waiting_for_funds",
+            "status": "cash_floor_reached" if cash_floor_usd > 0 else "waiting_for_funds",
             "available_cash": available_cash,
+            "cash_floor_usd": cash_floor_usd,
             "exits": exit_report,
             "trades": [],
             "orders_placed": 0,
             "scan_counts": {"candidates": len(scored)},
-            "summary": portfolio.summary(),
+            "summary": summary,
         }
+
+    open_assets = _open_asset_keys(portfolio)
 
     for candidate, score in scored:
         if settings.news_max_orders_per_tick > 0 and len(executed_trades) >= settings.news_max_orders_per_tick:
@@ -420,15 +590,41 @@ def news_once(settings: Settings) -> dict[str, Any]:
         if portfolio.has_open_event_position(candidate):
             continue
 
+        # Per-asset dedupe: skip if we already hold BTC/ETH/SOL/XRP/...
+        asset_key = _asset_key(candidate.question, candidate.event_slug or "")
+        if asset_key and asset_key in open_assets:
+            rejected.append(
+                {
+                    "market_id": candidate.market_id,
+                    "question": candidate.question,
+                    "outcome": candidate.outcome,
+                    "reason": f"duplicate_asset:{asset_key}",
+                }
+            )
+            continue
+
+        flow_usd = flow_by_token.get(candidate.token_id, 0.0)
+        tier, stake_target = _conviction_tier(candidate, score, flow_usd, settings)
+
+        # Cash floor: don't burn through to zero. Cap stake by what we
+        # have left above the floor.
+        cash_above_floor = max(0.0, portfolio.cash - cash_floor_usd)
+        stake_cap = min(stake_target, max(1.0, cash_above_floor))
+        if stake_cap < settings.news_min_stake_usd:
+            stop_reason = "cash_floor_reached"
+            break
+
         signal_payload = {
             "question": candidate.question,
             "selection_reason": (
-                f"news momentum on {candidate.outcome} "
-                f"score={score:.2f} ask={candidate.best_ask} "
-                f"hours_to_close={candidate.hours_to_close:.2f}"
+                f"news {tier} on {candidate.outcome} "
+                f"score={score:.2f} flow=${flow_usd:.0f} "
+                f"ask={candidate.best_ask} h2c={candidate.hours_to_close:.2f}"
             ),
             "selection_metrics": {
                 "score": round(score, 3),
+                "tier": tier,
+                "smart_money_flow_usd": round(flow_usd, 2),
                 "current_ask": candidate.best_ask,
                 "current_bid": candidate.best_bid,
                 "spread": round(
@@ -437,14 +633,11 @@ def news_once(settings: Settings) -> dict[str, Any]:
                 "hours_to_close": round(candidate.hours_to_close or 0.0, 3),
                 "liquidity": candidate.liquidity,
                 "volume": candidate.volume,
+                "asset_key": asset_key,
             },
             "tag": "news",
         }
         try:
-            stake_cap = min(settings.news_stake_usd, portfolio.cash)
-            if stake_cap < 1.0:
-                stop_reason = "cash_below_min_trade"
-                break
             result = execute_live_trade(
                 client,
                 settings,
@@ -463,6 +656,8 @@ def news_once(settings: Settings) -> dict[str, Any]:
                     "response": result.response,
                 }
             )
+            if asset_key:
+                open_assets.add(asset_key)
             portfolio.save(settings.state_path)
         except ValueError as exc:
             message = str(exc)
@@ -474,7 +669,8 @@ def news_once(settings: Settings) -> dict[str, Any]:
                     "reason": message,
                 }
             )
-            if "balance" in message.lower() or "below" in message.lower() and "minimum" in message.lower():
+            lower = message.lower()
+            if "balance" in lower or ("below" in lower and "minimum" in lower):
                 stop_reason = message
                 break
             continue
@@ -510,6 +706,7 @@ def news_once(settings: Settings) -> dict[str, Any]:
         "scan_counts": {
             "candidates": len(scored),
             "raw_markets": len(markets),
+            "smart_money_tokens": len(flow_by_token),
         },
         "summary": portfolio.summary(),
     }
@@ -517,6 +714,6 @@ def news_once(settings: Settings) -> dict[str, Any]:
 
 def news_loop(settings: Settings) -> None:
     """Run :func:`news_once` on the standard tick cadence."""
-    from .main import strategy_loop  # lazy import: main imports this module
+    from .main import strategy_loop
 
     strategy_loop(settings, "news", news_once)

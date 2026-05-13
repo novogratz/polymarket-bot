@@ -181,6 +181,18 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "max_orders_per_tick": ("POLYMARKET_NEWS_MAX_ORDERS_PER_TICK", "int"),
         "stake_usd": ("POLYMARKET_NEWS_STAKE_USD", "float"),
         "scan_limit": ("POLYMARKET_NEWS_SCAN_LIMIT", "int"),
+        "cash_floor_pct": ("POLYMARKET_NEWS_CASH_FLOOR_PCT", "float"),
+        "partial_tp_fraction": ("POLYMARKET_NEWS_PARTIAL_TP_FRACTION", "float"),
+        "trailing_arm_pct": ("POLYMARKET_NEWS_TRAILING_ARM_PCT", "float"),
+        "trailing_giveback_pct": ("POLYMARKET_NEWS_TRAILING_GIVEBACK_PCT", "float"),
+        "max_stake_usd": ("POLYMARKET_NEWS_MAX_STAKE_USD", "float"),
+        "min_stake_usd": ("POLYMARKET_NEWS_MIN_STAKE_USD", "float"),
+        "smart_money_boost_enabled": ("POLYMARKET_NEWS_SMART_MONEY_BOOST_ENABLED", "bool"),
+        "smart_money_min_flow_usd": ("POLYMARKET_NEWS_SMART_MONEY_MIN_FLOW_USD", "float"),
+        "tight_stop_hours": ("POLYMARKET_NEWS_TIGHT_STOP_HOURS", "float"),
+        "tight_stop_pct": ("POLYMARKET_NEWS_TIGHT_STOP_PCT", "float"),
+        "very_tight_stop_hours": ("POLYMARKET_NEWS_VERY_TIGHT_STOP_HOURS", "float"),
+        "very_tight_stop_pct": ("POLYMARKET_NEWS_VERY_TIGHT_STOP_PCT", "float"),
     },
     "persistence": {
         "enabled": ("POLYMARKET_PERSISTENCE_ENABLED", "bool"),
@@ -192,6 +204,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
     "telemetry": {
         "quiet": ("POLYMARKET_QUIET", "bool"),
         "auto_interval_seconds": ("POLYMARKET_AUTO_INTERVAL_SECONDS", "int"),
+        "stdout_heartbeat_minutes": ("POLYMARKET_STDOUT_HEARTBEAT_MINUTES", "int"),
     },
 }
 

@@ -2050,7 +2050,49 @@ def _is_unfilled_market_order_error(message: str) -> bool:
     )
 
 
+def _print_stdout_heartbeat(
+    settings: Settings,
+    *,
+    strategy_name: str,
+    summary: dict[str, object],
+    trades_24h: int,
+    wins_24h: int,
+    losses_24h: int,
+    realized_24h: float,
+) -> None:
+    """Multi-line portfolio snapshot to stdout.
+
+    Triggered from ``strategy_loop`` at most every
+    ``settings.stdout_heartbeat_minutes`` minutes. Independent of the
+    Telegram heartbeat — both can be enabled at once.
+    """
+    equity = float(summary.get("equity", 0) or 0)
+    cash = float(summary.get("cash", 0) or 0)
+    invested = float(summary.get("invested", 0) or 0)
+    unrealized = float(summary.get("unrealized_pnl", 0) or 0)
+    positions = int(summary.get("open_positions", 0) or 0)
+    cash_pct = (cash / equity * 100.0) if equity > 0 else 0.0
+    win_rate = (wins_24h / trades_24h * 100.0) if trades_24h > 0 else 0.0
+    stamp = time.strftime("%H:%M:%S", time.localtime())
+    mode = "DRY-RUN" if settings.dry_run else "LIVE"
+    sep = "─" * 60
+    print(sep, flush=True)
+    print(f"📊 PORTFOLIO HEARTBEAT · {stamp} · {strategy_name} · {mode}", flush=True)
+    print(f"   equity ${equity:.2f}  |  cash ${cash:.2f} ({cash_pct:.0f}%)  |  invested ${invested:.2f}", flush=True)
+    print(f"   open positions: {positions}  |  unrealized PnL: {unrealized:+.2f}", flush=True)
+    if trades_24h > 0:
+        print(
+            f"   24h: {trades_24h} closed  |  {wins_24h}W/{losses_24h}L "
+            f"({win_rate:.0f}% win rate)  |  realized {realized_24h:+.2f}",
+            flush=True,
+        )
+    else:
+        print("   24h: no closed trades yet", flush=True)
+    print(sep, flush=True)
+
+
 def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
+    last_heartbeat_ts: float = 0.0
     tick = 0
     while settings.auto_max_ticks <= 0 or tick < settings.auto_max_ticks:
         tick += 1
@@ -2148,6 +2190,19 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                     "top_loser": top_l,
                 }
             )
+            if settings.stdout_heartbeat_minutes > 0:
+                now_ts = time.time()
+                if now_ts - last_heartbeat_ts >= settings.stdout_heartbeat_minutes * 60:
+                    _print_stdout_heartbeat(
+                        settings,
+                        strategy_name=strategy_name,
+                        summary=summary_snap,
+                        trades_24h=trades_24h,
+                        wins_24h=wins_24h,
+                        losses_24h=losses_24h,
+                        realized_24h=realized_24h,
+                    )
+                    last_heartbeat_ts = now_ts
         except Exception as exc:
             print(f"[notif] post-tick hook failed: {exc}", file=sys.stderr, flush=True)
 
