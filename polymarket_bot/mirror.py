@@ -29,6 +29,7 @@ from .wallet_resolver import resolve_all, resolve_target
 
 _MAX_SEEN = 2000
 _DEFAULT_DAILY_ANCHOR = ""
+_NET_DOWN_THRESHOLD = 3  # consecutive network failures before aborting target loop
 
 
 def _utc_day_key(ts: float | None = None) -> str:
@@ -253,14 +254,35 @@ def _candidate_for_token(token_id: str, gamma: GammaClient) -> Candidate | None:
     return None
 
 
-def _fetch_target_trades(api: DataApiClient, target: str) -> list[SmartTrade]:
-    """Pull the latest trades for the target wallet (both BUY and SELL)."""
+def _is_network_down_error(exc: BaseException) -> bool:
+    """Return True if the exception looks like a total network outage (DNS failure)."""
+    import os
+    cause = getattr(exc, "reason", exc)
+    return isinstance(cause, OSError) and getattr(cause, "errno", None) in (
+        8,   # EAI_NONAME — nodename nor servname provided
+        -2,  # EAI_AGAIN on Linux
+        -3,  # EAI_AGAIN alt
+        os.errno.ENETUNREACH if hasattr(os, "errno") else 101,
+    )
+
+
+def _fetch_target_trades(
+    api: DataApiClient, target: str
+) -> tuple[list[SmartTrade], bool]:
+    """Pull the latest trades for the target wallet.
+
+    Returns ``(trades, network_down)`` — ``network_down=True`` signals a DNS/
+    connectivity outage so the caller can circuit-break instead of spamming
+    one error line per target.
+    """
     try:
         trades = api.trades(user=target, start=0, limit=100, side=None)
     except Exception as exc:
+        if _is_network_down_error(exc):
+            return [], True
         print(f"[mirror] trades fetch failed: {exc}", file=sys.stderr, flush=True)
-        return []
-    return sorted(trades, key=lambda t: t.timestamp)
+        return [], False
+    return sorted(trades, key=lambda t: t.timestamp), False
 
 
 def _humanize_age(seconds: float) -> str:
@@ -315,7 +337,7 @@ def print_recent_trades_snapshot(
     if not target:
         return
     api = api or DataApiClient()
-    trades = _fetch_target_trades(api, target)
+    trades, _ = _fetch_target_trades(api, target)
     short = _short_target(target)
     print(f"\n📜 Recent trades for {short}  (limit={limit})", flush=True)
     now_ts = int(time.time())
@@ -772,8 +794,22 @@ def mirror_once(settings: Settings) -> dict[str, Any]:
         except Exception:
             pass
 
-    for target in targets:
-        target_trades = _fetch_target_trades(api, target)
+    consecutive_net_failures = 0
+    for i, target in enumerate(targets):
+        target_trades, net_down = _fetch_target_trades(api, target)
+        if net_down:
+            consecutive_net_failures += 1
+            if consecutive_net_failures == _NET_DOWN_THRESHOLD:
+                remaining = len(targets) - i - 1
+                print(
+                    f"[mirror] network unreachable — skipping {remaining} remaining target(s)",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            if consecutive_net_failures >= _NET_DOWN_THRESHOLD:
+                continue
+        else:
+            consecutive_net_failures = 0
         polled += len(target_trades)
         last_ts = _last_ts_for(state, target)
         for trade in _select_eligible(
