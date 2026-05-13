@@ -42,6 +42,8 @@ class RunStats:
     realized_pnl: float
     started_at: str | None
     total_ticks: int
+    biggest_win_today: float = 0.0
+    biggest_loss_today: float = 0.0
 
     @property
     def total_pnl(self) -> float:
@@ -100,6 +102,9 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
     wins = 0
     losses = 0
     realized_pnl = 0.0
+    biggest_win_today = 0.0
+    biggest_loss_today = 0.0
+    today = datetime.now(timezone.utc).date()
     journal_path = root / "journal.jsonl"
     if journal_path.is_file():
         try:
@@ -122,6 +127,17 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
                         wins += 1
                     elif pnl < 0:
                         losses += 1
+                    closed_at = rec.get("closed_at")
+                    if closed_at:
+                        try:
+                            closed_dt = datetime.fromisoformat(str(closed_at).replace("Z", "+00:00"))
+                        except (ValueError, TypeError):
+                            closed_dt = None
+                        if closed_dt is not None and closed_dt.date() == today:
+                            if pnl > biggest_win_today:
+                                biggest_win_today = pnl
+                            if pnl < biggest_loss_today:
+                                biggest_loss_today = pnl
         except Exception:
             pass
 
@@ -139,6 +155,8 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
         realized_pnl=realized_pnl,
         started_at=started_at,
         total_ticks=total_ticks,
+        biggest_win_today=biggest_win_today,
+        biggest_loss_today=biggest_loss_today,
     )
 
 
@@ -151,19 +169,22 @@ def format_leaderboard(stats: list[RunStats], *, now: datetime | None = None) ->
     now = now or datetime.now(timezone.utc)
     stamp = now.strftime("%H:%M:%S")
 
-    bar = "═" * 78
+    bar = "═" * 92
     lines: list[str] = [
         bar,
         f"🏁 STRATEGY LEADERBOARD · {stamp} UTC",
         bar,
         f" #  {'STRATEGY':<10} {'EQUITY':>10} {'PnL':>10} {'ROI':>8} "
-        f"{'WIN%':>5} {'CLOSED':>7} {'POS':>4} {'TICKS':>6}",
-        "─" * 78,
+        f"{'WIN%':>5} {'CLOSED':>7} {'POS':>4} "
+        f"{'BIG WIN':>9} {'BIG LOSS':>9} {'TICKS':>6}",
+        "─" * 92,
     ]
     for i, s in enumerate(ranked, 1):
         medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, "  ")
         pnl_str = f"{s.total_pnl:+9.2f}"
         roi_str = f"{s.roi_pct:+6.1f}%"
+        big_win_str = f"+{s.biggest_win_today:.2f}" if s.biggest_win_today > 0 else "  —  "
+        big_loss_str = f"{s.biggest_loss_today:.2f}" if s.biggest_loss_today < 0 else "  —  "
         lines.append(
             f"{medal} {s.run_name:<10} "
             f"${s.equity:>9.2f} "
@@ -172,6 +193,8 @@ def format_leaderboard(stats: list[RunStats], *, now: datetime | None = None) ->
             f"{s.win_rate_pct:>4.0f}% "
             f"{s.closed_trades:>7d} "
             f"{s.open_positions:>4d} "
+            f"{big_win_str:>9} "
+            f"{big_loss_str:>9} "
             f"{s.total_ticks:>6d}"
         )
     lines.append(bar)
@@ -213,8 +236,18 @@ def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None =
         winp = notifications._md_escape(f"{s.win_rate_pct:.0f}%")
         lines.append(
             f"{medal} `{name}` {equity}  {pnl} {roi} · "
-            f"{s.closed_trades}t {winp}w"
+            f"{s.open_positions}p {s.closed_trades}t {winp}w"
         )
+        # Today's biggest win/loss line — only shown when there's data.
+        bw = s.biggest_win_today
+        bl = s.biggest_loss_today
+        if bw > 0 or bl < 0:
+            parts = []
+            if bw > 0:
+                parts.append(f"🟢 {notifications._md_escape(f'+${bw:.2f}')}")
+            if bl < 0:
+                parts.append(f"🔴 {notifications._md_escape(f'${bl:.2f}')}")
+            lines.append(f"     today: {' · '.join(parts)}")
     leader = ranked[0]
     lines.append("")
     if leader.total_pnl > 0:
