@@ -25,7 +25,7 @@ tiered_copy_ratios = "0.0:0.15,25000:0.25,100000:0.35"
 # Max position size in USD (hard cap)
 size_usd = 250.0
 # Max position as % of our equity
-max_position_pct = 0.05
+max_position_pct = 0.25
 
 # Filters
 min_target_stake_usd = 100.0
@@ -34,7 +34,7 @@ max_chase_premium = 0.05
 min_buy_price = 0.02
 max_buy_price = 0.98
 max_open_positions = 12
-max_category_exposure_pct = 0.25
+max_category_exposure_pct = 0.50
 max_trade_age_seconds = 3600
 
 # Drawdown Protection

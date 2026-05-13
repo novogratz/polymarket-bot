@@ -36,16 +36,21 @@ Talvez10,
 
 # Simulated stake per mirrored BUY. Mirror mode currently supports fixed
 # USD sizing; $1 matches the original 1% intent for a $100 dry-run bankroll.
-size_usd = 1.0
+# Sizing & Ratios
+copy_ratio = 0.20
+tiered_copy_ratios = "0.0:0.15,25000:0.25,100000:0.35"
+size_usd = 250.0
+max_position_pct = 0.25
 # Mirror target-wallet SELLs too, so the dry-run exits when they exit.
 mirror_sells = true
 # Copy all target bets, including small ones.
-min_target_stake_usd = 0.0
-# Dry-run exploration: allow broad chase/price ranges so we observe almost
-# every new target BUY that has a resolvable Polymarket token.
-max_chase_premium = 1.0
-min_buy_price = 0.01
-max_buy_price = 0.99
+min_target_stake_usd = 100.0
+min_liquidity_usd = 10000.0
+max_chase_premium = 0.05
+min_buy_price = 0.02
+max_buy_price = 0.98
+max_open_positions = 12
+max_category_exposure_pct = 0.50
 
 [telemetry]
 quiet = false
