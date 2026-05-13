@@ -696,7 +696,7 @@ def _is_filled_sell_response(response: Any) -> bool:
     if not isinstance(response, dict):
         return False
     status = str(response.get("status") or "").lower()
-    if status == "matched":
+    if status in ("matched", "live", "delayed"):
         return True
     for key in ("makingAmount", "takingAmount"):
         value = response.get(key)
