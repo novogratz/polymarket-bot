@@ -563,11 +563,14 @@ def execute_live_trade(
         )
 
     if settings.quiet:
-        prefix = "[DRY-RUN] " if settings.dry_run else ""
-        print(
-            f"🚀 {prefix}BUY {candidate.outcome} ${stake} @ {entry_price} | "
-            f"{candidate.question[:60]}"
-        )
+        # SELLs still print so operators can see exits without the noise of
+        # individual entries. Toggle via POLYMARKET_SUPPRESS_BUY_LOGS=1.
+        if not settings.suppress_buy_logs:
+            prefix = "[DRY-RUN] " if settings.dry_run else ""
+            print(
+                f"🚀 {prefix}BUY {candidate.outcome} ${stake} @ {entry_price} | "
+                f"{candidate.question[:60]}"
+            )
     else:
         print(f"\n🚀 MARKET BUY: {candidate.outcome} on {candidate.question}")
         print(f"   Stake: ${stake} USDC | Max price guard: {entry_price} | Est. shares: {size}")

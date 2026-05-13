@@ -14,6 +14,8 @@ cd "$REPO_ROOT"
 
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 export POLYMARKET_QUIET=${POLYMARKET_QUIET:-1}
+# Show SELLs only — suppress per-BUY lines for a clean log.
+export POLYMARKET_SUPPRESS_BUY_LOGS=${POLYMARKET_SUPPRESS_BUY_LOGS:-1}
 
 # Telegram alerts: heartbeat every 15 min on top of stdout.
 export TELEGRAM_ALERT_HEARTBEAT=${TELEGRAM_ALERT_HEARTBEAT:-1}

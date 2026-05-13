@@ -212,6 +212,7 @@ class Settings:
     dry_run: bool = field(default_factory=lambda: _bool_env("POLYMARKET_DRY_RUN", False))
     quiet: bool = field(default_factory=lambda: _bool_env("POLYMARKET_QUIET", False))
     stdout_heartbeat_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_STDOUT_HEARTBEAT_MINUTES", 0))
+    suppress_buy_logs: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SUPPRESS_BUY_LOGS", False))
 
     run_mode: str = field(default_factory=lambda: os.getenv("POLYMARKET_RUN_MODE", "smart_money"))
 

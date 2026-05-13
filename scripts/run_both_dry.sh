@@ -34,7 +34,8 @@ run_bot() {
     local profile="$1"
     local run="$2"
     local prefix="$3"
-    POLYMARKET_QUIET=1 uv run pmbot auto-loop --dry-run --profile "$profile" --run "$run" \
+    POLYMARKET_QUIET=1 POLYMARKET_SUPPRESS_BUY_LOGS=1 \
+        uv run pmbot auto-loop --dry-run --profile "$profile" --run "$run" \
         2>&1 | sed -u "s/^/[${prefix}] /" &
 }
 
