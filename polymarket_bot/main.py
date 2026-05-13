@@ -2109,12 +2109,14 @@ def _print_stdout_heartbeat(
     unrealized = float(summary.get("unrealized_pnl", 0) or 0)
     positions = int(summary.get("open_positions", 0) or 0)
     cash_pct = (cash / equity * 100.0) if equity > 0 else 0.0
-    win_rate = (wins_24h / trades_24h * 100.0) if trades_24h > 0 else 0.0
+    decided_24h = wins_24h + losses_24h
+    win_rate = (wins_24h / decided_24h * 100.0) if decided_24h > 0 else 0.0
     realized_all, closed_all, wins_all, losses_all = _all_time_realized_pnl(
         settings.trade_journal_path
     )
     net_since_start = realized_all + unrealized
-    win_rate_all = (wins_all / closed_all * 100.0) if closed_all > 0 else 0.0
+    decided_all = wins_all + losses_all
+    win_rate_all = (wins_all / decided_all * 100.0) if decided_all > 0 else 0.0
     stamp = time.strftime("%H:%M:%S", time.localtime())
     mode = "DRY-RUN" if settings.dry_run else "LIVE"
     sep = "─" * 64
@@ -2702,6 +2704,82 @@ def cli_auto_loop(
         from . import race_strategies as race_module
 
         race_module.underdog_loop(settings)
+    elif mode == "hybrid_smart_money":
+        from . import race_strategies as race_module
+
+        race_module.hybrid_smart_money_loop(settings)
+    elif mode == "smart_wallet_consensus":
+        from . import race_strategies as race_module
+
+        race_module.smart_wallet_consensus_loop(settings)
+    elif mode == "whale_entry_detection":
+        from . import race_strategies as race_module
+
+        race_module.whale_entry_loop(settings)
+    elif mode == "wallet_cluster_correlation":
+        from . import race_strategies as race_module
+
+        race_module.wallet_cluster_loop(settings)
+    elif mode == "early_momentum_detection":
+        from . import race_strategies as race_module
+
+        race_module.early_momentum_loop(settings)
+    elif mode == "liquidity_vacuum_breakout":
+        from . import race_strategies as race_module
+
+        race_module.liquidity_vacuum_loop(settings)
+    elif mode == "mean_reversion_fade":
+        from . import race_strategies as race_module
+
+        race_module.mean_reversion_fade_loop(settings)
+    elif mode == "range_channel_trading":
+        from . import race_strategies as race_module
+
+        race_module.range_channel_loop(settings)
+    elif mode == "aggressive_buyer_detection":
+        from . import race_strategies as race_module
+
+        race_module.aggressive_buyer_loop(settings)
+    elif mode == "orderbook_imbalance":
+        from . import race_strategies as race_module
+
+        race_module.orderbook_imbalance_loop(settings)
+    elif mode == "late_momentum_chase":
+        from . import race_strategies as race_module
+
+        race_module.late_momentum_chase_loop(settings)
+    elif mode == "weak_holder_flush":
+        from . import race_strategies as race_module
+
+        race_module.weak_holder_flush_loop(settings)
+    elif mode == "probability_drift":
+        from . import race_strategies as race_module
+
+        race_module.probability_drift_loop(settings)
+    elif mode == "resolution_compression":
+        from . import race_strategies as race_module
+
+        race_module.resolution_compression_loop(settings)
+    elif mode == "liquidity_absorption":
+        from . import race_strategies as race_module
+
+        race_module.liquidity_absorption_loop(settings)
+    elif mode == "momentum_exhaustion_reversal":
+        from . import race_strategies as race_module
+
+        race_module.momentum_exhaustion_loop(settings)
+    elif mode == "micro_scalping":
+        from . import race_strategies as race_module
+
+        race_module.micro_scalping_loop(settings)
+    elif mode == "multi_signal_consensus":
+        from . import race_strategies as race_module
+
+        race_module.multi_signal_consensus_loop(settings)
+    elif mode == "kzerlepgm_ultimatestrategy":
+        from . import kzer_arb
+
+        kzer_arb.kzer_loop(settings)
     else:
         smart_money_loop(settings)
 

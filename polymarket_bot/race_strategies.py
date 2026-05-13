@@ -394,6 +394,283 @@ def select_late_favorite(
 
 
 # ---------------------------------------------------------------------------
+# Framework Rules — 17 race-mode strategies derived from the spec.
+#
+# Many of these are *degraded* versions of the spec, because the polling-based
+# data layer doesn't expose live orderbook depth, per-trade size, refill
+# timing, or correlated-wallet history. Each docstring states what was
+# approximated. Treat them as candidate variations to A/B-race, not as
+# faithful implementations of the original ideas.
+#
+# Cross-cutting rules NOT implemented as entry modes (they're overlays):
+#   #10 Spoof Detection Avoidance — needs orderbook depth telemetry.
+#   #18 Volatility Regime Switching — needs a regime classifier on top.
+#   #20 Confidence Weighted Positioning — sizing helper, see sizing layer.
+# ---------------------------------------------------------------------------
+
+
+def _dedupe_top_n(
+    scored: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    scored.sort(key=lambda t: t[1], reverse=True)
+    seen: set[str] = set()
+    out: list[Candidate] = []
+    for c, _ in scored:
+        if c.market_id in seen:
+            continue
+        seen.add(c.market_id)
+        out.append(c)
+        if len(out) >= n:
+            break
+    return out
+
+
+def select_hybrid_smart_money(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#0 MAIN: momentum + volume + tight spread + mid-price band."""
+    qualified: list[tuple[Candidate, float]] = []
+    for c, mom in eligible:
+        if mom < 0.03 or (c.volume or 0) < 2000.0:
+            continue
+        bid, ask = c.best_bid or 0.0, c.best_ask or 1.0
+        if not (0 <= ask - bid <= 0.04):
+            continue
+        if not (0.15 <= ask <= 0.85):
+            continue
+        qualified.append((c, mom * (c.volume or 1.0)))
+    return _dedupe_top_n(qualified, n)
+
+
+def select_smart_wallet_consensus(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#1: high 24h volume as degraded proxy for multi-wallet activity."""
+    qualified = [
+        (c, c.volume or 0.0)
+        for c, mom in eligible
+        if (c.volume or 0) >= 5000.0 and mom > 0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_whale_entry(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#2: outsized volume + positive momentum (whale-trade proxy)."""
+    qualified = [
+        (c, (c.volume or 0.0) * max(mom, 0.0))
+        for c, mom in eligible
+        if (c.volume or 0) >= 10000.0 and mom >= 0.02
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_wallet_cluster(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#3: degraded — true correlation needs offline co-trading graph."""
+    qualified = [
+        (c, mom + (c.volume or 0.0) / 100000.0)
+        for c, mom in eligible
+        if (c.volume or 0) >= 3000.0 and mom >= 0.02
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_early_momentum(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#4: small early move (2-8%) with volume floor — catch before expansion."""
+    qualified = [
+        (c, mom)
+        for c, mom in eligible
+        if 0.02 <= mom <= 0.08 and (c.volume or 0) >= 1000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_liquidity_vacuum(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#5: thin liquidity + breakout momentum — exploit shallow asks."""
+    qualified = [
+        (c, mom)
+        for c, mom in eligible
+        if (c.liquidity or 0) < 1500.0 and mom >= 0.05
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_mean_reversion_fade(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#6: fade modest emotional dumps (-5%..-10%, smaller than panic_fade)."""
+    qualified = [
+        (c, -mom)
+        for c, mom in eligible
+        if -0.10 <= mom <= -0.05 and (c.volume or 0) >= 1500.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_range_channel(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#7: low-volatility mid-range markets (no time-series → coarse proxy)."""
+    qualified = [
+        (c, -abs(mom))
+        for c, mom in eligible
+        if abs(mom) <= 0.02
+        and 0.30 <= (c.best_ask or 1.0) <= 0.55
+        and (c.volume or 0) >= 500.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_aggressive_buyer(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#8: strong momentum + high volume (aggressive bidding proxy)."""
+    qualified = [
+        (c, mom * (c.volume or 1.0))
+        for c, mom in eligible
+        if mom >= 0.06 and (c.volume or 0) >= 4000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_orderbook_imbalance(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#9: tight spread + mid-price + positive momentum (depth proxy)."""
+    qualified: list[tuple[Candidate, float]] = []
+    for c, mom in eligible:
+        bid, ask = c.best_bid or 0.0, c.best_ask or 1.0
+        if not (0 <= ask - bid <= 0.03):
+            continue
+        if mom < 0.02:
+            continue
+        if not (0.25 <= ask <= 0.75):
+            continue
+        qualified.append((c, mom))
+    return _dedupe_top_n(qualified, n)
+
+
+def select_late_momentum_chase(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#11: confirmed continuation — high momentum within 90 min of expiry."""
+    qualified = [
+        (c, mom)
+        for c, mom in eligible
+        if mom >= 0.08
+        and (c.hours_to_close or 99) <= 1.5
+        and (c.volume or 0) >= 2000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_weak_holder_flush(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#12: buy panic dumps (≥10% drop) with volume — like panic_fade, harsher."""
+    qualified = [
+        (c, -mom)
+        for c, mom in eligible
+        if mom <= -0.10 and (c.volume or 0) >= 2000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_probability_drift(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#13: slow steady directional move (1.5-6% momentum, mid-price)."""
+    qualified = [
+        (c, mom)
+        for c, mom in eligible
+        if 0.015 <= mom <= 0.06
+        and (c.volume or 0) >= 800.0
+        and 0.20 <= (c.best_ask or 1.0) <= 0.80
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_resolution_compression(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#14: favorites near expiry, looser bid floor than late_favorite."""
+    qualified = [
+        (c, -(c.hours_to_close or 99))
+        for c, _ in eligible
+        if (c.best_bid or 0) >= 0.55 and (c.hours_to_close or 99) <= 2.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_liquidity_absorption(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#15: small drop (-2..-6%) absorbed by volume — refill-time proxy."""
+    qualified = [
+        (c, c.volume or 0.0)
+        for c, mom in eligible
+        if -0.06 <= mom <= -0.02 and (c.volume or 0) >= 3000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_momentum_exhaustion(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#16: near-zero momentum + prior high volume (exhaustion proxy)."""
+    qualified = [
+        (c, c.volume or 0.0)
+        for c, mom in eligible
+        if abs(mom) <= 0.015 and (c.volume or 0) >= 5000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_micro_scalping(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#17: tightest-spread mid-price markets — polling-rate scalping only."""
+    qualified: list[tuple[Candidate, float]] = []
+    for c, _mom in eligible:
+        bid, ask = c.best_bid or 0.0, c.best_ask or 1.0
+        spread = ask - bid
+        if not (0 <= spread <= 0.02):
+            continue
+        if not (0.30 <= ask <= 0.70):
+            continue
+        qualified.append((c, -spread))
+    return _dedupe_top_n(qualified, n)
+
+
+def select_multi_signal_consensus(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """#19: require ≥3 of {momentum, volume, tight spread, mid-price}."""
+    qualified: list[tuple[Candidate, float]] = []
+    for c, mom in eligible:
+        signals = 0
+        if mom >= 0.03:
+            signals += 1
+        if (c.volume or 0) >= 3000.0:
+            signals += 1
+        bid, ask = c.best_bid or 0.0, c.best_ask or 1.0
+        if 0 <= ask - bid <= 0.03:
+            signals += 1
+        if 0.20 <= ask <= 0.80:
+            signals += 1
+        if signals >= 3:
+            qualified.append((c, signals + mom))
+    return _dedupe_top_n(qualified, n)
+
+
+# ---------------------------------------------------------------------------
 # Shared exit logic
 # ---------------------------------------------------------------------------
 
@@ -774,3 +1051,80 @@ def late_favorite_loop(settings: Settings) -> None:
     from .main import strategy_loop
 
     strategy_loop(settings, "late_favorite", late_favorite_once)
+
+
+# ---------------------------------------------------------------------------
+# Framework Rules — once/loop wrappers for the 17 race-mode strategies.
+# ---------------------------------------------------------------------------
+
+
+def _race_strategy(name: str, selector):
+    def _once(settings: Settings) -> dict[str, Any]:
+        return _run_race_tick(
+            settings,
+            name,
+            lambda eligible: selector(eligible, settings.race_max_orders_per_tick),
+        )
+
+    def _loop(settings: Settings) -> None:
+        from .main import strategy_loop
+
+        strategy_loop(settings, name, _once)
+
+    return _once, _loop
+
+
+hybrid_smart_money_once, hybrid_smart_money_loop = _race_strategy(
+    "hybrid_smart_money", select_hybrid_smart_money
+)
+smart_wallet_consensus_once, smart_wallet_consensus_loop = _race_strategy(
+    "smart_wallet_consensus", select_smart_wallet_consensus
+)
+whale_entry_once, whale_entry_loop = _race_strategy(
+    "whale_entry_detection", select_whale_entry
+)
+wallet_cluster_once, wallet_cluster_loop = _race_strategy(
+    "wallet_cluster_correlation", select_wallet_cluster
+)
+early_momentum_once, early_momentum_loop = _race_strategy(
+    "early_momentum_detection", select_early_momentum
+)
+liquidity_vacuum_once, liquidity_vacuum_loop = _race_strategy(
+    "liquidity_vacuum_breakout", select_liquidity_vacuum
+)
+mean_reversion_fade_once, mean_reversion_fade_loop = _race_strategy(
+    "mean_reversion_fade", select_mean_reversion_fade
+)
+range_channel_once, range_channel_loop = _race_strategy(
+    "range_channel_trading", select_range_channel
+)
+aggressive_buyer_once, aggressive_buyer_loop = _race_strategy(
+    "aggressive_buyer_detection", select_aggressive_buyer
+)
+orderbook_imbalance_once, orderbook_imbalance_loop = _race_strategy(
+    "orderbook_imbalance", select_orderbook_imbalance
+)
+late_momentum_chase_once, late_momentum_chase_loop = _race_strategy(
+    "late_momentum_chase", select_late_momentum_chase
+)
+weak_holder_flush_once, weak_holder_flush_loop = _race_strategy(
+    "weak_holder_flush", select_weak_holder_flush
+)
+probability_drift_once, probability_drift_loop = _race_strategy(
+    "probability_drift", select_probability_drift
+)
+resolution_compression_once, resolution_compression_loop = _race_strategy(
+    "resolution_compression", select_resolution_compression
+)
+liquidity_absorption_once, liquidity_absorption_loop = _race_strategy(
+    "liquidity_absorption", select_liquidity_absorption
+)
+momentum_exhaustion_once, momentum_exhaustion_loop = _race_strategy(
+    "momentum_exhaustion_reversal", select_momentum_exhaustion
+)
+micro_scalping_once, micro_scalping_loop = _race_strategy(
+    "micro_scalping", select_micro_scalping
+)
+multi_signal_consensus_once, multi_signal_consensus_loop = _race_strategy(
+    "multi_signal_consensus", select_multi_signal_consensus
+)

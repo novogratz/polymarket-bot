@@ -571,7 +571,8 @@ def notify_heartbeat(snapshot: dict[str, Any]) -> None:
     wins = int(snapshot.get("wins_24h", 0) or 0)
     losses = int(snapshot.get("losses_24h", 0) or 0)
     realized_24h = float(snapshot.get("realized_pnl_24h_usd", 0) or 0)
-    win_rate = (wins / trades * 100.0) if trades > 0 else 0.0
+    decided = wins + losses
+    win_rate = (wins / decided * 100.0) if decided > 0 else 0.0
 
     cash_pct = (cash / equity * 100.0) if equity > 0 else 0.0
     stamp = time.strftime("%Hh%M", time.localtime(now))

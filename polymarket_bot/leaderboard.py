@@ -55,7 +55,8 @@ class RunStats:
 
     @property
     def win_rate_pct(self) -> float:
-        return (self.wins / self.closed_trades * 100.0) if self.closed_trades > 0 else 0.0
+        decided = self.wins + self.losses
+        return (self.wins / decided * 100.0) if decided > 0 else 0.0
 
 
 def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
