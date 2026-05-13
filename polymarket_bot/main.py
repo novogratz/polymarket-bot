@@ -2694,6 +2694,10 @@ def cli_auto_loop(
         from . import race_strategies as race_module
 
         race_module.panic_fade_loop(settings)
+    elif mode == "pmlepgm_counter_panic_fade":
+        from . import race_strategies as race_module
+
+        race_module.pmlepgm_counter_panic_fade_loop(settings)
     elif mode == "underdog":
         from . import race_strategies as race_module
 

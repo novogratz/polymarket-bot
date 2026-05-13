@@ -290,6 +290,35 @@ def select_panic_fade(
     return picks
 
 
+def select_counter_panic_fade(
+    eligible: list[tuple[Candidate, float]],
+    n: int,
+    min_panic_move: float,
+    min_volume_24h: float,
+) -> list[Candidate]:
+    """Reverse of panic_fade: ride extreme intraday moves instead of fading.
+
+    Same trigger (≥min_panic_move move, volume-confirmed) but bets WITH the
+    move on the winning side, assuming momentum continues through expiry.
+    """
+    qualified = [
+        (c, mom)
+        for c, mom in eligible
+        if mom >= min_panic_move and (c.volume or 0) >= min_volume_24h
+    ]
+    qualified.sort(key=lambda t: t[1], reverse=True)
+    seen: set[str] = set()
+    picks: list[Candidate] = []
+    for c, _ in qualified:
+        if c.market_id in seen:
+            continue
+        seen.add(c.market_id)
+        picks.append(c)
+        if len(picks) >= n:
+            break
+    return picks
+
+
 def select_underdog_momentum(
     eligible: list[tuple[Candidate, float]],
     n: int,
@@ -677,6 +706,25 @@ def panic_fade_loop(settings: Settings) -> None:
     from .main import strategy_loop
 
     strategy_loop(settings, "panic_fade", panic_fade_once)
+
+
+def pmlepgm_counter_panic_fade_once(settings: Settings) -> dict[str, Any]:
+    return _run_race_tick(
+        settings,
+        "pmlepgm_counter_panic_fade",
+        lambda eligible: select_counter_panic_fade(
+            eligible,
+            settings.race_max_orders_per_tick,
+            settings.race_panic_fade_min_move,
+            settings.race_panic_fade_min_volume,
+        ),
+    )
+
+
+def pmlepgm_counter_panic_fade_loop(settings: Settings) -> None:
+    from .main import strategy_loop
+
+    strategy_loop(settings, "pmlepgm_counter_panic_fade", pmlepgm_counter_panic_fade_once)
 
 
 def underdog_loop(settings: Settings) -> None:
