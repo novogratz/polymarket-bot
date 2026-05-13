@@ -2682,10 +2682,10 @@ def cli_auto_loop(
         from . import race_strategies as race_module
 
         race_module.favorite_loop(settings)
-    elif mode == "breakout":
+    elif mode == "championdumonde_breakout":
         from . import race_strategies as race_module
 
-        race_module.breakout_loop(settings)
+        race_module.championdumonde_breakout_loop(settings)
     elif mode == "late_favorite":
         from . import race_strategies as race_module
 

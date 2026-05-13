@@ -633,10 +633,10 @@ def favorite_once(settings: Settings) -> dict[str, Any]:
     )
 
 
-def breakout_once(settings: Settings) -> dict[str, Any]:
+def championdumonde_breakout_once(settings: Settings) -> dict[str, Any]:
     return _run_race_tick(
         settings,
-        "breakout",
+        "championdumonde_breakout",
         lambda eligible: select_breakout(
             eligible,
             settings.race_max_orders_per_tick,
@@ -716,10 +716,10 @@ def favorite_loop(settings: Settings) -> None:
     strategy_loop(settings, "favorite", favorite_once)
 
 
-def breakout_loop(settings: Settings) -> None:
+def championdumonde_breakout_loop(settings: Settings) -> None:
     from .main import strategy_loop
 
-    strategy_loop(settings, "breakout", breakout_once)
+    strategy_loop(settings, "championdumonde_breakout", championdumonde_breakout_once)
 
 
 def late_favorite_loop(settings: Settings) -> None:

@@ -1,4 +1,4 @@
-# Profil "breakout" — momentum continuation avec confirmation de volume.
+# Profil "championdumonde_breakout" — momentum continuation avec confirmation de volume.
 #
 # Version plus stricte de news : nécessite à la fois un fort mouvement
 # de prix intraday ET un volume élevé. Filtre les "fake spikes" où un
@@ -6,7 +6,7 @@
 
 [run]
 starting_cash = 100.0
-mode = "breakout"
+mode = "championdumonde_breakout"
 
 [sizing]
 max_position_ceiling_usd = 10.0

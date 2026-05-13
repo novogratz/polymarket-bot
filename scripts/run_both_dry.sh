@@ -8,7 +8,7 @@
 #   4.  [random]     — control: random picks
 #   5.  [contra]     — bet against today's momentum
 #   6.  [favorite]   — buy heavy favorites (bid ≥ 0.65)
-#   7.  [breakout]   — momentum + volume confirmed
+#   7.  [cdm_break]  — championdumonde_breakout: momentum + volume confirmed
 #   8.  [late_fav]   — favorites < 30min to expiry
 #   9.  [panic_fade] — fade extreme intraday moves (≥15¢)
 #   10. [underdog]   — buy rising underdogs (ask ≤ 0.30 + momentum)
@@ -47,13 +47,13 @@ run_bot baseline      baseline      "baseline  "
 run_bot random        random        "random    "
 run_bot contrarian    contrarian    "contra    "
 run_bot favorite      favorite      "favorite  "
-run_bot breakout      breakout      "breakout  "
+run_bot championdumonde_breakout championdumonde_breakout "cdm_break "
 run_bot late_favorite late_favorite "late_fav  "
 run_bot panic_fade    panic_fade    "panic_fade"
 run_bot underdog      underdog      "underdog  "
 
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
-    --runs news,edge,baseline,random,contrarian,favorite,breakout,late_favorite,panic_fade,underdog \
+    --runs news,edge,baseline,random,contrarian,favorite,championdumonde_breakout,late_favorite,panic_fade,underdog \
     --interval 15 --telegram \
     2>&1 | sed -u 's/^/[board]     /' &
 
