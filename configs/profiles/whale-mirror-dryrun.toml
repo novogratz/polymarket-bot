@@ -50,7 +50,7 @@ max_chase_premium = 0.05
 min_buy_price = 0.02
 max_buy_price = 0.98
 max_open_positions = 12
-max_category_exposure_pct = 0.50
+max_category_exposure_pct = 1.50
 
 [telemetry]
 quiet = false
