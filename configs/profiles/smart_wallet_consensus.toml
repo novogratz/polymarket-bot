@@ -1,7 +1,7 @@
 # Profil "smart_wallet_consensus" — #1 — high 24h volume as proxy for multi-wallet activity.
 
 [run]
-starting_cash = 1000.0
+starting_cash = 100.0
 mode = "smart_wallet_consensus"
 
 [sizing]

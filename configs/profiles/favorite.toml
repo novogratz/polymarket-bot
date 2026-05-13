@@ -4,7 +4,7 @@
 # La vraie question : est-ce que le spread + slippage mange l'edge ?
 
 [run]
-starting_cash = 1000.0
+starting_cash = 100.0
 mode = "favorite"
 
 [sizing]

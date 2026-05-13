@@ -1,7 +1,7 @@
 # Profil "late_momentum_chase" — #11 — confirmed continuation near expiry. Smaller sizing.
 
 [run]
-starting_cash = 1000.0
+starting_cash = 100.0
 mode = "late_momentum_chase"
 
 [sizing]
