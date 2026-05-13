@@ -57,6 +57,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "tiered_copy_ratios": ("POLYMARKET_MIRROR_TIERED_COPY_RATIOS", "str"),
         "weekly_loss_limit_pct": ("POLYMARKET_MIRROR_WEEKLY_LOSS_LIMIT_PCT", "float"),
         "min_liquidity_usd": ("POLYMARKET_MIRROR_MIN_LIQUIDITY_USD", "float"),
+        "max_days_to_expiry": ("POLYMARKET_MIRROR_MAX_DAYS_TO_EXPIRY", "int"),
     },
     "sizing": {
         "position_pct": ("POLYMARKET_SMART_POSITION_PCT", "float"),
