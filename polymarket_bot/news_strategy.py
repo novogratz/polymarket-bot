@@ -526,6 +526,21 @@ def news_once(settings: Settings) -> dict[str, Any]:
     _step(settings, f"   eligible after filters: {len(scored)}")
 
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+
+    # Live-position sync: prevents phantom positions in the local ledger
+    # from triggering "balance is not enough" SELLs on the next tick.
+    if settings.dry_run:
+        _step(settings, "   [DRY-RUN] skipping live-position sync")
+    elif settings.sync_live_positions:
+        from .main import _sync_live_positions
+
+        _step(settings, "   syncing live positions...")
+        sync_actions = _sync_live_positions(settings, portfolio)
+        if sync_actions:
+            closed = sum(1 for a in sync_actions if a.get("action") == "closed_stale_local_position")
+            imported = sum(1 for a in sync_actions if a.get("action") == "imported_live_position")
+            _step(settings, f"   sync: {closed} stale closed, {imported} imported")
+
     candidates_only = [c for c, _ in scored]
     pool = ensure_open_positions_in_pool(settings, portfolio, candidates_only)
     portfolio.mark_to_market(pool)

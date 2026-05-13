@@ -853,6 +853,28 @@ def edge_once(settings: Settings) -> dict[str, Any]:
     _step(settings, f"   markets: {len(markets)} raw")
 
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+
+    # Live-position sync: critical for correctness. Without it, a stale
+    # local ledger (from a previous strategy / partial fill / etc.) will
+    # try to sell shares that don't exist on-chain and every SELL fails
+    # with "balance is not enough". The smart-money loop has done this
+    # since v0.1; edge needs the same treatment.
+    if settings.dry_run:
+        _step(settings, "   [DRY-RUN] skipping live-position sync")
+    elif settings.sync_live_positions:
+        from .main import _sync_live_positions  # lazy: main imports this module
+
+        _step(settings, "   syncing live positions...")
+        sync_actions = _sync_live_positions(settings, portfolio)
+        if sync_actions:
+            closed = sum(1 for a in sync_actions if a.get("action") == "closed_stale_local_position")
+            imported = sum(1 for a in sync_actions if a.get("action") == "imported_live_position")
+            updated = sum(1 for a in sync_actions if a.get("action") == "updated_live_position")
+            _step(
+                settings,
+                f"   sync: {closed} stale closed, {imported} imported, {updated} updated",
+            )
+
     pair_candidates: list[Candidate] = []
     for market in markets:
         pair = _build_binary_quotes(market)
