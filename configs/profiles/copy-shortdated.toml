@@ -103,7 +103,7 @@ max_hold_hours = 0.0
 # Three leaderboard windows × 8 categories × 100 slots = ~800-1200 unique candidates.
 # WEEK catches consistent performers, DAILY catches today's hot streaks,
 # ALL catches all-time legends even if they're quiet this week.
-leaderboard_windows = "WEEK,DAILY,ALL"
+leaderboard_windows = "WEEK,ALL"
 top_n = 100
 trade_fetch_concurrency = 32
 
