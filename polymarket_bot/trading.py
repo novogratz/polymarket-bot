@@ -521,35 +521,39 @@ def execute_live_trade(
     if live_balance <= 0:
         raise ValueError("no live balance available")
 
-    # Target exposure sizing: deploy until invested capital reaches the configured equity fraction.
-    summary = portfolio.summary()
-    current_exposure = float(summary.get("invested", 0.0))
-    total_equity = live_balance + current_exposure
-    target_total_exposure = total_equity * settings.trade_fraction
-    needed_usd = max(0.0, target_total_exposure - current_exposure)
-    
-    # Sizing logic
     minimum = min_trade_usd if min_trade_usd is not None else settings.btc_min_trade_usd
     maximum = max_trade_usd if max_trade_usd is not None else settings.btc_max_trade_usd
-    if signal:
-        metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
-        if metrics.get("is_crypto_micro"):
-            maximum = min(maximum, settings.smart_crypto_micro_max_trade_usd)
-        consensus = float(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0.0)
-        copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
-        if settings.smart_position_pct <= 0:
-            quality_multiplier = 1.0
-            if consensus >= 4 and copied_usdc >= 1000:
-                quality_multiplier = 2.0
-            elif consensus >= 3 and copied_usdc >= 250:
-                quality_multiplier = 1.5
-            maximum = min(maximum, settings.max_position_usd * quality_multiplier)
-        if _is_high_conviction_signal(signal) and settings.smart_high_conviction_balance_fraction > 0:
-            maximum = max(maximum, live_balance * settings.smart_high_conviction_balance_fraction)
-            maximum = min(maximum, live_balance)
-    
-    # Use the needed amount, but capped by available balance and max per trade
-    stake = min(needed_usd, live_balance, maximum)
+
+    is_mirror = bool(signal and signal.get("tag") == "mirror")
+
+    if is_mirror:
+        stake = min(maximum, live_balance)
+    else:
+        # Target exposure sizing: deploy until invested capital reaches the configured equity fraction.
+        summary = portfolio.summary()
+        current_exposure = float(summary.get("invested", 0.0))
+        total_equity = live_balance + current_exposure
+        target_total_exposure = total_equity * settings.trade_fraction
+        needed_usd = max(0.0, target_total_exposure - current_exposure)
+
+        if signal:
+            metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
+            if metrics.get("is_crypto_micro"):
+                maximum = min(maximum, settings.smart_crypto_micro_max_trade_usd)
+            consensus = float(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0.0)
+            copied_usdc = float(metrics.get("copied_usdc") or signal.get("copied_usdc") or 0.0)
+            if settings.smart_position_pct <= 0:
+                quality_multiplier = 1.0
+                if consensus >= 4 and copied_usdc >= 1000:
+                    quality_multiplier = 2.0
+                elif consensus >= 3 and copied_usdc >= 250:
+                    quality_multiplier = 1.5
+                maximum = min(maximum, settings.max_position_usd * quality_multiplier)
+            if _is_high_conviction_signal(signal) and settings.smart_high_conviction_balance_fraction > 0:
+                maximum = max(maximum, live_balance * settings.smart_high_conviction_balance_fraction)
+                maximum = min(maximum, live_balance)
+
+        stake = min(needed_usd, live_balance, maximum)
     
     # If we are below minimum but have room to grow to target, take minimum
     if stake < minimum and needed_usd >= minimum and live_balance >= minimum:
