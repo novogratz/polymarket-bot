@@ -14,7 +14,7 @@
 #   uv run pmbot auto-loop --profile copy-shortdated --live --yes
 #
 # Diff vs copy-advanced (which has been net-losing in the journal):
-#   expiry       max_hours_to_expiry = 8 (same-day markets; Polymarket settles 4-8h after event)
+#   expiry       max_hours_to_expiry = 3 (same-day markets; Polymarket settles 4-8h after event)
 #   filters      min_target_stake 100 (whale conviction floor)
 #                min_whale_pnl 10k (wider net; sports specialists rarely top overall PnL)
 #                price band 0.15-0.85 -> 0.30-0.80
@@ -63,7 +63,7 @@ max_trade_age_seconds = 600
 # match-end time. In-play sports markets typically expire 4-8h out even
 # when the event is live right now. 8h captures same-day action; the
 # week-long tournament markets (165h) remain blocked.
-max_hours_to_expiry = 8
+max_hours_to_expiry = 3
 max_days_to_expiry = 0
 
 # Drawdown
