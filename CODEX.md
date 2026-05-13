@@ -15,73 +15,66 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 ## Project map
 
-- `polymarket_bot/main.py` — CLI commands and tick orchestration. Sizing helpers, trade-journal writer, `journal-stats` and `tune-strategy` commands.
-- `polymarket_bot/smart_money.py` — leaderboards, parallel trade fetching, token grouping, scoring, reverse-lookup helper.
-- `polymarket_bot/auto_tuner.py` — bounded overrides from the trade journal (defensive only).
-- `polymarket_bot/bitcoin.py` — BTC threshold edge model (Black-Scholes-from-volatility).
-- `polymarket_bot/trading.py` — live BUY/SELL order placement and stake computation.
-- `polymarket_bot/dashboard.py` — local dashboard at `http://127.0.0.1:8765`.
-- `polymarket_bot/portfolio.py` — local ledger, positions, pending orders, exits.
-- `polymarket_bot/gamma.py` — Gamma client + reverse-lookup by clob_token_ids.
+- `polymarket_bot/main.py` — CLI commands and strategy loops.
+- `polymarket_bot/mirror.py` — mirror-mode strategy: whale discovery, trade polling, eligibility, conviction sizing, buy/sell, drawdown limits.
+- `polymarket_bot/smart_money.py` — legacy smart-money strategy.
+- `polymarket_bot/dry_run_runs.py` — named dry-run lifecycle (`--run <name>`).
+- `polymarket_bot/auto_tuner.py` — defensive strategy overrides from trade journal.
+- `polymarket_bot/trading.py` — live BUY/SELL placement, SDK/legacy client wrapper, order cancellation via SDK v2 `get_open_orders`.
+- `polymarket_bot/portfolio.py` — local ledger with cash, positions, exits.
+- `polymarket_bot/gamma.py` — Gamma client + reverse-lookup.
 - `polymarket_bot/strategy.py` — candidate ranking.
+- `polymarket_bot/profiles.py` — TOML profile loader.
 - `scripts/run_live_70.sh` — canonical live runner.
-- `tests/test_strategy.py` — 52 tests.
+- `tests/test_mirror.py` — mirror mode tests.
+- `tests/test_strategy.py` — strategy tests.
+- `docs/PROFILES.md` — TOML profile reference.
+- `docs/STRATEGIES.md` — strategy docs.
 
 ## Commands
 
 Tests:
 
 ```bash
-python3 -B -m unittest discover -s tests
+uv run python -B -m unittest discover -s tests
 ```
 
-Live loop (what `scripts/run_live_70.sh` invokes):
+Live loop:
 
 ```bash
-POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
+uv run pmbot auto-loop --profile copy-advanced --live --yes
 ```
 
-Dashboard, journal stats, manual auto-tuner, bootstrap-creds, and reset-ledger: see `CLAUDE.md`. The CLI is limited to 6 commands: `auto-loop`, `dashboard`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`.
-
-## Recommended live command
+Dry-run with same strategy:
 
 ```bash
-bash scripts/run_live_70.sh
+POLYMARKET_PAPER_BALANCE_USD=100 uv run pmbot auto-loop --profile copy-advanced --dry-run --run mirror-whales
 ```
 
-See `CLAUDE.md` for the full parameter list and tick sequence.
+Doctor, status, positions, dashboard, journal-stats, tune-strategy: see `CLAUDE.md`.
 
-## Winning strategy
+## Mirror strategy: whale copy-trading
 
-Smart-money copy-trading. The bot waits for profitable wallets (top monthly leaderboard, PnL ≥ $1k, volume ≥ $2k, ROI ≥ 3%) to buy the same token in a short window (30 minutes), then mirrors that flow.
+Copies the collective moves of proven Polymarket whales. Scans leaderboards, discovers high-PnL wallets, polls their trades, and copies when ≥2 profitable wallets buy the same token.
 
-### The edge
+### Entry
 
-Wallets at the top of monthly leaderboards with meaningful PnL and volume have, on average, an informational edge on the markets they trade. When several buy the same token simultaneously, the collective signal is stronger than any single wallet. The bot copies that flow.
-
-### Entry conditions
-
-- Recent BUY trades from qualified wallets (PnL / volume / ROI / recency).
-- Multi-wallet consensus on the same token.
-- Enough copied USDC.
-- Tradable market: tight absolute and relative spread, ask within configured price band, not too close to expiry.
-- No duplicate per market or per event-slug (sports).
-- Conviction-weighted sizing (0.55x to 2.5x base).
+- Whale stake ≥ $100, bid-ask filters, chase premium ≤ 5%, liquidity ≥ $10k.
+- Sizing: `whale_stake × 0.20` (tiered up to 0.35), capped at 25% of equity and $250 hard cap.
+- Max 12 open positions, 50% per category.
 
 ### Exits
 
-- Take-profit ladder at +25% / +50% / +100% / +200% / +300% with partial sells (15% / 25% / 50% / 25% / 15%).
-- Trailing stop arms at +25% peak, exits on 50% giveback while still positive.
-- Peak-protect arms at +100% peak, exits below +40%.
-- Stop-loss at -40% after 15 minutes in position.
-- Cohort-sell exit (active SELL detection in 120 min lookback) or cohort-silent (no fresh BUY).
-- Near-expiry positive-PnL exit at ≥+5% within 20 minutes of close.
-- Max-hold-time force-close at 24 hours.
+Take-profit ladder (+25% to +300%), trailing stop, peak-protect, stop-loss (-40%), cohort follow, near-expiry, max-hold 24h. Sells are GTC limit orders — recorded as exits immediately even if unfilled.
+
+### Sell mechanics
+
+GTC sells with `status: "live"/"delayed"` are recorded as exits (shares deducted, cash credited). Stale GTC orders auto-cancelled via SDK v2. Live position + cash sync each tick prevents duplicate sell attempts.
 
 ### Auto-tuner
 
-Reads the trade journal each tick. Paused below 30 closed trades. Tightens filters and sizing after losing patterns. **Defensive only.**
+Defensive only. Tightens filters after losing patterns. Reads journal from 30 closed trades.
 
 ### Not guaranteed profit
 
-The expected edge comes from copying strong public flow while avoiding bad execution. No-signal / no-trade is a valid position.
+No-signal / no-trade is a valid position.

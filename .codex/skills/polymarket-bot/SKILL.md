@@ -14,53 +14,52 @@ Use this skill when working in this repository: strategy code, filters, live com
 - No random trade entry beyond the bounded `noise_fallback` ($10/trade, 4/tick).
 - Any new live strategy must define explicit entry criteria, spread filters, sizing caps, and duplicate-position checks.
 - Update tests when strategy behavior changes.
-- No LLM call (Claude, Codex, anything else) in the scanning or trade-selection path.
+- No LLM call (Codex, Claude, anything else) in the scanning or trade-selection path.
 - The bot must not have the capability to write or push source code on its own.
 
 ## Commands
 
 ```bash
-python3 -B -m unittest discover -s tests
-python3 -B -m polymarket_bot.main dashboard
-python3 -B -m polymarket_bot.main journal-stats
-python3 -B -m polymarket_bot.main tune-strategy
-POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
+uv run python -B -m unittest discover -s tests
+uv run pmbot auto-loop --profile copy-advanced --live --yes
+POLYMARKET_PAPER_BALANCE_USD=100 uv run pmbot auto-loop --profile copy-advanced --dry-run --run mirror-whales
+uv run pmbot dashboard
+uv run pmbot doctor
+uv run pmbot status
+uv run pmbot positions
+uv run pmbot journal-stats
 ```
-
-Canonical live config: `bash scripts/run_live_70.sh` (~$90 bankroll).
 
 ## Architecture
 
-- `polymarket_bot/main.py` — tick orchestration, sizing, journal, CLI.
-- `polymarket_bot/smart_money.py` — leaderboards, parallel trade fetching, signals, reverse-lookup.
-- `polymarket_bot/auto_tuner.py` — bounded overrides from the trade journal (defensive only).
-- `polymarket_bot/bitcoin.py` — BTC threshold edge model.
-- `polymarket_bot/trading.py` — live BUY/SELL order placement and final stake.
-- `polymarket_bot/portfolio.py` — local ledger.
+- `polymarket_bot/main.py` — CLI commands, tick orchestration, sizing, journal.
+- `polymarket_bot/mirror.py` — mirror-mode strategy: whale discovery, polling, eligibility, sizing, buy/sell, drawdown limits.
+- `polymarket_bot/smart_money.py` — legacy smart-money strategy.
+- `polymarket_bot/dry_run_runs.py` — named dry-run lifecycle (`--run <name>`).
+- `polymarket_bot/auto_tuner.py` — defensive overrides from trade journal.
+- `polymarket_bot/trading.py` — live order placement (FOK BUY, GTC SELL), SDK v2 wrapper with `cancel_active_orders_for_token`.
+- `polymarket_bot/portfolio.py` — local ledger (cash, positions, exits).
 - `polymarket_bot/gamma.py` — Gamma client + reverse-lookup.
 - `polymarket_bot/strategy.py` — candidate ranking.
+- `polymarket_bot/profiles.py` — TOML profile loader.
 
-## Default strategy
+## Default strategy (mirror mode)
 
-Smart-money copy-trading:
+Whale copy-trading:
 
-1. Load active Polymarket markets (Gamma scan + keyword scan + reverse-lookup).
-2. Pull leaderboard wallets that pass PnL / volume / ROI floors.
-3. Inspect recent BUYs in parallel.
-4. Require multi-wallet consensus, sufficient copied USDC, tight spreads, price band, freshness.
-5. Three passes: strict → relaxed → deep fallback. One shared leaderboard+trades fetch.
-6. Conviction-weighted sizing (0.55x to 2.5x), dynamic per-slot toward `SMART_CASH_FLOOR_PCT`.
-7. Multi-level exits before every new entry: take-profit ladder +50/+100/+200/+300, trailing stop, peak-protect, stop-loss, cohort-sell, cohort-silent, near-expiry, max-hold-time.
-8. No duplicate per market_id, per token, per event-slug. Per-category cap on sports.
-9. BTC edge integrated after the smart-money tick (cap $5, edge ≥ 8%).
-10. Noise fallback (cap $10, max 4 per tick) when 0 smart-money signal qualifies AND (positions below min OR cash above 35% of equity).
+1. Static target wallets + weekly leaderboard discovery (8 categories, min PnL $10k).
+2. Poll BUY trades per target, filter by age/seen/min stake/price band.
+3. `[live]` Sync positions + on-chain cash before exits.
+4. Exit waterfall: take-profit (+25% to +300%), trailing stop, peak-protect, stop-loss, cohort, near-expiry, max-hold.
+5. GTC SELLs recorded as exits immediately (status "live"/"delayed"). Stale orders auto-cancelled via SDK.
+6. BUY filters: chase ≤ 5%, liquidity ≥ $10k, category cap 50%, max 12 open, no duplicates.
+7. Sizing: `whale_stake × 0.20` (tiered up to 0.35), capped by equity × 25%, $250 hard cap, cash.
 
 ## Money-making logic
 
 - Single wallet = noise.
-- Multiple profitable wallets buying the same token in a short window = stronger collective signal.
-- A good signal can be a bad trade if execution is poor (spread, chase, fill).
-- Risk control matters: size by bankroll fraction, cap per-trade dollars, exit on flip signals.
-- Skipping is a valid action when the setup is not clean.
+- Multiple profitable wallets buying the same token = stronger collective signal.
+- Good signal + bad execution = bad trade.
+- Skipping is valid when no setup is clean.
 
-When editing strategy code, preserve this hierarchy: **consensus first, execution quality second, sizing discipline third.** Never replace it with random market selection.
+When editing, preserve: **consensus first, execution quality second, sizing discipline third.**

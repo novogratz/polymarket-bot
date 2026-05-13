@@ -22,37 +22,27 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 ## Project map
 
 - `polymarket_bot/main.py` — CLI commands and strategy loops. Tick orchestration, sizing helpers, trade-journal writer, `journal-stats` and `tune-strategy` commands.
-- `polymarket_bot/smart_money.py` — leaderboard fetching, parallel trade fetching, signal grouping, scoring, reverse-lookup helper.
+- `polymarket_bot/mirror.py` — mirror-mode strategy: whale discovery, trade polling, eligibility filters, conviction sizing, buy/sell execution, daily/weekly drawdown limits.
+- `polymarket_bot/smart_money.py` — legacy smart-money strategy: leaderboard fetching, parallel trade fetching, signal grouping, scoring, reverse-lookup.
+- `polymarket_bot/dry_run_runs.py` — named dry-run lifecycle (`--run <name>`): isolated ledger, journal, tick state, mirror state, equity curve.
 - `polymarket_bot/auto_tuner.py` — reads the trade journal each tick and computes bounded strategy overrides (defensive only — tightens after losses).
 - `polymarket_bot/bitcoin.py` — BTC threshold edge model (Black-Scholes-from-volatility).
-- `polymarket_bot/trading.py` — authenticated live BUY/SELL order placement and final stake computation.
+- `polymarket_bot/trading.py` — authenticated live BUY/SELL order placement, FOK market orders, GTC limit sells, balance/allowance checks, SDK client wrapper with `cancel_active_orders_for_token` (falls back from SDK v2 to legacy REST).
 - `polymarket_bot/dashboard.py` — local real-time HTML dashboard at `http://127.0.0.1:8765`.
 - `polymarket_bot/portfolio.py` — local ledger with cash, open positions, pending orders, and exit records.
 - `polymarket_bot/gamma.py` — Gamma client (market scan + reverse-lookup by clob_token_ids).
 - `polymarket_bot/strategy.py` — candidate ranking from Gamma payloads.
 - `polymarket_bot/models.py` — shared dataclasses and parsing helpers.
+- `polymarket_bot/profiles.py` — TOML profile loader, env-var injection, `ProfileConfig` dataclass.
+- `polymarket_bot/live_confirm.py` — interactive live-trade confirmation prompt with full config recap.
 - `scripts/run_live_70.sh` — canonical live runner for ~$90 bankroll.
-- `tests/test_strategy.py` — 52 tests covering scoring, sizing, exit plans, auto-tuner rules.
-- `docs/PROFILES.md` — référence exhaustive des clés TOML des profils (sections, types, défauts, rôles).
-- `docs/STRATEGIES.md` — document maître des 6 lanes d'achat et des 9 conditions d'exit.
+- `tests/test_mirror.py` — tests for mirror mode filters, exits, daily pause.
+- `tests/test_strategy.py` — tests covering scoring, sizing, exit plans, auto-tuner rules.
+- `tests/test_dry_run_runs.py` — tests for named dry-run lifecycle and path isolation.
+- `docs/PROFILES.md` — exhaustive TOML profile key reference (sections, types, defaults).
+- `docs/STRATEGIES.md` — master document for all strategies and exit conditions.
 
-## Off-line analysis tools (read-only, no SDK calls)
-
-Scripts dans `scripts/` qui produisent des CSV (`data/`, gitignored) et des
-rapports markdown (`reports/`). Ils n'utilisent que les APIs publiques
-Polymarket et ne modifient **jamais** `polymarket_bot/*.py`.
-
-- `wallet_history_ytd.py` — ranking YTD des wallets leaderboard (FIFO)
-- `analyze_top_wallets.py` — cohortes, distribution PnL, suggestions de filtres
-- `market_reaction_time.py` — détection des jumps endogènes ≥5¢
-- `news_reaction.py` — latence news-ancrée (BLS/FOMC/Truth Social)
-- `wallet_edge_directional.py` — Étude C, edge directionnel par BUY (pct_ahead, mean_edge)
-- `analyze_wallet_8b52.py` — profil détaillé d'un wallet (positions, distribution, top markets)
-- `rank_copyable_wallets.py` — classement composite Z-score pct_ahead + mean_edge
-
-56 tests synthétiques dans `tests/test_{wallet_history_ytd,market_reaction_time,news_reaction,wallet_edge_directional}.py`.
-
-## Development workflow
+## Commands
 
 Run tests:
 
@@ -66,6 +56,7 @@ Quick CLI snapshots (read-only, no SDK calls):
 uv run pmbot status              # mode, equity, open positions, journal path/count
 uv run pmbot positions           # CLI table of open positions, sorted by PnL desc
 uv run pmbot --version           # version
+uv run pmbot doctor              # health check: .env, auth, endpoints, local state
 ```
 
 `status` and `positions` automatically read the dry-run ledger when
@@ -75,7 +66,8 @@ disables ANSI codes, `POLYMARKET_FORCE_COLOR=1` forces them through pipes.
 Dashboard:
 
 ```bash
-uv run pmbot dashboard
+uv run pmbot dashboard                          # reads live ledger
+uv run pmbot dashboard --run mirror-whales      # reads a specific dry-run ledger
 ```
 
 Trade-journal stats (per-bucket P&L, win rate, suggested tightenings):
@@ -90,147 +82,114 @@ Run the auto-tuner manually (writes `data/strategy_overrides.json`):
 uv run pmbot tune-strategy
 ```
 
-Live smart-money loop (interactive confirmation requested unless `--yes` is
-passed; the `--yes` flag is intended for scripts and automation only):
+Live mirror loop (interactive confirmation requested unless `--yes` is passed):
 
 ```bash
-uv run pmbot auto-loop --live --profile live-90
+uv run pmbot auto-loop --live --profile copy-advanced
 ```
 
-Dry-run smart-money loop (simulates orders without spending any cash;
-writes a separate ledger and journal):
+Dry-run mirror loop (simulates orders, isolated ledger per `--run`):
 
 ```bash
-uv run pmbot auto-loop --dry-run --profile baseline
+POLYMARKET_PAPER_BALANCE_USD=100 uv run pmbot auto-loop --profile copy-advanced --dry-run --run mirror-whales
 ```
 
 In dry-run mode every BUY/SELL is short-circuited (no SDK call), live
 position sync is skipped, and state is persisted to
-`data/dry_run_state.json` + `data/dry_run_journal.jsonl` so the live
-paper-trading ledger stays untouched.
+`data/dry_runs/<run>/` so the live ledger stays untouched.
 
-Quiet mode (compresses each tick to a one-line readable footer plus
-optional `→ BUY/SELL/NOISE/BTC` lines for executed actions, capped at 6;
-suppresses leaderboard pulls, trade fetches, reverse-lookup chatter, and
-BUY/SELL JSON dumps; the full tick payload is no longer printed in this
-mode):
+Quiet mode (one-line tick footer, suppresses leaderboard/trade/JSON chatter):
 
 ```bash
-POLYMARKET_QUIET=1 uv run pmbot auto-loop --live --profile live-90
-```
-
-Combine with dry-run for a clean simulation feed:
-
-```bash
-POLYMARKET_QUIET=1 uv run pmbot auto-loop --dry-run --profile baseline
+POLYMARKET_QUIET=1 uv run pmbot auto-loop --live --profile copy-advanced
 ```
 
 ## Recommended live command
 
-Use the canonical script to avoid copy-paste pitfalls:
-
 ```bash
-bash scripts/run_live_70.sh
+uv run pmbot auto-loop --profile copy-advanced --live --yes
 ```
 
-The script is the single source of truth for the live config. Current settings:
+The `copy-advanced` profile is the reference config:
 
-- `POLYMARKET_ASSUME_LIVE_BALANCE_USD=90`, `POLYMARKET_SYNC_LIVE_POSITIONS=1`.
-- Sizing: `POSITION_PCT=0.18`, `MAX_POSITION_CEILING_USD=150`, `MAX_POSITION_CEILING_PCT=0.30`, `CASH_FLOOR_PCT=0.05` (~95% deployment), `MIN_OPEN_POSITIONS=7`.
-- Trader cohort: leaderboard `MONTH`, top 100, `MIN_TRADER_PNL=$1k`, `MIN_TRADER_VOLUME=$2k`, `MIN_TRADER_ROI=3%`. Parallel fetch with `TRADE_FETCH_CONCURRENCY=24`.
-- Discovery: standard Gamma scan + keyword scan + reverse-lookup of the top 100 tokens with $50+ smart-money flow that aren't already in the scan.
-- Entry filters: `MIN_CONSENSUS=2`, `MIN_COPIED_USDC=$75`, `MAX_CHASE_PREMIUM=0.13`, price band 0.03–0.96, absolute spread ≤8c, relative spread ≤45%, signal staleness ≤10 min.
-- Three-pass scan per tick: strict → relaxed → deep fallback.
-- Exits: take-profit ladder `0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15`, peak-protect arming at +100% and exiting below +40%, trailing stop arming at +25% with 50% giveback, stop-loss -40% (after 15 min in position), resolved-market exit when bid ≥ 0.97, max-hold-time 24h, cohort-sell exit (active SELL detection in 120 min lookback, parallel fetch), near-expiry positive exit. SELLs that are rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
-- BTC edge integrated: at the end of every smart-money tick `btc_edge_once` runs with $5/trade cap and 8% minimum modeled edge over market.
-- Noise fallback: up to 4 trades at $10 each when all three smart-money scans return 0 AND (positions below `MIN_OPEN_POSITIONS` OR cash share above 35% of equity). Tagged `noise_fallback` in the journal.
-- Auto-tune: `SMART_AUTO_TUNE_ENABLED=1` (paused below 30 closed trades; defensive only).
+- `starting_cash = 1000.0`, `mode = "mirror"`.
+- Static targets: `bossoskil1, Pestle, surfandturf, JewishNinja, swisstony, RN1, Oddn, anoin123, wan123, Talvez10`.
+- Whale discovery enabled every 6h, min PnL $10k.
+- Sizing: `copy_ratio = 0.20`, tiered up to 0.35 for $100k+ PnL whales. Per-position cap at 25% of equity, per-category cap at 50%.
+- Entry filters: `min_target_stake_usd = $100`, `min_liquidity_usd = $10k`, `max_chase_premium = 0.05`, price band 0.02–0.98, max 12 open positions.
+- Drawdown protection: daily -5%, weekly -12%.
+- Order handling: FOK market BUYs, GTC limit SELLs. Stale GTC orders auto-cancelled via SDK v2 `get_open_orders`. Live positions + USDC cash synced from Polymarket each tick.
+- Interval: 30s between ticks.
 
 Dashboard at `http://127.0.0.1:8765` by default.
 
-## Tick sequence
+## Tick sequence (mirror mode)
 
 Each tick prints structured progress to stdout, followed by a JSON summary. Order:
 
-1. Auto-tune: read journal, compute overrides if ≥30 closed trades, apply on top of env-var settings.
-2. Load Gamma markets (scan + keyword scan).
-3. Sync live Polymarket positions into the local ledger.
-4. Refresh live USDC cash from CLOB.
-5. Cohort-exit detection (active SELL by entry wallets, or no fresh BUYs).
-6. Sell strategy: take-profit ladder, trailing stop, peak-protect, stop-loss, cohort exits, near-expiry, max-hold-time.
-7. Smart-money scan: strict → relaxed → deep fallback. One leaderboard+trades fetch shared across all three.
-8. Reverse-lookup high-flow tokens not in current candidates; merge into the eligible pool.
-9. Place trades from the opportunity list with dynamic per-slot sizing toward the cash floor.
-10. Noise fallback if enabled and either below `MIN_OPEN_POSITIONS` or cash share above the cash-pressure threshold.
-11. BTC edge tick if enabled.
-12. Persist portfolio + write journal entries for any closed positions.
-13. Print JSON result, sleep `AUTO_INTERVAL_SECONDS`.
+1. Load mirror state (`seen`, `last_ts`, daily/weekly anchors, discovered targets).
+2. Run target discovery (leaderboard scan every 6h) → merge static + discovered targets.
+3. Load local portfolio ledger.
+4. _(live only)_ Sync live Polymarket positions: close stale local positions, import/update live positions, fetch on-chain pUSD balance via `read_pusd_balance` → update `portfolio.cash`.
+5. Poll trades for every target wallet. Filter eligible: age, already-seen, min stake, buy price band.
+6. Sort eligible trades chronologically (oldest first) → ensures SELL before BUY for same token.
+7. Build exit candidates from open positions → mark-to-market.
+8. Sync daily/weekly drawdown anchors from current equity.
+9. Run exit waterfall: take-profit, trailing stop, peak-protect, stop-loss, cohort-sell, near-expiry, max-hold. GTC sell orders with `status: "live"/"delayed"` are recorded as exits immediately (position closed locally, cash credited). Stale GTC orders are auto-cancelled via SDK `get_open_orders`.
+10. For each eligible trade: check no-market, daily-pause, overcrowded, chase premium, liquidity, category cap, max open positions, duplicate event/position.
+11. Execute BUY via FOK market order. If `status: "delayed"` (unfilled), skip and retry next tick. If filled, record position.
+12. Execute SELL via GTC limit order. `status: "live"/"delayed"` = exit recorded, position closed. Sync won't re-open it.
+13. Persist mirror state + portfolio. Print JSON result, sleep `AUTO_INTERVAL_SECONDS`.
 
-## Winning strategy
+## Mirror strategy: whale copy-trading
 
-The default strategy is smart-money copy-trading. The bot does not invent an opinion on every market — it waits for public order-flow evidence that profitable wallets are buying the same token, then mirrors that flow with bounded sizing.
-
-### The edge
-
-Wallets at the top of monthly Polymarket leaderboards with positive PnL and meaningful volume have, on average, an informational or analytical edge on the markets they trade. When several of those wallets buy the same token in a short window (30 minutes), the collective signal is stronger than a single wallet. The bot mirrors this flow.
-
-Risks the strategy avoids:
-
-- **Fake edge** — one lucky wallet on an isolated trade. Filtered by ROI / volume / multi-wallet consensus.
-- **Bad execution** — paying the spread erases the edge. Filtered by absolute and relative spread, chase premium.
-- **Concentration** — six bets on the same event. Filtered by per-market and per-event-slug dedupe.
-- **Round-trip to flat** — a winner that gives back to zero. Filtered by take-profit ladder + trailing stop + peak-protect.
-- **Drawdown without exit** — a loser bleeding slowly. Filtered by stop-loss after min-age.
-- **Cohort flip** — entry wallets selling. Filtered by active cohort-sell detection.
+The bot watches top Polymarket whales. When **multiple** profitable wallets buy the same token in a short window, that's the signal — copy with bounded sizing.
 
 ### Entry conditions
 
-- Recent BUY trades from leaderboard wallets that pass PnL / volume / ROI floors.
-- Multi-wallet consensus on the same token (relaxed in fallback passes when below the open-positions target).
-- Enough copied USDC, scaled by conviction tier.
-- Tradable market: tight absolute and relative spreads, ask within configured price band, not too close to expiry.
-- No existing open position on the same market or token. Sports respect a per-event concentration cap.
-- Explicit `--live` flag on `pmbot auto-loop` (with `--yes` only when invoked from a script).
-- Conviction-weighted sizing: weak signals near the floor; very-high-conviction signals (5+ wallets, $5k+ copied) up to 2.5× the base, capped by the per-position ceiling.
+- Recent BUY trades from leaderboard wallets (discovered or static target list).
+- Multi-wallet consensus: ≥2 whales buying the same token.
+- Whale stake ≥ $100, whale PnL ≥ $10k (discovery threshold).
+- Tradable market: ask within 0.02–0.98, chase premium ≤ 5%, liquidity ≥ $10k.
+- No existing position on the same market/token. Sports capped at 50% category exposure.
+- Max 12 open positions.
+- Sizing: `min(base = whale_stake × copy_ratio, equity × 25%, size_usd cap, cash)`.
 
 ### Exits (run before every new entry)
 
-- Take-profit ladder at +25% / +50% / +100% / +200% / +300% with partial sells (15% / 25% / 50% / 25% / 15%).
-- Trailing stop arms at +25% peak, exits on 50% giveback while still positive.
-- Peak-protect arms at +100% peak, exits on giveback to +40%.
-- Stop-loss at -40% after 15 minutes in position (does not fire if peak-protect already armed).
-- Cohort-sell exit when any entry wallet has SOLD the token within the lookback window; cohort-silent exit when no cohort wallet has re-bought.
-- Near-expiry positive-PnL exit at ≥+5% within 20 minutes of close.
-- Max-hold-time force-close at 24 hours when no other reason fires.
+1. **Take-profit ladder** — +25% sell 15%, +50% sell 25%, +100% sell 50%, +200% sell 25%, +300% sell 15%.
+2. **Trailing stop** — arms at +25% peak, exits on 50% giveback while still positive.
+3. **Peak-protect** — arms at +100% peak, exits on giveback to +40%.
+4. **Stop-loss** — -40% after 15 min in position.
+5. **Cohort sell** — if entry whales sold the token, follow.
+6. **Near-expiry** — close winners at ≥+5% within 20 min of market close.
+7. **Max-hold** — force-close at 24h.
 
-### Sizing by conviction
+### Mirror sell mechanics
+
+Sells are placed as GTC limit orders. `status: "live"/"delayed"` means the order is on the CLOB book — the bot immediately records the exit (deducts shares, credits cash, closes position). On the next tick, `_sync_live_positions` skips re-opening positions that have exit records or a `pending_sell_order_id` flag, preventing duplicate sell attempts. If a sell is rejected with `"not enough balance"` (stale order exists), `cancel_active_orders_for_token` uses the SDK v2 `get_open_orders` endpoint to find and cancel the resting order, then retries next tick.
+
+### Sizing
 
 ```
-crypto micro                     -> 0.55x
-weak (<2-wallet $250)            -> 0.7x
-2-wallet $250+                   -> 0.9x
-2-wallet $1k+                    -> 1.1x
-3-wallet $250+                   -> 1.1x
-3-wallet $500+                   -> 1.3x
-4-wallet $1k+                    -> 1.6x
-4-wallet $2k+                    -> 2.0x
-5-wallet $5k+                    -> 2.5x
+whale_stake × copy_ratio (default 0.20, tiered up to 0.35)
+capped by → equity × max_position_pct (25%)
+capped by → size_usd (hard cap $250)
+capped by → available cash
 ```
-
-The multiplier is applied to `cash * SMART_POSITION_PCT`, capped by the larger of `SMART_MAX_POSITION_CEILING_USD` or `equity * SMART_MAX_POSITION_CEILING_PCT`, and bounded by `SMART_CRYPTO_MICRO_MAX_TRADE_USD` for crypto-micros.
 
 ### Defensive auto-tuner
 
-The auto-tuner reads the trade journal each tick. From 30 closed trades on:
+Reads the trade journal each tick. From 30 closed trades on:
 
-- Stop-loss > 40% of trades: tighten `MAX_CHASE_PREMIUM` ×0.80 and `MAX_RELATIVE_SPREAD` ×0.85.
+- Stop-loss > 40% of trades: tighten `MAX_CHASE_PREMIUM` ×0.80, `MAX_RELATIVE_SPREAD` ×0.85.
 - Consensus=2 trades avg PnL < -$0.30 (≥20 sample): raise `MIN_CONSENSUS` to 3.
 - Sports avg PnL < -$0.30 (≥15 sample): bump `SPORTS_SCORE_PENALTY` ×1.5.
 - Win rate < 30%: raise `MIN_COPIED_USDC` ×1.5.
 - Avg PnL < -$0.20: reduce `POSITION_PCT` ×0.75.
 
-Defensive only: tightens after losses, never loosens after wins. Loosening based on a noise-biased sample = amplifying noise.
+Defensive only: tightens after losses, never loosens after wins.
 
 ### Not guaranteed profit
 
-The expected edge comes from copying strong public flow while avoiding bad execution. **This is not guaranteed profit.** No-signal / no-trade is a valid position. The bot is not meant to trade 24/7; quiet hours stay quiet.
+The expected edge comes from copying strong public flow while avoiding bad execution. **This is not guaranteed profit.** No-signal / no-trade is a valid position.
