@@ -14,6 +14,7 @@ import datetime as dt
 import json
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +56,7 @@ def _load_state(path: Path) -> dict[str, Any]:
         "week_start_equity": None,
         "discovered_targets": [],
         "last_discovery_ts": 0,
+        "whale_pnls_cache": {},
     }
     if not path.is_file():
         return empty
@@ -95,6 +97,7 @@ def _load_state(path: Path) -> dict[str, Any]:
         ),
         "discovered_targets": [str(t).lower() for t in data.get("discovered_targets", [])] if isinstance(data.get("discovered_targets"), list) else [],
         "last_discovery_ts": int(data.get("last_discovery_ts") or 0),
+        "whale_pnls_cache": data.get("whale_pnls_cache") or {},
     }
 
 
@@ -113,6 +116,7 @@ def _save_state(path: Path, state: dict[str, Any]) -> None:
         "week_start_equity": state.get("week_start_equity"),
         "discovered_targets": state.get("discovered_targets", []),
         "last_discovery_ts": state.get("last_discovery_ts", 0),
+        "whale_pnls_cache": state.get("whale_pnls_cache") or {},
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -166,7 +170,9 @@ def _discovery_tick(settings: Settings, state: dict[str, Any], api: DataApiClien
     if new_targets:
         print(f"[mirror] discovered {len(new_targets)} new high-PnL target(s)", flush=True)
         state["discovered_targets"].extend(new_targets)
-    
+
+    # Cache PnLs so the tick loop doesn't need to re-fetch them for tiered sizing.
+    state["whale_pnls_cache"] = {t.wallet.lower(): t.pnl for t in data.traders}
     state["last_discovery_ts"] = now
 
 
@@ -507,7 +513,16 @@ def _mirror_buy(
             "ask": candidate.best_ask,
         }
 
-    if settings.mirror_max_days_to_expiry > 0 and candidate.end_date:
+    if settings.mirror_max_hours_to_expiry > 0 and candidate.end_date:
+        hours_to_expiry = (candidate.end_date - dt.datetime.now(dt.timezone.utc)).total_seconds() / 3600
+        if hours_to_expiry > settings.mirror_max_hours_to_expiry:
+            return {
+                "action": "skip",
+                "reason": "expiry_too_far",
+                "token_id": trade.asset,
+                "hours_to_expiry": round(hours_to_expiry, 1),
+            }
+    elif settings.mirror_max_days_to_expiry > 0 and candidate.end_date:
         days_to_expiry = (candidate.end_date - dt.datetime.now(dt.timezone.utc)).days
         if days_to_expiry > settings.mirror_max_days_to_expiry:
             return {
@@ -781,35 +796,35 @@ def mirror_once(settings: Settings) -> dict[str, Any]:
     now_ts = int(time.time())
     all_eligible: list[tuple[str, SmartTrade]] = []
     polled = 0
-    
-    # We might want whale PnLs for tiered ratios. 
-    # fetch_smart_money_data is expensive to call on every tick if many traders.
-    # For now, let's just use the pnl from the last discovery if available, or fetch it.
-    whale_pnls: dict[str, float] = {}
-    if settings.mirror_tiered_copy_ratios:
-        # Best effort: fetch top traders to get current PnLs
-        try:
-            data = fetch_smart_money_data(settings, client=api)
-            whale_pnls = {t.wallet.lower(): t.pnl for t in data.traders}
-        except Exception:
-            pass
 
-    consecutive_net_failures = 0
-    for i, target in enumerate(targets):
-        target_trades, net_down = _fetch_target_trades(api, target)
-        if net_down:
-            consecutive_net_failures += 1
-            if consecutive_net_failures == _NET_DOWN_THRESHOLD:
-                remaining = len(targets) - i - 1
-                print(
-                    f"[mirror] network unreachable — skipping {remaining} remaining target(s)",
-                    file=sys.stderr,
-                    flush=True,
-                )
-            if consecutive_net_failures >= _NET_DOWN_THRESHOLD:
-                continue
-        else:
-            consecutive_net_failures = 0
+    # Use PnLs cached during discovery — avoids a full leaderboard+trades re-fetch
+    # every tick just for tiered sizing.
+    whale_pnls: dict[str, float] = state.get("whale_pnls_cache") or {}
+
+    # Fetch all target trades in parallel (same pattern as smart_money).
+    concurrency = max(1, settings.smart_trade_fetch_concurrency)
+    target_results: dict[str, tuple[list[SmartTrade], bool]] = {}
+    net_failure_count = 0
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = {executor.submit(_fetch_target_trades, api, t): t for t in targets}
+        for future in as_completed(futures):
+            tgt = futures[future]
+            trades, net_down = future.result()
+            target_results[tgt] = (trades, net_down)
+            if net_down:
+                net_failure_count += 1
+
+    if net_failure_count >= _NET_DOWN_THRESHOLD:
+        print(
+            f"[mirror] network unreachable ({net_failure_count} failures) — skipping trade scan",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    for target in targets:
+        target_trades, net_down = target_results.get(target, ([], False))
+        if net_down and net_failure_count >= _NET_DOWN_THRESHOLD:
+            continue
         polled += len(target_trades)
         last_ts = _last_ts_for(state, target)
         for trade in _select_eligible(

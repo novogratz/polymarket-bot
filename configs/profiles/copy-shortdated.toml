@@ -39,8 +39,8 @@ mode = "mirror"
 target = "bossoskil1, Pestle, surfandturf, JewishNinja, swisstony, RN1, Oddn, anoin123, wan123, Talvez10, Treyshon, SamM, roarke22, JohnW, kayabey, Poyo, mattyb, miso, Firebolt, polywhale"
 
 discovery_enabled = true
-discovery_interval_hours = 2
-min_whale_pnl = 10000.0
+discovery_interval_hours = 1
+min_whale_pnl = 1000.0
 
 # Sizing — small until the strategy earns trust.
 copy_ratio = 0.20
@@ -101,10 +101,12 @@ peak_protect_exit_pct = 0.80
 max_hold_hours = 0.0
 
 [trader_cohort]
-# Scan both weekly AND daily leaderboards so current hot streaks get picked up.
-# top_n=50 per category doubles the discovery pool vs. the default 25.
-leaderboard_windows = "WEEK,DAILY"
-top_n = 50
+# Three leaderboard windows × 8 categories × 100 slots = ~800-1200 unique candidates.
+# WEEK catches consistent performers, DAILY catches today's hot streaks,
+# ALL catches all-time legends even if they're quiet this week.
+leaderboard_windows = "WEEK,DAILY,ALL"
+top_n = 100
+trade_fetch_concurrency = 32
 
 [filters]
 # 3+ was impossible in practice on short-dated markets — whales trade the
