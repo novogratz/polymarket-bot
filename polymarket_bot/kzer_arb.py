@@ -26,7 +26,8 @@ from __future__ import annotations
 from typing import Any
 
 from .config import Settings
-from .models import Candidate, parse_json_list, utc_now
+from .models import parse_json_list, utc_now
+from .portfolio import Portfolio
 
 
 KZER_PAIR_ASK_CEILING = 0.97
@@ -118,9 +119,15 @@ def kzer_once(settings: Settings) -> dict[str, Any]:
             "Run in --dry-run mode for validation first."
         )
 
+    portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
     pairs = _discover_pairs(settings)
     if not pairs:
-        return {"strategy": "kzerlepgm_ultimatestrategy", "opportunities": 0, "trades": 0}
+        return {
+            "strategy": "kzerlepgm_ultimatestrategy",
+            "opportunities": 0,
+            "trades": 0,
+            "summary": portfolio.summary(),
+        }
 
     token_pairs = [(p["yes_token"], p["no_token"]) for p in pairs]
     quotes = _fetch_paired_asks(settings, token_pairs)
@@ -170,6 +177,7 @@ def kzer_once(settings: Settings) -> dict[str, Any]:
         "opportunities": len(opportunities),
         "trades": len(capped),
         "top_opportunities": capped,
+        "summary": portfolio.summary(),
         "ts": utc_now().isoformat(),
     }
 

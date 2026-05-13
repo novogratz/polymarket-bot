@@ -181,13 +181,14 @@ def format_leaderboard(stats: list[RunStats], *, now: datetime | None = None) ->
         "─" * 92,
     ]
     for i, s in enumerate(ranked, 1):
-        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, "  ")
+        medal_emoji = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, "")
+        rank_label = f"{i:>2}. {medal_emoji}".rstrip()
         pnl_str = f"{s.total_pnl:+9.2f}"
         roi_str = f"{s.roi_pct:+6.1f}%"
         big_win_str = f"+{s.biggest_win_today:.2f}" if s.biggest_win_today > 0 else "  —  "
         big_loss_str = f"{s.biggest_loss_today:.2f}" if s.biggest_loss_today < 0 else "  —  "
         lines.append(
-            f"{medal} {s.run_name:<10} "
+            f"{rank_label:<6} {s.run_name:<10} "
             f"${s.equity:>9.2f} "
             f"{pnl_str:>10} "
             f"{roi_str:>8} "
@@ -228,7 +229,8 @@ def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None =
     stamp = notifications._md_escape(now.strftime("%H:%M"))
     lines = [f"🏁 *Leaderboard* · {stamp} UTC", ""]
     for i, s in enumerate(ranked, 1):
-        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{i}\\.")
+        medal_emoji = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, "")
+        prefix = f"{i}\\." + (f" {medal_emoji}" if medal_emoji else "")
         sign = "+" if s.total_pnl >= 0 else ""
         name = notifications._md_escape(s.run_name)
         equity = notifications._md_escape(f"${s.equity:.2f}")
@@ -236,7 +238,7 @@ def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None =
         roi = notifications._md_escape(f"({sign}{s.roi_pct:.1f}%)")
         winp = notifications._md_escape(f"{s.win_rate_pct:.0f}%")
         lines.append(
-            f"{medal} `{name}` {equity}  {pnl} {roi} · "
+            f"{prefix} `{name}` {equity}  {pnl} {roi} · "
             f"{s.open_positions}p {s.closed_trades}t {winp}w"
         )
         # Today's biggest win/loss line — only shown when there's data.

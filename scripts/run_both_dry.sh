@@ -27,6 +27,9 @@ run_bot() {
         POLYMARKET_SUPPRESS_BUY_LOGS=1 \
         TELEGRAM_ALERT_TRADES=0 \
         TELEGRAM_ALERT_TRADES_BUY=0 \
+        TELEGRAM_ALERT_HEARTBEAT=0 \
+        TELEGRAM_ALERT_THRESHOLDS=0 \
+        TELEGRAM_ALERT_ERRORS=0 \
         uv run pmbot auto-loop --dry-run --profile "$profile" --run "$run" \
         2>&1 | sed -u "s/^/[${prefix}] /" &
 }
