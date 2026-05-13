@@ -191,29 +191,42 @@ def format_leaderboard(stats: list[RunStats], *, now: datetime | None = None) ->
 
 
 def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None = None) -> str:
-    """Compact Telegram-friendly version (Markdown-escaped)."""
+    """Compact Telegram-friendly version (MarkdownV2-escaped).
+
+    Telegram MarkdownV2 requires escaping ``.``, ``-``, ``+``, ``(``,
+    ``)``, ``$``, ``=``, ``!`` and a long list of other punctuation.
+    The shared ``notifications._md_escape`` handles all of them.
+    """
     if not stats:
         return "🏁 *Leaderboard*: no runs found"
     ranked = sorted(stats, key=lambda s: s.roi_pct, reverse=True)
     now = now or datetime.now(timezone.utc)
-    stamp = now.strftime("%H:%M")
+    stamp = notifications._md_escape(now.strftime("%H:%M"))
     lines = [f"🏁 *Leaderboard* · {stamp} UTC", ""]
     for i, s in enumerate(ranked, 1):
-        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{i}.")
+        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{i}\\.")
         sign = "+" if s.total_pnl >= 0 else ""
+        name = notifications._md_escape(s.run_name)
+        equity = notifications._md_escape(f"${s.equity:.2f}")
+        pnl = notifications._md_escape(f"{sign}${s.total_pnl:.2f}")
+        roi = notifications._md_escape(f"({sign}{s.roi_pct:.1f}%)")
+        winp = notifications._md_escape(f"{s.win_rate_pct:.0f}%")
         lines.append(
-            f"{medal} `{s.run_name:<8}` ${s.equity:>7.2f}  "
-            f"{sign}${s.total_pnl:.2f} ({sign}{s.roi_pct:.1f}%) · "
-            f"{s.closed_trades}t {s.win_rate_pct:.0f}%w"
+            f"{medal} `{name}` {equity}  {pnl} {roi} · "
+            f"{s.closed_trades}t {winp}w"
         )
     leader = ranked[0]
     lines.append("")
     if leader.total_pnl > 0:
-        lines.append(f"🏆 {leader.run_name} leads (+${leader.total_pnl:.2f})")
+        led_name = notifications._md_escape(leader.run_name)
+        led_pnl = notifications._md_escape(f"+${leader.total_pnl:.2f}")
+        lines.append(f"🏆 {led_name} leads \\({led_pnl}\\)")
     elif all(s.total_pnl == 0 for s in stats):
         lines.append("⏸ all flat")
     else:
-        lines.append(f"📉 all underwater, least bad: {leader.run_name} ({leader.roi_pct:+.1f}%)")
+        led_name = notifications._md_escape(leader.run_name)
+        led_roi = notifications._md_escape(f"{leader.roi_pct:+.1f}%")
+        lines.append(f"📉 all underwater, least bad: {led_name} \\({led_roi}\\)")
     return "\n".join(lines)
 
 
