@@ -1,0 +1,51 @@
+# Profil "news" — momentum sur les marchés expirant sous 4h.
+#
+# Stratégie indépendante de smart-money: pure action de prix Polymarket,
+# pas de cohorte leaderboard, pas de reverse-lookup. Seule contrainte
+# dure: end_date <= now + 4h. Tous les autres seuils sont des filtres
+# tunables.
+
+[run]
+starting_cash = 100.0
+mode = "news"
+
+[sizing]
+# Hors-bande pour la lane news mais utilisé par les exits partagés.
+max_position_ceiling_usd = 10.0
+min_open_positions = 0
+starter_trade_usd = 5.0
+assumed_live_balance_usd = 0.0
+
+[market_filters]
+# Plancher liquidité/volume; la lane news a ses propres seuils plus stricts.
+min_liquidity_usd = 100.0
+min_volume_usd = 100.0
+
+[execution]
+pending_order_ttl_seconds = 60
+min_sell_usd = 1.0
+
+[news]
+max_hours = 4.0                         # ⚠ règle dure: pas de marché qui expire après 4h
+min_hours = 0.083                       # 5 min de buffer pour exécuter
+min_price = 0.10
+max_price = 0.85
+max_spread = 0.04
+max_relative_spread = 0.30
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 200.0
+require_positive_momentum = true        # on n'achète que le côté qui bouge en notre faveur
+min_abs_momentum = 0.02                 # |oneDayPriceChange| ≥ 2¢
+take_profit_pct = 0.25                  # +25%: ne pas être gourmand sur 4h
+stop_loss_pct = 0.50                    # -50%: laisser un peu de bruit
+stop_loss_min_age_minutes = 5
+near_expiry_min_profit = 0.0            # à l'expiry-5min, sortir si PnL >= 0
+near_expiry_minutes = 5
+resolved_exit_threshold = 0.97
+max_orders_per_tick = 3
+stake_usd = 5.0                         # petites mises, beaucoup de cycles
+scan_limit = 500
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 30

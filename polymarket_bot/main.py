@@ -2545,7 +2545,8 @@ def cli_auto_loop(
             err=True,
         )
 
-    if (settings.run_mode or "smart_money").lower() == "mirror":
+    mode = (settings.run_mode or "smart_money").lower()
+    if mode == "mirror":
         from . import mirror as mirror_module
 
         if not settings.mirror_target:
@@ -2555,6 +2556,10 @@ def cli_auto_loop(
             )
             raise typer.Exit(code=2)
         mirror_module.mirror_loop(settings)
+    elif mode == "news":
+        from . import news_strategy as news_module
+
+        news_module.news_loop(settings)
     else:
         smart_money_loop(settings)
 
