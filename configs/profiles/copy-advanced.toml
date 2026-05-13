@@ -19,13 +19,13 @@ min_whale_pnl = 10000.0
 
 # Sizing & Ratios
 # base copy ratio (fraction of whale's stake)
-copy_ratio = 0.20
+copy_ratio = 0.50
 # Tiered ratios based on whale's PnL: "pnl_limit:ratio,..."
-tiered_copy_ratios = "0.0:0.15,25000:0.25,100000:0.35"
+tiered_copy_ratios = "0.0:0.35,25000:0.50,100000:0.75"
 # Max position size in USD (hard cap)
-size_usd = 250.0
+size_usd = 500.0
 # Max position as % of our equity
-max_position_pct = 0.25
+max_position_pct = 0.50
 
 # Filters
 min_target_stake_usd = 100.0

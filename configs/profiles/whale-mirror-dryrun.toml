@@ -37,10 +37,10 @@ Talvez10,
 # Simulated stake per mirrored BUY. Mirror mode currently supports fixed
 # USD sizing; $1 matches the original 1% intent for a $100 dry-run bankroll.
 # Sizing & Ratios
-copy_ratio = 0.20
-tiered_copy_ratios = "0.0:0.15,25000:0.25,100000:0.35"
-size_usd = 250.0
-max_position_pct = 0.25
+copy_ratio = 0.50
+tiered_copy_ratios = "0.0:0.35,25000:0.50,100000:0.75"
+size_usd = 500.0
+max_position_pct = 0.50
 # Mirror target-wallet SELLs too, so the dry-run exits when they exit.
 mirror_sells = true
 # Copy all target bets, including small ones.
