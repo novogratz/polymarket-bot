@@ -622,13 +622,15 @@ def execute_live_trade(
                 break
             except Exception as fok_exc:
                 err_msg = str(fok_exc).lower()
-                if "couldn't be fully filled" in err_msg and attempt < max_retries - 1:
+                if attempt < max_retries - 1 and (
+                    "couldn't be fully filled" in err_msg or "timed out" in err_msg or "timeout" in err_msg
+                ):
                     attempt_stake = round(attempt_stake * 0.5, 2)
                     attempt_size = round(attempt_stake / entry_price, 6)
                     if attempt_size < settings.min_order_shares:
                         raise
                     if not settings.quiet:
-                        print(f"   FOK killed, retrying with ${attempt_stake} ({attempt_size} shares)...")
+                        print(f"   FOK {'killed' if 'fill' in err_msg else 'timeout'}, retrying with ${attempt_stake} ({attempt_size} shares)...")
                     continue
                 raise
     if isinstance(response, dict) and response.get("success") and not settings.quiet:
