@@ -692,6 +692,23 @@ def _is_filled_buy_response(response: Any) -> bool:
     return False
 
 
+def _is_filled_sell_response(response: Any) -> bool:
+    if not isinstance(response, dict):
+        return False
+    status = str(response.get("status") or "").lower()
+    if status == "matched":
+        return True
+    for key in ("makingAmount", "takingAmount"):
+        value = response.get(key)
+        if value not in (None, ""):
+            try:
+                if float(value) > 0:
+                    return True
+            except (TypeError, ValueError):
+                continue
+    return False
+
+
 def _is_high_conviction_signal(signal: dict[str, Any]) -> bool:
     metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
     consensus = float(metrics.get("profitable_wallet_count") or signal.get("consensus") or 0.0)
@@ -763,12 +780,15 @@ def execute_live_sell(
         order, response = client.place_live_order(candidate=candidate, price=sell_price, size=size, side="SELL")
     if not settings.quiet:
         print(f"📡 SELL RESPONSE: {json.dumps(response, indent=2)}\n")
-    portfolio.record_live_exit(
-        position,
-        shares=size,
-        exit_price=sell_price,
-        order_id=response.get("orderID") if isinstance(response, dict) else None,
-        order_response=response,
-        reason=reason,
-    )
+    if _is_filled_sell_response(response):
+        portfolio.record_live_exit(
+            position,
+            shares=size,
+            exit_price=sell_price,
+            order_id=response.get("orderID") if isinstance(response, dict) else None,
+            order_response=response,
+            reason=reason,
+        )
+    else:
+        position["pending_sell_order_id"] = response.get("orderID") if isinstance(response, dict) else None
     return LiveTradeResult(order=order, response=response, candidate=candidate)

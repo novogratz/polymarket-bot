@@ -802,6 +802,8 @@ def _execute_sell_strategy(
     for position in list(portfolio.positions):
         if position.get("status") != "open" or not position.get("live"):
             continue
+        if position.get("pending_sell_order_id"):
+            continue
         token_id = position.get("token_id")
         candidate = by_token.get(token_id)
         if candidate is None or candidate.best_bid is None or candidate.best_bid <= 0:
@@ -1953,6 +1955,9 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
             if pending.get("status") == "live" and pending.get("token_id") == token_id:
                 pending["status"] = "filled_by_live_sync"
                 pending["filled_at"] = utc_now().isoformat()
+        if position is not None and position.get("pending_sell_order_id"):
+            pending_id = position.pop("pending_sell_order_id", None)
+            report.append({"action": "pending_sell_still_active", "token_id": token_id, "order_id": pending_id})
         if position is None:
             position = _position_from_live_api(item)
             portfolio.positions.append(position)
