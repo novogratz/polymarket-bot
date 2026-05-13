@@ -664,6 +664,7 @@ def execute_live_trade(
                 signal=signal_payload,
                 outcome=str(candidate.outcome or ""),
                 market_url=market_url,
+                strategy=strategy,
             )
         except Exception as exc:
             print(f"[notif] trade_buy hook failed: {exc}", file=sys.stderr, flush=True)

@@ -285,6 +285,7 @@ def notify_trade_buy(
     signal: dict[str, Any],
     outcome: str | None = None,
     market_url: str | None = None,
+    strategy: str | None = None,
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
         return
@@ -316,7 +317,10 @@ def notify_trade_buy(
         footer_parts.append(signal_part)
     if market_url:
         footer_parts.append(f"[🔗]({market_url})")
-    lines = [f"🛒 *BUY* 💵 {size_str} @ {price_str}"]
+    head = f"🛒 *BUY* 💵 {size_str} @ {price_str}"
+    if strategy:
+        head += f"  \\[`{_md_escape(strategy)}`\\]"
+    lines = [head]
     if title and outcome_str:
         lines.append(f"🎯 _{_md_escape(title)}_ 👍 *{outcome_str}*")
     elif title:
@@ -340,6 +344,7 @@ def notify_trade_sell(
     outcome: str | None = None,
     held_seconds: int | None = None,
     market_url: str | None = None,
+    strategy: str | None = None,
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
         return
@@ -392,7 +397,10 @@ def notify_trade_sell(
         )
 
     outcome_str = _md_escape(outcome or "")
-    tag_line = f"🏷️ {_md_escape(reason)}"
+    tag_parts = [_md_escape(reason)]
+    if strategy:
+        tag_parts.append(f"`{_md_escape(strategy)}`")
+    tag_line = f"🏷️ {' • '.join(tag_parts)}"
     if market_url:
         tag_line += f" • [🔗]({market_url})"
     lines = [action_line]
