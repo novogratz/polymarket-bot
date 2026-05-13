@@ -1,20 +1,18 @@
-"""kzerlepgm_ultimatestrategy — structural YES/NO complement arbitrage.
+"""kzerlepgm_ultimatestrategy — structural arb + Kelly directional.
 
-Scans binary prediction markets expiring within the 4h race window and
-identifies cases where the paired ask sum (best ask of YES token + best
-ask of NO token, fetched independently from the CLOB) falls below 1.0.
-Buying one share of each side at those asks locks in
-``1 - (ask_YES + ask_NO)`` profit at resolution, minus fees.
+Two lanes operating on ≤4h binary markets:
 
-Position sizing uses fractional Kelly. For a paired-arb leg the win
-probability is effectively 1.0 (both legs combined always pay $1 on
-resolution), so the Kelly fraction is bounded by the cash floor and the
-per-strategy stake cap rather than by edge uncertainty.
+  Lane A — Paired arbitrage. When ask_YES + ask_NO < 1.0, buy both legs
+  for guaranteed (1 - pair_ask) at resolution. Rare on Polymarket binary
+  markets but still scanned every tick.
 
-DRY-RUN: paired positions are opened locally via Portfolio.open_paper_position.
-LIVE: not yet wired — paired execution requires atomic buy-both-legs (or
-partial-fill rollback), which the trading layer doesn't expose. The live
-path raises so the strategy can be validated in dry-run first.
+  Lane B — Kelly-sized directional on near-arbs. When pair_ask is tight
+  (1.00 ≤ sum ≤ kzer_near_arb_ceiling) AND one side is a clear favorite
+  (price ≥ kzer_favorite_min), assume the favorite is mildly underpriced
+  (bias_multiplier on the bid) and bet ¼-Kelly on it.
+
+DRY-RUN: positions opened via Portfolio.open_paper_position.
+LIVE: not yet wired — raises NotImplementedError.
 """
 
 from __future__ import annotations
@@ -27,20 +25,31 @@ from .models import Candidate, as_float, parse_dt, parse_json_list, utc_now
 from .portfolio import Portfolio
 
 
-KZER_PAIR_ASK_CEILING = 0.97
-KZER_KELLY_FRACTION = 0.25
-KZER_MIN_EDGE = 0.01
+KZER_PAIR_ARB_CEILING = 1.00          # Lane A: true arb requires sum < this.
+KZER_MIN_ARB_EDGE = 0.005             # 0.5% minimum edge after rounding.
+KZER_NEAR_ARB_CEILING = 1.03          # Lane B: pair_ask must be ≤ this.
+KZER_FAVORITE_MIN_PRICE = 0.65        # Lane B: favorite leg must be ≥ this.
+KZER_BIAS_MULTIPLIER = 1.05           # Assume favorites are 5% underpriced.
+KZER_KELLY_FRACTION = 0.25            # ¼ Kelly.
 KZER_PRICE_BATCH = 100
 
 
-def _fetch_paired_asks(
-    settings: Settings, token_pairs: list[tuple[str, str]]
-) -> dict[tuple[str, str], tuple[float, float]]:
-    """Batch-fetch BUY-side prices (asks) for every (YES, NO) token pair.
+def _safe_float(v: Any) -> float | None:
+    try:
+        if v is None:
+            return None
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
-    Chunks the CLOB request to stay under Polymarket's payload limit
-    (~150 tokens per batch). Returns ``{(yes, no): (ask_yes, ask_no)}``
-    for pairs where both legs returned a price.
+
+def _fetch_paired_quotes(
+    settings: Settings, token_pairs: list[tuple[str, str]]
+) -> dict[tuple[str, str], dict[str, float | None]]:
+    """Chunked CLOB fetch: BUY-side (= ask) and SELL-side (= bid) per token.
+
+    Returns ``{(yes, no): {"ask_yes":, "ask_no":, "bid_yes":, "bid_no":}}``
+    for pairs where all four prices came back.
     """
     from py_clob_client.client import ClobClient
     from py_clob_client.clob_types import BookParams
@@ -55,7 +64,7 @@ def _fetch_paired_asks(
         return {}
 
     client = ClobClient(settings.clob_base_url)
-    bid_ask: dict[str, tuple[float | None, float | None]] = {}
+    quotes: dict[str, tuple[float | None, float | None]] = {}
     for i in range(0, len(token_ids), KZER_PRICE_BATCH):
         chunk = token_ids[i : i + KZER_PRICE_BATCH]
         try:
@@ -79,37 +88,31 @@ def _fetch_paired_asks(
         for tok, sides in (prices_raw or {}).items():
             if not isinstance(sides, dict):
                 continue
-            bid = _safe_float(sides.get("BUY"))
-            ask = _safe_float(sides.get("SELL"))
-            bid_ask[str(tok)] = (bid, ask)
+            ask = _safe_float(sides.get("BUY"))
+            bid = _safe_float(sides.get("SELL"))
+            quotes[str(tok)] = (bid, ask)
 
-    out: dict[tuple[str, str], tuple[float, float]] = {}
+    out: dict[tuple[str, str], dict[str, float | None]] = {}
     for yes, no in token_pairs:
-        yes_q = bid_ask.get(yes)
-        no_q = bid_ask.get(no)
-        if not yes_q or not no_q:
+        y = quotes.get(yes)
+        n = quotes.get(no)
+        if not y or not n:
             continue
-        ask_yes = yes_q[1]
-        ask_no = no_q[1]
-        if ask_yes is None or ask_no is None:
+        bid_y, ask_y = y
+        bid_n, ask_n = n
+        if ask_y is None or ask_n is None or ask_y <= 0 or ask_n <= 0:
             continue
-        if ask_yes <= 0 or ask_no <= 0:
-            continue
-        out[(yes, no)] = (ask_yes, ask_no)
+        out[(yes, no)] = {
+            "ask_yes": ask_y,
+            "ask_no": ask_n,
+            "bid_yes": bid_y,
+            "bid_no": bid_n,
+        }
     return out
 
 
-def _safe_float(v: Any) -> float | None:
-    try:
-        if v is None:
-            return None
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
 def _discover_pairs(settings: Settings) -> list[dict[str, Any]]:
-    """Scan ≤4h binary markets and return their token pair metadata."""
+    """Scan ≤4h binary markets and return their token-pair metadata."""
     from .race_strategies import _load_short_expiry_markets
 
     markets = _load_short_expiry_markets(settings)
@@ -154,8 +157,7 @@ def _discover_pairs(settings: Settings) -> list[dict[str, Any]]:
     return pairs
 
 
-def _make_leg_candidate(meta: dict[str, Any], side: str, ask: float) -> Candidate:
-    """Build a Candidate for one leg so Portfolio.open_paper_position works."""
+def _make_leg_candidate(meta: dict[str, Any], side: str, ask: float, bid: float | None) -> Candidate:
     yes_side = side == "yes"
     return Candidate(
         market_id=meta["market_id"],
@@ -170,7 +172,7 @@ def _make_leg_candidate(meta: dict[str, Any], side: str, ask: float) -> Candidat
         token_id=meta["yes_token"] if yes_side else meta["no_token"],
         score=0.0,
         url=meta["url"],
-        best_bid=None,
+        best_bid=bid,
         best_ask=ask,
         tick_size=meta.get("tick_size") or 0.01,
         neg_risk=meta.get("neg_risk", False),
@@ -179,17 +181,28 @@ def _make_leg_candidate(meta: dict[str, Any], side: str, ask: float) -> Candidat
     )
 
 
-def _stake_for_pair(equity: float, edge: float, settings: Settings) -> float:
-    """Total stake for one paired-arb opportunity (split equally across legs)."""
+def _arb_stake(equity: float, edge: float, settings: Settings) -> float:
     if edge <= 0 or equity <= 0:
         return 0.0
     fraction = KZER_KELLY_FRACTION * edge
-    raw = equity * fraction
+    return min(equity * fraction, settings.race_stake_usd)
+
+
+def _kelly_directional_stake(equity: float, ask: float, fair_prob: float, settings: Settings) -> float:
+    """Fractional Kelly for a directional bet at ``ask`` with assumed prob ``fair_prob``."""
+    if equity <= 0 or ask <= 0 or ask >= 1.0 or fair_prob <= ask:
+        return 0.0
+    b = (1.0 - ask) / ask                  # net odds
+    p = fair_prob
+    q = 1.0 - p
+    full_kelly = (b * p - q) / b           # standard Kelly
+    if full_kelly <= 0:
+        return 0.0
+    raw = equity * full_kelly * KZER_KELLY_FRACTION
     return min(raw, settings.race_stake_usd)
 
 
 def kzer_once(settings: Settings) -> dict[str, Any]:
-    """One scan/trade tick of the kzer arbitrage strategy."""
     if not settings.dry_run:
         raise NotImplementedError(
             "kzerlepgm_ultimatestrategy live execution is not wired yet. "
@@ -202,105 +215,130 @@ def kzer_once(settings: Settings) -> dict[str, Any]:
         portfolio.save(settings.state_path)
         return {
             "strategy": "kzerlepgm_ultimatestrategy",
-            "opportunities": 0,
+            "scanned_pairs": 0,
+            "arb_opps": 0,
+            "directional_opps": 0,
             "trades": 0,
             "summary": portfolio.summary(),
         }
 
     token_pairs = [(p["yes_token"], p["no_token"]) for p in pairs]
-    quotes = _fetch_paired_asks(settings, token_pairs)
-
-    opportunities: list[dict[str, Any]] = []
-    for meta in pairs:
-        key = (meta["yes_token"], meta["no_token"])
-        q = quotes.get(key)
-        if not q:
-            continue
-        ask_yes, ask_no = q
-        pair_ask = ask_yes + ask_no
-        edge = 1.0 - pair_ask
-        if pair_ask >= KZER_PAIR_ASK_CEILING:
-            continue
-        if edge < KZER_MIN_EDGE:
-            continue
-        opportunities.append(
-            {
-                "meta": meta,
-                "ask_yes": ask_yes,
-                "ask_no": ask_no,
-                "pair_ask": pair_ask,
-                "edge": edge,
-            }
-        )
-
-    opportunities.sort(key=lambda o: o["edge"], reverse=True)
-    capped = opportunities[: settings.race_max_orders_per_tick]
+    quotes = _fetch_paired_quotes(settings, token_pairs)
 
     summary = portfolio.summary()
     equity = float(summary.get("equity", 0.0) or 0.0)
     cash = float(summary.get("cash", 0.0) or 0.0)
     cash_floor = equity * settings.race_cash_floor_pct if equity > 0 else 0.0
-
-    opened_markets: set[str] = {
-        str(p.get("market_id"))
-        for p in portfolio.positions
-        if p.get("status") == "open"
+    opened_markets = {
+        str(p.get("market_id")) for p in portfolio.positions if p.get("status") == "open"
     }
 
+    arb_opps: list[dict[str, Any]] = []
+    dir_opps: list[dict[str, Any]] = []
+    for meta in pairs:
+        q = quotes.get((meta["yes_token"], meta["no_token"]))
+        if not q:
+            continue
+        ask_y, ask_n = q["ask_yes"], q["ask_no"]
+        pair_ask = ask_y + ask_n
+
+        if pair_ask < KZER_PAIR_ARB_CEILING and (1.0 - pair_ask) >= KZER_MIN_ARB_EDGE:
+            arb_opps.append(
+                {"meta": meta, "ask_yes": ask_y, "ask_no": ask_n,
+                 "bid_yes": q["bid_yes"], "bid_no": q["bid_no"],
+                 "pair_ask": pair_ask, "edge": 1.0 - pair_ask}
+            )
+            continue
+
+        if pair_ask <= KZER_NEAR_ARB_CEILING:
+            # Pick the favorite side (higher ask = market thinks it's more likely).
+            if ask_y >= ask_n:
+                fav_side, fav_ask, fav_bid = "yes", ask_y, q["bid_yes"]
+            else:
+                fav_side, fav_ask, fav_bid = "no", ask_n, q["bid_no"]
+            if fav_ask < KZER_FAVORITE_MIN_PRICE:
+                continue
+            fair_prob = min(0.99, fav_ask * KZER_BIAS_MULTIPLIER)
+            dir_opps.append(
+                {"meta": meta, "side": fav_side, "ask": fav_ask, "bid": fav_bid,
+                 "fair_prob": fair_prob, "pair_ask": pair_ask}
+            )
+
+    arb_opps.sort(key=lambda o: o["edge"], reverse=True)
+    dir_opps.sort(key=lambda o: o["fair_prob"] - o["ask"], reverse=True)
+
     trades: list[dict[str, Any]] = []
-    for opp in capped:
+    max_orders = settings.race_max_orders_per_tick
+
+    # Lane A — paired arb.
+    for opp in arb_opps:
+        if len(trades) >= max_orders:
+            break
         meta = opp["meta"]
         if str(meta["market_id"]) in opened_markets:
             continue
-        total_stake = _stake_for_pair(equity, opp["edge"], settings)
+        total_stake = _arb_stake(equity, opp["edge"], settings)
         per_leg = total_stake / 2.0
-        if per_leg < 1.0:
+        if per_leg < 1.0 or cash - total_stake < cash_floor:
             continue
-        if cash - total_stake < cash_floor:
-            break
-
-        yes_cand = _make_leg_candidate(meta, "yes", opp["ask_yes"])
-        no_cand = _make_leg_candidate(meta, "no", opp["ask_no"])
-
-        yes_pos = portfolio.open_paper_position(yes_cand, per_leg, entry_price=opp["ask_yes"])
-        no_pos = portfolio.open_paper_position(no_cand, per_leg, entry_price=opp["ask_no"])
-        if yes_pos is None or no_pos is None:
+        yes_c = _make_leg_candidate(meta, "yes", opp["ask_yes"], opp["bid_yes"])
+        no_c = _make_leg_candidate(meta, "no", opp["ask_no"], opp["bid_no"])
+        yp = portfolio.open_paper_position(yes_c, per_leg, entry_price=opp["ask_yes"])
+        np_ = portfolio.open_paper_position(no_c, per_leg, entry_price=opp["ask_no"])
+        if yp is None or np_ is None:
             continue
-        for p in (yes_pos, no_pos):
+        for p in (yp, np_):
             p["strategy"] = "kzerlepgm_ultimatestrategy"
         cash = float(portfolio.cash)
-        trades.append(
-            {
-                "market_id": meta["market_id"],
-                "question": meta["question"],
-                "ask_yes": round(opp["ask_yes"], 4),
-                "ask_no": round(opp["ask_no"], 4),
-                "pair_ask": round(opp["pair_ask"], 4),
-                "edge": round(opp["edge"], 4),
-                "stake_each_leg": round(per_leg, 2),
-            }
-        )
+        opened_markets.add(str(meta["market_id"]))
+        trades.append({"lane": "arb", "market_id": meta["market_id"],
+                       "edge": round(opp["edge"], 4), "stake": round(total_stake, 2)})
         print(
-            f"🎯 [kzer] paired arb: {meta['question'][:50]} "
-            f"yes={opp['ask_yes']:.3f} no={opp['ask_no']:.3f} "
-            f"edge={opp['edge']:+.3f} stake=2×${per_leg:.2f}",
+            f"🎯 [kzer arb] {meta['question'][:50]} "
+            f"pair_ask={opp['pair_ask']:.3f} edge={opp['edge']:+.3f} stake=2×${per_leg:.2f}",
+            flush=True,
+        )
+
+    # Lane B — Kelly directional.
+    for opp in dir_opps:
+        if len(trades) >= max_orders:
+            break
+        meta = opp["meta"]
+        if str(meta["market_id"]) in opened_markets:
+            continue
+        stake = _kelly_directional_stake(equity, opp["ask"], opp["fair_prob"], settings)
+        if stake < 1.0 or cash - stake < cash_floor:
+            continue
+        cand = _make_leg_candidate(meta, opp["side"], opp["ask"], opp["bid"])
+        pos = portfolio.open_paper_position(cand, stake, entry_price=opp["ask"])
+        if pos is None:
+            continue
+        pos["strategy"] = "kzerlepgm_ultimatestrategy"
+        cash = float(portfolio.cash)
+        opened_markets.add(str(meta["market_id"]))
+        trades.append({"lane": "directional", "market_id": meta["market_id"],
+                       "side": opp["side"], "ask": round(opp["ask"], 3),
+                       "stake": round(stake, 2)})
+        print(
+            f"🎯 [kzer dir] {meta['question'][:50]} {opp['side'].upper()} "
+            f"ask={opp['ask']:.3f} fair≈{opp['fair_prob']:.3f} stake=${stake:.2f}",
             flush=True,
         )
 
     portfolio.save(settings.state_path)
-
     print(
-        f"[kzer] scanned {len(pairs)} pairs, {len(opportunities)} arb opportunities "
-        f"({len(trades)} paired trades opened)",
+        f"[kzer] scanned {len(pairs)} pairs · arb_opps={len(arb_opps)} · "
+        f"dir_opps={len(dir_opps)} · trades={len(trades)}",
         flush=True,
     )
 
     return {
         "strategy": "kzerlepgm_ultimatestrategy",
         "scanned_pairs": len(pairs),
-        "opportunities": len(opportunities),
+        "arb_opps": len(arb_opps),
+        "directional_opps": len(dir_opps),
         "trades": len(trades),
-        "paired_trades": trades,
+        "trade_details": trades,
         "summary": portfolio.summary(),
         "ts": utc_now().isoformat(),
     }
