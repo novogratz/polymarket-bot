@@ -2050,6 +2050,43 @@ def _is_unfilled_market_order_error(message: str) -> bool:
     )
 
 
+def _all_time_realized_pnl(journal_path: Path) -> tuple[float, int, int, int]:
+    """Sum realized PnL across every closed trade in the journal.
+
+    Returns ``(realized_total, closed_count, wins, losses)``. Safe on
+    missing/malformed files: returns zeros instead of raising.
+    """
+    if not journal_path.is_file():
+        return 0.0, 0, 0, 0
+    total = 0.0
+    closed = 0
+    wins = 0
+    losses = 0
+    try:
+        with journal_path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                closed += 1
+                try:
+                    pnl = float(rec.get("realized_pnl", 0) or 0)
+                except (TypeError, ValueError):
+                    pnl = 0.0
+                total += pnl
+                if pnl > 0:
+                    wins += 1
+                elif pnl < 0:
+                    losses += 1
+    except Exception:
+        return 0.0, 0, 0, 0
+    return total, closed, wins, losses
+
+
 def _print_stdout_heartbeat(
     settings: Settings,
     *,
@@ -2073,21 +2110,35 @@ def _print_stdout_heartbeat(
     positions = int(summary.get("open_positions", 0) or 0)
     cash_pct = (cash / equity * 100.0) if equity > 0 else 0.0
     win_rate = (wins_24h / trades_24h * 100.0) if trades_24h > 0 else 0.0
+    realized_all, closed_all, wins_all, losses_all = _all_time_realized_pnl(
+        settings.trade_journal_path
+    )
+    net_since_start = realized_all + unrealized
+    win_rate_all = (wins_all / closed_all * 100.0) if closed_all > 0 else 0.0
     stamp = time.strftime("%H:%M:%S", time.localtime())
     mode = "DRY-RUN" if settings.dry_run else "LIVE"
-    sep = "─" * 60
+    sep = "─" * 64
     print(sep, flush=True)
     print(f"📊 PORTFOLIO HEARTBEAT · {stamp} · {strategy_name} · {mode}", flush=True)
-    print(f"   equity ${equity:.2f}  |  cash ${cash:.2f} ({cash_pct:.0f}%)  |  invested ${invested:.2f}", flush=True)
+    print(
+        f"   equity ${equity:.2f}  |  cash ${cash:.2f} ({cash_pct:.0f}%)  |  invested ${invested:.2f}",
+        flush=True,
+    )
     print(f"   open positions: {positions}  |  unrealized PnL: {unrealized:+.2f}", flush=True)
+    print(
+        f"   since start: realized {realized_all:+.2f} + unrealized {unrealized:+.2f} = "
+        f"net {net_since_start:+.2f} ({closed_all} closed, {wins_all}W/{losses_all}L, "
+        f"{win_rate_all:.0f}% win rate)",
+        flush=True,
+    )
     if trades_24h > 0:
         print(
-            f"   24h: {trades_24h} closed  |  {wins_24h}W/{losses_24h}L "
+            f"   last 24h: {trades_24h} closed  |  {wins_24h}W/{losses_24h}L "
             f"({win_rate:.0f}% win rate)  |  realized {realized_24h:+.2f}",
             flush=True,
         )
     else:
-        print("   24h: no closed trades yet", flush=True)
+        print("   last 24h: no closed trades yet", flush=True)
     print(sep, flush=True)
 
 
@@ -2671,6 +2722,52 @@ def status() -> None:
 def positions() -> None:
     """Affiche les positions ouvertes en table CLI, triées par PnL décroissant."""
     print_positions(Settings())
+
+
+@app.command("leaderboard")
+def cli_leaderboard(
+    runs: str = typer.Option(
+        "news,edge",
+        "--runs",
+        help="CSV of dry-run names to compare (e.g. 'news,edge').",
+    ),
+    interval: int = typer.Option(
+        15,
+        "--interval",
+        help="Refresh interval in minutes (default 15). Use --once for a single snapshot.",
+    ),
+    once: bool = typer.Option(
+        False,
+        "--once",
+        help="Print the leaderboard once and exit (no polling loop).",
+    ),
+) -> None:
+    """Live leaderboard ranking dry-run strategies by ROI.
+
+    Reads each ``data/dry_runs/<name>/`` (state.json, journal.jsonl,
+    metadata.json) and prints a ranked scoreboard. Designed to run as
+    a sidecar process alongside the trading bots.
+    """
+    from .leaderboard import (
+        format_leaderboard,
+        gather_run_stats,
+        run_leaderboard_loop,
+    )
+
+    base_dir = Path(__file__).resolve().parent.parent / "data"
+    run_names = [r.strip() for r in runs.split(",") if r.strip()]
+    if not run_names:
+        typer.echo("--runs is empty", err=True)
+        raise typer.Exit(code=2)
+    if once:
+        stats = []
+        for name in run_names:
+            s = gather_run_stats(base_dir, name)
+            if s is not None:
+                stats.append(s)
+        typer.echo(format_leaderboard(stats))
+        return
+    run_leaderboard_loop(base_dir, run_names, max(60, interval * 60))
 
 
 @app.command("journal-stats")

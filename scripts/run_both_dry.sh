@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Lance news + edge en DRY-RUN parallèle.
+# Lance news + edge en DRY-RUN parallèle, plus un sidecar leaderboard.
 #
-# Chaque stratégie a son propre dossier (data/dry_runs/news/ et
-# data/dry_runs/edge/) — ledger, journal, équity séparés. Ctrl+C
-# arrête les deux. Logs interleaved préfixés [news] / [edge].
+# Trois processus :
+#   1. [news]  → data/dry_runs/news/
+#   2. [edge]  → data/dry_runs/edge/
+#   3. [board] → leaderboard refresh toutes les 15 min
+#
+# Ctrl+C arrête tout. Logs interleaved préfixés.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,9 +21,14 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 POLYMARKET_QUIET=1 uv run pmbot auto-loop --dry-run --profile news --run news \
-    2>&1 | sed -u 's/^/[news] /' &
+    2>&1 | sed -u 's/^/[news]  /' &
 
 POLYMARKET_QUIET=1 uv run pmbot auto-loop --dry-run --profile edge --run edge \
-    2>&1 | sed -u 's/^/[edge] /' &
+    2>&1 | sed -u 's/^/[edge]  /' &
+
+# Sidecar: scoreboard every 15 minutes. Picks up new runs automatically
+# (no restart needed) if they appear under data/dry_runs/.
+uv run pmbot leaderboard --runs news,edge --interval 15 \
+    2>&1 | sed -u 's/^/[board] /' &
 
 wait
