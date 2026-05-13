@@ -2670,6 +2670,26 @@ def cli_auto_loop(
         from . import edge_strategy as edge_module
 
         edge_module.edge_loop(settings)
+    elif mode == "random":
+        from . import race_strategies as race_module
+
+        race_module.random_loop(settings)
+    elif mode == "contrarian":
+        from . import race_strategies as race_module
+
+        race_module.contrarian_loop(settings)
+    elif mode == "favorite":
+        from . import race_strategies as race_module
+
+        race_module.favorite_loop(settings)
+    elif mode == "breakout":
+        from . import race_strategies as race_module
+
+        race_module.breakout_loop(settings)
+    elif mode == "late_favorite":
+        from . import race_strategies as race_module
+
+        race_module.late_favorite_loop(settings)
     else:
         smart_money_loop(settings)
 

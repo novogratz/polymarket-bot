@@ -1,0 +1,44 @@
+# Profil "favorite" — buy heavy favorites (best_bid ≥ 0.65).
+#
+# Hypothèse : sur des marchés ≤ 4h, les favoris résolvent leur juste part.
+# La vraie question : est-ce que le spread + slippage mange l'edge ?
+
+[run]
+starting_cash = 100.0
+mode = "favorite"
+
+[sizing]
+max_position_ceiling_usd = 10.0
+min_open_positions = 0
+starter_trade_usd = 5.0
+
+[market_filters]
+min_liquidity_usd = 100.0
+min_volume_usd = 100.0
+
+[persistence]
+enabled = false
+
+[race]
+max_hours = 4.0
+scan_limit = 500
+min_liquidity_usd = 500.0
+min_volume_24h_usd = 200.0
+min_price = 0.05
+max_price = 0.95
+max_spread = 0.05
+stake_usd = 5.0
+max_orders_per_tick = 3
+cash_floor_pct = 0.10
+tp_pct = 0.15                           # TP plus serré: favoris bougent moins
+sl_pct = 0.40
+sl_min_age_minutes = 5
+near_expiry_minutes = 5
+resolved_exit_threshold = 0.97
+contrarian_min_momentum = 0.03
+favorite_min_bid = 0.65                 # achète tout favori dont best_bid ≥ 65%
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 30
+stdout_heartbeat_minutes = 15
