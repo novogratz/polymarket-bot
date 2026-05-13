@@ -595,6 +595,7 @@ def _mirror_buy(
             signal={
                 "tag": "mirror",
                 "target": target_short,
+                "target_wallet": target,
                 "category": category,
                 "whale_trade_usd": trade.usdc_size,
                 "copy_ratio": settings.mirror_copy_ratio,

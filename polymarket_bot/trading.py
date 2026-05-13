@@ -585,6 +585,8 @@ def execute_live_trade(
         print(f"\n🚀 MARKET BUY: {candidate.outcome} on {candidate.question}")
         print(f"   Stake: ${stake} USDC | Max price guard: {entry_price} | Est. shares: {size}")
         print(f"   Market: {candidate.url}")
+        if signal and signal.get("target_wallet"):
+            print(f"   Copied: https://polymarket.com/profile/{signal['target_wallet']}")
         if signal:
             metrics = signal.get("selection_metrics", {}) if isinstance(signal.get("selection_metrics"), dict) else {}
             print(f"   Why: {signal.get('selection_reason', 'smart-money signal passed filters')}")
