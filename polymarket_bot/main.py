@@ -2741,6 +2741,11 @@ def cli_leaderboard(
         "--once",
         help="Print the leaderboard once and exit (no polling loop).",
     ),
+    telegram: bool = typer.Option(
+        False,
+        "--telegram",
+        help="Also broadcast each refresh to Telegram (requires TELEGRAM_* env vars).",
+    ),
 ) -> None:
     """Live leaderboard ranking dry-run strategies by ROI.
 
@@ -2767,7 +2772,7 @@ def cli_leaderboard(
                 stats.append(s)
         typer.echo(format_leaderboard(stats))
         return
-    run_leaderboard_loop(base_dir, run_names, max(60, interval * 60))
+    run_leaderboard_loop(base_dir, run_names, max(60, interval * 60), telegram=telegram)
 
 
 @app.command("journal-stats")

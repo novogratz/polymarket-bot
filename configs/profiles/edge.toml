@@ -39,10 +39,10 @@ min_price = 0.05
 max_price = 0.95
 max_spread = 0.05
 fee_pct = 0.02                          # estimation slippage + frais
-min_edge_pct = 0.04                     # 4% edge minimum après fees
+min_edge_pct = 0.025                    # 2.5% edge min après fees (était 4%, trop strict)
 kelly_fraction = 0.25                   # 1/4 Kelly (sizing prudent)
 max_position_pct = 0.15                 # cap 15% du capital par trade
-max_orders_per_tick = 4
+max_orders_per_tick = 6                 # plus de turnover (était 4)
 min_stake_usd = 2.0
 cash_floor_pct = 0.10                   # 10% cash réserve
 daily_drawdown_pct = 0.20               # halt si -20% sur la journée
@@ -69,9 +69,9 @@ crypto_momentum_alpha = 4.0             # sensibilité du momentum 15min
 
 # Lane near-certainty
 near_cert_enabled = true
-near_cert_max_hours = 2.0
-near_cert_min_bid = 0.92
-near_cert_max_ask = 0.96
+near_cert_max_hours = 3.0               # élargi de 2h à 3h
+near_cert_min_bid = 0.82                # élargi de 0.92 à 0.82 (plus de candidats)
+near_cert_max_ask = 0.95
 near_cert_bias_multiplier = 1.05        # hypothèse: favoris sous-cotés de ~5%
 
 # Lane scalp (off par défaut — manque ordre limite + websocket)

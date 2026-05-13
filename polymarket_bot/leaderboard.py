@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import notifications
+
 
 @dataclass
 class RunStats:
@@ -188,15 +190,49 @@ def format_leaderboard(stats: list[RunStats], *, now: datetime | None = None) ->
     return "\n".join(lines)
 
 
+def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None = None) -> str:
+    """Compact Telegram-friendly version (Markdown-escaped)."""
+    if not stats:
+        return "🏁 *Leaderboard*: no runs found"
+    ranked = sorted(stats, key=lambda s: s.roi_pct, reverse=True)
+    now = now or datetime.now(timezone.utc)
+    stamp = now.strftime("%H:%M")
+    lines = [f"🏁 *Leaderboard* · {stamp} UTC", ""]
+    for i, s in enumerate(ranked, 1):
+        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, f"{i}.")
+        sign = "+" if s.total_pnl >= 0 else ""
+        lines.append(
+            f"{medal} `{s.run_name:<8}` ${s.equity:>7.2f}  "
+            f"{sign}${s.total_pnl:.2f} ({sign}{s.roi_pct:.1f}%) · "
+            f"{s.closed_trades}t {s.win_rate_pct:.0f}%w"
+        )
+    leader = ranked[0]
+    lines.append("")
+    if leader.total_pnl > 0:
+        lines.append(f"🏆 {leader.run_name} leads (+${leader.total_pnl:.2f})")
+    elif all(s.total_pnl == 0 for s in stats):
+        lines.append("⏸ all flat")
+    else:
+        lines.append(f"📉 all underwater, least bad: {leader.run_name} ({leader.roi_pct:+.1f}%)")
+    return "\n".join(lines)
+
+
 def run_leaderboard_loop(
     base_dir: Path,
     run_names: list[str],
     interval_seconds: int,
+    *,
+    telegram: bool = False,
 ) -> None:
-    """Print the leaderboard immediately, then every ``interval_seconds``."""
+    """Print the leaderboard immediately, then every ``interval_seconds``.
+
+    When ``telegram=True`` and the Telegram integration is enabled
+    (env vars set), each refresh is also posted to Telegram.
+    """
     print(
         f"🏁 leaderboard: tracking {', '.join(run_names)} every {interval_seconds // 60}m "
-        f"(reading {base_dir}/dry_runs/)",
+        f"(reading {base_dir}/dry_runs/)"
+        + (" + Telegram" if telegram and notifications.is_enabled() else ""),
         flush=True,
     )
     while True:
@@ -209,6 +245,11 @@ def run_leaderboard_loop(
             print("", flush=True)
             print(format_leaderboard(stats), flush=True)
             print("", flush=True)
+            if telegram and notifications.is_enabled() and stats:
+                try:
+                    notifications._post(format_leaderboard_telegram(stats))
+                except Exception as exc:
+                    print(f"⚠️  leaderboard telegram failed: {type(exc).__name__}: {exc}", flush=True)
         except Exception as exc:
             print(f"⚠️  leaderboard error: {type(exc).__name__}: {exc}", flush=True)
         time.sleep(interval_seconds)
