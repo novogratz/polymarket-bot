@@ -613,7 +613,24 @@ def execute_live_trade(
     else:
         if not settings.quiet:
             print("   Sending FOK market order...")
-        order, response = client.place_market_order(candidate=candidate, amount=stake, price=entry_price, side="BUY")
+        max_retries = 3
+        attempt_stake = stake
+        order, response = {}, {}
+        for attempt in range(max_retries):
+            try:
+                order, response = client.place_market_order(candidate=candidate, amount=attempt_stake, price=entry_price, side="BUY")
+                break
+            except Exception as fok_exc:
+                err_msg = str(fok_exc).lower()
+                if "couldn't be fully filled" in err_msg and attempt < max_retries - 1:
+                    attempt_stake = round(attempt_stake * 0.5, 2)
+                    attempt_size = round(attempt_stake / entry_price, 6)
+                    if attempt_size < settings.min_order_shares:
+                        raise
+                    if not settings.quiet:
+                        print(f"   FOK killed, retrying with ${attempt_stake} ({attempt_size} shares)...")
+                    continue
+                raise
     if isinstance(response, dict) and response.get("success") and not settings.quiet:
         status = str(response.get("status") or "")
         label = "✅ BUY FILLED" if _is_filled_buy_response(response) else "⚠️  BUY NOT FILLED"
