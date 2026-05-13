@@ -172,7 +172,7 @@ class Portfolio:
         reason: str | None = None,
     ) -> dict[str, Any] | None:
         current_shares = float(position.get("shares", 0.0))
-        if shares <= 0.0 or exit_price <= 0.0 or current_shares <= 0.0:
+        if shares <= 0.0 or exit_price < 0.0 or current_shares <= 0.0:
             return None
         sold_shares = min(shares, current_shares)
         stake = float(position.get("stake", 0.0))

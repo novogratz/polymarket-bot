@@ -755,6 +755,38 @@ def _execute_race_exits(
                 reason=str(plan["reason"]),
             )
         except Exception as exc:
+            # Auto-write-off: if the position is past its expiry (or resolved
+            # as loser) we can't get a live SELL through — accept the bid as
+            # the realized price and close locally so it doesn't linger.
+            mtc_now = _minutes_to_close(position)
+            expired = mtc_now is not None and mtc_now <= 0
+            resolved_loser = candidate.best_bid is not None and candidate.best_bid <= 0.05
+            if expired or resolved_loser:
+                writeoff_price = max(float(candidate.best_bid or 0.0), 0.0)
+                portfolio.record_live_exit(
+                    position,
+                    shares=float(plan["shares"]),
+                    exit_price=writeoff_price,
+                    order_id=None,
+                    order_response={"writeoff": True, "reason": str(exc)},
+                    reason=f"{plan['reason']}_writeoff",
+                )
+                portfolio.save(settings.state_path)
+                out.append(
+                    {
+                        "market_id": position.get("market_id"),
+                        "question": position.get("question"),
+                        "action": "writeoff",
+                        "reason": f"{plan['reason']}_writeoff",
+                        "exit_price": writeoff_price,
+                    }
+                )
+                print(
+                    f"✏️  {strategy_name} writeoff on {position.get('question')}: "
+                    f"price={writeoff_price:.3f} (SELL blocked: {exc})",
+                    flush=True,
+                )
+                continue
             print(
                 f"⚠️  {strategy_name} sell skipped on {position.get('question')}: "
                 f"{type(exc).__name__}: {exc}",

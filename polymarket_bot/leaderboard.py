@@ -236,10 +236,15 @@ def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None =
         equity = notifications._md_escape(f"${s.equity:.2f}")
         pnl = notifications._md_escape(f"{sign}${s.total_pnl:.2f}")
         roi = notifications._md_escape(f"({sign}{s.roi_pct:.1f}%)")
-        winp = notifications._md_escape(f"{s.win_rate_pct:.0f}%")
+        rsign = "+" if s.realized_pnl >= 0 else ""
+        usign = "+" if s.unrealized_pnl >= 0 else ""
+        realized = notifications._md_escape(f"R{rsign}${s.realized_pnl:.2f}")
+        unrealized = notifications._md_escape(f"U{usign}${s.unrealized_pnl:.2f}")
+        wl = notifications._md_escape(f"{s.wins}W/{s.losses}L")
         lines.append(
-            f"{prefix} `{name}` {equity}  {pnl} {roi} · "
-            f"{s.open_positions}p {s.closed_trades}t {winp}w"
+            f"{prefix} `{name}` {equity}  {pnl} {roi}\n"
+            f"     {realized} · {unrealized} · "
+            f"{s.open_positions}p · {s.closed_trades}t \\({wl}\\)"
         )
         # Today's biggest win/loss line — only shown when there's data.
         bw = s.biggest_win_today
