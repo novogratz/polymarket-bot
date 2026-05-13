@@ -6,7 +6,7 @@
 # tunables.
 
 [run]
-starting_cash = 100.0
+starting_cash = 1000.0
 mode = "news"
 
 [sizing]

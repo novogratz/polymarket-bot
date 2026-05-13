@@ -194,6 +194,32 @@ class Portfolio:
             exit_record["reason"] = reason
         position.setdefault("exits", []).append(exit_record)
         position["realized_pnl"] = round(float(position.get("realized_pnl", 0.0)) + realized_pnl, 2)
+        # BIG WIN / BIG LOSS stdout banner — uses the same thresholds as the
+        # Telegram alerts so it's tunable from one place.
+        import os as _os
+        try:
+            big_win = float(_os.environ.get("TELEGRAM_BIG_WIN_USD", "10.0"))
+            big_loss = float(_os.environ.get("TELEGRAM_BIG_LOSS_USD", "5.0"))
+        except ValueError:
+            big_win, big_loss = 10.0, 5.0
+        title = (
+            position.get("question")
+            or position.get("title")
+            or position.get("market_title")
+            or "?"
+        )
+        side = position.get("outcome") or "?"
+        strategy = position.get("strategy") or "?"
+        if realized_pnl >= big_win:
+            print(
+                f"🟢 BIG WIN [{strategy}] +${realized_pnl:.2f} on '{str(title)[:55]}' ({side})",
+                flush=True,
+            )
+        elif realized_pnl <= -big_loss:
+            print(
+                f"🔴 BIG LOSS [{strategy}] -${abs(realized_pnl):.2f} on '{str(title)[:55]}' ({side})",
+                flush=True,
+            )
         self.cash = round(self.cash + proceeds, 2)
         position["shares"] = round(current_shares - sold_shares, 6)
         position["stake"] = round(max(0.0, stake - cost_basis), 2)

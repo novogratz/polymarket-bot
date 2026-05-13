@@ -4,7 +4,7 @@
 # momentum est notre vrai signal. Si contrarian gagne, on avait tort.
 
 [run]
-starting_cash = 100.0
+starting_cash = 1000.0
 mode = "contrarian"
 
 [sizing]

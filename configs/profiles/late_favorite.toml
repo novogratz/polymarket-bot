@@ -6,7 +6,7 @@
 # spread + tick size de Polymarket ?
 
 [run]
-starting_cash = 100.0
+starting_cash = 1000.0
 mode = "late_favorite"
 
 [sizing]

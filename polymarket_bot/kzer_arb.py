@@ -34,6 +34,75 @@ KZER_KELLY_FRACTION = 0.25            # ¼ Kelly.
 KZER_PRICE_BATCH = 100
 
 
+def _mark_open_positions_to_market(settings: Settings, portfolio: Portfolio) -> None:
+    """Refresh current_price + unrealized_pnl on all open kzer positions.
+
+    Without this, positions stay frozen at entry_price forever and the
+    leaderboard equity never moves.
+    """
+    from py_clob_client.client import ClobClient
+    from py_clob_client.clob_types import BookParams
+
+    open_positions = [
+        p for p in portfolio.positions
+        if p.get("status") == "open"
+        and str(p.get("strategy") or "") == "kzerlepgm_ultimatestrategy"
+        and p.get("token_id")
+    ]
+    if not open_positions:
+        return
+    token_ids = list({str(p["token_id"]) for p in open_positions})
+    client = ClobClient(settings.clob_base_url)
+
+    mids: dict[str, float] = {}
+    for i in range(0, len(token_ids), KZER_PRICE_BATCH):
+        chunk = token_ids[i : i + KZER_PRICE_BATCH]
+        try:
+            mids_raw = client.get_midpoints(
+                params=[BookParams(token_id=t) for t in chunk]
+            )
+        except Exception as exc:
+            print(
+                f"   [kzer] midpoints chunk {i // KZER_PRICE_BATCH + 1} failed: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            continue
+        for tok, mid in (mids_raw or {}).items():
+            v = _safe_float(mid)
+            if v is not None:
+                mids[str(tok)] = v
+
+    candidates: list[Candidate] = []
+    for p in open_positions:
+        tok = str(p["token_id"])
+        if tok not in mids:
+            continue
+        candidates.append(
+            Candidate(
+                market_id=str(p.get("market_id") or ""),
+                question=str(p.get("question") or ""),
+                slug=str(p.get("slug") or ""),
+                end_date=parse_dt(str(p.get("end_date") or "")) if p.get("end_date") else None,
+                hours_to_close=None,
+                liquidity=0.0,
+                volume=0.0,
+                outcome=str(p.get("outcome") or ""),
+                price=mids[tok],
+                token_id=tok,
+                score=0.0,
+                url=str(p.get("url") or "https://polymarket.com"),
+                best_bid=None,
+                best_ask=None,
+                tick_size=float(p.get("tick_size") or 0.01),
+                neg_risk=bool(p.get("neg_risk", False)),
+                accepts_orders=True,
+                event_slug=str(p.get("event_slug") or ""),
+            )
+        )
+    portfolio.mark_to_market(candidates)
+
+
 def _safe_float(v: Any) -> float | None:
     try:
         if v is None:
@@ -88,8 +157,12 @@ def _fetch_paired_quotes(
         for tok, sides in (prices_raw or {}).items():
             if not isinstance(sides, dict):
                 continue
-            ask = _safe_float(sides.get("BUY"))
-            bid = _safe_float(sides.get("SELL"))
+            # CLOB convention: side="BUY" query returns the best BID (price
+            # someone is offering to buy at), side="SELL" returns the best
+            # ASK (price someone is offering to sell at). Same mapping as
+            # pricing._fetch_clob_quotes.
+            bid = _safe_float(sides.get("BUY"))
+            ask = _safe_float(sides.get("SELL"))
             quotes[str(tok)] = (bid, ask)
 
     out: dict[tuple[str, str], dict[str, float | None]] = {}
@@ -210,6 +283,7 @@ def kzer_once(settings: Settings) -> dict[str, Any]:
         )
 
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+    _mark_open_positions_to_market(settings, portfolio)
     pairs = _discover_pairs(settings)
     if not pairs:
         portfolio.save(settings.state_path)
