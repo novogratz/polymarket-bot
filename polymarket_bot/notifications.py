@@ -288,6 +288,10 @@ def notify_trade_buy(
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
         return
+    # Optional granular suppression: TELEGRAM_ALERT_TRADES_BUY=0 hides BUY
+    # alerts while keeping SELLs (which trigger via notify_trade_sell).
+    if not _flag("TELEGRAM_ALERT_TRADES_BUY"):
+        return
     wallets = int(signal.get("wallets", 0) or 0)
     copied = float(signal.get("copied_usdc", 0) or 0)
     tag = signal.get("tag")

@@ -20,5 +20,7 @@ export POLYMARKET_SUPPRESS_BUY_LOGS=${POLYMARKET_SUPPRESS_BUY_LOGS:-1}
 # Telegram alerts: heartbeat every 15 min on top of stdout.
 export TELEGRAM_ALERT_HEARTBEAT=${TELEGRAM_ALERT_HEARTBEAT:-1}
 export TELEGRAM_HEARTBEAT_MINUTES=${TELEGRAM_HEARTBEAT_MINUTES:-15}
+# Suppress per-BUY Telegram pings — keep SELLs + heartbeats + leaderboard.
+export TELEGRAM_ALERT_TRADES_BUY=${TELEGRAM_ALERT_TRADES_BUY:-0}
 
 exec uv run pmbot auto-loop --live --profile edge --yes
