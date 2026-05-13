@@ -15,8 +15,8 @@
 #
 # Diff vs copy-advanced (which has been net-losing in the journal):
 #   expiry       max_hours_to_expiry = 8 (same-day markets; Polymarket settles 4-8h after event)
-#   filters      min_target_stake 100->200 (whale conviction floor)
-#                min_whale_pnl 10k->25k (only proven operators)
+#   filters      min_target_stake 100 (whale conviction floor)
+#                min_whale_pnl 10k (wider net; sports specialists rarely top overall PnL)
 #                price band 0.15-0.85 -> 0.30-0.80
 #                max_chase 0.05->0.03 (no time to recover from overpaying)
 #                max_trade_age 3600->600 (short-dated trades are time-sensitive)
@@ -34,11 +34,13 @@ starting_cash = 1000.0
 mode = "mirror"
 
 [mirror]
-target = "bossoskil1, Pestle, surfandturf, JewishNinja, swisstony, RN1, Oddn, anoin123, wan123, Talvez10"
+# Core named accounts known for live sports/event trading.
+# Additional wallets surface via discovery every 2h.
+target = "bossoskil1, Pestle, surfandturf, JewishNinja, swisstony, RN1, Oddn, anoin123, wan123, Talvez10, Treyshon, SamM, roarke22, JohnW, kayabey, Poyo, mattyb, miso, Firebolt, polywhale"
 
 discovery_enabled = true
-discovery_interval_hours = 6
-min_whale_pnl = 25000.0
+discovery_interval_hours = 2
+min_whale_pnl = 10000.0
 
 # Sizing — small until the strategy earns trust.
 copy_ratio = 0.20
@@ -47,7 +49,7 @@ size_usd = 100.0
 max_position_pct = 0.15
 
 # Filters
-min_target_stake_usd = 200.0
+min_target_stake_usd = 100.0
 min_liquidity_usd = 10000.0
 max_chase_premium = 0.03
 min_buy_price = 0.30
@@ -97,6 +99,12 @@ peak_protect_exit_pct = 0.80
 
 # No forced max-hold — the 2h expiry gate already bounds hold time.
 max_hold_hours = 0.0
+
+[trader_cohort]
+# Scan both weekly AND daily leaderboards so current hot streaks get picked up.
+# top_n=50 per category doubles the discovery pool vs. the default 25.
+leaderboard_windows = "WEEK,DAILY"
+top_n = 50
 
 [filters]
 # 3+ was impossible in practice on short-dated markets — whales trade the
