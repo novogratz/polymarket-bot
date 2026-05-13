@@ -477,6 +477,14 @@ def _mirror_buy(
             "token_id": trade.asset,
         }
     
+    if candidate.best_ask and candidate.best_ask < settings.mirror_min_buy_price:
+        return {
+            "action": "skip",
+            "reason": "ask_below_min_price",
+            "token_id": trade.asset,
+            "ask": candidate.best_ask,
+        }
+
     if candidate.best_ask and trade.price > 0:
         premium = (candidate.best_ask - trade.price) / trade.price
         if premium > settings.mirror_max_chase_premium:
