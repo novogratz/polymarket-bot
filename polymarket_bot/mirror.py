@@ -485,6 +485,16 @@ def _mirror_buy(
             "ask": candidate.best_ask,
         }
 
+    if settings.mirror_max_days_to_expiry > 0 and candidate.end_date:
+        days_to_expiry = (candidate.end_date - dt.datetime.now(dt.timezone.utc)).days
+        if days_to_expiry > settings.mirror_max_days_to_expiry:
+            return {
+                "action": "skip",
+                "reason": "expiry_too_far",
+                "token_id": trade.asset,
+                "days_to_expiry": days_to_expiry,
+            }
+
     if candidate.best_ask and trade.price > 0:
         premium = (candidate.best_ask - trade.price) / trade.price
         if premium > settings.mirror_max_chase_premium:

@@ -238,6 +238,7 @@ class Settings:
     mirror_tiered_copy_ratios: str = field(default_factory=lambda: os.getenv("POLYMARKET_MIRROR_TIERED_COPY_RATIOS", "0.0:0.15,25000:0.25,100000:0.35"))
     mirror_weekly_loss_limit_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_WEEKLY_LOSS_LIMIT_PCT", 0.10))
     mirror_min_liquidity_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MIN_LIQUIDITY_USD", 20000.0))
+    mirror_max_days_to_expiry: int = field(default_factory=lambda: _int_env("POLYMARKET_MIRROR_MAX_DAYS_TO_EXPIRY", 3))
 
     def __post_init__(self) -> None:
         """Swap ledger, journal, overrides, and tick-state paths to dry-run files.

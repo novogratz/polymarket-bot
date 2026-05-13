@@ -41,6 +41,9 @@ max_trade_age_seconds = 3600
 daily_loss_limit_pct = 0.05
 weekly_loss_limit_pct = 0.12
 
+# Market expiry filter: skip markets resolving more than N days from now
+max_days_to_expiry = 1
+
 [persistence]
 enabled = false
 
