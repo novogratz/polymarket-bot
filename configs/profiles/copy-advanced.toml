@@ -1,0 +1,49 @@
+# Advanced Filtered Whale Copy-Trading Bot Profile (2026)
+#
+# Usage:
+#   uv run pmbot auto-loop --profile copy-advanced --run advanced-whale
+#
+
+[run]
+starting_cash = 1000.0
+mode = "mirror"
+
+[mirror]
+# List of static whales to copy (0x addresses or usernames)
+target = "bossoskil1, Pestle, surfandturf, JewishNinja, swisstony, RN1, Oddn, anoin123, wan123, Talvez10"
+
+# Target Discovery
+discovery_enabled = true
+discovery_interval_hours = 6
+min_whale_pnl = 10000.0
+
+# Sizing & Ratios
+# base copy ratio (fraction of whale's stake)
+copy_ratio = 0.20
+# Tiered ratios based on whale's PnL: "pnl_limit:ratio,..."
+tiered_copy_ratios = "0.0:0.15,25000:0.25,100000:0.35"
+# Max position size in USD (hard cap)
+size_usd = 250.0
+# Max position as % of our equity
+max_position_pct = 0.05
+
+# Filters
+min_target_stake_usd = 100.0
+min_liquidity_usd = 10000.0
+max_chase_premium = 0.05
+min_buy_price = 0.02
+max_buy_price = 0.98
+max_open_positions = 12
+max_category_exposure_pct = 0.25
+max_trade_age_seconds = 3600
+
+# Drawdown Protection
+daily_loss_limit_pct = 0.05
+weekly_loss_limit_pct = 0.12
+
+[persistence]
+enabled = false
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 30

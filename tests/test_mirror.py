@@ -102,6 +102,8 @@ class MirrorBaseTest(unittest.TestCase):
                 "POLYMARKET_RUN_MODE": "mirror",
                 "POLYMARKET_DRY_RUN": "1",
                 "POLYMARKET_MIRROR_SIZE_USD": "5.0",
+                "POLYMARKET_MIRROR_COPY_RATIO": "1.0",
+                "POLYMARKET_MIRROR_MAX_POSITION_PCT": "1.0",
                 "POLYMARKET_MIRROR_MIN_TARGET_STAKE_USD": "20.0",
                 "POLYMARKET_MIRROR_MAX_CHASE_PREMIUM": "0.10",
                 "POLYMARKET_MIRROR_MIN_BUY_PRICE": "0.05",
@@ -279,6 +281,34 @@ class TestSelectEligible(MirrorBaseTest):
             settings = Settings()
         self.assertEqual(settings.mirror_max_trade_age_seconds, 60)
 
+    def test_trade_stake_respects_copy_ratio_and_caps(self) -> None:
+        trade = _trade(usdc_size=40.0)
+        portfolio = __import__("polymarket_bot.portfolio", fromlist=["Portfolio"]).Portfolio(
+            cash=100.0,
+            positions=[],
+        )
+        settings = Settings(
+            mirror_copy_ratio=0.20,
+            mirror_max_position_pct=0.02,
+            mirror_size_usd=5.0,
+        )
+        stake = mirror._mirror_trade_stake(settings, portfolio, trade)
+        self.assertEqual(stake, 2.0)
+
+    def test_trade_stake_caps_at_cash_and_max_trade(self) -> None:
+        trade = _trade(usdc_size=100.0)
+        portfolio = __import__("polymarket_bot.portfolio", fromlist=["Portfolio"]).Portfolio(
+            cash=1.25,
+            positions=[],
+        )
+        settings = Settings(
+            mirror_copy_ratio=0.20,
+            mirror_max_position_pct=1.0,
+            mirror_size_usd=5.0,
+        )
+        stake = mirror._mirror_trade_stake(settings, portfolio, trade)
+        self.assertEqual(stake, 1.25)
+
 
 class TestMirrorOnce(MirrorBaseTest):
     def test_empty_target_returns_noop(self) -> None:
@@ -410,6 +440,127 @@ class TestMirrorOnce(MirrorBaseTest):
         self.assertEqual(result["scan_counts"]["mirrored"], 0)
         self.assertEqual(result["actions"][0]["reason"], "sells_disabled")
 
+    def test_runs_standard_exits_before_mirroring_new_trades(self) -> None:
+        exit_report = [
+            {
+                "action": "sell",
+                "reason": "stop_loss",
+                "token_id": "tok-open",
+            }
+        ]
+        with mock.patch.object(
+            mirror.DataApiClient, "trades", return_value=[]
+        ), mock.patch.object(
+            mirror, "_execute_mirror_exits", return_value=exit_report
+        ) as exits_mock:
+            result = mirror.mirror_once(self.settings)
+
+        exits_mock.assert_called_once()
+        self.assertEqual(result["exits"], exit_report)
+        self.assertEqual(result["scan_counts"]["exits"], 1)
+
+    def test_daily_loss_limit_pauses_new_buys_but_keeps_exits(self) -> None:
+        self.state_path.write_text(
+            json.dumps(
+                {
+                    "cash": 80.0,
+                    "pending_orders": [],
+                    "positions": [
+                        {
+                            "status": "open",
+                            "live": True,
+                            "market_id": "market-open",
+                            "token_id": "tok-open",
+                            "entry_price": 0.50,
+                            "stake": 20.0,
+                            "shares": 40.0,
+                            "initial_shares": 40.0,
+                            "unrealized_pnl": -20.0,
+                            "signal": {"category": "POLITICS"},
+                        }
+                    ],
+                    "daily_anchor": mirror._utc_day_key(),
+                    "day_start_equity": 100.0,
+                }
+            )
+        )
+        trade = _trade(asset="tok-new", side="BUY", price=0.40, usdc_size=5000.0, timestamp=700)
+        exit_trade = _trade(asset="tok-open", side="SELL", price=0.30, usdc_size=20.0, timestamp=600)
+        exit_candidate = Candidate(
+            market_id="market-tok-open",
+            question="Will tok-open happen?",
+            slug="tok-open",
+            end_date=None,
+            hours_to_close=24.0,
+            liquidity=1000.0,
+            volume=5000.0,
+            outcome="Yes",
+            price=0.90,
+            token_id="tok-open",
+            score=0.0,
+            url="https://polymarket.com/event/tok-open",
+            best_bid=0.30,
+            best_ask=0.90,
+            tick_size=0.01,
+            accepts_orders=True,
+            event_slug="tok-open",
+        )
+        buy_candidate = _candidate(token_id="tok-new", best_ask=0.41)
+
+        def fake_trades(self, *, user, **kwargs):
+            return [exit_trade, trade]
+
+        def fake_candidate(token_id, _gamma):
+            return exit_candidate if token_id == "tok-open" else buy_candidate
+
+        settings = Settings(mirror_daily_loss_limit_pct=0.05, mirror_copy_ratio=0.20, mirror_max_position_pct=0.02)
+
+        with mock.patch.object(
+            mirror.DataApiClient, "trades", autospec=True, side_effect=fake_trades
+        ), mock.patch.object(
+            mirror, "_candidate_for_token", side_effect=fake_candidate
+        ):
+            result = mirror.mirror_once(settings)
+
+        self.assertTrue(result["daily_pause"]["active"])
+        self.assertEqual(result["daily_pause"]["reason"], "daily_loss_limit")
+        self.assertIn("daily_loss_limit", [a.get("reason") for a in result["actions"]])
+        self.assertGreaterEqual(result["scan_counts"]["exits"], 0)
+
+    def test_mirror_exit_helper_uses_open_live_position_candidates(self) -> None:
+        portfolio = __import__("polymarket_bot.portfolio", fromlist=["Portfolio"]).Portfolio(
+            cash=0.0,
+            positions=[
+                {
+                    "status": "open",
+                    "live": True,
+                    "token_id": "tok-open",
+                    "market_id": "market-tok-open",
+                    "outcome": "Yes",
+                    "entry_price": 0.50,
+                    "shares": 10.0,
+                    "stake": 5.0,
+                },
+                {"status": "open", "live": False, "token_id": "tok-paper"},
+            ],
+        )
+        candidate = _candidate(token_id="tok-open", best_bid=0.35)
+        exit_report = [{"action": "sell", "reason": "stop_loss"}]
+
+        with mock.patch.object(
+            mirror, "_candidate_for_token", return_value=candidate
+        ) as candidate_mock, mock.patch(
+            "polymarket_bot.main._execute_sell_strategy", return_value=exit_report
+        ) as sell_mock:
+            result = mirror._execute_mirror_exits(
+                object(), self.settings, portfolio, mirror.GammaClient(self.settings.gamma_base_url)
+            )
+
+        candidate_mock.assert_called_once()
+        sell_mock.assert_called_once()
+        self.assertEqual(sell_mock.call_args.args[3], [candidate])
+        self.assertEqual(result, exit_report)
+
 
 class TestMirrorOnceMultiTarget(MirrorBaseTest):
     def setUp(self) -> None:
@@ -525,6 +676,20 @@ class TestProfileSchema(MirrorBaseTest):
         self.assertEqual(loaded.values.get("POLYMARKET_RUN_MODE"), "mirror")
         self.assertIn("POLYMARKET_MIRROR_TARGET", loaded.values)
         self.assertEqual(loaded.values.get("POLYMARKET_MIRROR_SIZE_USD"), "5.0")
+
+    def test_best_wallet_hold_profile_disables_profit_taking(self) -> None:
+        from polymarket_bot.profiles import load_profile
+
+        repo_root = Path(__file__).resolve().parent.parent
+        profile_path = repo_root / "configs" / "profiles" / "best-wallet-hold.toml"
+        loaded = load_profile(profile_path)
+
+        self.assertEqual(loaded.values.get("POLYMARKET_RUN_MODE"), "mirror")
+        self.assertEqual(loaded.values.get("POLYMARKET_MIRROR_MIRROR_SELLS"), "0")
+        self.assertEqual(loaded.values.get("POLYMARKET_SMART_TAKE_PROFIT_TIERS"), "")
+        self.assertEqual(loaded.values.get("POLYMARKET_SMART_TRAILING_STOP_ARM_PCT"), "0.0")
+        self.assertEqual(loaded.values.get("POLYMARKET_SMART_STOP_LOSS_PCT"), "0.2")
+        self.assertEqual(loaded.values.get("POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD"), "0.99")
 
 
 if __name__ == "__main__":

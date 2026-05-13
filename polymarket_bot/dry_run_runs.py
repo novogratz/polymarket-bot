@@ -33,6 +33,7 @@ class DryRunPaths:
     tick_history: Path
     overrides: Path
     config_snapshot: Path
+    mirror_state: Path
     equity_curve: Path
     decisions: Path
 
@@ -48,6 +49,7 @@ class DryRunPaths:
             tick_history=root / "tick_history.jsonl",
             overrides=root / "overrides.json",
             config_snapshot=root / "config_snapshot.toml",
+            mirror_state=root / "mirror_state.json",
             equity_curve=root / "equity_curve.jsonl",
             decisions=root / "decisions.jsonl",
         )
@@ -181,6 +183,7 @@ def reset_run(paths: DryRunPaths) -> None:
         paths.tick_state,
         paths.tick_history,
         paths.overrides,
+        paths.mirror_state,
     ):
         path.unlink(missing_ok=True)
     metadata = load_metadata(paths)

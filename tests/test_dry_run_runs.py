@@ -32,6 +32,7 @@ class DryRunPathsTests(unittest.TestCase):
         self.assertEqual(paths.tick_history, Path("/tmp/base/dry_runs/baseline/tick_history.jsonl"))
         self.assertEqual(paths.overrides, Path("/tmp/base/dry_runs/baseline/overrides.json"))
         self.assertEqual(paths.config_snapshot, Path("/tmp/base/dry_runs/baseline/config_snapshot.toml"))
+        self.assertEqual(paths.mirror_state, Path("/tmp/base/dry_runs/baseline/mirror_state.json"))
         self.assertEqual(paths.equity_curve, Path("/tmp/base/dry_runs/baseline/equity_curve.jsonl"))
         self.assertEqual(paths.decisions, Path("/tmp/base/dry_runs/baseline/decisions.jsonl"))
 
@@ -138,6 +139,7 @@ class ResetRunTests(unittest.TestCase):
             paths.tick_state.write_text('{}', encoding="utf-8")
             paths.tick_history.write_text('{}\n', encoding="utf-8")
             paths.overrides.write_text('{}', encoding="utf-8")
+            paths.mirror_state.write_text('{}', encoding="utf-8")
             paths.config_snapshot.write_text('# snapshot', encoding="utf-8")
             original_metadata = load_metadata(paths)
 
@@ -151,6 +153,7 @@ class ResetRunTests(unittest.TestCase):
             self.assertFalse(paths.tick_state.is_file())
             self.assertFalse(paths.tick_history.is_file())
             self.assertFalse(paths.overrides.is_file())
+            self.assertFalse(paths.mirror_state.is_file())
             # Metadata preserved BUT total_ticks reset to 0.
             metadata = load_metadata(paths)
             self.assertEqual(metadata.total_ticks, 0)

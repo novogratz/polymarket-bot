@@ -1,0 +1,86 @@
+# QUANT BITCOIN dry-run/live profile.
+#
+# Deterministic BTC price-threshold strategy:
+# buy active Bitcoin markets when the CLOB ask clears 0.55 with strict
+# execution filters and a large per-trade bankroll cap.
+
+[run]
+mode = "quant_bitcoin"
+starting_cash = 1000.0
+
+[sizing]
+position_pct = 0.0
+max_position_ceiling_usd = 250.0
+max_position_ceiling_pct = 0.25
+max_trade_usd = 250.0
+cash_floor_pct = 0.0
+min_open_positions = 0
+starter_trade_usd = 250.0
+assumed_live_balance_usd = 0.0
+
+[discovery]
+scan_limit = 200
+soon_hours = 1
+
+[market_filters]
+min_liquidity_usd = 500.0
+min_volume_usd = 500.0
+
+[filters]
+max_orders_per_tick = 4
+min_hours_to_close = 0.0
+max_hours_to_close = 1.0
+
+[quant_bitcoin]
+enabled = true
+symbol = "BTCUSDT"
+binance_url = "https://api.binance.com"
+coinbase_url = "https://api.coinbase.com"
+kraken_url = "https://api.kraken.com"
+max_exchange_divergence_pct = 0.001
+signal_path = "data/quant_bitcoin_signals.json"
+min_buy_price = 0.55
+max_spread = 0.025
+max_relative_spread = 0.06
+min_liquidity_usd = 500.0
+min_volume_usd = 0.0
+min_hours_to_close = 0.0
+max_hours_to_close = 1.0
+risk_per_trade_pct = 0.60
+max_trade_usd = 1000.0
+max_orders_per_tick = 999
+hard_stop_loss_pct = 0.20
+
+[execution]
+max_entry_slippage = 0.02
+pending_order_ttl_seconds = 10
+min_sell_usd = 1.0
+
+[exits]
+take_profit_ladder = "0.0015:0.5,0.003:1.0,0.008:1.0"
+trailing_stop_arm_pct = 0.004
+trailing_stop_giveback = 0.50
+peak_protect_arm_pct = 0.008
+peak_protect_exit_pct = 0.003
+stop_loss_pct = 0.004
+stop_loss_min_age_minutes = 0
+max_hold_hours = 0.10
+near_expiry_min_profit = 0.001
+near_expiry_minutes_to_close = 1
+resolved_market_threshold = 0.97
+
+[btc_edge]
+enabled = false
+
+[noise_fallback]
+enabled = false
+
+[auto_tune]
+enabled = false
+
+[persistence]
+enabled = false
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 5

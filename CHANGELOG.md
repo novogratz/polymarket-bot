@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-05-13
+
+### Fixed
+
+- **mirror mode: stale `week_start_equity` blocked all BUYs across dry-run restarts.**
+  `mirror_state_path` was shared across all `--run` names, so switching bankrolls left a stale `week_start_equity` that triggered the weekly drawdown limit on the first tick. Added `mirror_state` to `DryRunPaths` and injected `POLYMARKET_MIRROR_STATE_PATH` so each run has an isolated mirror state file. (`dry_run_runs.py`, `main.py`, `test_dry_run_runs.py`)
+
+- **mirror mode: phantom sell attempts on stale positions.** `mirror_once()` never called `_sync_live_positions()`, so the local ledger held positions that no longer existed on Polymarket. Every tick tried to sell them and got `not enough balance / allowance` from the CLOB. Added `_sync_live_positions(settings, portfolio)` at the top of `mirror_once()`, gated on `not settings.dry_run`. (`mirror.py`)
+
+- **`_sync_live_positions` never synced the USDC cash balance.** It synced positions but left `portfolio.cash` stale ($7.36 vs actual $160). Now fetches on-chain pUSD balance via `read_pusd_balance()` and updates `portfolio.cash`. (`main.py`)
+
+- **`_mirror_buy` returned `"action": "buy"` even when the order wasn't filled.** Discarded the `LiveTradeResult` — a CLOB "delayed" response was reported as success but no position was recorded and no cash deducted. Now checks `_is_filled_buy_response()` and returns `"skip"` with `unfilled:<status>` for non-filled orders. (`mirror.py`)
+
+- **`mirror_once` marked trades as `seen` before execution.** Failed/delayed orders were consumed forever and never retried. `seen` / `last_ts_by_target` tracking moved to after successful execution only. (`mirror.py`)
+
+- **`cancel_active_orders_for_token` broken by Polymarket API v2.** The legacy REST `GET /orders` endpoint returns HTTP 405. Now tries `sdk_client.get_open_orders(OpenOrderParams)` first and falls back to the legacy client. (`trading.py`)
+
 ## [1.2.0] - 2026-05-08
 
 Documentation refresh release. All Markdown files (`README.md`, `CLAUDE.md`, `CODEX.md`, `AGENTS.md`, `docs/AUTONOMOUS_STRATEGY.md`, and the structured `.claude/` and `.codex/` skill files) are now in sync with the live `scripts/run_live_70.sh` configuration and the multi-level exit waterfall introduced in 1.1.0.

@@ -302,11 +302,12 @@ class ProfilesDirectoryTests(unittest.TestCase):
         path = repo_root / "configs" / "profiles" / "baseline.toml"
         profile = load_profile(path)
         self.assertEqual(profile.starting_cash, 100.0)
-        self.assertIn("POLYMARKET_SMART_POSITION_PCT", profile.values)
-        self.assertIn("POLYMARKET_SMART_MIN_CONSENSUS", profile.values)
-        self.assertIn("POLYMARKET_SMART_STOP_LOSS_PCT", profile.values)
-        self.assertIn("POLYMARKET_BTC_EDGE_INTEGRATED", profile.values)
-        self.assertIn("POLYMARKET_SMART_NOISE_FALLBACK_ENABLED", profile.values)
+        self.assertEqual(profile.values.get("POLYMARKET_RUN_MODE"), "mirror")
+        self.assertIn("POLYMARKET_MIRROR_TARGET", profile.values)
+        self.assertIn("POLYMARKET_MIRROR_COPY_RATIO", profile.values)
+        self.assertIn("POLYMARKET_MIRROR_MAX_POSITION_PCT", profile.values)
+        self.assertIn("POLYMARKET_MIRROR_DAILY_LOSS_LIMIT_PCT", profile.values)
+        self.assertIn("POLYMARKET_SMART_TAKE_PROFIT_TIERS", profile.values)
 
 
 class TestProfilesPersistenceSection(unittest.TestCase):

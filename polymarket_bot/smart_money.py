@@ -251,17 +251,20 @@ class DataApiClient:
         )
         return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
 
-    def _get_json(self, path: str, params: dict[str, str]) -> Any:
-        query = urllib.parse.urlencode(params)
-        request = urllib.request.Request(
-            f"{self.base_url}{path}?{query}",
-            headers={
-                "Accept": "application/json",
-                "User-Agent": "polymarket-bot/0.1",
+    def holders(self, *, token_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        payload = self._get_json(
+            "/holders",
+            {
+                "tokenId": token_id,
+                "limit": str(limit),
             },
         )
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
+        return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
+
+    def _get_json(self, path: str, params: dict[str, str]) -> Any:
+        query = urllib.parse.urlencode(params)
+        url = f"{self.base_url}{path}?{query}"
+        return _http_get_json(url, timeout=self.timeout)
 
 
 def choose_smart_money_trade(
@@ -777,6 +780,32 @@ def _format_minutes(minutes: float | None) -> str:
     if minutes < 1:
         return "<1m"
     return f"{minutes:.0f}m"
+
+
+def _http_get_json(url: str, *, timeout: int, retries: int = 4) -> Any:
+    """GET avec retry exponentiel sur 429/5xx (Cloudflare rate-limit)."""
+    backoff = 1.5
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        try:
+            request = urllib.request.Request(
+                url,
+                headers={"Accept": "application/json", "User-Agent": "polymarket-bot/0.1"},
+            )
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            last_exc = exc
+            if exc.code not in (429, 500, 502, 503, 504) or attempt == retries - 1:
+                raise
+            time.sleep(backoff * (2 ** attempt))
+        except (urllib.error.URLError, TimeoutError) as exc:
+            last_exc = exc
+            if attempt == retries - 1:
+                raise
+            time.sleep(backoff * (2 ** attempt))
+    if last_exc is not None:
+        raise last_exc
 
 
 def _float(value: Any, default: float = 0.0) -> float:

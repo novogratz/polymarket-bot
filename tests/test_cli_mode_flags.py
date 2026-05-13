@@ -65,20 +65,21 @@ class CliAutoLoopFlagsTests(unittest.TestCase):
         self.assertIn("not found", combined.lower())
 
     def test_dry_run_loads_baseline_profile(self):
-        with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
+        with patch("polymarket_bot.mirror.mirror_loop") as loop_mock:
             result = self.runner.invoke(
                 self.app, ["auto-loop", "--dry-run", "--profile", "baseline"]
             )
         self.assertEqual(result.exit_code, 0, msg=(result.stderr or "") + (result.stdout or ""))
         loop_mock.assert_called_once()
         settings = loop_mock.call_args.args[0]
-        # baseline.toml sets position_pct = 0.10 (10% du cash par trade).
-        self.assertAlmostEqual(settings.smart_position_pct, 0.10)
+        self.assertEqual(settings.run_mode, "mirror")
+        self.assertIn("bossoskil1", settings.mirror_target)
+        self.assertAlmostEqual(settings.mirror_copy_ratio, 0.20)
         # baseline.toml sets starting_cash = 100.0 (paper_balance_usd)
         self.assertAlmostEqual(settings.paper_balance_usd, 100.0)
 
     def test_live_without_yes_aborts_on_non_tty(self):
-        with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
+        with patch("polymarket_bot.mirror.mirror_loop") as loop_mock:
             result = self.runner.invoke(
                 self.app, ["auto-loop", "--live", "--profile", "live-90"]
             )
@@ -87,7 +88,7 @@ class CliAutoLoopFlagsTests(unittest.TestCase):
         loop_mock.assert_not_called()
 
     def test_live_with_yes_skips_prompt(self):
-        with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
+        with patch("polymarket_bot.mirror.mirror_loop") as loop_mock:
             result = self.runner.invoke(
                 self.app,
                 ["auto-loop", "--live", "--profile", "live-90", "--yes"],
@@ -95,13 +96,13 @@ class CliAutoLoopFlagsTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, msg=(result.stderr or "") + (result.stdout or ""))
         loop_mock.assert_called_once()
         settings = loop_mock.call_args.args[0]
-        # live-90.toml sets position_pct = 0.18
-        self.assertAlmostEqual(settings.smart_position_pct, 0.18)
+        self.assertEqual(settings.run_mode, "mirror")
+        self.assertAlmostEqual(settings.mirror_max_position_pct, 0.02)
 
     def test_dry_run_does_not_apply_live_value_from_profile(self):
         # In dry-run mode the assumed_live_balance_usd from live-90 should still apply,
         # but starting_cash governs the ledger initial cash.
-        with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
+        with patch("polymarket_bot.mirror.mirror_loop") as loop_mock:
             result = self.runner.invoke(
                 self.app, ["auto-loop", "--dry-run", "--profile", "baseline"]
             )
@@ -135,7 +136,7 @@ class CliAutoLoopIntegrationTests(unittest.TestCase):
             shutil.rmtree(default_run, ignore_errors=True)
 
     def test_dry_run_baseline_writes_snapshot(self):
-        with patch("polymarket_bot.main.smart_money_loop"):
+        with patch("polymarket_bot.mirror.mirror_loop"):
             result = self.runner.invoke(
                 self.app, ["auto-loop", "--dry-run", "--profile", "baseline"]
             )
@@ -145,22 +146,23 @@ class CliAutoLoopIntegrationTests(unittest.TestCase):
         self.assertTrue(snap.is_file(), f"snapshot not found at {snap}")
         content = snap.read_text(encoding="utf-8")
         self.assertIn("# source: baseline.toml", content)
-        self.assertIn("[sizing]", content)
+        self.assertIn("[mirror]", content)
+        self.assertIn("copy_ratio = 0.2", content)
 
     def test_dry_run_override_env_wins_over_profile(self):
         # Profile sets position_pct = 0.0 ; we override via env.
-        os.environ["POLYMARKET_SMART_POSITION_PCT"] = "0.33"
-        with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
+        os.environ["POLYMARKET_MIRROR_COPY_RATIO"] = "0.33"
+        with patch("polymarket_bot.mirror.mirror_loop") as loop_mock:
             result = self.runner.invoke(
                 self.app, ["auto-loop", "--dry-run", "--profile", "baseline"]
             )
         self.assertEqual(result.exit_code, 0, msg=(result.stderr or "") + (result.stdout or ""))
         settings = loop_mock.call_args.args[0]
-        self.assertAlmostEqual(settings.smart_position_pct, 0.33)
+        self.assertAlmostEqual(settings.mirror_copy_ratio, 0.33)
 
     def test_dry_run_starting_cash_from_profile(self):
         # baseline.toml sets starting_cash = 100.0
-        with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
+        with patch("polymarket_bot.mirror.mirror_loop") as loop_mock:
             result = self.runner.invoke(
                 self.app, ["auto-loop", "--dry-run", "--profile", "baseline"]
             )
@@ -192,13 +194,13 @@ class CliAutoLoopNamedRunTests(unittest.TestCase):
                 shutil.rmtree(p, ignore_errors=True)
 
     def test_default_run_name_creates_default_dir(self):
-        with patch("polymarket_bot.main.smart_money_loop"):
+        with patch("polymarket_bot.mirror.mirror_loop"):
             result = self.runner.invoke(self.app, ["auto-loop", "--dry-run", "--profile", "baseline"])
         self.assertEqual(result.exit_code, 0, msg=(result.stderr or "") + (result.stdout or ""))
         self.assertTrue((Path("data") / "dry_runs" / "default" / "metadata.json").is_file())
 
     def test_explicit_run_name_creates_named_dir(self):
-        with patch("polymarket_bot.main.smart_money_loop"):
+        with patch("polymarket_bot.mirror.mirror_loop"):
             result = self.runner.invoke(
                 self.app, ["auto-loop", "--dry-run", "--run", "sim1", "--profile", "baseline"]
             )
@@ -208,14 +210,14 @@ class CliAutoLoopNamedRunTests(unittest.TestCase):
         self.assertTrue((run_dir / "config_snapshot.toml").is_file())
 
     def test_run_name_validated(self):
-        with patch("polymarket_bot.main.smart_money_loop"):
+        with patch("polymarket_bot.mirror.mirror_loop"):
             result = self.runner.invoke(
                 self.app, ["auto-loop", "--dry-run", "--run", "bad/name", "--profile", "baseline"]
             )
         self.assertNotEqual(result.exit_code, 0)
 
     def test_run_rejected_in_live_mode(self):
-        with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
+        with patch("polymarket_bot.mirror.mirror_loop") as loop_mock:
             result = self.runner.invoke(
                 self.app, ["auto-loop", "--live", "--run", "sim2", "--profile", "live-90", "--yes"]
             )

@@ -48,9 +48,9 @@ class TestNoPersistenceFlag(unittest.TestCase):
         """Avec --no-persistence, POLYMARKET_PERSISTENCE_ENABLED=false avant le tick."""
         runner = CliRunner()
         # On mock le travail réel pour ne pas vraiment lancer la boucle
-        with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
+        with patch("polymarket_bot.mirror.mirror_loop") as loop_mock:
             loop_mock.return_value = None
-            # On capture la valeur de l'env var au moment où smart_money_loop est appelé
+            # On capture la valeur de l'env var au moment où mirror_loop est appelé
             captured: dict[str, str] = {}
 
             def _capture(*args, **kwargs):

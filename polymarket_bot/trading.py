@@ -355,11 +355,20 @@ class TradingSession:
         cancelled: list[str] = []
         if not token_id:
             return cancelled
+        orders: list[dict] = []
         try:
-            orders = self.legacy_client.get_orders()
+            if self.sdk_client is not None:
+                module, _ = _load_sdk_client()
+                params = module.OpenOrderParams(asset_id=token_id)
+                orders = list(self.sdk_client.get_open_orders(params=params, only_first_page=True))
         except Exception as exc:
-            print(f"⚠️  cancel_active_orders_for_token: get_orders failed: {type(exc).__name__}: {exc}", flush=True)
-            return cancelled
+            print(f"⚠️  cancel_active_orders_for_token: SDK get_open_orders failed: {type(exc).__name__}: {exc}", flush=True)
+        if not orders:
+            try:
+                orders = self.legacy_client.get_orders()
+            except Exception as exc:
+                print(f"⚠️  cancel_active_orders_for_token: legacy get_orders failed: {type(exc).__name__}: {exc}", flush=True)
+                return cancelled
         if not isinstance(orders, list):
             return cancelled
         target = str(token_id)

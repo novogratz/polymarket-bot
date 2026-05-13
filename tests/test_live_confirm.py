@@ -132,6 +132,18 @@ class BuildLiveRecapTests(unittest.TestCase):
         text = build_live_recap(settings, profile_label="baseline.toml")
         self.assertIn("not configured", text.lower())
 
+    def test_mirror_recap_mentions_mirror_controls(self):
+        settings = Settings(
+            run_mode="mirror",
+            mirror_copy_ratio=0.2,
+            mirror_max_position_pct=0.02,
+            mirror_daily_loss_limit_pct=0.05,
+        )
+        text = build_live_recap(settings, profile_label="live-90.toml")
+        self.assertIn("copy_ratio", text)
+        self.assertIn("daily_loss_limit_pct", text)
+        self.assertIn("resolved_exit", text)
+
 
 if __name__ == "__main__":
     unittest.main()

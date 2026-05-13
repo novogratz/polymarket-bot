@@ -1,0 +1,52 @@
+# Dry-run mirror profile for the top 20 whale targets.
+#
+# Usage:
+#   uv run pmbot auto-loop --profile whale-mirror-dryrun --dry-run --run mirror-whales
+#
+# This profile uses mirror mode: every new eligible target-wallet BUY is
+# copied into the named dry-run ledger with a fixed simulated stake.
+
+[run]
+starting_cash = 100.0
+mode = "mirror"
+
+[mirror]
+target = """
+bossoskil1,
+swisstony,
+RN1,
+jdsahgf,
+surfandturf,
+Pestle,
+JewishNinja,
+everydaymortgage,
+yaya88888,
+beachboy4,
+Golgatha,
+VPenguin,
+frankfrankfrank,
+anoin123,
+wan123,
+downtownfee,
+Oddn,
+Supah9ga,
+Talvez10,
+0x492442EaB586F242B53bDa933fD5dE859c8A3782
+"""
+
+# Simulated stake per mirrored BUY. Mirror mode currently supports fixed
+# USD sizing; $1 matches the original 1% intent for a $100 dry-run bankroll.
+size_usd = 1.0
+# Mirror target-wallet SELLs too, so the dry-run exits when they exit.
+mirror_sells = true
+# Copy all target bets, including small ones.
+min_target_stake_usd = 0.0
+# Dry-run exploration: allow broad chase/price ranges so we observe almost
+# every new target BUY that has a resolvable Polymarket token.
+max_chase_premium = 1.0
+min_buy_price = 0.01
+max_buy_price = 0.99
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 10

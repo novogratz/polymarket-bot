@@ -106,18 +106,9 @@ def build_live_recap(settings: Settings, *, profile_label: str) -> str:
     sep = "─" * 62
 
     funder_raw = _env_or("POLYMARKET_FUNDER_ADDRESS", settings.funder_address)
-    position_pct = _env_or("POLYMARKET_SMART_POSITION_PCT", settings.smart_position_pct)
-    min_consensus = _env_or("POLYMARKET_SMART_MIN_CONSENSUS", settings.smart_min_consensus)
-    min_copied = float(_env_or("POLYMARKET_SMART_MIN_COPIED_USDC", settings.smart_min_copied_usdc))
-    max_chase = _env_or("POLYMARKET_SMART_MAX_CHASE_PREMIUM", settings.smart_max_chase_premium)
-    max_ceiling = float(_env_or("POLYMARKET_SMART_MAX_POSITION_CEILING_USD", settings.smart_max_position_ceiling_usd))
-    min_open = _env_or("POLYMARKET_MIN_OPEN_POSITIONS", settings.min_open_positions)
-    stop_loss_pct = float(_env_or("POLYMARKET_SMART_STOP_LOSS_PCT", settings.smart_stop_loss_pct))
-    stop_loss_min_age = _env_or("POLYMARKET_SMART_STOP_LOSS_MIN_AGE_MINUTES", settings.smart_stop_loss_min_age_minutes)
-    trail_arm = float(_env_or("POLYMARKET_SMART_TRAILING_STOP_ARM_PCT", settings.smart_trailing_stop_arm_pct))
-    trail_give = float(_env_or("POLYMARKET_SMART_TRAILING_STOP_GIVEBACK_PCT", settings.smart_trailing_stop_giveback_pct))
     tick_interval = _env_or("POLYMARKET_AUTO_INTERVAL_SECONDS", settings.auto_interval_seconds)
     state_path = _env_or("POLYMARKET_STATE_PATH", str(settings.state_path))
+    is_mirror = (settings.run_mode or "smart_money").lower() == "mirror"
 
     lines = [
         bar,
@@ -130,20 +121,50 @@ def build_live_recap(settings: Settings, *, profile_label: str) -> str:
         f"  Tick interval: {tick_interval}s",
         "",
         "  Sizing config:",
-        f"    position_pct          = {position_pct}",
-        f"    max_position_ceiling  = ${max_ceiling:g}",
-        f"    min_open_positions    = {min_open}",
-        "",
-        "  Strategy filters:",
-        f"    min_consensus         = {min_consensus}",
-        f"    min_copied_usdc       = ${min_copied:g}",
-        f"    max_chase_premium     = {max_chase}",
-        "",
-        f"  stop_loss             = -{int(stop_loss_pct * 100)}% "
-        f"after {stop_loss_min_age}min",
-        f"  trailing_stop arm/give = {int(trail_arm * 100)}% / "
-        f"{int(trail_give * 100)}%",
-        "",
-        sep,
     ]
+    if is_mirror:
+        lines.extend(
+            [
+                f"    copy_ratio            = {_env_or('POLYMARKET_MIRROR_COPY_RATIO', settings.mirror_copy_ratio)}",
+                f"    max_position_pct      = {_env_or('POLYMARKET_MIRROR_MAX_POSITION_PCT', settings.mirror_max_position_pct)}",
+                f"    max_open_positions    = {_env_or('POLYMARKET_MIRROR_MAX_OPEN_POSITIONS', settings.mirror_max_open_positions)}",
+                f"    category_cap_pct      = {_env_or('POLYMARKET_MIRROR_MAX_CATEGORY_EXPOSURE_PCT', settings.mirror_max_category_exposure_pct)}",
+                "",
+                "  Exit config:",
+                f"    whale_exit_fraction   = {_env_or('POLYMARKET_MIRROR_WHALE_EXIT_FRACTION', settings.mirror_whale_exit_fraction)}",
+                f"    daily_loss_limit_pct  = {_env_or('POLYMARKET_MIRROR_DAILY_LOSS_LIMIT_PCT', settings.mirror_daily_loss_limit_pct)}",
+                f"    stop_loss             = -{int(float(_env_or('POLYMARKET_MIRROR_STOP_LOSS_PCT', settings.mirror_stop_loss_pct)) * 100)}% "
+                f"after {_env_or('POLYMARKET_MIRROR_STOP_LOSS_MIN_AGE_MINUTES', settings.mirror_stop_loss_min_age_minutes)}min",
+                f"    resolved_exit         = {_env_or('POLYMARKET_MIRROR_RESOLVED_EXIT_THRESHOLD', settings.mirror_resolved_exit_threshold)}",
+            ]
+        )
+    else:
+        position_pct = _env_or("POLYMARKET_SMART_POSITION_PCT", settings.smart_position_pct)
+        min_consensus = _env_or("POLYMARKET_SMART_MIN_CONSENSUS", settings.smart_min_consensus)
+        min_copied = float(_env_or("POLYMARKET_SMART_MIN_COPIED_USDC", settings.smart_min_copied_usdc))
+        max_chase = _env_or("POLYMARKET_SMART_MAX_CHASE_PREMIUM", settings.smart_max_chase_premium)
+        max_ceiling = float(_env_or("POLYMARKET_SMART_MAX_POSITION_CEILING_USD", settings.smart_max_position_ceiling_usd))
+        min_open = _env_or("POLYMARKET_MIN_OPEN_POSITIONS", settings.min_open_positions)
+        stop_loss_pct = float(_env_or("POLYMARKET_SMART_STOP_LOSS_PCT", settings.smart_stop_loss_pct))
+        stop_loss_min_age = _env_or("POLYMARKET_SMART_STOP_LOSS_MIN_AGE_MINUTES", settings.smart_stop_loss_min_age_minutes)
+        trail_arm = float(_env_or("POLYMARKET_SMART_TRAILING_STOP_ARM_PCT", settings.smart_trailing_stop_arm_pct))
+        trail_give = float(_env_or("POLYMARKET_SMART_TRAILING_STOP_GIVEBACK_PCT", settings.smart_trailing_stop_giveback_pct))
+        lines.extend(
+            [
+                f"    position_pct          = {position_pct}",
+                f"    max_position_ceiling  = ${max_ceiling:g}",
+                f"    min_open_positions    = {min_open}",
+                "",
+                "  Strategy filters:",
+                f"    min_consensus         = {min_consensus}",
+                f"    min_copied_usdc       = ${min_copied:g}",
+                f"    max_chase_premium     = {max_chase}",
+                "",
+                f"  stop_loss             = -{int(stop_loss_pct * 100)}% "
+                f"after {stop_loss_min_age}min",
+                f"  trailing_stop arm/give = {int(trail_arm * 100)}% / "
+                f"{int(trail_give * 100)}%",
+            ]
+        )
+    lines.extend(["", sep])
     return "\n".join(lines)

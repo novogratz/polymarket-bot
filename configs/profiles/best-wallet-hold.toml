@@ -1,0 +1,44 @@
+# Best-wallet hold profile.
+#
+# Copy BUYs from a ranked wallet list, do not take partial profits, and only
+# sell on a defined loss, a near-terminal win, or an explicit risk exit.
+#
+# Usage:
+#   uv run pmbot auto-loop --profile best-wallet-hold --dry-run --run best-wallet-test
+#
+# Target list supplied by operator, May 2026. Usernames/ENS/profile names are
+# resolved by mirror mode at startup and cached in wallet_resolutions.json.
+
+[run]
+starting_cash = 100.0
+mode = "mirror"
+
+[mirror]
+target = "bossoskil1,0x492442EaB586F242B53bDa933fD5dE859c8A3782,Pestle,surfandturf,JewishNinja,swisstony,RN1,Oddn,anoin123,Talvez10,wan123,tdrhrhhd,Supah9ga,beachboy4,Golgatha,yaya88888,frankfrankfrank,influenz.eth,kch123,GamblingIsAllYouNeed,DrPufferfish,gmpm,ImJustKen,JustKen,S-Works,geniusMC,Countryside,LaBradfordSmith22,SecondWindCapital"
+size_usd = 5.0
+mirror_sells = false
+min_target_stake_usd = 75.0
+max_chase_premium = 0.04
+min_buy_price = 0.05
+max_buy_price = 0.95
+max_trade_age_seconds = 90
+
+[exits]
+take_profit_ladder = ""
+trailing_stop_arm_pct = 0.0
+trailing_stop_giveback = 0.0
+peak_protect_arm_pct = 0.0
+peak_protect_exit_pct = 0.0
+stop_loss_pct = 0.20
+stop_loss_min_age_minutes = 10
+max_hold_hours = 0.0
+near_expiry_min_profit = 2.0
+near_expiry_minutes_to_close = 0
+resolved_market_threshold = 0.99
+
+[execution]
+min_sell_usd = 1.0
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 10

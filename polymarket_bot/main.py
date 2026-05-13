@@ -1312,7 +1312,8 @@ def _max_trade_for_signal(
     if is_crypto_micro:
         base_cap = min(base_cap, settings.smart_crypto_micro_max_trade_usd)
     if consensus >= 4 and copied_usdc >= 1000:
-        quality_cap = settings.max_position_usd
+        # Scale trade size based on number of profitable wallets when consensus >= 4
+        quality_cap = min(settings.max_position_usd * (1 + (consensus - 4) * 0.25), settings.max_position_usd * 2)
     elif consensus >= 3 and copied_usdc >= 250:
         quality_cap = min(settings.max_position_usd, 10.0)
     elif consensus >= 2 and copied_usdc >= 1000:
@@ -1959,6 +1960,21 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
         else:
             _update_position_from_live_api(position, item)
             report.append({"action": "updated_live_position", "token_id": token_id, "question": position.get("question")})
+
+    try:
+        from .trading import read_pusd_balance
+        live_cash = read_pusd_balance(
+            settings.funder_address,
+            rpc_url=settings.polygon_rpc_url,
+        )
+        if live_cash >= 0:
+            old_cash = portfolio.cash
+            portfolio.cash = round(live_cash, 2)
+            if abs(portfolio.cash - old_cash) > 0.01:
+                report.append({"action": "synced_cash", "old": round(old_cash, 2), "new": portfolio.cash})
+    except Exception as exc:
+        report.append({"action": "cash_sync_skipped", "reason": f"{type(exc).__name__}: {exc}"})
+
     return report
 
 
@@ -2515,6 +2531,7 @@ def cli_auto_loop(
         os.environ["POLYMARKET_STRATEGY_OVERRIDES_PATH"] = str(paths.overrides)
         os.environ["POLYMARKET_TICK_STATE_PATH"] = str(paths.tick_state)
         os.environ["POLYMARKET_TICK_HISTORY_PATH"] = str(paths.tick_history)
+        os.environ["POLYMARKET_MIRROR_STATE_PATH"] = str(paths.mirror_state)
         os.environ["POLYMARKET_DRY_RUN"] = "1"
         os.environ["POLYMARKET_RUN_NAME"] = run
     else:

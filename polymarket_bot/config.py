@@ -215,6 +215,15 @@ class Settings:
     run_mode: str = field(default_factory=lambda: os.getenv("POLYMARKET_RUN_MODE", "smart_money"))
     mirror_target: str = field(default_factory=lambda: os.getenv("POLYMARKET_MIRROR_TARGET", ""))
     mirror_size_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_SIZE_USD", 5.0))
+    mirror_copy_ratio: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_COPY_RATIO", 0.20))
+    mirror_max_position_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MAX_POSITION_PCT", 0.02))
+    mirror_max_open_positions: int = field(default_factory=lambda: _int_env("POLYMARKET_MIRROR_MAX_OPEN_POSITIONS", 8))
+    mirror_max_category_exposure_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MAX_CATEGORY_EXPOSURE_PCT", 0.20))
+    mirror_whale_exit_fraction: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_WHALE_EXIT_FRACTION", 0.50))
+    mirror_daily_loss_limit_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_DAILY_LOSS_LIMIT_PCT", 0.05))
+    mirror_stop_loss_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_STOP_LOSS_PCT", 0.35))
+    mirror_stop_loss_min_age_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_MIRROR_STOP_LOSS_MIN_AGE_MINUTES", 15))
+    mirror_resolved_exit_threshold: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_RESOLVED_EXIT_THRESHOLD", 0.99))
     mirror_mirror_sells: bool = field(default_factory=lambda: _bool_env("POLYMARKET_MIRROR_MIRROR_SELLS", True))
     mirror_min_target_stake_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MIN_TARGET_STAKE_USD", 50.0))
     mirror_max_chase_premium: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MAX_CHASE_PREMIUM", 0.05))
@@ -222,6 +231,13 @@ class Settings:
     mirror_max_buy_price: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MAX_BUY_PRICE", 0.98))
     mirror_max_trade_age_seconds: int = field(default_factory=lambda: int(_float_env("POLYMARKET_MIRROR_MAX_TRADE_AGE_SECONDS", 60)))
     mirror_state_path: Path = field(default_factory=lambda: Path(os.getenv("POLYMARKET_MIRROR_STATE_PATH", "data/mirror_state.json")))
+
+    mirror_discovery_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_MIRROR_DISCOVERY_ENABLED", True))
+    mirror_discovery_interval_hours: int = field(default_factory=lambda: _int_env("POLYMARKET_MIRROR_DISCOVERY_INTERVAL_HOURS", 6))
+    mirror_min_whale_pnl: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MIN_WHALE_PNL", 10000.0))
+    mirror_tiered_copy_ratios: str = field(default_factory=lambda: os.getenv("POLYMARKET_MIRROR_TIERED_COPY_RATIOS", "0.0:0.15,25000:0.25,100000:0.35"))
+    mirror_weekly_loss_limit_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_WEEKLY_LOSS_LIMIT_PCT", 0.10))
+    mirror_min_liquidity_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_MIRROR_MIN_LIQUIDITY_USD", 20000.0))
 
     def __post_init__(self) -> None:
         """Swap ledger, journal, overrides, and tick-state paths to dry-run files.
