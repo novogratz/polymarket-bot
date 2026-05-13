@@ -2615,6 +2615,10 @@ def cli_auto_loop(
         from . import news_strategy as news_module
 
         news_module.news_loop(settings)
+    elif mode == "edge":
+        from . import edge_strategy as edge_module
+
+        edge_module.edge_loop(settings)
     else:
         smart_money_loop(settings)
 
