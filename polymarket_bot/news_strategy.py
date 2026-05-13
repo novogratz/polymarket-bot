@@ -61,18 +61,22 @@ def _step(settings: Settings, msg: str) -> None:
         print(msg, flush=True)
 
 
-def _asset_key(question: str, event_slug: str) -> str | None:
+def _asset_key(question: str, event_slug: str, slug: str = "") -> str | None:
     """Map a market to a stable underlying-asset key for dedupe.
 
     Crypto markets share an asset (BTC/ETH/SOL/...) across multiple
-    expiry windows (e.g. "Bitcoin Up or Down - 8AM ET" and "Bitcoin Up
-    or Down - 8AM-12PM ET"). Without grouping, the bot stacks parallel
-    bets on the same underlying — catastrophic if the asset moves
-    against us. Returns ``None`` when no canonical asset is detected;
-    the caller falls back to event_slug for dedupe.
+    expiry windows. Without grouping, the bot would stack parallel
+    bets on the same underlying — even on opposite sides (Solana Up
+    AND Solana Down), which is just paying fees twice.
+
+    We scan question + event_slug + slug together so a synced position
+    with an empty question (Polymarket's positions API sometimes omits
+    titles) still matches via the slug. Returns ``None`` only when
+    nothing is parseable.
     """
+    blob = f"{question or ''} {event_slug or ''} {slug or ''}"
     for pattern, key in _ASSET_PATTERNS:
-        if pattern.search(question):
+        if pattern.search(blob):
             return f"crypto:{key}"
     if event_slug:
         return f"event:{event_slug}"
@@ -82,7 +86,8 @@ def _asset_key(question: str, event_slug: str) -> str | None:
 def _position_asset_key(position: dict[str, Any]) -> str | None:
     question = str(position.get("question") or "")
     event_slug = str(position.get("event_slug") or "")
-    return _asset_key(question, event_slug)
+    slug = str(position.get("slug") or "")
+    return _asset_key(question, event_slug, slug)
 
 
 def _build_news_candidates(
@@ -606,7 +611,7 @@ def news_once(settings: Settings) -> dict[str, Any]:
             continue
 
         # Per-asset dedupe: skip if we already hold BTC/ETH/SOL/XRP/...
-        asset_key = _asset_key(candidate.question, candidate.event_slug or "")
+        asset_key = _asset_key(candidate.question, candidate.event_slug or "", candidate.slug or "")
         if asset_key and asset_key in open_assets:
             rejected.append(
                 {

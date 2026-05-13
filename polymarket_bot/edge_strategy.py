@@ -356,13 +356,19 @@ def find_crypto_edge_opportunities(
     settings: Settings,
     spot_quotes: dict[str, SpotQuote],
 ) -> list[EdgeSignal]:
-    """Crypto directional lane: spot + momentum → fair prob → edge."""
+    """Crypto directional lane: spot + momentum → fair prob → edge.
+
+    Within one binary market, we keep at most ONE side — the outcome
+    with the higher fair probability AND positive edge. Holding both
+    Up and Down is just paying fees twice; we always pick the side our
+    model thinks is more likely to win.
+    """
     out: list[EdgeSignal] = []
     for market in markets:
         if not _market_passes_basic_filters(market, settings):
             continue
         question = str(market.get("question") or "")
-        asset_key = _asset_key(question, _event_slug(market))
+        asset_key = _asset_key(question, _event_slug(market), str(market.get("slug") or ""))
         if not asset_key or not asset_key.startswith("crypto:"):
             continue
         asset = asset_key.split(":", 1)[1]
@@ -372,6 +378,7 @@ def find_crypto_edge_opportunities(
         if pair is None:
             continue
         yes, no = pair
+        per_market: list[EdgeSignal] = []
         for candidate in (yes, no):
             if candidate.best_ask is None or candidate.best_bid is None:
                 continue
@@ -389,9 +396,8 @@ def find_crypto_edge_opportunities(
             edge_after_fees = fair_prob - candidate.best_ask - settings.edge_fee_pct
             if edge_after_fees < settings.edge_min_edge_pct:
                 continue
-            # Confidence scales with edge size, momentum strength, and time-to-expiry.
             confidence = min(1.0, edge_after_fees / 0.10)
-            out.append(
+            per_market.append(
                 EdgeSignal(
                     lane=LANE_CRYPTO,
                     candidate=candidate,
@@ -399,7 +405,7 @@ def find_crypto_edge_opportunities(
                     market_price=candidate.best_ask,
                     edge_pct=edge_after_fees,
                     confidence=confidence,
-                    stake_usd=0.0,  # filled by sizing
+                    stake_usd=0.0,
                     rationale=f"crypto/{asset} {rationale} fair={fair_prob:.3f} ask={candidate.best_ask:.3f} edge={edge_after_fees:+.3f}",
                     extra={
                         "asset": asset,
@@ -409,6 +415,12 @@ def find_crypto_edge_opportunities(
                     },
                 )
             )
+        # Of the YES/NO sides on this binary market, keep only the one
+        # with the higher fair probability (i.e. the side our model
+        # thinks is most likely to win). Tiebreak on edge size.
+        if per_market:
+            best = max(per_market, key=lambda s: (s.fair_prob, s.edge_pct))
+            out.append(best)
     out.sort(key=lambda s: s.edge_pct, reverse=True)
     return out
 
@@ -422,7 +434,11 @@ def find_near_certainty_opportunities(
     markets: list[dict[str, Any]],
     settings: Settings,
 ) -> list[EdgeSignal]:
-    """Favorite riding: best_bid already in the high zone, ask still buyable."""
+    """Favorite riding: best_bid already in the high zone, ask still buyable.
+
+    Per market we keep only the side with the higher fair probability
+    (the favorite). Buying both sides would just pay the spread twice.
+    """
     out: list[EdgeSignal] = []
     for market in markets:
         if not _market_passes_basic_filters(market, settings):
@@ -430,6 +446,7 @@ def find_near_certainty_opportunities(
         pair = _build_binary_quotes(market)
         if pair is None:
             continue
+        per_market: list[EdgeSignal] = []
         for candidate in pair:
             if candidate.best_bid is None or candidate.best_ask is None:
                 continue
@@ -450,7 +467,7 @@ def find_near_certainty_opportunities(
             edge_after_fees = fair_prob - candidate.best_ask - settings.edge_fee_pct
             if edge_after_fees < settings.edge_min_edge_pct:
                 continue
-            out.append(
+            per_market.append(
                 EdgeSignal(
                     lane=LANE_NEAR_CERT,
                     candidate=candidate,
@@ -465,6 +482,9 @@ def find_near_certainty_opportunities(
                     ),
                 )
             )
+        if per_market:
+            best = max(per_market, key=lambda s: (s.fair_prob, s.edge_pct))
+            out.append(best)
     out.sort(key=lambda s: s.edge_pct, reverse=True)
     return out
 
@@ -983,7 +1003,11 @@ def edge_once(settings: Settings) -> dict[str, Any]:
     # Lane 2: crypto directional.
     crypto_assets_in_scope = set()
     for market in markets:
-        key = _asset_key(str(market.get("question") or ""), _event_slug(market))
+        key = _asset_key(
+            str(market.get("question") or ""),
+            _event_slug(market),
+            str(market.get("slug") or ""),
+        )
         if key and key.startswith("crypto:"):
             crypto_assets_in_scope.add(key.split(":", 1)[1])
     spot_quotes: dict[str, SpotQuote] = {}
@@ -1038,7 +1062,7 @@ def edge_once(settings: Settings) -> dict[str, Any]:
             break
         if cash_above_floor < 1.0:
             break
-        asset_key = _asset_key(sig.candidate.question, sig.candidate.event_slug or "")
+        asset_key = _asset_key(sig.candidate.question, sig.candidate.event_slug or "", sig.candidate.slug or "")
         if asset_key and asset_key in open_assets:
             rejected.append(
                 {
