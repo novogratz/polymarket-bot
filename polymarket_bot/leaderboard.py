@@ -234,11 +234,16 @@ def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None =
         medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, "  ")
         rank_str = notifications._md_escape(f"{i:>2}.")
         name = notifications._md_escape(_short(s.run_name, 20))
+        # Green for positive, red for negative, dot for flat — % is ROI since start.
+        if s.roi_pct > 0:
+            color = "🟢"
+        elif s.roi_pct < 0:
+            color = "🔴"
+        else:
+            color = "⚪"
         roi_str = notifications._md_escape(f"{s.roi_pct:+5.1f}%")
-        sign = "+" if s.total_pnl >= 0 else ""
-        pnl_str = notifications._md_escape(f"{sign}${s.total_pnl:.2f}")
         wl_str = notifications._md_escape(f"{s.wins}W/{s.losses}L")
-        lines.append(f"{rank_str} {medal} `{name}` {roi_str}  {pnl_str}  {wl_str}")
+        lines.append(f"{rank_str} {medal} `{name}` {color} {roi_str}  {wl_str}")
 
     # Compact summary footer.
     leader = ranked[0]
