@@ -750,6 +750,28 @@ def _execute_edge_exits(
                 reason=str(plan["reason"]),
             )
         except Exception as exc:
+            msg = str(exc).lower()
+            # Stuck-balance recovery: resting CLOB orders lock up the wallet's
+            # share balance. Cancel and retry next tick.
+            if "balance is not enough" in msg or "allowance" in msg:
+                token_id_str = str(position.get("token_id") or "")
+                cancelled: list[str] = []
+                if token_id_str:
+                    try:
+                        cancelled = client.cancel_active_orders_for_token(token_id_str)
+                    except Exception as cancel_exc:
+                        print(
+                            f"⚠️  cancel attempt failed for {position.get('question')}: "
+                            f"{type(cancel_exc).__name__}: {cancel_exc}",
+                            flush=True,
+                        )
+                if cancelled:
+                    print(
+                        f"   edge cancelled {len(cancelled)} resting order(s) on "
+                        f"'{position.get('question')}'; will retry sell next tick",
+                        flush=True,
+                    )
+                    continue
             print(
                 f"⚠️  edge sell skipped on {position.get('question')}: "
                 f"{type(exc).__name__}: {exc}",

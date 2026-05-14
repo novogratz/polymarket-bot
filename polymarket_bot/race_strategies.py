@@ -755,6 +755,35 @@ def _execute_race_exits(
                 reason=str(plan["reason"]),
             )
         except Exception as exc:
+            msg = str(exc).lower()
+            # Stuck-balance recovery: resting CLOB orders from a previous
+            # failed FOK attempt can lock up the wallet's share balance so
+            # the next sell sees 0 available. Cancel them and retry next tick.
+            if "balance is not enough" in msg or "allowance" in msg:
+                token_id_str = str(position.get("token_id") or "")
+                cancelled: list[str] = []
+                if token_id_str:
+                    try:
+                        cancelled = client.cancel_active_orders_for_token(token_id_str)
+                    except Exception as cancel_exc:
+                        print(
+                            f"⚠️  cancel attempt failed for {position.get('question')}: "
+                            f"{type(cancel_exc).__name__}: {cancel_exc}",
+                            flush=True,
+                        )
+                if cancelled:
+                    print(
+                        f"   {strategy_name} cancelled {len(cancelled)} resting order(s) on "
+                        f"'{position.get('question')}'; will retry sell next tick",
+                        flush=True,
+                    )
+                    out.append({
+                        "market_id": position.get("market_id"),
+                        "question": position.get("question"),
+                        "action": "cancel_and_retry",
+                        "cancelled_orders": cancelled,
+                    })
+                    continue
             # Auto-write-off: if the position is past its expiry (or resolved
             # as loser) we can't get a live SELL through — accept the bid as
             # the realized price and close locally so it doesn't linger.
