@@ -276,10 +276,16 @@ def _truncate(text: str, max_len: int = 40) -> str:
     return text[: max_len - 1] + "…"
 
 
-def _all_time_realized_pnl_usd() -> float:
-    """Sum every realized_pnl in the active trade journal."""
+def _journal_stats() -> tuple[float, int, int]:
+    """Return (total_realized_pnl_usd, wins, losses) from the trade journal.
+
+    A "win" is a journal entry whose net realized_pnl > 0; loss is < 0.
+    Zero-PnL entries (rare; usually fee-only exits) count as neither.
+    """
     path = Path(os.environ.get("POLYMARKET_TRADE_JOURNAL_PATH", "data/trade_journal.jsonl"))
     total = 0.0
+    wins = 0
+    losses = 0
     try:
         with path.open("r", encoding="utf-8") as fh:
             for line in fh:
@@ -290,34 +296,59 @@ def _all_time_realized_pnl_usd() -> float:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                # Top-level realized_pnl (current journal format)
+                entry_pnl = 0.0
                 if rec.get("realized_pnl") is not None:
                     try:
-                        total += float(rec["realized_pnl"])
+                        entry_pnl += float(rec["realized_pnl"])
                     except (TypeError, ValueError):
                         pass
-                # Or nested exits[].realized_pnl (legacy/dry-run shape)
                 for exit_rec in rec.get("exits") or []:
                     try:
-                        total += float(exit_rec.get("realized_pnl") or 0)
+                        entry_pnl += float(exit_rec.get("realized_pnl") or 0)
                     except (TypeError, ValueError):
                         pass
+                total += entry_pnl
+                if entry_pnl > 0.005:
+                    wins += 1
+                elif entry_pnl < -0.005:
+                    losses += 1
     except (FileNotFoundError, OSError):
-        return 0.0
-    return total
+        return 0.0, 0, 0
+    return total, wins, losses
 
 
 def _fmt_all_time_line() -> str:
-    """`✅ All-time: +$XX.XX` / `❌ All-time: -$XX.XX` / `⚪ All-time: $0.00`."""
-    pnl = _all_time_realized_pnl_usd()
+    """All-time PnL + win-rate, each color-coded.
+
+    Layout: `✅ All-time: +$X.XX  •  🟢 W/L 67% (8W/4L)`.
+    No closed trades yet -> `⚪ All-time: $0.00  •  ⚪ W/L --`.
+    """
+    pnl, wins, losses = _journal_stats()
+    # PnL color
     if pnl > 0.005:
-        emoji, sign = "✅", "+"
+        pnl_emoji, sign = "✅", "+"
     elif pnl < -0.005:
-        emoji, sign = "❌", "-"
+        pnl_emoji, sign = "❌", "-"
     else:
-        emoji, sign = "⚪", ""
+        pnl_emoji, sign = "⚪", ""
     amt = _fmt_amount(abs(pnl))  # "$X.XX"
-    return f"{emoji} All\\-time: {_md_escape(sign + amt)}"
+    pnl_part = f"{pnl_emoji} All\\-time: {_md_escape(sign + amt)}"
+
+    # Win-rate color
+    decided = wins + losses
+    if decided == 0:
+        wr_part = f"⚪ W/L \\-\\-"
+    else:
+        wr = wins / decided * 100.0
+        if wr >= 60:
+            wr_emoji = "🟢"
+        elif wr >= 40:
+            wr_emoji = "🟡"
+        else:
+            wr_emoji = "🔴"
+        wr_part = f"{wr_emoji} W/L {wr:.0f}% \\({wins}W/{losses}L\\)"
+
+    return f"{pnl_part}  •  {wr_part}"
 
 
 def notify_trade_buy(
@@ -651,6 +682,8 @@ def notify_heartbeat(snapshot: dict[str, Any]) -> None:
         lines.append(f"📊 24h: réalisé *{realized_str}* — {wl_str} {rate_str}")
     else:
         lines.append("📊 24h: aucun trade clôturé")
+
+    lines.append(_fmt_all_time_line())
 
     top_w_line = _heartbeat_top_line("🏆", snapshot.get("top_winner") or {})
     top_l_line = _heartbeat_top_line("💸", snapshot.get("top_loser") or {})

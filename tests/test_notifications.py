@@ -708,7 +708,9 @@ class TestHeartbeat(NotificationsBaseTest):
         # Pas de section top/flop quand aucun trade
         self.assertNotIn("🏆", text)
         self.assertNotIn("💸", text)
-        self.assertNotIn("W/", text)
+        # 24h W/L line should be absent; the all-time W/L line is OK
+        # (it shows "W/L --" when the journal is empty).
+        self.assertNotIn("24h: réalisé", text)
 
 
 class TestDailySummaryRemoved(NotificationsBaseTest):
