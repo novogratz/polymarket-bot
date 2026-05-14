@@ -317,21 +317,25 @@ def _journal_stats() -> tuple[float, int, int]:
     return total, wins, losses
 
 
-def _fmt_all_time_line() -> str:
+def _fmt_all_time_line(unrealized: float = 0.0) -> str:
     """All-time PnL + win-rate, each color-coded.
 
     Layout: `✅ All-time: +$X.XX  •  🟢 W/L 67% (8W/4L)`.
     No closed trades yet -> `⚪ All-time: $0.00  •  ⚪ W/L --`.
+
+    ``unrealized`` (optional, USD) is added to the realized total so a
+    currently-winning open position surfaces in the heartbeat line.
     """
     pnl, wins, losses = _journal_stats()
+    total = pnl + float(unrealized or 0.0)
     # PnL color
-    if pnl > 0.005:
+    if total > 0.005:
         pnl_emoji, sign = "✅", "+"
-    elif pnl < -0.005:
+    elif total < -0.005:
         pnl_emoji, sign = "❌", "-"
     else:
         pnl_emoji, sign = "⚪", ""
-    amt = _fmt_amount(abs(pnl))  # "$X.XX"
+    amt = _fmt_amount(abs(total))  # "$X.XX"
     pnl_part = f"{pnl_emoji} All\\-time: {_md_escape(sign + amt)}"
 
     # Win-rate color
@@ -691,7 +695,7 @@ def notify_heartbeat(snapshot: dict[str, Any]) -> None:
     else:
         lines.append("📊 24h: aucun trade clôturé")
 
-    lines.append(_fmt_all_time_line())
+    lines.append(_fmt_all_time_line(unrealized=unrealized))
 
     top_w_line = _heartbeat_top_line("🏆", snapshot.get("top_winner") or {})
     top_l_line = _heartbeat_top_line("💸", snapshot.get("top_loser") or {})
