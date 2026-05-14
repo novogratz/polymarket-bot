@@ -215,26 +215,95 @@ def format_leaderboard(stats: list[RunStats], *, now: datetime | None = None) ->
     return "\n".join(lines)
 
 
-def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None = None) -> str:
-    """Compact Telegram leaderboard — one line per strategy, ranked by equity.
+_HISTORY_PATH_DEFAULT = Path("data/leaderboard_history.json")
 
-    Format: ``rank. name ROI%  $±total_pnl  WW/LL``
-    Total PnL = realized + unrealized (i.e. equity − starting_cash) — the
-    actual wallet-value delta you'd see if you closed everything now.
+
+def _load_history(path: Path) -> dict[str, dict]:
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_history(path: Path, payload: dict[str, dict]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    except Exception as exc:
+        print(f"⚠️  leaderboard history save failed: {exc}", flush=True)
+
+
+def _last_decisive_trade_since(
+    base_dir: Path, run_name: str, since_ts: str | None
+) -> dict | None:
+    """Return the largest |realized_pnl| journal entry since ``since_ts``."""
+    jp = base_dir / "dry_runs" / run_name / "journal.jsonl"
+    if not jp.is_file():
+        return None
+    best: dict | None = None
+    best_abs = 0.0
+    try:
+        with jp.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                ts = rec.get("closed_at")
+                if since_ts and ts and str(ts) <= since_ts:
+                    continue
+                pnl = float(rec.get("realized_pnl", 0) or 0)
+                if abs(pnl) > best_abs:
+                    best_abs = abs(pnl)
+                    best = rec
+    except Exception:
+        return None
+    return best
+
+
+def _format_trade_blurb(rec: dict) -> str:
+    """Render a journal entry as a short MarkdownV2-escaped blurb."""
+    q = str(rec.get("question") or "?")[:35]
+    pnl = float(rec.get("realized_pnl", 0) or 0)
+    pct = rec.get("pnl_pct")
+    sign = "+" if pnl >= 0 else ""
+    pct_str = f" ({sign}{float(pct) * 100:.0f}%)" if pct is not None else ""
+    body = f"'{q}' {sign}${pnl:.2f}{pct_str}"
+    return notifications._md_escape(body)
+
+
+def format_leaderboard_telegram(
+    stats: list[RunStats],
+    *,
+    now: datetime | None = None,
+    history: dict[str, dict] | None = None,
+    base_dir: Path | None = None,
+) -> str:
+    """Compact Telegram leaderboard — ranked by equity, with movers section.
+
+    Format per strategy: ``rank. medal name 🟢/🔴 ROI%  WW/LL``
+    If ``history`` and ``base_dir`` are provided, a "since last refresh"
+    section flags the top climbers and droppers along with the trade
+    that caused the move.
     """
     if not stats:
         return "🏁 *Leaderboard*: no runs found"
-    # Rank by total equity ROI — what the wallet is actually worth right now.
     ranked = sorted(stats, key=lambda s: s.roi_pct, reverse=True)
     now = now or datetime.now(timezone.utc)
     stamp = notifications._md_escape(now.strftime("%H:%M"))
 
     lines = [f"🏁 *Leaderboard* · {stamp} UTC · {len(ranked)} strategies", ""]
+    cur_ranks: dict[str, int] = {}
     for i, s in enumerate(ranked, 1):
+        cur_ranks[s.run_name] = i
         medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, "  ")
         rank_str = notifications._md_escape(f"{i:>2}.")
         name = notifications._md_escape(s.run_name)
-        # Green for positive, red for negative, dot for flat — % is ROI since start.
         if s.roi_pct > 0:
             color = "🟢"
         elif s.roi_pct < 0:
@@ -244,6 +313,35 @@ def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None =
         roi_str = notifications._md_escape(f"{s.roi_pct:+5.1f}%")
         wl_str = notifications._md_escape(f"{s.wins}W/{s.losses}L")
         lines.append(f"{rank_str} {medal} `{name}` {color} {roi_str}  {wl_str}")
+
+    # Movers section: only meaningful if we have prior state.
+    if history and base_dir is not None:
+        deltas: list[tuple[str, int, int, int]] = []  # (name, prev, cur, delta)
+        for s in ranked:
+            prev = history.get(s.run_name, {})
+            prev_rank = int(prev.get("rank") or 0)
+            cur_rank = cur_ranks[s.run_name]
+            if prev_rank and prev_rank != cur_rank:
+                deltas.append((s.run_name, prev_rank, cur_rank, prev_rank - cur_rank))
+
+        climbers = sorted([d for d in deltas if d[3] > 0], key=lambda d: -d[3])[:3]
+        droppers = sorted([d for d in deltas if d[3] < 0], key=lambda d: d[3])[:3]
+
+        if climbers or droppers:
+            lines.append("")
+            lines.append("*Movers since last refresh*")
+        for name, prev, cur, delta in climbers:
+            since_ts = (history.get(name) or {}).get("last_closed_at")
+            trade = _last_decisive_trade_since(base_dir, name, since_ts)
+            blurb = f" · {_format_trade_blurb(trade)}" if trade else ""
+            escaped = notifications._md_escape(f"{name} #{prev}→#{cur} (+{delta})")
+            lines.append(f"🚀 {escaped}{blurb}")
+        for name, prev, cur, delta in droppers:
+            since_ts = (history.get(name) or {}).get("last_closed_at")
+            trade = _last_decisive_trade_since(base_dir, name, since_ts)
+            blurb = f" · {_format_trade_blurb(trade)}" if trade else ""
+            escaped = notifications._md_escape(f"{name} #{prev}→#{cur} ({delta})")
+            lines.append(f"📉 {escaped}{blurb}")
 
     # Compact summary footer.
     leader = ranked[0]
@@ -280,6 +378,7 @@ def run_leaderboard_loop(
         + (" + Telegram" if telegram and notifications.is_enabled() else ""),
         flush=True,
     )
+    history_path = base_dir / "leaderboard_history.json"
     while True:
         try:
             stats: list[RunStats] = []
@@ -291,10 +390,50 @@ def run_leaderboard_loop(
             print(format_leaderboard(stats), flush=True)
             print("", flush=True)
             if telegram and notifications.is_enabled() and stats:
+                history = _load_history(history_path)
                 try:
-                    notifications._post(format_leaderboard_telegram(stats))
+                    msg = format_leaderboard_telegram(
+                        stats, history=history, base_dir=base_dir
+                    )
+                    notifications._post(msg)
                 except Exception as exc:
                     print(f"⚠️  leaderboard telegram failed: {type(exc).__name__}: {exc}", flush=True)
+                # Persist new snapshot for next refresh's mover detection.
+                ranked = sorted(stats, key=lambda s: s.roi_pct, reverse=True)
+                new_history: dict[str, dict] = {}
+                for rank, s in enumerate(ranked, 1):
+                    last_closed_at = _latest_closed_at(base_dir, s.run_name)
+                    new_history[s.run_name] = {
+                        "rank": rank,
+                        "realized_pnl": s.realized_pnl,
+                        "roi_pct": s.roi_pct,
+                        "last_closed_at": last_closed_at,
+                    }
+                _save_history(history_path, new_history)
         except Exception as exc:
             print(f"⚠️  leaderboard error: {type(exc).__name__}: {exc}", flush=True)
         time.sleep(interval_seconds)
+
+
+def _latest_closed_at(base_dir: Path, run_name: str) -> str | None:
+    """Return the latest closed_at timestamp from the strategy's journal."""
+    jp = base_dir / "dry_runs" / run_name / "journal.jsonl"
+    if not jp.is_file():
+        return None
+    latest: str | None = None
+    try:
+        with jp.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                ts = rec.get("closed_at")
+                if ts and (latest is None or str(ts) > latest):
+                    latest = str(ts)
+    except Exception:
+        return None
+    return latest
