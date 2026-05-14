@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Lance le bot en LIVE avec le profil edge.
 # 4 lanes : arbitrage (YES+NO<$0.98), crypto BS pricing, near-cert (bid≥0.70), scalp(off).
-# Sizing actuel ($9 bankroll) : cap 3$ par position, 1$ starter, 2 orders/tick.
+# Sizing ($100 bankroll) : cap $15/position, $5 starter, 4 orders/tick.
 # Exits : TP +25% / SL adaptatif (-25%/-15%/-10% selon temps) / DD halt -15%.
 # Min-hold universel : 3 minutes (toutes les sorties).
 # Toute la config vit dans configs/profiles/edge.toml.
