@@ -22,7 +22,7 @@
 #                excluded (earned from journal), stop loss -20% after 10min
 
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "mirror"
 
 [mirror]

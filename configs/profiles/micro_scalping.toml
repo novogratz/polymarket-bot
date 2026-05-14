@@ -1,7 +1,7 @@
 # Profil "micro_scalping" — #17 — tightest-spread scalping. Latency-bound by polling.
 
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "micro_scalping"
 
 [sizing]
@@ -27,8 +27,8 @@ max_spread = 0.05
 stake_usd = 3.0
 max_orders_per_tick = 5
 cash_floor_pct = 0.10
-tp_pct = 0.03
-sl_pct = 0.05
+tp_pct = 0.95
+sl_pct = 0.99
 sl_min_age_minutes = 1
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.97

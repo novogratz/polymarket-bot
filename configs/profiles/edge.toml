@@ -10,7 +10,7 @@
 # à -20%. Cash floor 10%.
 
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "edge"
 
 [sizing]
@@ -39,7 +39,7 @@ min_price = 0.05
 max_price = 0.95
 max_spread = 0.05
 fee_pct = 0.02                          # estimation slippage + frais
-min_edge_pct = 0.025                    # 2.5% edge min après fees (était 4%, trop strict)
+min_edge_pct = 0.010                    # 1% edge min après fees (était 2.5%, trop strict pour ≤4h)
 kelly_fraction = 0.25                   # 1/4 Kelly (sizing prudent)
 max_position_pct = 0.15                 # cap 15% du capital par trade
 max_orders_per_tick = 6                 # plus de turnover (était 4)
@@ -70,9 +70,9 @@ crypto_momentum_alpha = 4.0             # (legacy — only used if direction re-
 
 # Lane near-certainty
 near_cert_enabled = true
-near_cert_max_hours = 3.0               # élargi de 2h à 3h
-near_cert_min_bid = 0.82                # élargi de 0.92 à 0.82 (plus de candidats)
-near_cert_max_ask = 0.95
+near_cert_max_hours = 4.0               # élargi à 4h pour ratisser plus large
+near_cert_min_bid = 0.70                # élargi de 0.82 à 0.70 (plus de candidats)
+near_cert_max_ask = 0.97
 near_cert_bias_multiplier = 1.05        # hypothèse: favoris sous-cotés de ~5%
 
 # Lane scalp (off par défaut — manque ordre limite + websocket)
