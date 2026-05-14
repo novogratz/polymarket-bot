@@ -341,6 +341,11 @@ def _crypto_fair_probability(
         return p_yes, f"threshold[{threshold:g}] spot={spot:.0f} p_above={p_above:.3f}"
 
     # Direction model (Up/Down): bias 0.50 by momentum.
+    # Empirically unprofitable in live trading — the momentum signals are too
+    # small to override the market's order-flow information. Disabled by
+    # default in the edge profile; can be re-enabled via crypto_direction_enabled.
+    if not settings.edge_crypto_direction_enabled:
+        return None
     mom_signal = quote.momentum_15m * settings.edge_crypto_momentum_alpha
     p_up = 0.5 + mom_signal
     p_up = max(0.05, min(0.95, p_up))
@@ -752,6 +757,9 @@ def _execute_edge_exits(
             )
             continue
         portfolio.save(settings.state_path)
+        if position.get("status") == "closed":
+            from .main import _append_trade_journal
+            _append_trade_journal(settings, position, str(plan["reason"]))
         exits.append(
             {
                 "market_id": position.get("market_id"),

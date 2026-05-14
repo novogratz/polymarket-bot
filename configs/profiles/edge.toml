@@ -63,9 +63,10 @@ arb_fee_buffer = 0.02                   # YES+NO < 0.98 = arb
 arb_max_position_pct = 0.25             # arb autorise plus de capital
 
 # Lane crypto directional
-crypto_enabled = true
+crypto_enabled = true                   # threshold/band markets only
+crypto_direction_enabled = false        # "Up or Down" model disabled — momentum-bias is unprofitable live
 crypto_annual_vol = 0.60                # vol annualisée pour BTC/ETH
-crypto_momentum_alpha = 4.0             # sensibilité du momentum 15min
+crypto_momentum_alpha = 4.0             # (legacy — only used if direction re-enabled)
 
 # Lane near-certainty
 near_cert_enabled = true

@@ -772,6 +772,9 @@ def _execute_race_exits(
                     reason=f"{plan['reason']}_writeoff",
                 )
                 portfolio.save(settings.state_path)
+                if position.get("status") == "closed":
+                    from .main import _append_trade_journal
+                    _append_trade_journal(settings, position, f"{plan['reason']}_writeoff")
                 out.append(
                     {
                         "market_id": position.get("market_id"),
@@ -794,6 +797,9 @@ def _execute_race_exits(
             )
             continue
         portfolio.save(settings.state_path)
+        if position.get("status") == "closed":
+            from .main import _append_trade_journal
+            _append_trade_journal(settings, position, str(plan["reason"]))
         out.append(
             {
                 "market_id": position.get("market_id"),

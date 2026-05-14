@@ -222,6 +222,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "arb_fee_buffer": ("POLYMARKET_EDGE_ARB_FEE_BUFFER", "float"),
         "arb_max_position_pct": ("POLYMARKET_EDGE_ARB_MAX_POSITION_PCT", "float"),
         "crypto_enabled": ("POLYMARKET_EDGE_CRYPTO_ENABLED", "bool"),
+        "crypto_direction_enabled": ("POLYMARKET_EDGE_CRYPTO_DIRECTION_ENABLED", "bool"),
         "crypto_annual_vol": ("POLYMARKET_EDGE_CRYPTO_ANNUAL_VOL", "float"),
         "crypto_momentum_alpha": ("POLYMARKET_EDGE_CRYPTO_MOMENTUM_ALPHA", "float"),
         "near_cert_enabled": ("POLYMARKET_EDGE_NEAR_CERT_ENABLED", "bool"),

@@ -279,6 +279,7 @@ class Settings:
     edge_arb_max_position_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_EDGE_ARB_MAX_POSITION_PCT", 0.25))
     # Crypto lane.
     edge_crypto_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_EDGE_CRYPTO_ENABLED", True))
+    edge_crypto_direction_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_EDGE_CRYPTO_DIRECTION_ENABLED", True))
     edge_crypto_annual_vol: float = field(default_factory=lambda: _float_env("POLYMARKET_EDGE_CRYPTO_ANNUAL_VOL", 0.60))
     edge_crypto_momentum_alpha: float = field(default_factory=lambda: _float_env("POLYMARKET_EDGE_CRYPTO_MOMENTUM_ALPHA", 4.0))
     # Near-cert lane.
