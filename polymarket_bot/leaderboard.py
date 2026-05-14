@@ -215,60 +215,50 @@ def format_leaderboard(stats: list[RunStats], *, now: datetime | None = None) ->
     return "\n".join(lines)
 
 
-def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None = None) -> str:
-    """Compact Telegram-friendly version (MarkdownV2-escaped).
+_TELEGRAM_TOP_N = 12
 
-    Telegram MarkdownV2 requires escaping ``.``, ``-``, ``+``, ``(``,
-    ``)``, ``$``, ``=``, ``!`` and a long list of other punctuation.
-    The shared ``notifications._md_escape`` handles all of them.
+
+def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None = None) -> str:
+    """Compact Telegram leaderboard — one line per strategy, top N only.
+
+    Format: ``rank. name ROI%  R±$X  WW/LL``
+    Strategies are ranked by realized PnL first (the only signal that
+    isn't noise), with ties broken by ROI. Bottom losers compressed to
+    one summary line.
     """
     if not stats:
         return "🏁 *Leaderboard*: no runs found"
-    ranked = sorted(stats, key=lambda s: s.roi_pct, reverse=True)
+    # Rank by realized PnL primarily (the metric that matters), ROI as tiebreaker.
+    ranked = sorted(stats, key=lambda s: (s.realized_pnl, s.roi_pct), reverse=True)
     now = now or datetime.now(timezone.utc)
     stamp = notifications._md_escape(now.strftime("%H:%M"))
-    lines = [f"🏁 *Leaderboard* · {stamp} UTC", ""]
-    for i, s in enumerate(ranked, 1):
-        medal_emoji = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, "")
-        prefix = f"{i}\\." + (f" {medal_emoji}" if medal_emoji else "")
-        sign = "+" if s.total_pnl >= 0 else ""
-        name = notifications._md_escape(s.run_name)
-        equity = notifications._md_escape(f"${s.equity:.2f}")
-        pnl = notifications._md_escape(f"{sign}${s.total_pnl:.2f}")
-        roi = notifications._md_escape(f"({sign}{s.roi_pct:.1f}%)")
+
+    lines = [f"🏁 *Leaderboard* · {stamp} UTC · top {_TELEGRAM_TOP_N}", ""]
+    for i, s in enumerate(ranked[:_TELEGRAM_TOP_N], 1):
+        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, "  ")
+        rank_str = notifications._md_escape(f"{i:>2}.")
+        name = notifications._md_escape(_short(s.run_name, 20))
+        roi_str = notifications._md_escape(f"{s.roi_pct:+5.1f}%")
         rsign = "+" if s.realized_pnl >= 0 else ""
-        usign = "+" if s.unrealized_pnl >= 0 else ""
-        realized = notifications._md_escape(f"R{rsign}${s.realized_pnl:.2f}")
-        unrealized = notifications._md_escape(f"U{usign}${s.unrealized_pnl:.2f}")
-        wl = notifications._md_escape(f"{s.wins}W/{s.losses}L")
-        lines.append(
-            f"{prefix} `{name}` {equity}  {pnl} {roi}\n"
-            f"     {realized} · {unrealized} · "
-            f"{s.open_positions}p · {s.closed_trades}t \\({wl}\\)"
-        )
-        # Today's biggest win/loss line — only shown when there's data.
-        bw = s.biggest_win_today
-        bl = s.biggest_loss_today
-        if bw > 0 or bl < 0:
-            parts = []
-            if bw > 0:
-                parts.append(f"🟢 {notifications._md_escape(f'+${bw:.2f}')}")
-            if bl < 0:
-                parts.append(f"🔴 {notifications._md_escape(f'${bl:.2f}')}")
-            lines.append(f"     today: {' · '.join(parts)}")
+        real_str = notifications._md_escape(f"R{rsign}${s.realized_pnl:.2f}")
+        wl_str = notifications._md_escape(f"{s.wins}W/{s.losses}L")
+        lines.append(f"{rank_str} {medal} `{name}` {roi_str}  {real_str}  {wl_str}")
+
+    # Compact summary footer.
     leader = ranked[0]
-    lines.append("")
-    if leader.total_pnl > 0:
-        led_name = notifications._md_escape(leader.run_name)
+    if leader.realized_pnl > 0 or leader.total_pnl > 0:
+        led_name = notifications._md_escape(_short(leader.run_name, 20))
         led_pnl = notifications._md_escape(f"+${leader.total_pnl:.2f}")
-        lines.append(f"🏆 {led_name} leads \\({led_pnl}\\)")
+        lines.append("")
+        lines.append(f"🏆 *{led_name}* leads \\({led_pnl}\\)")
     elif all(s.total_pnl == 0 for s in stats):
+        lines.append("")
         lines.append("⏸ all flat")
-    else:
-        led_name = notifications._md_escape(leader.run_name)
-        led_roi = notifications._md_escape(f"{leader.roi_pct:+.1f}%")
-        lines.append(f"📉 all underwater, least bad: {led_name} \\({led_roi}\\)")
     return "\n".join(lines)
+
+
+def _short(name: str, max_len: int) -> str:
+    return name if len(name) <= max_len else name[: max_len - 1] + "…"
 
 
 def run_leaderboard_loop(
