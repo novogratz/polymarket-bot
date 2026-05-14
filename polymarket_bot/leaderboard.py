@@ -118,6 +118,9 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
             total_predictions=0,
         )
 
+    # Profile is the source of truth for starting_cash — stale metadata
+    # from a prior run with a different bankroll would otherwise produce
+    # wildly wrong ROI%. Metadata still drives started_at / total_ticks.
     starting_cash = profile_cash
     total_ticks = 0
     started_at: str | None = None
@@ -125,9 +128,12 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
     if meta_path.is_file():
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            starting_cash = float(meta.get("starting_cash", profile_cash))
             total_ticks = int(meta.get("total_ticks", 0))
             started_at = meta.get("started_at")
+            # Only fall back to metadata's starting_cash when no profile
+            # exists (e.g. ad-hoc run without a shipped TOML).
+            if _starting_cash_from_profile(base_dir, run_name) is None:
+                starting_cash = float(meta.get("starting_cash", profile_cash))
         except Exception:
             pass
 
