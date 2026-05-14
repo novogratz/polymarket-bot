@@ -14,9 +14,9 @@ starting_cash = 100.0
 mode = "edge"
 
 [sizing]
-max_position_ceiling_usd = 3.0
+max_position_ceiling_usd = 15.0
 min_open_positions = 0
-starter_trade_usd = 1.0
+starter_trade_usd = 5.0
 assumed_live_balance_usd = 0.0
 
 [market_filters]
@@ -39,13 +39,13 @@ min_price = 0.05
 max_price = 0.95
 max_spread = 0.05
 fee_pct = 0.02                          # estimation slippage + frais
-min_edge_pct = 0.025                    # 2.5% edge min après fees — strict pour bankroll micro ($9)
+min_edge_pct = 0.015                    # 1.5% edge min après fees (compromis turnover vs sélectivité)
 kelly_fraction = 0.25                   # 1/4 Kelly (sizing prudent)
-max_position_pct = 0.20                 # 20% du capital par trade (=$1.80 sur $9)
-max_orders_per_tick = 2                 # au plus 2 entrées simultanées par tick
-min_stake_usd = 1.0                     # CLOB min ~$1
-cash_floor_pct = 0.15                   # 15% cash réserve (=$1.35 sur $9)
-daily_drawdown_pct = 0.15               # halt si -15% sur la journée (=$1.35) — plus protecteur sur micro-bankroll
+max_position_pct = 0.15                 # 15% du capital par trade (=$15 sur $100)
+max_orders_per_tick = 4                 # jusqu'à 4 entrées par tick
+min_stake_usd = 2.0                     # plancher CLOB confortable
+cash_floor_pct = 0.10                   # 10% cash réserve (=$10 sur $100)
+daily_drawdown_pct = 0.15               # halt si -15% sur la journée (=$15 sur $100)
 
 # Exits — non-arb
 take_profit_pct = 0.25
