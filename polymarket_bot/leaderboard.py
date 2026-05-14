@@ -216,16 +216,16 @@ def format_leaderboard(stats: list[RunStats], *, now: datetime | None = None) ->
 
 
 def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None = None) -> str:
-    """Compact Telegram leaderboard — one line per strategy, full list.
+    """Compact Telegram leaderboard — one line per strategy, ranked by equity.
 
-    Format: ``rank. name ROI%  R±$X  WW/LL``
-    Strategies are ranked by realized PnL first (the only signal that
-    isn't noise), with ties broken by ROI.
+    Format: ``rank. name ROI%  $±total_pnl  WW/LL``
+    Total PnL = realized + unrealized (i.e. equity − starting_cash) — the
+    actual wallet-value delta you'd see if you closed everything now.
     """
     if not stats:
         return "🏁 *Leaderboard*: no runs found"
-    # Rank by realized PnL primarily (the metric that matters), ROI as tiebreaker.
-    ranked = sorted(stats, key=lambda s: (s.realized_pnl, s.roi_pct), reverse=True)
+    # Rank by total equity ROI — what the wallet is actually worth right now.
+    ranked = sorted(stats, key=lambda s: s.roi_pct, reverse=True)
     now = now or datetime.now(timezone.utc)
     stamp = notifications._md_escape(now.strftime("%H:%M"))
 
@@ -235,10 +235,10 @@ def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None =
         rank_str = notifications._md_escape(f"{i:>2}.")
         name = notifications._md_escape(_short(s.run_name, 20))
         roi_str = notifications._md_escape(f"{s.roi_pct:+5.1f}%")
-        rsign = "+" if s.realized_pnl >= 0 else ""
-        real_str = notifications._md_escape(f"R{rsign}${s.realized_pnl:.2f}")
+        sign = "+" if s.total_pnl >= 0 else ""
+        pnl_str = notifications._md_escape(f"{sign}${s.total_pnl:.2f}")
         wl_str = notifications._md_escape(f"{s.wins}W/{s.losses}L")
-        lines.append(f"{rank_str} {medal} `{name}` {roi_str}  {real_str}  {wl_str}")
+        lines.append(f"{rank_str} {medal} `{name}` {roi_str}  {pnl_str}  {wl_str}")
 
     # Compact summary footer.
     leader = ranked[0]
