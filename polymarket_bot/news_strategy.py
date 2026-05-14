@@ -33,7 +33,7 @@ from typing import Any
 from . import notifications
 from .config import Settings
 from .gamma import GammaClient
-from .models import Candidate, as_float, parse_dt, parse_json_list, utc_now
+from .models import Candidate, as_float, is_excluded_market, parse_dt, parse_json_list, utc_now
 from .portfolio import Portfolio
 from .pricing import ensure_open_positions_in_pool
 from .smart_money import SmartMoneyData, fetch_smart_money_data
@@ -101,6 +101,8 @@ def _build_news_candidates(
     scored: list[tuple[Candidate, float]] = []
 
     for market in markets:
+        if is_excluded_market(market):
+            continue
         end_date = parse_dt(market.get("endDate"))
         if end_date is None or end_date < earliest or end_date > horizon:
             continue
@@ -389,6 +391,11 @@ def _news_sell_plan(
     if shares <= 0:
         return None
 
+    # Universal min-hold: no sell of any kind before stop_loss_min_age_minutes.
+    age_minutes = _position_age_minutes(position)
+    if age_minutes < settings.news_stop_loss_min_age_minutes:
+        return None
+
     tier_hit = position.get("news_tier_hit") or ""
     peak_pnl_pct = float(position.get("peak_pnl_pct", current_pnl_pct) or 0.0)
 
@@ -413,14 +420,10 @@ def _news_sell_plan(
                 "shares": shares,
             }
 
-    # 3. Adaptive stop-loss.
+    # 3. Adaptive stop-loss (universal min-hold already enforced above).
     hours_left = _hours_to_close_from_position(position)
     sl_pct = _adaptive_stop_pct(hours_left, settings)
-    age_minutes = _position_age_minutes(position)
-    if (
-        current_pnl_pct <= -sl_pct
-        and age_minutes >= settings.news_stop_loss_min_age_minutes
-    ):
+    if current_pnl_pct <= -sl_pct:
         return {"reason": "news_stop_loss", "shares": shares}
 
     # 4. Near-expiry flush if positive.

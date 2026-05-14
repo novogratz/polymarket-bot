@@ -29,7 +29,7 @@ max_orders_per_tick = 3
 cash_floor_pct = 0.10
 tp_pct = 0.95
 sl_pct = 0.99
-sl_min_age_minutes = 3
+sl_min_age_minutes = 5
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.97
 

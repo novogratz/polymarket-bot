@@ -53,7 +53,7 @@ from .external_prices import (
     fetch_spot_quotes_for_assets,
 )
 from .gamma import GammaClient
-from .models import Candidate, as_float, parse_dt, parse_json_list, utc_now
+from .models import Candidate, as_float, is_excluded_market, parse_dt, parse_json_list, utc_now
 from .news_strategy import _asset_key, _event_slug, _quote_for_outcome
 from .portfolio import Portfolio
 from .pricing import ensure_open_positions_in_pool
@@ -122,6 +122,8 @@ def _load_short_expiry_markets(settings: Settings) -> list[dict[str, Any]]:
 
 
 def _market_passes_basic_filters(market: dict[str, Any], settings: Settings) -> bool:
+    if is_excluded_market(market):
+        return False
     end_date = parse_dt(market.get("endDate"))
     if end_date is None:
         return False
@@ -667,11 +669,15 @@ def _edge_sell_plan(
     age_min = _position_age_minutes(position)
     minutes_left = _minutes_to_close(position)
 
+    # Universal min-hold: no sell of any kind before stop_loss_min_age_minutes.
+    if age_min < settings.edge_stop_loss_min_age_minutes:
+        return None
+
     # Scalp: tight TP/SL, exit fast on stagnation.
     if lane == LANE_SCALP:
         if current_pnl_pct >= settings.edge_scalp_tp_pct:
             return {"reason": "edge_scalp_tp", "shares": shares}
-        if current_pnl_pct <= -settings.edge_scalp_sl_pct and age_min >= 1:
+        if current_pnl_pct <= -settings.edge_scalp_sl_pct:
             return {"reason": "edge_scalp_sl", "shares": shares}
         if age_min >= settings.edge_scalp_max_age_minutes:
             return {"reason": "edge_scalp_timeout", "shares": shares}
@@ -693,7 +699,7 @@ def _edge_sell_plan(
         sl_pct = settings.edge_tight_stop_pct
     if hours_left <= settings.edge_very_tight_stop_hours:
         sl_pct = settings.edge_very_tight_stop_pct
-    if current_pnl_pct <= -sl_pct and age_min >= settings.edge_stop_loss_min_age_minutes:
+    if current_pnl_pct <= -sl_pct:
         return {"reason": "edge_stop_loss", "shares": shares}
 
     # Near-expiry positive flush.

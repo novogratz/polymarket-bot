@@ -46,6 +46,27 @@ def parse_json_list(value: Any) -> list[Any]:
     return parsed if isinstance(parsed, list) else []
 
 
+_EXCLUDED_QUESTION_SUBSTRINGS = ("up or down",)
+_EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down")
+
+
+def is_excluded_market(market: dict[str, Any]) -> bool:
+    """True for crypto Up/Down binaries — blocked across every strategy.
+
+    Why: these short-dated coin micros (`eth-updown-15m`, `Bitcoin Up or
+    Down…`) have visible spreads but no real book depth, so FOK orders
+    bounce and any fills that land bleed out before exit. Blanket-excluded
+    at the Candidate level so no profile can pick them.
+    """
+    q = str(market.get("question") or "").lower()
+    if any(pat in q for pat in _EXCLUDED_QUESTION_SUBSTRINGS):
+        return True
+    slug = str(market.get("slug") or "").lower()
+    if any(pat in slug for pat in _EXCLUDED_SLUG_SUBSTRINGS):
+        return True
+    return False
+
+
 @dataclass(frozen=True)
 class Candidate:
     market_id: str

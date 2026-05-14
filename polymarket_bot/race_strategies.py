@@ -25,7 +25,7 @@ from typing import Any
 from . import notifications
 from .config import Settings
 from .gamma import GammaClient
-from .models import Candidate, as_float, parse_dt, parse_json_list, utc_now
+from .models import Candidate, as_float, is_excluded_market, parse_dt, parse_json_list, utc_now
 from .news_strategy import _asset_key, _event_slug, _quote_for_outcome
 from .portfolio import Portfolio
 from .pricing import ensure_open_positions_in_pool
@@ -87,6 +87,8 @@ def _build_eligible_candidates(
     horizon = now + timedelta(hours=settings.race_max_hours)
     out: list[tuple[Candidate, float]] = []
     for market in markets:
+        if is_excluded_market(market):
+            continue
         end_date = parse_dt(market.get("endDate"))
         if end_date is None or end_date < earliest or end_date > horizon:
             continue
@@ -700,10 +702,13 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
     shares = float(position.get("shares", 0.0) or 0.0)
     if shares <= 0:
         return None
+    # Universal min-hold: no sell of any kind before sl_min_age_minutes.
+    age = _position_age_minutes(position)
+    if age < settings.race_sl_min_age_minutes:
+        return None
     if current_pnl_pct >= settings.race_tp_pct:
         return {"reason": "race_take_profit", "shares": shares}
-    age = _position_age_minutes(position)
-    if current_pnl_pct <= -settings.race_sl_pct and age >= settings.race_sl_min_age_minutes:
+    if current_pnl_pct <= -settings.race_sl_pct:
         return {"reason": "race_stop_loss", "shares": shares}
     mtc = _minutes_to_close(position)
     if mtc is not None and mtc <= settings.race_near_expiry_minutes and current_pnl_pct >= 0:
@@ -740,6 +745,7 @@ def _execute_race_exits(
         if plan is None and (
             settings.race_resolved_exit_threshold > 0
             and candidate.best_bid >= settings.race_resolved_exit_threshold
+            and _position_age_minutes(position) >= settings.race_sl_min_age_minutes
         ):
             plan = {"reason": "race_resolved", "shares": float(position.get("shares", 0.0))}
         if plan is None:
