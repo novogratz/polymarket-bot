@@ -9,7 +9,7 @@ starting_cash = 100.0
 mode = "pmlepgm_counter_panic_fade"
 
 [sizing]
-max_position_ceiling_usd = 10.0
+max_position_ceiling_usd = 15.0
 min_open_positions = 0
 starter_trade_usd = 5.0
 
