@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Lance le bot en LIVE avec le profil wallet_cluster_correlation.
-# Stratégie : copy-trading des wallets corrélés sur marchés ≤ 4h.
-# Sizing : stake $5/trade, ceiling $10, 3 orders/tick, cash floor 10%.
-# Exits : TP +25% / SL -25% (min-age 5min) / resolved ≥0.97.
-# Toute la config vit dans configs/profiles/wallet_cluster_correlation.toml.
+# Lance le bot en LIVE avec le profil edge.
+# 4 lanes : arbitrage (YES+NO<$0.98), crypto BS pricing, near-cert (bid≥0.70), scalp(off).
+# Sizing actuel ($9 bankroll) : cap 3$ par position, 1$ starter, 2 orders/tick.
+# Exits : TP +25% / SL adaptatif (-25%/-15%/-10% selon temps) / DD halt -15%.
+# Min-hold universel : 3 minutes (toutes les sorties).
+# Toute la config vit dans configs/profiles/edge.toml.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,4 +23,4 @@ export TELEGRAM_ALERT_HEARTBEAT=1
 export TELEGRAM_ALERT_PORTFOLIO_UPDATES=1
 export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
-exec uv run pmbot auto-loop --live --profile wallet_cluster_correlation --yes
+exec uv run pmbot auto-loop --live --profile edge --yes
