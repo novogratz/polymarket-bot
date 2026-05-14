@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # La grande race dry-run — toutes les stratégies + leaderboard sidecar.
 #
-# Each $100 starting cash, own ledger + journal. Per-trade Telegram alerts
-# are fully suppressed (TELEGRAM_ALERT_TRADES=0); the only Telegram output
-# is the 15-min leaderboard refresh.
+# Each $100 starting cash, own ledger + journal. Telegram alerts (BUY/SELL/
+# errors/threshold/heartbeat) stream to TELEGRAM_CHAT_ID_DRY_RUN, prefixed
+# per-run via POLYMARKET_RUN_NAME. Expect a firehose with ~28 bots in
+# parallel — flip TELEGRAM_ALERT_TRADES=0 below if you need to mute.
 #
 # Ctrl+C arrête tout. Logs interleaved préfixés.
 set -euo pipefail
@@ -25,11 +26,6 @@ run_bot() {
     local prefix="$3"
     POLYMARKET_QUIET=1 \
         POLYMARKET_SUPPRESS_BUY_LOGS=1 \
-        TELEGRAM_ALERT_TRADES=0 \
-        TELEGRAM_ALERT_TRADES_BUY=0 \
-        TELEGRAM_ALERT_HEARTBEAT=0 \
-        TELEGRAM_ALERT_THRESHOLDS=0 \
-        TELEGRAM_ALERT_ERRORS=0 \
         uv run pmbot auto-loop --dry-run --profile "$profile" --run "$run" \
         2>&1 | sed -u "s/^/[${prefix}] /" &
 }
@@ -60,6 +56,7 @@ run_bot aggressive_buyer_detection aggressive_buyer_detection "aggbuy    "
 run_bot orderbook_imbalance        orderbook_imbalance        "obimb     "
 run_bot late_momentum_chase        late_momentum_chase        "latemom   "
 run_bot weak_holder_flush          weak_holder_flush          "weakhold  "
+run_bot weak_holder_flush_inverse  weak_holder_flush_inverse  "weakhold_i"
 run_bot probability_drift          probability_drift          "probdrift "
 run_bot resolution_compression     resolution_compression     "rescomp   "
 run_bot liquidity_absorption       liquidity_absorption       "liqabsorb "
@@ -71,7 +68,7 @@ run_bot multi_signal_consensus     multi_signal_consensus     "multisig  "
 run_bot kzerlepgm_ultimatestrategy kzerlepgm_ultimatestrategy "kzer      "
 
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
-    --runs news,edge,baseline,random,contrarian,favorite,championdumonde_breakout,late_favorite,panic_fade,underdog,pmlepgm_counter_panic_fade,hybrid_smart_money,smart_wallet_consensus,whale_entry_detection,wallet_cluster_correlation,early_momentum_detection,liquidity_vacuum_breakout,mean_reversion_fade,range_channel_trading,aggressive_buyer_detection,orderbook_imbalance,late_momentum_chase,weak_holder_flush,probability_drift,resolution_compression,liquidity_absorption,momentum_exhaustion_reversal,micro_scalping,multi_signal_consensus,kzerlepgm_ultimatestrategy \
+    --runs news,edge,baseline,random,contrarian,favorite,championdumonde_breakout,late_favorite,panic_fade,underdog,pmlepgm_counter_panic_fade,hybrid_smart_money,smart_wallet_consensus,whale_entry_detection,wallet_cluster_correlation,early_momentum_detection,liquidity_vacuum_breakout,mean_reversion_fade,range_channel_trading,aggressive_buyer_detection,orderbook_imbalance,late_momentum_chase,weak_holder_flush,weak_holder_flush_inverse,probability_drift,resolution_compression,liquidity_absorption,momentum_exhaustion_reversal,micro_scalping,multi_signal_consensus,kzerlepgm_ultimatestrategy \
     --interval 3 --telegram \
     2>&1 | sed -u 's/^/[board]     /' &
 

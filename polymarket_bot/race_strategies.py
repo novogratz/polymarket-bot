@@ -585,6 +585,24 @@ def select_weak_holder_flush(
     return _dedupe_top_n(qualified, n)
 
 
+def select_weak_holder_flush_inverse(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """Inverse of #12: buy the *other* side of the same dump.
+
+    Each market emits YES and NO as separate candidates with signed
+    momentum. WHF buys the dumped outcome (mom ≤ -10%) expecting a
+    bounce; this picks the opposing outcome (mom ≥ +10%) — betting
+    the move is real and the dumped side keeps bleeding.
+    """
+    qualified = [
+        (c, mom)
+        for c, mom in eligible
+        if mom >= 0.10 and (c.volume or 0) >= 2000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
 def select_probability_drift(
     eligible: list[tuple[Candidate, float]], n: int
 ) -> list[Candidate]:
@@ -1213,6 +1231,9 @@ late_momentum_chase_once, late_momentum_chase_loop = _race_strategy(
 )
 weak_holder_flush_once, weak_holder_flush_loop = _race_strategy(
     "weak_holder_flush", select_weak_holder_flush
+)
+weak_holder_flush_inverse_once, weak_holder_flush_inverse_loop = _race_strategy(
+    "weak_holder_flush_inverse", select_weak_holder_flush_inverse
 )
 probability_drift_once, probability_drift_loop = _race_strategy(
     "probability_drift", select_probability_drift

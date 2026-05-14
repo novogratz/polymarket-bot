@@ -2752,6 +2752,10 @@ def cli_auto_loop(
         from . import race_strategies as race_module
 
         race_module.weak_holder_flush_loop(settings)
+    elif mode == "weak_holder_flush_inverse":
+        from . import race_strategies as race_module
+
+        race_module.weak_holder_flush_inverse_loop(settings)
     elif mode == "probability_drift":
         from . import race_strategies as race_module
 
