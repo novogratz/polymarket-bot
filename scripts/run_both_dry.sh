@@ -72,7 +72,7 @@ run_bot kzerlepgm_ultimatestrategy kzerlepgm_ultimatestrategy "kzer      "
 
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
     --runs news,edge,baseline,random,contrarian,favorite,championdumonde_breakout,late_favorite,panic_fade,underdog,pmlepgm_counter_panic_fade,hybrid_smart_money,smart_wallet_consensus,whale_entry_detection,wallet_cluster_correlation,early_momentum_detection,liquidity_vacuum_breakout,mean_reversion_fade,range_channel_trading,aggressive_buyer_detection,orderbook_imbalance,late_momentum_chase,weak_holder_flush,probability_drift,resolution_compression,liquidity_absorption,momentum_exhaustion_reversal,micro_scalping,multi_signal_consensus,kzerlepgm_ultimatestrategy \
-    --interval 5 --telegram \
+    --interval 3 --telegram \
     2>&1 | sed -u 's/^/[board]     /' &
 
 wait

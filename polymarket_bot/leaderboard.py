@@ -42,6 +42,7 @@ class RunStats:
     realized_pnl: float
     started_at: str | None
     total_ticks: int
+    total_predictions: int = 0  # unique markets ever entered (closed + open)
     biggest_win_today: float = 0.0
     biggest_loss_today: float = 0.0
 
@@ -99,9 +100,11 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
     unrealized = sum(float(p.get("unrealized_pnl", 0) or 0) for p in open_positions)
     equity = cash + invested + unrealized
 
-    closed_trades = 0
-    wins = 0
-    losses = 0
+    # Dedupe by market_id: each unique market = 1 "prediction" with its
+    # aggregate realized_pnl as the W/L vote. If the bot trades the same
+    # market multiple times (exit + re-entry), all those cycles count as
+    # one prediction with summed PnL.
+    market_pnl: dict[str, float] = {}
     realized_pnl = 0.0
     biggest_win_today = 0.0
     biggest_loss_today = 0.0
@@ -118,16 +121,14 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
                         rec = json.loads(line)
                     except Exception:
                         continue
-                    closed_trades += 1
                     try:
                         pnl = float(rec.get("realized_pnl", 0) or 0)
                     except (TypeError, ValueError):
                         pnl = 0.0
                     realized_pnl += pnl
-                    if pnl > 0:
-                        wins += 1
-                    elif pnl < 0:
-                        losses += 1
+                    mid = str(rec.get("market_id") or "")
+                    if mid:
+                        market_pnl[mid] = market_pnl.get(mid, 0.0) + pnl
                     closed_at = rec.get("closed_at")
                     if closed_at:
                         try:
@@ -141,6 +142,15 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
                                 biggest_loss_today = pnl
         except Exception:
             pass
+
+    # One W/L per unique market based on net realized PnL across all cycles.
+    closed_trades = len(market_pnl)
+    wins = sum(1 for pnl in market_pnl.values() if pnl > 0)
+    losses = sum(1 for pnl in market_pnl.values() if pnl < 0)
+
+    # Total predictions = unique closed markets + currently open markets.
+    open_market_ids = {str(p.get("market_id") or "") for p in open_positions if p.get("market_id")}
+    total_predictions = len(set(market_pnl.keys()) | open_market_ids)
 
     return RunStats(
         run_name=run_name,
@@ -158,6 +168,7 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
         total_ticks=total_ticks,
         biggest_win_today=biggest_win_today,
         biggest_loss_today=biggest_loss_today,
+        total_predictions=total_predictions,
     )
 
 
@@ -312,7 +323,8 @@ def format_leaderboard_telegram(
             color = "⚪"
         roi_str = notifications._md_escape(f"{s.roi_pct:+5.1f}%")
         wl_str = notifications._md_escape(f"{s.wins}W/{s.losses}L")
-        lines.append(f"{rank_str} {medal} `{name}` {color} {roi_str}  {wl_str}")
+        pred_str = notifications._md_escape(f"{s.total_predictions}pred")
+        lines.append(f"{rank_str} {medal} `{name}` {color} {roi_str}  {pred_str}  {wl_str}")
 
     # Movers section: only meaningful if we have prior state.
     if history and base_dir is not None:
