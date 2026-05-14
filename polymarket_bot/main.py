@@ -2865,6 +2865,7 @@ def cli_leaderboard(
     """
     from .leaderboard import (
         format_leaderboard,
+        gather_live_stats,
         gather_run_stats,
         run_leaderboard_loop,
     )
@@ -2880,7 +2881,8 @@ def cli_leaderboard(
             s = gather_run_stats(base_dir, name)
             if s is not None:
                 stats.append(s)
-        typer.echo(format_leaderboard(stats))
+        live = gather_live_stats(base_dir)
+        typer.echo(format_leaderboard(stats, live=live))
         return
     run_leaderboard_loop(base_dir, run_names, max(60, interval * 60), telegram=telegram)
 
