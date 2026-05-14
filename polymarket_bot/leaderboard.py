@@ -281,7 +281,11 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
     unrealized = sum(float(p.get("unrealized_pnl", 0) or 0) for p in open_positions)
     equity = cash + invested + unrealized
 
-    starting_cash = _load_or_init_live_baseline(base_dir, equity)
+    # Baseline at cost basis (cash + open stakes) instead of current mark so
+    # existing unrealized PnL on positions held at snapshot time shows up as
+    # ROI from tick one.
+    cost_basis = cash + invested
+    starting_cash = _load_or_init_live_baseline(base_dir, cost_basis)
 
     market_pnl: dict[str, float] = {}
     realized_pnl = 0.0
