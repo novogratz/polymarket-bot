@@ -316,12 +316,20 @@ class Portfolio:
                 candidate = by_market_outcome.get((position.get("market_id"), position.get("outcome")))
             if candidate is None:
                 continue
-            current_value = float(position["shares"]) * candidate.price
-            position["current_price"] = candidate.price
+            # Mark to the bid (what we'd actually sell at). outcomePrices is the
+            # last-trade print and can be stale for minutes, producing fake huge
+            # PnL spikes that wrongly arm peak/trailing exits.
+            mark_price = (
+                candidate.best_bid
+                if candidate.best_bid is not None and candidate.best_bid > 0
+                else candidate.price
+            )
+            current_value = float(position["shares"]) * mark_price
+            position["current_price"] = mark_price
             position["unrealized_pnl"] = round(current_value - float(position["stake"]), 2)
             entry_price = float(position.get("entry_price", 0.0))
             if entry_price > 0:
-                pnl_pct = (candidate.price - entry_price) / entry_price
+                pnl_pct = (mark_price - entry_price) / entry_price
                 position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", pnl_pct)), pnl_pct)
             if candidate.end_date and not position.get("end_date"):
                 position["end_date"] = candidate.end_date.isoformat()
