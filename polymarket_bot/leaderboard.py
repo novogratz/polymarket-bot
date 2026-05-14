@@ -215,16 +215,12 @@ def format_leaderboard(stats: list[RunStats], *, now: datetime | None = None) ->
     return "\n".join(lines)
 
 
-_TELEGRAM_TOP_N = 12
-
-
 def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None = None) -> str:
-    """Compact Telegram leaderboard — one line per strategy, top N only.
+    """Compact Telegram leaderboard — one line per strategy, full list.
 
     Format: ``rank. name ROI%  R±$X  WW/LL``
     Strategies are ranked by realized PnL first (the only signal that
-    isn't noise), with ties broken by ROI. Bottom losers compressed to
-    one summary line.
+    isn't noise), with ties broken by ROI.
     """
     if not stats:
         return "🏁 *Leaderboard*: no runs found"
@@ -233,8 +229,8 @@ def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None =
     now = now or datetime.now(timezone.utc)
     stamp = notifications._md_escape(now.strftime("%H:%M"))
 
-    lines = [f"🏁 *Leaderboard* · {stamp} UTC · top {_TELEGRAM_TOP_N}", ""]
-    for i, s in enumerate(ranked[:_TELEGRAM_TOP_N], 1):
+    lines = [f"🏁 *Leaderboard* · {stamp} UTC · {len(ranked)} strategies", ""]
+    for i, s in enumerate(ranked, 1):
         medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, "  ")
         rank_str = notifications._md_escape(f"{i:>2}.")
         name = notifications._md_escape(_short(s.run_name, 20))
