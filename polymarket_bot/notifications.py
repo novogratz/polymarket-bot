@@ -606,6 +606,10 @@ def _handle_auto_tune_change(payload: dict[str, Any]) -> None:
 def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_THRESHOLDS"):
         return
+    # Threshold alerts are live-only — DD / equity-floor pings from 30
+    # dry bots flood the channel with non-actionable noise.
+    if _is_dry_run():
+        return
     if kind == "drawdown":
         _handle_drawdown(payload)
     elif kind == "equity_floor":
@@ -633,6 +637,10 @@ def _heartbeat_top_line(emoji: str, entry: dict[str, Any]) -> str | None:
 
 def notify_heartbeat(snapshot: dict[str, Any]) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_HEARTBEAT"):
+        return
+    # Bilan heartbeat is live-only — 30 dry-run bots would firehose the
+    # channel with stale-balance updates that have no signal value.
+    if _is_dry_run():
         return
     try:
         interval_min = float(os.environ.get("TELEGRAM_HEARTBEAT_MINUTES", "30"))
