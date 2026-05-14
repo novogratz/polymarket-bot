@@ -751,8 +751,6 @@ def _execute_edge_exits(
             )
         except Exception as exc:
             msg = str(exc).lower()
-            # Stuck-balance recovery: resting CLOB orders lock up the wallet's
-            # share balance. Cancel and retry next tick.
             if "balance is not enough" in msg or "allowance" in msg:
                 token_id_str = str(position.get("token_id") or "")
                 cancelled: list[str] = []
@@ -772,6 +770,26 @@ def _execute_edge_exits(
                         flush=True,
                     )
                     continue
+                # Cancel failed → force-close locally so we stop spamming.
+                salvage_price = max(float(candidate.best_bid or 0.0), 0.0)
+                portfolio.record_live_exit(
+                    position,
+                    shares=float(plan["shares"]),
+                    exit_price=salvage_price,
+                    order_id=None,
+                    order_response={"force_close": True, "reason": "stuck_balance"},
+                    reason=f"{plan['reason']}_stuck",
+                )
+                portfolio.save(settings.state_path)
+                if position.get("status") == "closed":
+                    from .main import _append_trade_journal
+                    _append_trade_journal(settings, position, f"{plan['reason']}_stuck")
+                print(
+                    f"🗑️  edge force-closed stuck position "
+                    f"'{position.get('question')}' (CLOB balance < needed)",
+                    flush=True,
+                )
+                continue
             print(
                 f"⚠️  edge sell skipped on {position.get('question')}: "
                 f"{type(exc).__name__}: {exc}",

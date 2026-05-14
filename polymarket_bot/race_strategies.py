@@ -756,9 +756,12 @@ def _execute_race_exits(
             )
         except Exception as exc:
             msg = str(exc).lower()
-            # Stuck-balance recovery: resting CLOB orders from a previous
-            # failed FOK attempt can lock up the wallet's share balance so
-            # the next sell sees 0 available. Cancel them and retry next tick.
+            # Stuck-balance: the CLOB says we don't have enough shares to
+            # sell. Try cancelling resting orders first (may free shares);
+            # if that fails (most cancel methods 405/400 on current CLOB),
+            # force-close the local position so the bot stops spamming
+            # this market forever. User can recover manually if shares
+            # turn up later.
             if "balance is not enough" in msg or "allowance" in msg:
                 token_id_str = str(position.get("token_id") or "")
                 cancelled: list[str] = []
@@ -784,6 +787,34 @@ def _execute_race_exits(
                         "cancelled_orders": cancelled,
                     })
                     continue
+                # Cancel failed → force-close locally so we stop retrying.
+                # Use current best_bid as the salvage price (likely tiny).
+                salvage_price = max(float(candidate.best_bid or 0.0), 0.0)
+                portfolio.record_live_exit(
+                    position,
+                    shares=float(plan["shares"]),
+                    exit_price=salvage_price,
+                    order_id=None,
+                    order_response={"force_close": True, "reason": "stuck_balance"},
+                    reason=f"{plan['reason']}_stuck",
+                )
+                portfolio.save(settings.state_path)
+                if position.get("status") == "closed":
+                    from .main import _append_trade_journal
+                    _append_trade_journal(settings, position, f"{plan['reason']}_stuck")
+                out.append({
+                    "market_id": position.get("market_id"),
+                    "question": position.get("question"),
+                    "action": "force_close_stuck",
+                    "reason": f"{plan['reason']}_stuck",
+                    "exit_price": salvage_price,
+                })
+                print(
+                    f"🗑️  {strategy_name} force-closed stuck position "
+                    f"'{position.get('question')}' (CLOB balance < needed, cancel failed)",
+                    flush=True,
+                )
+                continue
             # Auto-write-off: if the position is past its expiry (or resolved
             # as loser) we can't get a live SELL through — accept the bid as
             # the realized price and close locally so it doesn't linger.

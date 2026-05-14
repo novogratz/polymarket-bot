@@ -377,55 +377,28 @@ class TradingSession:
         raise ValueError("installed Polymarket client does not support order cancellation")
 
     def cancel_active_orders_for_token(self, token_id: str) -> list[str]:
-        """List active CLOB orders, cancel any on the given token, return cancelled ids.
+        """Best-effort enumerate-and-cancel of resting orders on a token.
 
-        Tries the SDK's get_orders first (works on py-clob-client v2), then
-        falls back to legacy_client. If both fail, attempts the SDK's
-        cancel_market_orders which cancels everything on a market without
-        needing to enumerate.
+        Tries SDK v2 get_orders → legacy get_orders. If neither works the
+        caller is expected to fall back to force-closing the position locally,
+        since enumerate-less bulk cancel methods on this CLOB version all
+        return 400/405 with different shapes.
         """
         cancelled: list[str] = []
         if not token_id:
             return cancelled
         orders = None
-        # Try SDK v2 first.
         if self.sdk_client is not None:
             getter = getattr(self.sdk_client, "get_orders", None)
             if callable(getter):
                 try:
                     orders = getter()
-                except Exception as exc:
-                    print(
-                        f"   cancel: SDK get_orders failed: {type(exc).__name__}: {exc}",
-                        flush=True,
-                    )
+                except Exception:
+                    orders = None
         if orders is None:
             try:
                 orders = self.legacy_client.get_orders()
-            except Exception as exc:
-                print(
-                    f"   cancel: legacy get_orders failed: {type(exc).__name__}: {exc}",
-                    flush=True,
-                )
-                # Last resort: SDK cancel_market_orders cancels by market/token without enumeration.
-                if self.sdk_client is not None:
-                    for method_name in ("cancel_market_orders", "cancel_orders"):
-                        method = getattr(self.sdk_client, method_name, None)
-                        if not callable(method):
-                            continue
-                        try:
-                            result = method(asset_id=token_id) if method_name == "cancel_market_orders" else method(token_id)
-                            if result:
-                                print(
-                                    f"   cancel: SDK {method_name} fired on token {token_id[:12]}…",
-                                    flush=True,
-                                )
-                                return ["bulk_cancel"]
-                        except Exception as exc:
-                            print(
-                                f"   cancel: SDK {method_name} failed: {type(exc).__name__}: {exc}",
-                                flush=True,
-                            )
+            except Exception:
                 return cancelled
         if not isinstance(orders, list):
             return cancelled
