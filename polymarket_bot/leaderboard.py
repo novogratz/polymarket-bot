@@ -225,6 +225,30 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
     )
 
 
+def _live_strategy_name(base_dir: Path) -> str:
+    """Read the active live profile from data/live_config_snapshot.toml.
+
+    Falls back to ``"live"`` if the snapshot is missing or unparsable.
+    The bot writes this file on every live start, so it tracks profile
+    switches without code changes here.
+    """
+    snap = base_dir / "live_config_snapshot.toml"
+    if not snap.is_file():
+        return "live"
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover
+        return "live"
+    try:
+        data = tomllib.loads(snap.read_text(encoding="utf-8"))
+        mode = data.get("run", {}).get("mode")
+        if mode:
+            return str(mode)
+    except Exception:
+        pass
+    return "live"
+
+
 def _live_baseline_path(base_dir: Path) -> Path:
     return base_dir / "live_baseline.json"
 
@@ -333,7 +357,7 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
     total_predictions = len(set(market_pnl.keys()) | open_market_ids)
 
     return RunStats(
-        run_name="LIVE",
+        run_name=_live_strategy_name(base_dir),
         starting_cash=starting_cash,
         cash=cash,
         invested=invested,
@@ -398,7 +422,7 @@ def format_leaderboard(
     if live is not None:
         hypo_rank = 1 + sum(1 for s in ranked if s.roi_pct > live.roi_pct)
         total = len(ranked) + 1
-        lines.append("🔵 EDGE LIVE — running on real money")
+        lines.append(f"🔵 {live.run_name.upper()} LIVE — running on real money")
         lines.append(
             f"   Equity: ${live.equity:.2f}  PnL: {live.total_pnl:+.2f}  "
             f"ROI: {live.roi_pct:+.1f}%  "
@@ -454,9 +478,10 @@ def format_leaderboard_telegram(
         wl_l = notifications._md_escape(f"{live.wins}W/{live.losses}L")
         rank_l = notifications._md_escape(f"#{hypo_rank} of {total}")
         sep = notifications._md_escape("━━━━━━━━━━━━━━━━━")
+        name_l = notifications._md_escape(live.run_name)
         lines.append("")
         lines.append(sep)
-        lines.append("🔵 *Edge LIVE is also running\\!*")
+        lines.append(f"🔵 *{name_l} LIVE is also running\\!*")
         lines.append(f"   Current: {live_color} {eq_l}  {roi_l}  PnL {pnl_l}  {wl_l}")
         lines.append(f"   If listed: would rank {rank_l}")
 
