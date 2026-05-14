@@ -276,6 +276,50 @@ def _truncate(text: str, max_len: int = 40) -> str:
     return text[: max_len - 1] + "…"
 
 
+def _all_time_realized_pnl_usd() -> float:
+    """Sum every realized_pnl in the active trade journal."""
+    path = Path(os.environ.get("POLYMARKET_TRADE_JOURNAL_PATH", "data/trade_journal.jsonl"))
+    total = 0.0
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                # Top-level realized_pnl (current journal format)
+                if rec.get("realized_pnl") is not None:
+                    try:
+                        total += float(rec["realized_pnl"])
+                    except (TypeError, ValueError):
+                        pass
+                # Or nested exits[].realized_pnl (legacy/dry-run shape)
+                for exit_rec in rec.get("exits") or []:
+                    try:
+                        total += float(exit_rec.get("realized_pnl") or 0)
+                    except (TypeError, ValueError):
+                        pass
+    except (FileNotFoundError, OSError):
+        return 0.0
+    return total
+
+
+def _fmt_all_time_line() -> str:
+    """`✅ All-time: +$XX.XX` / `❌ All-time: -$XX.XX` / `⚪ All-time: $0.00`."""
+    pnl = _all_time_realized_pnl_usd()
+    if pnl > 0.005:
+        emoji, sign = "✅", "+"
+    elif pnl < -0.005:
+        emoji, sign = "❌", "-"
+    else:
+        emoji, sign = "⚪", ""
+    amt = _fmt_amount(abs(pnl))  # "$X.XX"
+    return f"{emoji} All\\-time: {_md_escape(sign + amt)}"
+
+
 def notify_trade_buy(
     *,
     market_title: str,
@@ -320,7 +364,7 @@ def notify_trade_buy(
     head = f"🛒 *BUY* 💵 {size_str} @ {price_str}"
     if strategy:
         head += f"  \\[`{_md_escape(strategy)}`\\]"
-    lines = [head]
+    lines = [head, _fmt_all_time_line()]
     if title and outcome_str:
         lines.append(f"🎯 _{_md_escape(title)}_ 👍 *{outcome_str}*")
     elif title:
@@ -403,7 +447,7 @@ def notify_trade_sell(
     tag_line = f"🏷️ {' • '.join(tag_parts)}"
     if market_url:
         tag_line += f" • [🔗]({market_url})"
-    lines = [action_line]
+    lines = [action_line, _fmt_all_time_line()]
     if title and outcome_str:
         lines.append(f"🎯 _{_md_escape(title)}_ 👍 *{outcome_str}*")
     elif title:

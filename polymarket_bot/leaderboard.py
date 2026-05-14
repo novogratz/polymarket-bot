@@ -60,22 +60,52 @@ class RunStats:
         return (self.wins / decided * 100.0) if decided > 0 else 0.0
 
 
+def _starting_cash_from_profile(base_dir: Path, run_name: str) -> float | None:
+    """Look up [run].starting_cash from configs/profiles/<run_name>.toml.
+
+    Lets the leaderboard infer the correct bankroll baseline when no
+    metadata.json exists (which is the common case — the bot doesn't
+    currently write one).
+    """
+    try:
+        import tomllib  # py311+
+    except ImportError:  # pragma: no cover
+        return None
+    candidate = base_dir.parent / "configs" / "profiles" / f"{run_name}.toml"
+    if not candidate.is_file():
+        return None
+    try:
+        data = tomllib.loads(candidate.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    run_section = data.get("run") or {}
+    val = run_section.get("starting_cash")
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
 def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
     """Read one dry-run directory and compute its standings.
 
     Always returns a RunStats — if the run directory doesn't exist yet
-    (bot hasn't ticked), returns a default $100/0-trades stub so it
-    still appears in the leaderboard.
+    (bot hasn't ticked), returns a stub seeded with the profile's
+    declared starting_cash so it still appears in the leaderboard with
+    the right baseline.
     """
+    profile_cash = _starting_cash_from_profile(base_dir, run_name) or 100.0
     root = base_dir / "dry_runs" / run_name
     if not root.is_dir():
         return RunStats(
             run_name=run_name,
-            starting_cash=100.0,
-            cash=100.0,
+            starting_cash=profile_cash,
+            cash=profile_cash,
             invested=0.0,
             unrealized_pnl=0.0,
-            equity=100.0,
+            equity=profile_cash,
             open_positions=0,
             closed_trades=0,
             wins=0,
@@ -88,14 +118,14 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
             total_predictions=0,
         )
 
-    starting_cash = 100.0
+    starting_cash = profile_cash
     total_ticks = 0
     started_at: str | None = None
     meta_path = root / "metadata.json"
     if meta_path.is_file():
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            starting_cash = float(meta.get("starting_cash", 100.0))
+            starting_cash = float(meta.get("starting_cash", profile_cash))
             total_ticks = int(meta.get("total_ticks", 0))
             started_at = meta.get("started_at")
         except Exception:
@@ -209,14 +239,13 @@ def format_leaderboard(stats: list[RunStats], *, now: datetime | None = None) ->
         "─" * 92,
     ]
     for i, s in enumerate(ranked, 1):
-        medal_emoji = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, "")
-        rank_label = f"{i:>2}. {medal_emoji}".rstrip()
+        rank_label = f"{i:>2}."
         pnl_str = f"{s.total_pnl:+9.2f}"
         roi_str = f"{s.roi_pct:+6.1f}%"
         big_win_str = f"+{s.biggest_win_today:.2f}" if s.biggest_win_today > 0 else "  —  "
         big_loss_str = f"{s.biggest_loss_today:.2f}" if s.biggest_loss_today < 0 else "  —  "
         lines.append(
-            f"{rank_label:<6} {s.run_name:<10} "
+            f"{rank_label:<4} {s.run_name:<10} "
             f"${s.equity:>9.2f} "
             f"{pnl_str:>10} "
             f"{roi_str:>8} "
@@ -228,97 +257,15 @@ def format_leaderboard(stats: list[RunStats], *, now: datetime | None = None) ->
             f"{s.total_ticks:>6d}"
         )
     lines.append(bar)
-
-    leader = ranked[0]
-    if leader.total_pnl > 0:
-        lines.append(f"🏆 {leader.run_name} winning by ${leader.total_pnl:+.2f} ({leader.roi_pct:+.1f}%)")
-    elif leader.total_pnl == 0 and all(s.total_pnl == 0 for s in stats):
-        lines.append("⏸  no movement yet — all flat at starting cash")
-    elif leader.total_pnl < 0:
-        spread = leader.total_pnl - ranked[-1].total_pnl
-        lines.append(
-            f"📉 all underwater; least bad: {leader.run_name} ({leader.roi_pct:+.1f}%) — "
-            f"spread to last ${spread:+.2f}"
-        )
     return "\n".join(lines)
-
-
-_HISTORY_PATH_DEFAULT = Path("data/leaderboard_history.json")
-
-
-def _load_history(path: Path) -> dict[str, dict]:
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-
-def _save_history(path: Path, payload: dict[str, dict]) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    except Exception as exc:
-        print(f"⚠️  leaderboard history save failed: {exc}", flush=True)
-
-
-def _last_decisive_trade_since(
-    base_dir: Path, run_name: str, since_ts: str | None
-) -> dict | None:
-    """Return the largest |realized_pnl| journal entry since ``since_ts``."""
-    jp = base_dir / "dry_runs" / run_name / "journal.jsonl"
-    if not jp.is_file():
-        return None
-    best: dict | None = None
-    best_abs = 0.0
-    try:
-        with jp.open(encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except Exception:
-                    continue
-                ts = rec.get("closed_at")
-                if since_ts and ts and str(ts) <= since_ts:
-                    continue
-                pnl = float(rec.get("realized_pnl", 0) or 0)
-                if abs(pnl) > best_abs:
-                    best_abs = abs(pnl)
-                    best = rec
-    except Exception:
-        return None
-    return best
-
-
-def _format_trade_blurb(rec: dict) -> str:
-    """Render a journal entry as a short MarkdownV2-escaped blurb."""
-    q = str(rec.get("question") or "?")[:35]
-    pnl = float(rec.get("realized_pnl", 0) or 0)
-    pct = rec.get("pnl_pct")
-    sign = "+" if pnl >= 0 else ""
-    pct_str = f" ({sign}{float(pct) * 100:.0f}%)" if pct is not None else ""
-    body = f"'{q}' {sign}${pnl:.2f}{pct_str}"
-    return notifications._md_escape(body)
 
 
 def format_leaderboard_telegram(
     stats: list[RunStats],
     *,
     now: datetime | None = None,
-    history: dict[str, dict] | None = None,
-    base_dir: Path | None = None,
 ) -> str:
-    """Compact Telegram leaderboard — ranked by equity, with movers section.
-
-    Format per strategy: ``rank. medal name 🟢/🔴 ROI%  WW/LL``
-    If ``history`` and ``base_dir`` are provided, a "since last refresh"
-    section flags the top climbers and droppers along with the trade
-    that caused the move.
-    """
+    """Compact Telegram leaderboard — ranked by ROI."""
     if not stats:
         return "🏁 *Leaderboard*: no runs found"
     ranked = sorted(stats, key=lambda s: s.roi_pct, reverse=True)
@@ -326,10 +273,7 @@ def format_leaderboard_telegram(
     stamp = notifications._md_escape(now.strftime("%H:%M"))
 
     lines = [f"🏁 *Leaderboard* · {stamp} UTC · {len(ranked)} strategies", ""]
-    cur_ranks: dict[str, int] = {}
     for i, s in enumerate(ranked, 1):
-        cur_ranks[s.run_name] = i
-        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, "  ")
         rank_str = notifications._md_escape(f"{i:>2}.")
         name = notifications._md_escape(s.run_name)
         if s.roi_pct > 0:
@@ -339,49 +283,11 @@ def format_leaderboard_telegram(
         else:
             color = "⚪"
         roi_str = notifications._md_escape(f"{s.roi_pct:+5.1f}%")
+        eq_str = notifications._md_escape(f"${s.equity:.0f}")
         wl_str = notifications._md_escape(f"{s.wins}W/{s.losses}L")
         pred_str = notifications._md_escape(f"{s.total_predictions}pred")
-        lines.append(f"{rank_str} {medal} `{name}` {color} {roi_str}  {pred_str}  {wl_str}")
+        lines.append(f"{rank_str} `{name}` {color} {eq_str}  {roi_str}  {pred_str}  {wl_str}")
 
-    # Movers section: only meaningful if we have prior state.
-    if history and base_dir is not None:
-        deltas: list[tuple[str, int, int, int]] = []  # (name, prev, cur, delta)
-        for s in ranked:
-            prev = history.get(s.run_name, {})
-            prev_rank = int(prev.get("rank") or 0)
-            cur_rank = cur_ranks[s.run_name]
-            if prev_rank and prev_rank != cur_rank:
-                deltas.append((s.run_name, prev_rank, cur_rank, prev_rank - cur_rank))
-
-        climbers = sorted([d for d in deltas if d[3] > 0], key=lambda d: -d[3])[:3]
-        droppers = sorted([d for d in deltas if d[3] < 0], key=lambda d: d[3])[:3]
-
-        if climbers or droppers:
-            lines.append("")
-            lines.append("*Movers since last refresh*")
-        for name, prev, cur, delta in climbers:
-            since_ts = (history.get(name) or {}).get("last_closed_at")
-            trade = _last_decisive_trade_since(base_dir, name, since_ts)
-            blurb = f" · {_format_trade_blurb(trade)}" if trade else ""
-            escaped = notifications._md_escape(f"{name} #{prev}→#{cur} (+{delta})")
-            lines.append(f"🚀 {escaped}{blurb}")
-        for name, prev, cur, delta in droppers:
-            since_ts = (history.get(name) or {}).get("last_closed_at")
-            trade = _last_decisive_trade_since(base_dir, name, since_ts)
-            blurb = f" · {_format_trade_blurb(trade)}" if trade else ""
-            escaped = notifications._md_escape(f"{name} #{prev}→#{cur} ({delta})")
-            lines.append(f"📉 {escaped}{blurb}")
-
-    # Compact summary footer.
-    leader = ranked[0]
-    if leader.realized_pnl > 0 or leader.total_pnl > 0:
-        led_name = notifications._md_escape(_short(leader.run_name, 20))
-        led_pnl = notifications._md_escape(f"+${leader.total_pnl:.2f}")
-        lines.append("")
-        lines.append(f"🏆 *{led_name}* leads \\({led_pnl}\\)")
-    elif all(s.total_pnl == 0 for s in stats):
-        lines.append("")
-        lines.append("⏸ all flat")
     return "\n".join(lines)
 
 
@@ -407,7 +313,6 @@ def run_leaderboard_loop(
         + (" + Telegram" if telegram and notifications.is_enabled() else ""),
         flush=True,
     )
-    history_path = base_dir / "leaderboard_history.json"
     while True:
         try:
             stats: list[RunStats] = []
@@ -419,50 +324,10 @@ def run_leaderboard_loop(
             print(format_leaderboard(stats), flush=True)
             print("", flush=True)
             if telegram and notifications.is_enabled() and stats:
-                history = _load_history(history_path)
                 try:
-                    msg = format_leaderboard_telegram(
-                        stats, history=history, base_dir=base_dir
-                    )
-                    notifications._post(msg)
+                    notifications._post(format_leaderboard_telegram(stats))
                 except Exception as exc:
                     print(f"⚠️  leaderboard telegram failed: {type(exc).__name__}: {exc}", flush=True)
-                # Persist new snapshot for next refresh's mover detection.
-                ranked = sorted(stats, key=lambda s: s.roi_pct, reverse=True)
-                new_history: dict[str, dict] = {}
-                for rank, s in enumerate(ranked, 1):
-                    last_closed_at = _latest_closed_at(base_dir, s.run_name)
-                    new_history[s.run_name] = {
-                        "rank": rank,
-                        "realized_pnl": s.realized_pnl,
-                        "roi_pct": s.roi_pct,
-                        "last_closed_at": last_closed_at,
-                    }
-                _save_history(history_path, new_history)
         except Exception as exc:
             print(f"⚠️  leaderboard error: {type(exc).__name__}: {exc}", flush=True)
         time.sleep(interval_seconds)
-
-
-def _latest_closed_at(base_dir: Path, run_name: str) -> str | None:
-    """Return the latest closed_at timestamp from the strategy's journal."""
-    jp = base_dir / "dry_runs" / run_name / "journal.jsonl"
-    if not jp.is_file():
-        return None
-    latest: str | None = None
-    try:
-        with jp.open(encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except Exception:
-                    continue
-                ts = rec.get("closed_at")
-                if ts and (latest is None or str(ts) > latest):
-                    latest = str(ts)
-    except Exception:
-        return None
-    return latest
