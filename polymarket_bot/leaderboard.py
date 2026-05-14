@@ -233,7 +233,7 @@ def format_leaderboard_telegram(stats: list[RunStats], *, now: datetime | None =
     for i, s in enumerate(ranked, 1):
         medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(i, "  ")
         rank_str = notifications._md_escape(f"{i:>2}.")
-        name = notifications._md_escape(_short(s.run_name, 20))
+        name = notifications._md_escape(s.run_name)
         # Green for positive, red for negative, dot for flat — % is ROI since start.
         if s.roi_pct > 0:
             color = "🟢"
