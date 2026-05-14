@@ -1,7 +1,7 @@
 # Profil "liquidity_vacuum_breakout" — #5 — thin liquidity + breakout momentum. Tight SL.
 
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "liquidity_vacuum_breakout"
 
 [sizing]
