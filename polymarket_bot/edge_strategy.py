@@ -723,8 +723,12 @@ def _execute_edge_exits(
     for position in list(portfolio.positions):
         if position.get("status") != "open" or not position.get("live"):
             continue
-        # Only manage edge-tagged positions; leave news/smart-money positions alone.
-        if str(position.get("strategy") or "") != "edge":
+        # Manage edge-tagged and live_sync positions (the latter being
+        # positions synced from the CLOB account that the bot didn't
+        # open itself — letting them sit unmanaged was a recurring
+        # source of stuck bets). News/smart-money keep their own paths.
+        strategy = str(position.get("strategy") or "")
+        if strategy not in ("edge", "live_sync"):
             continue
         token_id = position.get("token_id")
         candidate = by_token.get(token_id)

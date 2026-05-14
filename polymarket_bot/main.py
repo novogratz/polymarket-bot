@@ -1914,6 +1914,49 @@ def _take_profit_tiers(settings: Settings) -> list[tuple[float, float]]:
     return sorted(tiers)
 
 
+def _notify_and_journal_sync_close(settings: Settings, position: dict[str, object]) -> None:
+    """Telegram + journal a sync-detected close.
+
+    The bot's exit path normally handles BUY/SELL alerts; positions that
+    disappear from the CLOB response (manually closed on the Polymarket
+    UI, resolved markets, etc.) bypass that path. Without this hook, the
+    user sees the position vanish from the bot with no record anywhere.
+    """
+    try:
+        stake = float(position.get("stake") or 0.0)
+        realized = float(position.get("realized_pnl") or 0.0)
+        pnl_pct = (realized / stake * 100.0) if stake > 0 else None
+        held: int | None = None
+        opened_at = position.get("opened_at")
+        closed_at = position.get("closed_at")
+        if opened_at and closed_at:
+            try:
+                opened_dt = datetime.fromisoformat(str(opened_at).replace("Z", "+00:00"))
+                closed_dt = datetime.fromisoformat(str(closed_at).replace("Z", "+00:00"))
+                held = int((closed_dt - opened_dt).total_seconds())
+            except (TypeError, ValueError):
+                pass
+        notifications.notify_trade_sell(
+            market_title=str(position.get("question") or ""),
+            token_id=str(position.get("token_id") or ""),
+            price=float(position.get("current_price") or 0.0),
+            size_usd=stake,
+            realized_pnl_usd=realized,
+            realized_pnl_pct=pnl_pct,
+            reason="sync_closed",
+            outcome=str(position.get("outcome") or ""),
+            held_seconds=held,
+            market_url=str(position.get("url") or ""),
+            strategy=str(position.get("strategy") or ""),
+        )
+    except Exception as exc:
+        print(f"⚠️  sync_closed notify failed: {type(exc).__name__}: {exc}", flush=True)
+    try:
+        _append_trade_journal(settings, position, "sync_closed")
+    except Exception as exc:
+        print(f"⚠️  sync_closed journal failed: {type(exc).__name__}: {exc}", flush=True)
+
+
 def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[str, object]]:
     if not settings.funder_address:
         return []
@@ -1944,7 +1987,15 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
             position["status"] = "closed"
             position["closed_at"] = utc_now().isoformat()
             position["sync_closed"] = True
+            # No actual exit price available (the position is just gone from
+            # the CLOB response). Approximate realized PnL from the last
+            # known mark — best signal until a dedicated close-lookup exists.
+            if not position.get("realized_pnl"):
+                position["realized_pnl"] = round(
+                    float(position.get("unrealized_pnl") or 0.0), 2
+                )
             report.append({"action": "closed_stale_local_position", "token_id": token_id})
+            _notify_and_journal_sync_close(settings, position)
 
     for token_id, item in active_by_token.items():
         position = local_by_token.get(token_id)
