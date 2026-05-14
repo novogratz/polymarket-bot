@@ -63,13 +63,30 @@ class RunStats:
 def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
     """Read one dry-run directory and compute its standings.
 
-    Returns ``None`` only if the directory doesn't exist; otherwise we
-    return defaults so a freshly-spawned run still shows up at the
-    bottom of the table (starting_cash → equity, 0 trades).
+    Always returns a RunStats — if the run directory doesn't exist yet
+    (bot hasn't ticked), returns a default $100/0-trades stub so it
+    still appears in the leaderboard.
     """
     root = base_dir / "dry_runs" / run_name
     if not root.is_dir():
-        return None
+        return RunStats(
+            run_name=run_name,
+            starting_cash=100.0,
+            cash=100.0,
+            invested=0.0,
+            unrealized_pnl=0.0,
+            equity=100.0,
+            open_positions=0,
+            closed_trades=0,
+            wins=0,
+            losses=0,
+            realized_pnl=0.0,
+            started_at=None,
+            total_ticks=0,
+            biggest_win_today=0.0,
+            biggest_loss_today=0.0,
+            total_predictions=0,
+        )
 
     starting_cash = 100.0
     total_ticks = 0
