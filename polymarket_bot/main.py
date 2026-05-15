@@ -2819,6 +2819,26 @@ def cli_auto_loop(
         from . import race_strategies as race_module
 
         race_module.weak_holder_flush_inverse_loop(settings)
+    elif mode == "claude_oversold_bounce":
+        from . import race_strategies as race_module
+
+        race_module.claude_oversold_bounce_loop(settings)
+    elif mode == "claude_late_pump":
+        from . import race_strategies as race_module
+
+        race_module.claude_late_pump_loop(settings)
+    elif mode == "claude_extreme_consensus":
+        from . import race_strategies as race_module
+
+        race_module.claude_extreme_consensus_loop(settings)
+    elif mode == "claude_balanced_mid":
+        from . import race_strategies as race_module
+
+        race_module.claude_balanced_mid_loop(settings)
+    elif mode == "claude_resolution_clock":
+        from . import race_strategies as race_module
+
+        race_module.claude_resolution_clock_loop(settings)
     elif mode == "probability_drift":
         from . import race_strategies as race_module
 

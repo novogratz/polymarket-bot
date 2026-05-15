@@ -585,6 +585,104 @@ def select_weak_holder_flush(
     return _dedupe_top_n(qualified, n)
 
 
+def select_claude_oversold_bounce(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """claude #1: extreme dump (mom ≤-15%) at low price (ask ≤0.30) bounces.
+
+    Combines panic_fade thesis with a low-price filter. The asymmetry
+    is structural: from $0.20 the upside to $0.30 is +50% while
+    downside to $0.10 is only -50% (and zero is a hard floor). Higher
+    win rate from buying near-the-floor capitulations.
+    """
+    qualified = [
+        (c, -mom)
+        for c, mom in eligible
+        if mom <= -0.15
+        and (c.best_ask or 1.0) <= 0.30
+        and (c.volume or 0) >= 1500.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_late_pump(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """claude #2: chase strong momentum in the last 30 minutes.
+
+    Late breakouts (mom ≥+10%, ≤30min to expiry, vol ≥$2k) have no
+    time left to mean-revert. Markets that move sharply just before
+    resolution usually resolve on the same side. Pure trend snipe.
+    """
+    qualified = [
+        (c, mom)
+        for c, mom in eligible
+        if mom >= 0.10
+        and (c.hours_to_close or 99.0) <= 0.5
+        and (c.volume or 0) >= 2000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_extreme_consensus(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """claude #3: ALL 4 multi-signal conditions agree (#19 only needs 3).
+
+    Stricter than multi_signal_consensus: momentum ≥+3% AND vol ≥$3k
+    AND spread ≤3¢ AND ask in 20-80¢. Fewer fires but every entry
+    has full multi-factor confirmation.
+    """
+    qualified: list[tuple[Candidate, float]] = []
+    for c, mom in eligible:
+        bid, ask = c.best_bid or 0.0, c.best_ask or 1.0
+        if (
+            mom >= 0.03
+            and (c.volume or 0) >= 3000.0
+            and 0 <= ask - bid <= 0.03
+            and 0.20 <= ask <= 0.80
+        ):
+            qualified.append((c, mom))
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_balanced_mid(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """claude #4: coin-flip markets (ask 0.45-0.55) with confirming momentum.
+
+    50/50 markets that break direction often run hard — indecision
+    was masking real flow. Entering on the earliest +5% confirmation
+    with $3k volume catches the start of the directional move.
+    """
+    qualified = [
+        (c, mom)
+        for c, mom in eligible
+        if 0.45 <= (c.best_ask or 0.5) <= 0.55
+        and mom >= 0.05
+        and (c.volume or 0) >= 3000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_resolution_clock(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """claude #5: ultra-late favorite snipe (bid ≥0.80, ≤15min left).
+
+    Final 15 minutes, strong favorites resolve. Limited upside
+    (entry 0.85 → resolve 1.00 = +17%) but high win rate and very
+    short hold. Friction is the main risk; min_edge filter helps.
+    """
+    qualified = [
+        (c, c.best_bid or 0.0)
+        for c, _ in eligible
+        if (c.best_bid or 0.0) >= 0.80
+        and (c.hours_to_close or 99.0) <= 0.25
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
 def select_weak_holder_flush_inverse(
     eligible: list[tuple[Candidate, float]], n: int
 ) -> list[Candidate]:
@@ -1239,6 +1337,21 @@ weak_holder_flush_once, weak_holder_flush_loop = _race_strategy(
 )
 weak_holder_flush_inverse_once, weak_holder_flush_inverse_loop = _race_strategy(
     "weak_holder_flush_inverse", select_weak_holder_flush_inverse
+)
+claude_oversold_bounce_once, claude_oversold_bounce_loop = _race_strategy(
+    "claude_oversold_bounce", select_claude_oversold_bounce
+)
+claude_late_pump_once, claude_late_pump_loop = _race_strategy(
+    "claude_late_pump", select_claude_late_pump
+)
+claude_extreme_consensus_once, claude_extreme_consensus_loop = _race_strategy(
+    "claude_extreme_consensus", select_claude_extreme_consensus
+)
+claude_balanced_mid_once, claude_balanced_mid_loop = _race_strategy(
+    "claude_balanced_mid", select_claude_balanced_mid
+)
+claude_resolution_clock_once, claude_resolution_clock_loop = _race_strategy(
+    "claude_resolution_clock", select_claude_resolution_clock
 )
 probability_drift_once, probability_drift_loop = _race_strategy(
     "probability_drift", select_probability_drift
