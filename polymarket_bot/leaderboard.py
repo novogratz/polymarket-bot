@@ -459,9 +459,12 @@ def format_leaderboard_telegram(
             color = "⚪"
         roi_str = notifications._md_escape(f"{s.roi_pct:+5.1f}%")
         eq_str = notifications._md_escape(f"${s.equity:.0f}")
+        cash_str = notifications._md_escape(f"💵${s.cash:.0f}")
+        open_str = notifications._md_escape(f"📦{s.open_positions}")
         wl_str = notifications._md_escape(f"{s.wins}W/{s.losses}L")
-        pred_str = notifications._md_escape(f"{s.total_predictions}pred")
-        lines.append(f"{rank_str} `{name}` {color} {eq_str}  {roi_str}  {pred_str}  {wl_str}")
+        lines.append(
+            f"{rank_str} `{name}` {color} {eq_str} {cash_str} {open_str} {roi_str} {wl_str}"
+        )
 
     if live is not None:
         hypo_rank = 1 + sum(1 for s in ranked if s.roi_pct > live.roi_pct)

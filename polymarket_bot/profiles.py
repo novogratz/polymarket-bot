@@ -246,6 +246,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "max_price": ("POLYMARKET_RACE_MAX_PRICE", "float"),
         "max_spread": ("POLYMARKET_RACE_MAX_SPREAD", "float"),
         "stake_usd": ("POLYMARKET_RACE_STAKE_USD", "float"),
+        "stake_pct": ("POLYMARKET_RACE_STAKE_PCT", "float"),
         "max_orders_per_tick": ("POLYMARKET_RACE_MAX_ORDERS_PER_TICK", "int"),
         "cash_floor_pct": ("POLYMARKET_RACE_CASH_FLOOR_PCT", "float"),
         "tp_pct": ("POLYMARKET_RACE_TP_PCT", "float"),

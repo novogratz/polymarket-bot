@@ -31,6 +31,7 @@ min_price = 0.05
 max_price = 0.95
 max_spread = 0.05
 stake_usd = 5.0
+stake_pct = 0.05
 max_orders_per_tick = 3
 cash_floor_pct = 0.10
 tp_pct = 0.25                           # TP large: laisser courir les gros gains

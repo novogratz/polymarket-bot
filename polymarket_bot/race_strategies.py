@@ -768,6 +768,28 @@ def select_claude_blue_chip(
     return _dedupe_top_n(qualified, n)
 
 
+def select_claude_mid_endgame(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """claude #11: mid-favorite endgame (bid 0.80-0.95 + ≤1h to close).
+
+    Fills the gap between resolution_clock (0.80+ / ≤15min, very tight)
+    and endgame_sweep (0.92+ / ≤2h). Wider price band catches more
+    fires; 1h window keeps it short enough to limit news risk.
+    Spread ≤2¢ + vol ≥$500 = executable.
+    """
+    qualified = [
+        (c, c.best_bid or 0.0)
+        for c, _ in eligible
+        if (c.best_bid or 0.0) >= 0.80
+        and (c.best_ask or 1.0) <= 0.95
+        and (c.hours_to_close or 99.0) <= 1.0
+        and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.02
+        and (c.volume or 0) >= 500.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
 def select_claude_volume_spike(
     eligible: list[tuple[Candidate, float]], n: int
 ) -> list[Candidate]:
@@ -1188,7 +1210,16 @@ def _run_race_tick(
         cash_above_floor = max(0.0, portfolio.cash - cash_floor)
         if cash_above_floor < 1.0:
             break
-        stake = min(settings.race_stake_usd, cash_above_floor)
+        # Equity-scaled sizing: a fixed % of current equity, capped by
+        # the profile's position ceiling. Means a $100 → $200 bankroll
+        # automatically doubles the per-trade size. race_stake_usd is
+        # kept as the absolute floor so micro-bankrolls still clear the
+        # $1 CLOB minimum.
+        equity = float(portfolio.summary().get("equity", portfolio.cash))
+        target = max(equity * settings.race_stake_pct, 1.0)
+        if settings.smart_max_position_ceiling_usd > 0:
+            target = min(target, settings.smart_max_position_ceiling_usd)
+        stake = min(target, cash_above_floor)
         signal_payload = {
             "question": candidate.question,
             "selection_reason": (
@@ -1474,6 +1505,16 @@ claude_blue_chip_once, claude_blue_chip_loop = _race_strategy(
 )
 claude_volume_spike_once, claude_volume_spike_loop = _race_strategy(
     "claude_volume_spike", select_claude_volume_spike
+)
+claude_mid_endgame_once, claude_mid_endgame_loop = _race_strategy(
+    "claude_mid_endgame", select_claude_mid_endgame
+)
+# kzer used to be a YES+NO arb scanner (polymarket_bot/kzer_arb.py); arbs
+# get eaten by faster bots in milliseconds and live execution was never
+# wired up. Repurposed to run the same endgame-sweep selector as
+# claude_endgame_sweep but tracked under its own ledger.
+kzer_endgame_once, kzer_endgame_loop = _race_strategy(
+    "kzerlepgm_ultimatestrategy", select_claude_endgame_sweep
 )
 probability_drift_once, probability_drift_loop = _race_strategy(
     "probability_drift", select_probability_drift

@@ -1,10 +1,10 @@
-# Profil "claude_late_pump" — claude #2
-# Entrée : momentum ≥+10% avec ≤30min restantes et volume ≥$2k.
-# Chasse les breakouts tardifs qui n'ont plus le temps de reverter.
+# Profil "claude_mid_endgame" — claude #11
+# Entrée : bid 0.80-0.95 + ask ≤0.95 + ≤1h restantes + spread ≤2¢ + vol ≥$500.
+# Comble le gap entre resolution_clock (0.80+/15min) et endgame_sweep (0.92+/2h).
 
 [run]
 starting_cash = 100.0
-mode = "claude_late_pump"
+mode = "claude_mid_endgame"
 
 [sizing]
 max_position_ceiling_usd = 15.0
@@ -31,7 +31,7 @@ stake_pct = 0.05
 max_orders_per_tick = 3
 cash_floor_pct = 0.10
 tp_pct = 0.25
-sl_pct = 0.25
+sl_pct = 0.15                            # SL serré — peu de marge sur 0.80+
 sl_min_age_minutes = 3
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.97

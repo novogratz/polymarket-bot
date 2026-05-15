@@ -2859,6 +2859,10 @@ def cli_auto_loop(
         from . import race_strategies as race_module
 
         race_module.claude_volume_spike_loop(settings)
+    elif mode == "claude_mid_endgame":
+        from . import race_strategies as race_module
+
+        race_module.claude_mid_endgame_loop(settings)
     elif mode == "probability_drift":
         from . import race_strategies as race_module
 
@@ -2884,9 +2888,9 @@ def cli_auto_loop(
 
         race_module.multi_signal_consensus_loop(settings)
     elif mode == "kzerlepgm_ultimatestrategy":
-        from . import kzer_arb
+        from . import race_strategies as race_module
 
-        kzer_arb.kzer_loop(settings)
+        race_module.kzer_endgame_loop(settings)
     else:
         smart_money_loop(settings)
 

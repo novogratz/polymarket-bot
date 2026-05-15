@@ -305,6 +305,7 @@ class Settings:
     race_max_price: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MAX_PRICE", 0.95))
     race_max_spread: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MAX_SPREAD", 0.05))
     race_stake_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_STAKE_USD", 5.0))
+    race_stake_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_STAKE_PCT", 0.05))
     race_max_orders_per_tick: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_MAX_ORDERS_PER_TICK", 3))
     race_cash_floor_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_CASH_FLOOR_PCT", 0.10))
     race_tp_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_TP_PCT", 0.25))
