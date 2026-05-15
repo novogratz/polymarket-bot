@@ -433,7 +433,7 @@ def select_hybrid_smart_money(
     """#0 MAIN: momentum + volume + tight spread + mid-price band."""
     qualified: list[tuple[Candidate, float]] = []
     for c, mom in eligible:
-        if mom < 0.03 or (c.volume or 0) < 1000.0:
+        if mom < 0.03 or (c.volume or 0) < 500.0:
             continue
         bid, ask = c.best_bid or 0.0, c.best_ask or 1.0
         if not (0 <= ask - bid <= 0.04):
@@ -451,7 +451,7 @@ def select_smart_wallet_consensus(
     qualified = [
         (c, c.volume or 0.0)
         for c, mom in eligible
-        if (c.volume or 0) >= 2500.0 and mom > 0
+        if (c.volume or 0) >= 1250.0 and mom > 0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -463,7 +463,7 @@ def select_whale_entry(
     qualified = [
         (c, (c.volume or 0.0) * max(mom, 0.0))
         for c, mom in eligible
-        if (c.volume or 0) >= 5000.0 and mom >= 0.02
+        if (c.volume or 0) >= 2500.0 and mom >= 0.01
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -475,7 +475,7 @@ def select_wallet_cluster(
     qualified = [
         (c, mom + (c.volume or 0.0) / 100000.0)
         for c, mom in eligible
-        if (c.volume or 0) >= 1500.0 and mom >= 0.02
+        if (c.volume or 0) >= 750.0 and mom >= 0.01
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -487,7 +487,7 @@ def select_early_momentum(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if 0.01 <= mom <= 0.10 and (c.volume or 0) >= 500.0
+        if 0.01 <= mom <= 0.05 and (c.volume or 0) >= 250.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -499,7 +499,7 @@ def select_liquidity_vacuum(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if (c.liquidity or 0) < 5000.0 and mom >= 0.01
+        if (c.liquidity or 0) < 5000.0 and mom >= 0.005
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -511,7 +511,7 @@ def select_mean_reversion_fade(
     qualified = [
         (c, -mom)
         for c, mom in eligible
-        if -0.10 <= mom <= -0.03 and (c.volume or 0) >= 500.0
+        if -0.10 <= mom <= -0.015 and (c.volume or 0) >= 250.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -525,7 +525,7 @@ def select_range_channel(
         for c, mom in eligible
         if abs(mom) <= 0.02
         and 0.30 <= (c.best_ask or 1.0) <= 0.55
-        and (c.volume or 0) >= 250.0
+        and (c.volume or 0) >= 125.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -537,7 +537,7 @@ def select_aggressive_buyer(
     qualified = [
         (c, mom * (c.volume or 1.0))
         for c, mom in eligible
-        if mom >= 0.06 and (c.volume or 0) >= 2000.0
+        if mom >= 0.03 and (c.volume or 0) >= 1000.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -566,9 +566,9 @@ def select_late_momentum_chase(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if mom >= 0.03
+        if mom >= 0.015
         and (c.hours_to_close or 99) <= 4.0
-        and (c.volume or 0) >= 200.0
+        and (c.volume or 0) >= 100.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -580,7 +580,7 @@ def select_weak_holder_flush(
     qualified = [
         (c, -mom)
         for c, mom in eligible
-        if mom <= -0.10 and (c.volume or 0) >= 1000.0
+        if mom <= -0.05 and (c.volume or 0) >= 500.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -598,9 +598,9 @@ def select_claude_oversold_bounce(
     qualified = [
         (c, -mom)
         for c, mom in eligible
-        if mom <= -0.15
+        if mom <= -0.075
         and (c.best_ask or 1.0) <= 0.30
-        and (c.volume or 0) >= 750.0
+        and (c.volume or 0) >= 375.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -617,9 +617,9 @@ def select_claude_late_pump(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if mom >= 0.03
+        if mom >= 0.015
         and (c.hours_to_close or 99.0) <= 3.0
-        and (c.volume or 0) >= 200.0
+        and (c.volume or 0) >= 100.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -637,8 +637,8 @@ def select_claude_extreme_consensus(
     for c, mom in eligible:
         bid, ask = c.best_bid or 0.0, c.best_ask or 1.0
         if (
-            mom >= 0.03
-            and (c.volume or 0) >= 1500.0
+            mom >= 0.015
+            and (c.volume or 0) >= 750.0
             and 0 <= ask - bid <= 0.03
             and 0.20 <= ask <= 0.80
         ):
@@ -659,8 +659,8 @@ def select_claude_balanced_mid(
         (c, mom)
         for c, mom in eligible
         if 0.35 <= (c.best_ask or 0.5) <= 0.65
-        and mom >= 0.02
-        and (c.volume or 0) >= 300.0
+        and mom >= 0.01
+        and (c.volume or 0) >= 150.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -703,7 +703,7 @@ def select_claude_endgame_sweep(
         and (c.best_ask or 1.0) <= 0.97
         and (c.hours_to_close or 99.0) <= 4.0
         and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.05
-        and (c.volume or 0) >= 100.0
+        and (c.volume or 0) >= 50.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -721,7 +721,7 @@ def select_claude_fade_extreme(
         (c, -(c.best_ask or 1.0))  # rank by cheapest first
         for c, _ in eligible
         if (c.best_ask or 1.0) <= 0.12
-        and (c.volume or 0) >= 5000.0
+        and (c.volume or 0) >= 2500.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -739,7 +739,7 @@ def select_claude_mid_volume_band(
     for c, _ in eligible:
         ask = c.best_ask or 1.0
         bid = c.best_bid or 0.0
-        if (c.volume or 0) < 10000.0:
+        if (c.volume or 0) < 5000.0:
             continue
         if not (0.10 <= ask <= 0.90):
             continue
@@ -761,7 +761,7 @@ def select_claude_blue_chip(
     qualified = [
         (c, c.volume or 0.0)
         for c, _ in eligible
-        if (c.volume or 0) >= 25000.0
+        if (c.volume or 0) >= 12500.0
         and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.03
         and 0.05 <= (c.best_ask or 1.0) <= 0.95
     ]
@@ -785,7 +785,7 @@ def select_claude_mid_endgame(
         and (c.best_ask or 1.0) <= 0.95
         and (c.hours_to_close or 99.0) <= 1.0
         and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.03
-        and (c.volume or 0) >= 250.0
+        and (c.volume or 0) >= 125.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -825,7 +825,7 @@ def select_weak_holder_flush_inverse(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if mom >= 0.10 and (c.volume or 0) >= 1000.0
+        if mom >= 0.05 and (c.volume or 0) >= 500.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -837,8 +837,8 @@ def select_probability_drift(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if 0.01 <= mom <= 0.10
-        and (c.volume or 0) >= 300.0
+        if 0.01 <= mom <= 0.05
+        and (c.volume or 0) >= 150.0
         and 0.15 <= (c.best_ask or 1.0) <= 0.85
     ]
     return _dedupe_top_n(qualified, n)
@@ -863,7 +863,7 @@ def select_liquidity_absorption(
     qualified = [
         (c, c.volume or 0.0)
         for c, mom in eligible
-        if -0.15 <= mom <= 0 and (c.volume or 0) >= 300.0
+        if -0.15 <= mom <= 0 and (c.volume or 0) >= 150.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -875,7 +875,7 @@ def select_momentum_exhaustion(
     qualified = [
         (c, c.volume or 0.0)
         for c, mom in eligible
-        if abs(mom) <= 0.015 and (c.volume or 0) >= 2500.0
+        if abs(mom) <= 0.015 and (c.volume or 0) >= 1250.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -903,9 +903,9 @@ def select_multi_signal_consensus(
     qualified: list[tuple[Candidate, float]] = []
     for c, mom in eligible:
         signals = 0
-        if mom >= 0.03:
+        if mom >= 0.015:
             signals += 1
-        if (c.volume or 0) >= 1500.0:
+        if (c.volume or 0) >= 750.0:
             signals += 1
         bid, ask = c.best_bid or 0.0, c.best_ask or 1.0
         if 0 <= ask - bid <= 0.03:
