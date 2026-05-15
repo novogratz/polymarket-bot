@@ -691,13 +691,18 @@ def select_claude_endgame_sweep(
     Calibration data shows 0.92-0.985 bid + ≤2h + tight spread + some
     volume converges to 1.0 at very high rates. Narrower than
     resolution_clock and uses 2h window (vs 15min) for more fires.
+
+    Fee-tight version: spread ≤1¢ + ask ≤0.95 guarantee at least 2¢
+    of upside to the 0.97 resolved-exit, so the +25%/-10% TP/SL math
+    holds even after Polymarket friction (~2%).
     """
     qualified = [
         (c, c.best_bid or 0.0)
         for c, _ in eligible
         if 0.92 <= (c.best_bid or 0.0) <= 0.985
+        and (c.best_ask or 1.0) <= 0.95
         and (c.hours_to_close or 99.0) <= 2.0
-        and ((c.best_ask or 1.0) - (c.best_bid or 0.0)) <= 0.02
+        and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.01
         and (c.volume or 0) >= 500.0
     ]
     return _dedupe_top_n(qualified, n)

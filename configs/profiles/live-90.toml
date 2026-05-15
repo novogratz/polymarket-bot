@@ -52,7 +52,7 @@ max_absolute_spread = 0.08
 max_relative_spread = 0.45
 signal_staleness_seconds = 10
 min_hours_to_close = 0.25
-max_hours_to_close = 72.0
+max_hours_to_close = 4.0
 max_orders_per_tick = 0
 max_sports_positions = 3
 sports_score_penalty = 8.0
@@ -60,7 +60,7 @@ sports_score_penalty = 8.0
 [crypto]
 min_buy_price = 0.70
 min_hours_to_close = 6.0
-max_hours_to_close = 48.0
+max_hours_to_close = 4.0
 min_copied_usdc = 1000.0
 min_consensus = 3
 micro_min_consensus = 3
