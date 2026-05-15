@@ -686,20 +686,20 @@ def select_claude_resolution_clock(
 def select_claude_endgame_sweep(
     eligible: list[tuple[Candidate, float]], n: int
 ) -> list[Candidate]:
-    """claude #6: documented endgame-sweep band (Datawallet/TradeTheOutcome).
+    """claude #6: broad-favorite chaser, bid 0.65-0.985 + ≤2h.
 
-    Calibration data shows 0.92-0.985 bid + ≤2h + tight spread + some
-    volume converges to 1.0 at very high rates. Narrower than
-    resolution_clock and uses 2h window (vs 15min) for more fires.
-
-    Fee-tight version: spread ≤1¢ + ask ≤0.95 guarantee at least 2¢
-    of upside to the 0.97 resolved-exit, so the +25%/-10% TP/SL math
-    holds even after Polymarket friction (~2%).
+    NOTE: name kept for continuity but no longer matches the original
+    Datawallet "endgame" thesis (which validated 0.92+ only). At 0.65
+    we're betting on moderate favorites with TP/SL asymmetry doing
+    the work: +25% TP on a 65% favorite has positive EV after fees
+    (gross ~+12%/trade) IF the win rate matches the implied
+    probability. This is speculative — no research backing at this
+    bid floor.
     """
     qualified = [
         (c, c.best_bid or 0.0)
         for c, _ in eligible
-        if 0.92 <= (c.best_bid or 0.0) <= 0.985
+        if 0.65 <= (c.best_bid or 0.0) <= 0.985
         and (c.best_ask or 1.0) <= 0.95
         and (c.hours_to_close or 99.0) <= 2.0
         and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.01

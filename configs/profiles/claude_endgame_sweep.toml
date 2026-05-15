@@ -1,6 +1,8 @@
 # Profil "claude_endgame_sweep" — claude #6
-# Entrée : bid 0.92-0.985 + ≤2h + spread ≤2¢ + vol ≥$500.
-# Bande de calibration documentée (Datawallet/TradeTheOutcome).
+# Entrée : bid 0.65-0.985 + ask ≤0.95 + ≤2h + spread ≤1¢ + vol ≥$500.
+# Plus de "endgame" stricto sensu — c'est un chasseur de favoris large
+# qui mise sur l'asymétrie TP +25% / SL -10%. EV positive si win rate
+# ≈ probabilité implicite (~65% sur entrée 0.65).
 
 [run]
 starting_cash = 100.0
