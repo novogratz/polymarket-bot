@@ -1921,7 +1921,14 @@ def _notify_and_journal_sync_close(settings: Settings, position: dict[str, objec
     disappear from the CLOB response (manually closed on the Polymarket
     UI, resolved markets, etc.) bypass that path. Without this hook, the
     user sees the position vanish from the bot with no record anywhere.
+
+    Idempotent: marks the position with ``sync_closed_notified=True``
+    after the first call and short-circuits on subsequent invocations
+    so a CLOB blip can't trigger duplicate Telegram + journal entries.
     """
+    if position.get("sync_closed_notified"):
+        return
+    position["sync_closed_notified"] = True
     try:
         stake = float(position.get("stake") or 0.0)
         realized = float(position.get("realized_pnl") or 0.0)
@@ -2055,7 +2062,12 @@ def _update_position_from_live_api(position: dict[str, object], item: dict[str, 
     position["initial_shares"] = max(_float(position.get("initial_shares")), _float(item.get("totalBought"), size), size)
     position["unrealized_pnl"] = round(_float(item.get("currentValue"), size * current_price) - stake, 2)
     position["realized_pnl"] = round(_float(item.get("realizedPnl"), _float(position.get("realized_pnl"))), 2)
-    position["status"] = "open"
+    # Never resurrect a position we already sync-closed. CLOB sometimes
+    # blips closed positions back into the active list transiently
+    # (timing / min-value floor / dust), which would loop the
+    # close→notify→reopen cycle and spam Telegram.
+    if not position.get("sync_closed"):
+        position["status"] = "open"
     position["synced_from_polymarket"] = True
     if item.get("eventSlug"):
         position["event_slug"] = str(item.get("eventSlug") or "")
