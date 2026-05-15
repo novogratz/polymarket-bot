@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Lance le bot en LIVE avec le profil championdumonde_breakout.
-# Entrée : marchés ≤4h avec breakout intraday ≥5¢ ET volume total ≥$5k
-# (momentum continuation, filtre les fake spikes whale-only).
+# Lance le bot en LIVE avec le profil claude_endgame_sweep.
+# Entrée : favoris forts (bid 0.92-0.985) avec ≤2h restantes, spread
+# ≤2¢, volume ≥$500. Bande de calibration documentée (88-93% win rate
+# sur marchés liquides, Datawallet/TradeTheOutcome).
 # Sizing ($100 bankroll) : cap $15/position, $5 stake, 3 orders/tick.
-# Exits : TP +25% / SL -25% (min-age 5min) / resolved ≥0.97.
-# Toute la config vit dans configs/profiles/championdumonde_breakout.toml.
+# Exits : TP +25% / SL -10% (serré, peu de marge à 0.92+) / resolved ≥0.97.
+# Toute la config vit dans configs/profiles/claude_endgame_sweep.toml.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,4 +24,4 @@ export TELEGRAM_ALERT_HEARTBEAT=1
 export TELEGRAM_ALERT_PORTFOLIO_UPDATES=1
 export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
-exec uv run pmbot auto-loop --live --profile championdumonde_breakout --yes
+exec uv run pmbot auto-loop --live --profile claude_endgame_sweep --yes
