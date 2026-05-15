@@ -746,7 +746,12 @@ def _execute_race_exits(
     for position in list(portfolio.positions):
         if position.get("status") != "open" or not position.get("live"):
             continue
-        if str(position.get("strategy") or "") != strategy_name:
+        # Manage own-tagged + live_sync positions (the latter being
+        # positions synced from the CLOB account that this strategy
+        # didn't open itself). Without this, switching live strategies
+        # orphans the previous one's open positions until expiry.
+        position_strategy = str(position.get("strategy") or "")
+        if position_strategy != strategy_name and position_strategy != "live_sync":
             continue
         token_id = position.get("token_id")
         candidate = by_token.get(token_id)
