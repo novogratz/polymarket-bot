@@ -1891,14 +1891,11 @@ def _position_age_minutes(position: dict[str, object]) -> float:
 
 
 def _should_exit_before_expiry(candidate, current_pnl_pct: float, settings: Settings) -> bool:
-    if settings.smart_exit_minutes_to_close <= 0:
-        return False
-    if candidate.hours_to_close is None:
-        return False
-    return (
-        candidate.hours_to_close * 60 <= settings.smart_exit_minutes_to_close
-        and current_pnl_pct >= settings.smart_exit_min_profit
-    )
+    # Near-expiry flush removed across the bot. It was selling at
+    # break-even just because the market was about to resolve, leaving
+    # real upside on the table. Now always returns False; positions
+    # exit only via TP / SL / resolved / cohort signals.
+    return False
 
 
 def _take_profit_tiers(settings: Settings) -> list[tuple[float, float]]:

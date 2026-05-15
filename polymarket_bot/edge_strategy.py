@@ -702,13 +702,9 @@ def _edge_sell_plan(
     if current_pnl_pct <= -sl_pct:
         return {"reason": "edge_stop_loss", "shares": shares}
 
-    # Near-expiry positive flush.
-    if (
-        minutes_left is not None
-        and minutes_left <= settings.edge_near_expiry_minutes
-        and current_pnl_pct >= 0
-    ):
-        return {"reason": "edge_near_expiry", "shares": shares}
+    # Near-expiry flush removed: was prematurely selling at break-even
+    # on positions that could have ridden to resolution. Positions
+    # now exit only via TP / SL / resolved_exit / market resolution.
     return None
 
 

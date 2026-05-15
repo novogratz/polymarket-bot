@@ -426,14 +426,8 @@ def _news_sell_plan(
     if current_pnl_pct <= -sl_pct:
         return {"reason": "news_stop_loss", "shares": shares}
 
-    # 4. Near-expiry flush if positive.
-    minutes_left = _minutes_to_close(position)
-    if (
-        minutes_left is not None
-        and minutes_left <= settings.news_near_expiry_minutes
-        and current_pnl_pct >= settings.news_near_expiry_min_profit
-    ):
-        return {"reason": "news_near_expiry", "shares": shares}
+    # Near-expiry flush removed: was selling at break-even just because
+    # the market was about to resolve, leaving real upside on the table.
     return None
 
 

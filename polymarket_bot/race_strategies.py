@@ -487,7 +487,7 @@ def select_early_momentum(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if 0.02 <= mom <= 0.08 and (c.volume or 0) >= 500.0
+        if 0.01 <= mom <= 0.10 and (c.volume or 0) >= 500.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -499,7 +499,7 @@ def select_liquidity_vacuum(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if (c.liquidity or 0) < 1500.0 and mom >= 0.05
+        if (c.liquidity or 0) < 3000.0 and mom >= 0.03
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -511,7 +511,7 @@ def select_mean_reversion_fade(
     qualified = [
         (c, -mom)
         for c, mom in eligible
-        if -0.10 <= mom <= -0.05 and (c.volume or 0) >= 750.0
+        if -0.10 <= mom <= -0.03 and (c.volume or 0) >= 500.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -549,11 +549,11 @@ def select_orderbook_imbalance(
     qualified: list[tuple[Candidate, float]] = []
     for c, mom in eligible:
         bid, ask = c.best_bid or 0.0, c.best_ask or 1.0
-        if not (0 <= ask - bid <= 0.03):
+        if not (0 <= ask - bid <= 0.05):
             continue
-        if mom < 0.02:
+        if mom < 0.01:
             continue
-        if not (0.25 <= ask <= 0.75):
+        if not (0.15 <= ask <= 0.85):
             continue
         qualified.append((c, mom))
     return _dedupe_top_n(qualified, n)
@@ -566,9 +566,9 @@ def select_late_momentum_chase(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if mom >= 0.08
-        and (c.hours_to_close or 99) <= 1.5
-        and (c.volume or 0) >= 1000.0
+        if mom >= 0.05
+        and (c.hours_to_close or 99) <= 2.5
+        and (c.volume or 0) >= 500.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -617,9 +617,9 @@ def select_claude_late_pump(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if mom >= 0.10
-        and (c.hours_to_close or 99.0) <= 0.5
-        and (c.volume or 0) >= 1000.0
+        if mom >= 0.05
+        and (c.hours_to_close or 99.0) <= 1.5
+        and (c.volume or 0) >= 500.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -658,9 +658,9 @@ def select_claude_balanced_mid(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if 0.45 <= (c.best_ask or 0.5) <= 0.55
-        and mom >= 0.05
-        and (c.volume or 0) >= 1500.0
+        if 0.40 <= (c.best_ask or 0.5) <= 0.60
+        and mom >= 0.03
+        and (c.volume or 0) >= 750.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -677,8 +677,8 @@ def select_claude_resolution_clock(
     qualified = [
         (c, c.best_bid or 0.0)
         for c, _ in eligible
-        if (c.best_bid or 0.0) >= 0.80
-        and (c.hours_to_close or 99.0) <= 0.25
+        if (c.best_bid or 0.0) >= 0.75
+        and (c.hours_to_close or 99.0) <= 0.5
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -837,9 +837,9 @@ def select_probability_drift(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if 0.015 <= mom <= 0.06
-        and (c.volume or 0) >= 400.0
-        and 0.20 <= (c.best_ask or 1.0) <= 0.80
+        if 0.01 <= mom <= 0.10
+        and (c.volume or 0) >= 300.0
+        and 0.15 <= (c.best_ask or 1.0) <= 0.85
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -863,7 +863,7 @@ def select_liquidity_absorption(
     qualified = [
         (c, c.volume or 0.0)
         for c, mom in eligible
-        if -0.06 <= mom <= -0.02 and (c.volume or 0) >= 1500.0
+        if -0.10 <= mom <= -0.01 and (c.volume or 0) >= 750.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -955,9 +955,10 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
         return {"reason": "race_take_profit", "shares": shares}
     if current_pnl_pct <= -settings.race_sl_pct:
         return {"reason": "race_stop_loss", "shares": shares}
-    mtc = _minutes_to_close(position)
-    if mtc is not None and mtc <= settings.race_near_expiry_minutes and current_pnl_pct >= 0:
-        return {"reason": "race_near_expiry", "shares": shares}
+    # Near-expiry flush removed: was selling positions at break-even
+    # just because the market was about to resolve, leaving real upside
+    # on the table. Positions now ride until TP / SL / resolved_exit
+    # / market resolution. Killed for all race strategies.
     return None
 
 
