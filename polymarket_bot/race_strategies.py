@@ -702,7 +702,7 @@ def select_claude_endgame_sweep(
         if 0.65 <= (c.best_bid or 0.0) <= 0.985
         and (c.best_ask or 1.0) <= 0.95
         and (c.hours_to_close or 99.0) <= 2.0
-        and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.01
+        and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.03
         and (c.volume or 0) >= 500.0
     ]
     return _dedupe_top_n(qualified, n)
