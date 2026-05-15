@@ -16,9 +16,15 @@ def parse_dt(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+    # Always return tz-aware (UTC). Without this, downstream subtraction
+    # against utc_now() throws "can't subtract offset-naive and
+    # offset-aware datetimes" when the source string has no timezone.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def utc_now() -> datetime:

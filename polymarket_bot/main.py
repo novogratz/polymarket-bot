@@ -2280,15 +2280,19 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
             cash_val = float(summary_snap.get("cash", 0) or 0)
             unrealized_val = float(summary_snap.get("unrealized_pnl", 0) or 0)
             open_positions_count = int(summary_snap.get("open_positions", 0) or 0)
-            notifications.notify_threshold("drawdown", {"equity_usd": equity_val})
-            notifications.notify_threshold(
-                "equity_floor",
-                {
-                    "equity_usd": equity_val,
-                    "open_positions": open_positions_count,
-                    "cash_usd": cash_val,
-                },
-            )
+            # Skip threshold alerts when the tick errored — summary_snap
+            # is {} in that case and equity_val=$0 would falsely trigger
+            # the equity_floor "🚨 Floor" alert.
+            if error is None:
+                notifications.notify_threshold("drawdown", {"equity_usd": equity_val})
+                notifications.notify_threshold(
+                    "equity_floor",
+                    {
+                        "equity_usd": equity_val,
+                        "open_positions": open_positions_count,
+                        "cash_usd": cash_val,
+                    },
+                )
             trades_24h, wins_24h, losses_24h, top_w, top_l, realized_24h = (
                 _journal_stats_last_24h(settings.trade_journal_path)
             )
