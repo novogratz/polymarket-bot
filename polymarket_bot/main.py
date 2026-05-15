@@ -2824,6 +2824,36 @@ def cli_auto_loop(
         from . import race_strategies as race_module
 
         race_module.pm_le_pgm_weak_holder_flush_inverse_loop(settings)
+    elif mode == "claude_anti_favorite":
+        from . import race_strategies as race_module
+        race_module.claude_anti_favorite_loop(settings)
+    elif mode == "claude_mid_dump_fade":
+        from . import race_strategies as race_module
+        race_module.claude_mid_dump_fade_loop(settings)
+    elif mode == "claude_resolution_sniper":
+        from . import race_strategies as race_module
+        race_module.claude_resolution_sniper_loop(settings)
+    elif mode == "claude_high_vol_quiet":
+        from . import race_strategies as race_module
+        race_module.claude_high_vol_quiet_loop(settings)
+    elif mode == "claude_lottery_balanced":
+        from . import race_strategies as race_module
+        race_module.claude_lottery_balanced_loop(settings)
+    elif mode == "claude_strong_breakout":
+        from . import race_strategies as race_module
+        race_module.claude_strong_breakout_loop(settings)
+    elif mode == "claude_frozen_favorite":
+        from . import race_strategies as race_module
+        race_module.claude_frozen_favorite_loop(settings)
+    elif mode == "claude_mid_rebound":
+        from . import race_strategies as race_module
+        race_module.claude_mid_rebound_loop(settings)
+    elif mode == "claude_high_vol_panic":
+        from . import race_strategies as race_module
+        race_module.claude_high_vol_panic_loop(settings)
+    elif mode == "claude_high_vol_pop":
+        from . import race_strategies as race_module
+        race_module.claude_high_vol_pop_loop(settings)
     elif mode == "claude_oversold_bounce":
         from . import race_strategies as race_module
 

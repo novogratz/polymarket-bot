@@ -1488,6 +1488,107 @@ weak_holder_flush_once, weak_holder_flush_loop = _race_strategy(
 weak_holder_flush_inverse_once, weak_holder_flush_inverse_loop = _race_strategy(
     "weak_holder_flush_inverse", select_weak_holder_flush_inverse
 )
+def select_claude_anti_favorite(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
+    """Buy outcomes with NEGATIVE momentum in mid range. Bet on reversal."""
+    qualified = [
+        (c, -mom) for c, mom in eligible
+        if mom <= -0.02 and 0.30 <= (c.best_ask or 0.5) <= 0.50
+        and (c.volume or 0) >= 500.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_mid_dump_fade(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
+    """Fade modest dumps in mid-priced markets."""
+    qualified = [
+        (c, -mom) for c, mom in eligible
+        if -0.08 <= mom <= -0.03 and 0.30 <= (c.best_ask or 0.5) <= 0.70
+        and (c.volume or 0) >= 1000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_resolution_sniper(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
+    """bid >= 0.97 + <= 30 min. Last-mile near-certain favorites."""
+    qualified = [
+        (c, c.best_bid or 0.0) for c, _ in eligible
+        if (c.best_bid or 0.0) >= 0.97
+        and (c.hours_to_close or 99.0) <= 0.5
+        and (c.volume or 0) >= 200.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_high_vol_quiet(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
+    """High-volume markets with slight positive momentum (0-3%)."""
+    qualified = [
+        (c, mom) for c, mom in eligible
+        if 0.0 <= mom <= 0.03 and (c.volume or 0) >= 5000.0
+        and 0.15 <= (c.best_ask or 1.0) <= 0.85
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_lottery_balanced(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
+    """Cheap long-shots (ask 0.10-0.20) that aren't actively dumping."""
+    qualified = [
+        (c, mom) for c, mom in eligible
+        if 0.10 <= (c.best_ask or 0.0) <= 0.20
+        and mom >= 0.0
+        and (c.volume or 0) >= 500.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_strong_breakout(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
+    """Big runs with room to continue: mom>=15% + ask<=0.70."""
+    qualified = [
+        (c, mom) for c, mom in eligible
+        if mom >= 0.15 and (c.best_ask or 1.0) <= 0.70
+        and (c.volume or 0) >= 2000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_frozen_favorite(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
+    """Locked-in favorites: abs(mom)<=0.5% + bid>=0.60 + <=3h."""
+    qualified = [
+        (c, c.best_bid or 0.0) for c, mom in eligible
+        if abs(mom) <= 0.005 and (c.best_bid or 0.0) >= 0.60
+        and (c.hours_to_close or 99.0) <= 3.0
+        and (c.volume or 0) >= 500.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_mid_rebound(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
+    """Coin-flip mild-dip rebound: ask 0.35-0.65 + mom -2 to -6%."""
+    qualified = [
+        (c, -mom) for c, mom in eligible
+        if -0.06 <= mom <= -0.02 and 0.35 <= (c.best_ask or 0.5) <= 0.65
+        and (c.volume or 0) >= 500.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_high_vol_panic(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
+    """Heavy-volume panic: mom<=-10% + vol>=$5k. Bounce candidates."""
+    qualified = [
+        (c, -mom) for c, mom in eligible
+        if mom <= -0.10 and (c.volume or 0) >= 5000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_high_vol_pop(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
+    """Heavy-volume rally: mom>=+10% + vol>=$5k. Continuation play."""
+    qualified = [
+        (c, mom) for c, mom in eligible
+        if mom >= 0.10 and (c.volume or 0) >= 5000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
 def select_pm_le_pgm_weak_holder_flush_inverse(
     eligible: list[tuple[Candidate, float]], n: int
 ) -> list[Candidate]:
@@ -1510,6 +1611,16 @@ def select_pm_le_pgm_weak_holder_flush_inverse(
 pm_le_pgm_weak_holder_flush_inverse_once, pm_le_pgm_weak_holder_flush_inverse_loop = _race_strategy(
     "pm_le_pgm_weak_holder_flush_inverse", select_pm_le_pgm_weak_holder_flush_inverse
 )
+claude_anti_favorite_once, claude_anti_favorite_loop = _race_strategy("claude_anti_favorite", select_claude_anti_favorite)
+claude_mid_dump_fade_once, claude_mid_dump_fade_loop = _race_strategy("claude_mid_dump_fade", select_claude_mid_dump_fade)
+claude_resolution_sniper_once, claude_resolution_sniper_loop = _race_strategy("claude_resolution_sniper", select_claude_resolution_sniper)
+claude_high_vol_quiet_once, claude_high_vol_quiet_loop = _race_strategy("claude_high_vol_quiet", select_claude_high_vol_quiet)
+claude_lottery_balanced_once, claude_lottery_balanced_loop = _race_strategy("claude_lottery_balanced", select_claude_lottery_balanced)
+claude_strong_breakout_once, claude_strong_breakout_loop = _race_strategy("claude_strong_breakout", select_claude_strong_breakout)
+claude_frozen_favorite_once, claude_frozen_favorite_loop = _race_strategy("claude_frozen_favorite", select_claude_frozen_favorite)
+claude_mid_rebound_once, claude_mid_rebound_loop = _race_strategy("claude_mid_rebound", select_claude_mid_rebound)
+claude_high_vol_panic_once, claude_high_vol_panic_loop = _race_strategy("claude_high_vol_panic", select_claude_high_vol_panic)
+claude_high_vol_pop_once, claude_high_vol_pop_loop = _race_strategy("claude_high_vol_pop", select_claude_high_vol_pop)
 claude_oversold_bounce_once, claude_oversold_bounce_loop = _race_strategy(
     "claude_oversold_bounce", select_claude_oversold_bounce
 )

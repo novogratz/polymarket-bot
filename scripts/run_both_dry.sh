@@ -58,6 +58,16 @@ run_bot late_momentum_chase        late_momentum_chase        "latemom   "
 run_bot weak_holder_flush          weak_holder_flush          "weakhold  "
 run_bot weak_holder_flush_inverse  weak_holder_flush_inverse  "weakhold_i"
 run_bot pm_le_pgm_weak_holder_flush_inverse pm_le_pgm_weak_holder_flush_inverse "pm_whfi   "
+run_bot claude_anti_favorite       claude_anti_favorite       "cl_antifav"
+run_bot claude_mid_dump_fade       claude_mid_dump_fade       "cl_dumpfd "
+run_bot claude_resolution_sniper   claude_resolution_sniper   "cl_snipe  "
+run_bot claude_high_vol_quiet      claude_high_vol_quiet      "cl_hv_qt  "
+run_bot claude_lottery_balanced    claude_lottery_balanced    "cl_lottery"
+run_bot claude_strong_breakout     claude_strong_breakout     "cl_strong "
+run_bot claude_frozen_favorite     claude_frozen_favorite     "cl_frozen "
+run_bot claude_mid_rebound         claude_mid_rebound         "cl_rebd   "
+run_bot claude_high_vol_panic      claude_high_vol_panic      "cl_hv_pnc "
+run_bot claude_high_vol_pop        claude_high_vol_pop        "cl_hv_pop "
 run_bot claude_oversold_bounce     claude_oversold_bounce     "cl_bounce "
 run_bot claude_late_pump           claude_late_pump           "cl_pump   "
 run_bot claude_extreme_consensus   claude_extreme_consensus   "cl_xtreme "
@@ -80,7 +90,7 @@ run_bot multi_signal_consensus     multi_signal_consensus     "multisig  "
 run_bot kzerlepgm_ultimatestrategy kzerlepgm_ultimatestrategy "kzer      "
 
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
-    --runs news,edge,baseline,random,contrarian,favorite,championdumonde_breakout,late_favorite,panic_fade,underdog,pmlepgm_counter_panic_fade,hybrid_smart_money,smart_wallet_consensus,whale_entry_detection,wallet_cluster_correlation,early_momentum_detection,liquidity_vacuum_breakout,mean_reversion_fade,range_channel_trading,aggressive_buyer_detection,orderbook_imbalance,late_momentum_chase,weak_holder_flush,weak_holder_flush_inverse,probability_drift,resolution_compression,liquidity_absorption,momentum_exhaustion_reversal,micro_scalping,multi_signal_consensus,kzerlepgm_ultimatestrategy,claude_oversold_bounce,claude_late_pump,claude_extreme_consensus,claude_balanced_mid,claude_resolution_clock,claude_endgame_sweep,claude_fade_extreme,claude_mid_volume_band,claude_blue_chip,claude_volume_spike,claude_mid_endgame,pm_le_pgm_weak_holder_flush_inverse \
+    --runs news,edge,baseline,random,contrarian,favorite,championdumonde_breakout,late_favorite,panic_fade,underdog,pmlepgm_counter_panic_fade,hybrid_smart_money,smart_wallet_consensus,whale_entry_detection,wallet_cluster_correlation,early_momentum_detection,liquidity_vacuum_breakout,mean_reversion_fade,range_channel_trading,aggressive_buyer_detection,orderbook_imbalance,late_momentum_chase,weak_holder_flush,weak_holder_flush_inverse,probability_drift,resolution_compression,liquidity_absorption,momentum_exhaustion_reversal,micro_scalping,multi_signal_consensus,kzerlepgm_ultimatestrategy,claude_oversold_bounce,claude_late_pump,claude_extreme_consensus,claude_balanced_mid,claude_resolution_clock,claude_endgame_sweep,claude_fade_extreme,claude_mid_volume_band,claude_blue_chip,claude_volume_spike,claude_mid_endgame,pm_le_pgm_weak_holder_flush_inverse,claude_anti_favorite,claude_mid_dump_fade,claude_resolution_sniper,claude_high_vol_quiet,claude_lottery_balanced,claude_strong_breakout,claude_frozen_favorite,claude_mid_rebound,claude_high_vol_panic,claude_high_vol_pop \
     --interval 3 --telegram \
     2>&1 | sed -u 's/^/[board]     /' &
 
