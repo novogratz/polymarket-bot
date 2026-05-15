@@ -700,10 +700,10 @@ def select_claude_endgame_sweep(
         (c, c.best_bid or 0.0)
         for c, _ in eligible
         if 0.65 <= (c.best_bid or 0.0) <= 0.985
-        and (c.best_ask or 1.0) <= 0.95
-        and (c.hours_to_close or 99.0) <= 2.0
-        and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.03
-        and (c.volume or 0) >= 500.0
+        and (c.best_ask or 1.0) <= 0.97
+        and (c.hours_to_close or 99.0) <= 4.0
+        and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.05
+        and (c.volume or 0) >= 200.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -1212,12 +1212,16 @@ def _run_race_tick(
         if not candidate.token_id:
             continue
         if portfolio.has_open_position(candidate.market_id):
+            rejected.append({"question": candidate.question, "reason": "already_open_market"})
             continue
         if portfolio.has_open_token(candidate.token_id):
+            rejected.append({"question": candidate.question, "reason": "already_open_token"})
             continue
         if portfolio.has_pending_token(candidate.token_id):
+            rejected.append({"question": candidate.question, "reason": "pending_order"})
             continue
         if portfolio.has_open_event_position(candidate):
+            rejected.append({"question": candidate.question, "reason": "already_open_event"})
             continue
         asset_key = _asset_key(candidate.question, candidate.event_slug or "", candidate.slug or "")
         if asset_key and asset_key in open_assets:
