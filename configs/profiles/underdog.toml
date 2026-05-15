@@ -7,7 +7,7 @@
 # le cheap-and-rising.
 
 [run]
-starting_cash = 100.0
+starting_cash = 46.0
 mode = "underdog"
 
 [sizing]

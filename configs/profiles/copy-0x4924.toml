@@ -8,7 +8,7 @@
 # Pour changer le sizing : `size_usd` (cap par BUY mirroré).
 
 [run]
-starting_cash = 100.0
+starting_cash = 46.0
 mode = "mirror"
 
 [mirror]

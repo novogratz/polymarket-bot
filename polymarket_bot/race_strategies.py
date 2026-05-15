@@ -1488,6 +1488,11 @@ weak_holder_flush_once, weak_holder_flush_loop = _race_strategy(
 weak_holder_flush_inverse_once, weak_holder_flush_inverse_loop = _race_strategy(
     "weak_holder_flush_inverse", select_weak_holder_flush_inverse
 )
+# Renamed/promoted variant — same selector, prefixed for the live deployment.
+# Keeps the old registration around so existing dry-run history survives.
+pm_le_pgm_weak_holder_flush_inverse_once, pm_le_pgm_weak_holder_flush_inverse_loop = _race_strategy(
+    "pm_le_pgm_weak_holder_flush_inverse", select_weak_holder_flush_inverse
+)
 claude_oversold_bounce_once, claude_oversold_bounce_loop = _race_strategy(
     "claude_oversold_bounce", select_claude_oversold_bounce
 )

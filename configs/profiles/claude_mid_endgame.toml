@@ -3,7 +3,7 @@
 # Comble le gap entre resolution_clock (0.80+/15min) et endgame_sweep (0.92+/2h).
 
 [run]
-starting_cash = 100.0
+starting_cash = 46.0
 mode = "claude_mid_endgame"
 
 [sizing]

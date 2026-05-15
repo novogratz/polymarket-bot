@@ -3,7 +3,7 @@
 # Marchés top-liquidité, calibration 88-93% (TradeTheOutcome).
 
 [run]
-starting_cash = 100.0
+starting_cash = 46.0
 mode = "claude_blue_chip"
 
 [sizing]

@@ -1,7 +1,7 @@
 # Profil "whale_entry_detection" — #2 — outsized volume + positive momentum (whale-trade proxy).
 
 [run]
-starting_cash = 100.0
+starting_cash = 46.0
 mode = "whale_entry_detection"
 
 [sizing]

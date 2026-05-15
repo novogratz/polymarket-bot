@@ -10,7 +10,7 @@
 # à -20%. Cash floor 10%.
 
 [run]
-starting_cash = 100.0
+starting_cash = 46.0
 mode = "edge"
 
 [sizing]

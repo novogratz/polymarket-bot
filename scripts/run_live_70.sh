@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Lance le bot en LIVE avec le profil claude_endgame_sweep.
-# Entrée : favoris forts (bid 0.92-0.985) avec ≤2h restantes, spread
-# ≤2¢, volume ≥$500. Bande de calibration documentée (88-93% win rate
-# sur marchés liquides, Datawallet/TradeTheOutcome).
-# Sizing ($100 bankroll) : cap $15/position, $5 stake, 3 orders/tick.
-# Exits : TP +25% / SL -10% (serré, peu de marge à 0.92+) / resolved ≥0.97.
-# Toute la config vit dans configs/profiles/claude_endgame_sweep.toml.
+# Lance le bot en LIVE avec le profil pm_le_pgm_weak_holder_flush_inverse.
+# Stratégie promue après analyse dry: #1 du leaderboard (+19.3% sur 34
+# trades, 65% win rate). Achète le côté opposé d'un dump de panique:
+# mom ≥ +10% et vol ≥ $1k.
+# Sizing ($46 bankroll) : cap $15/position, 15% stake/trade, 5 orders/tick.
+# Exits : TP +25% / SL -25% / resolved ≥0.97. Min-hold 3min.
+# Toute la config vit dans configs/profiles/pm_le_pgm_weak_holder_flush_inverse.toml.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,4 +24,4 @@ export TELEGRAM_ALERT_HEARTBEAT=1
 export TELEGRAM_ALERT_PORTFOLIO_UPDATES=1
 export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
-exec uv run pmbot auto-loop --live --profile claude_endgame_sweep --yes
+exec uv run pmbot auto-loop --live --profile pm_le_pgm_weak_holder_flush_inverse --yes

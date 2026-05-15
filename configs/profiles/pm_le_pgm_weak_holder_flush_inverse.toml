@@ -1,10 +1,11 @@
-# Profil "claude_volume_spike" — claude #10
-# Entrée : ratio volume/liquidity ≥3 + ask 0.15-0.85.
-# Intérêt disproportionné = signal de flux news/sentiment.
+# Profil "pm_le_pgm_weak_holder_flush_inverse" — promoted live strategy.
+# Même sélecteur que weak_holder_flush_inverse (#1 du leaderboard dry au
+# moment de la promotion : +19.3% sur 34 trades, 65% win rate). Achète
+# le côté opposé d'un dump de panique : mom ≥ +10% et vol ≥ $1k.
 
 [run]
 starting_cash = 46.0
-mode = "claude_volume_spike"
+mode = "pm_le_pgm_weak_holder_flush_inverse"
 
 [sizing]
 max_position_ceiling_usd = 15.0
@@ -33,7 +34,7 @@ cash_floor_pct = 0.02
 tp_pct = 0.25
 sl_pct = 0.25
 sl_min_age_minutes = 3
-near_expiry_minutes = 5
+near_expiry_minutes = 0
 resolved_exit_threshold = 0.97
 
 [telemetry]

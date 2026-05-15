@@ -2820,6 +2820,10 @@ def cli_auto_loop(
         from . import race_strategies as race_module
 
         race_module.weak_holder_flush_inverse_loop(settings)
+    elif mode == "pm_le_pgm_weak_holder_flush_inverse":
+        from . import race_strategies as race_module
+
+        race_module.pm_le_pgm_weak_holder_flush_inverse_loop(settings)
     elif mode == "claude_oversold_bounce":
         from . import race_strategies as race_module
 

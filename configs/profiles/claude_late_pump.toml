@@ -3,7 +3,7 @@
 # Chasse les breakouts tardifs qui n'ont plus le temps de reverter.
 
 [run]
-starting_cash = 100.0
+starting_cash = 46.0
 mode = "claude_late_pump"
 
 [sizing]

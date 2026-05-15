@@ -4,7 +4,7 @@
 # Si on ne bat pas random, nos filtres détruisent de la valeur.
 
 [run]
-starting_cash = 100.0
+starting_cash = 46.0
 mode = "random"
 
 [sizing]

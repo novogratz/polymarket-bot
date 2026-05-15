@@ -5,7 +5,7 @@
 # une partie des panic moves continuent jusqu'à la résolution.
 
 [run]
-starting_cash = 100.0
+starting_cash = 46.0
 mode = "pmlepgm_counter_panic_fade"
 
 [sizing]

@@ -1,7 +1,7 @@
 # Profil "liquidity_absorption" — #15 — small drop absorbed by volume.
 
 [run]
-starting_cash = 100.0
+starting_cash = 46.0
 mode = "liquidity_absorption"
 
 [sizing]
