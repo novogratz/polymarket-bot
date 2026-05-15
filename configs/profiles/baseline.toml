@@ -20,7 +20,7 @@ max_position_ceiling_usd = 25.0
 max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0                       # 0 = pas de cap absolu, c'est ceiling qui gouverne
 high_conviction_balance_fraction = 0.30
-cash_floor_pct = 0.10
+cash_floor_pct = 0.02
 min_open_positions = 5
 starter_trade_usd = 5.0
 assumed_live_balance_usd = 0.0

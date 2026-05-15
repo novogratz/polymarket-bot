@@ -499,7 +499,7 @@ def select_liquidity_vacuum(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if (c.liquidity or 0) < 3000.0 and mom >= 0.03
+        if (c.liquidity or 0) < 5000.0 and mom >= 0.01
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -566,9 +566,9 @@ def select_late_momentum_chase(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if mom >= 0.05
-        and (c.hours_to_close or 99) <= 2.5
-        and (c.volume or 0) >= 500.0
+        if mom >= 0.03
+        and (c.hours_to_close or 99) <= 4.0
+        and (c.volume or 0) >= 200.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -617,9 +617,9 @@ def select_claude_late_pump(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if mom >= 0.05
-        and (c.hours_to_close or 99.0) <= 1.5
-        and (c.volume or 0) >= 500.0
+        if mom >= 0.03
+        and (c.hours_to_close or 99.0) <= 3.0
+        and (c.volume or 0) >= 200.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -658,9 +658,9 @@ def select_claude_balanced_mid(
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if 0.40 <= (c.best_ask or 0.5) <= 0.60
-        and mom >= 0.03
-        and (c.volume or 0) >= 750.0
+        if 0.35 <= (c.best_ask or 0.5) <= 0.65
+        and mom >= 0.02
+        and (c.volume or 0) >= 300.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -677,8 +677,8 @@ def select_claude_resolution_clock(
     qualified = [
         (c, c.best_bid or 0.0)
         for c, _ in eligible
-        if (c.best_bid or 0.0) >= 0.75
-        and (c.hours_to_close or 99.0) <= 0.5
+        if (c.best_bid or 0.0) >= 0.65
+        and (c.hours_to_close or 99.0) <= 1.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -863,7 +863,7 @@ def select_liquidity_absorption(
     qualified = [
         (c, c.volume or 0.0)
         for c, mom in eligible
-        if -0.10 <= mom <= -0.01 and (c.volume or 0) >= 750.0
+        if -0.15 <= mom <= 0 and (c.volume or 0) >= 300.0
     ]
     return _dedupe_top_n(qualified, n)
 
@@ -1212,27 +1212,13 @@ def _run_race_tick(
             break
         if not candidate.token_id:
             continue
-        if portfolio.has_open_position(candidate.market_id):
-            rejected.append({"question": candidate.question, "reason": "already_open_market"})
-            continue
-        if portfolio.has_open_token(candidate.token_id):
-            rejected.append({"question": candidate.question, "reason": "already_open_token"})
-            continue
+        # Stacking allowed — user wants max capital deployment, OK to
+        # add to an existing position on the same market/event/token.
+        # Only guard against same-tick double-fire via pending_token.
         if portfolio.has_pending_token(candidate.token_id):
             rejected.append({"question": candidate.question, "reason": "pending_order"})
             continue
-        if portfolio.has_open_event_position(candidate):
-            rejected.append({"question": candidate.question, "reason": "already_open_event"})
-            continue
         asset_key = _asset_key(candidate.question, candidate.event_slug or "", candidate.slug or "")
-        if asset_key and asset_key in open_assets:
-            rejected.append(
-                {
-                    "question": candidate.question,
-                    "reason": f"duplicate_asset:{asset_key}",
-                }
-            )
-            continue
         cash_above_floor = max(0.0, portfolio.cash - cash_floor)
         if cash_above_floor < 1.0:
             break
