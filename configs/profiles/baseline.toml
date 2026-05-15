@@ -27,10 +27,10 @@ assumed_live_balance_usd = 0.0
 
 [trader_cohort]
 leaderboard_window = "WEEK"
-top_n = 50
-min_trader_pnl = 500.0
-min_trader_volume = 1000.0
-min_trader_roi = 0.02
+top_n = 100
+min_trader_pnl = 100.0
+min_trader_volume = 200.0
+min_trader_roi = 0.005
 trade_fetch_concurrency = 16
 trade_lookback_minutes = 240
 
@@ -45,11 +45,11 @@ min_liquidity_usd = 500.0
 min_volume_usd = 1000.0
 
 [filters]
-min_consensus = 2
-fallback_consensus = 2
-min_copied_usdc = 50.0
+min_consensus = 1
+fallback_consensus = 1
+min_copied_usdc = 10.0
 min_trade_usd = 1.0
-max_chase_premium = 0.12
+max_chase_premium = 0.20
 price_min = 0.03
 price_max = 0.97
 max_absolute_spread = 0.10
