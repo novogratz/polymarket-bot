@@ -1071,6 +1071,27 @@ def _execute_race_exits(
                     flush=True,
                 )
                 continue
+            # Auth/credential errors are transient: the position is still
+            # alive on CLOB, we just couldn't sign the SELL. Don't write
+            # it off — surface the error and let the next tick retry.
+            exc_msg = str(exc).lower()
+            if (
+                "signature" in exc_msg
+                or "unauthorized" in exc_msg
+                or "invalid api" in exc_msg
+                or "api key" in exc_msg
+                or "401" in exc_msg
+                or "403" in exc_msg
+            ):
+                print(
+                    f"🔐  {strategy_name} SELL blocked by auth error on "
+                    f"'{position.get('question')}': {exc} — position NOT "
+                    f"written off, will retry. Run `uv run pmbot "
+                    f"bootstrap-creds` to refresh credentials if this persists.",
+                    flush=True,
+                )
+                continue
+
             # Auto-write-off: if the position is past its expiry (or resolved
             # as loser) we can't get a live SELL through — accept the bid as
             # the realized price and close locally so it doesn't linger.
