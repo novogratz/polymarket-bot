@@ -762,7 +762,7 @@ def select_claude_blue_chip(
         (c, c.volume or 0.0)
         for c, _ in eligible
         if (c.volume or 0) >= 50000.0
-        and ((c.best_ask or 1.0) - (c.best_bid or 0.0)) <= 0.02
+        and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.03
         and 0.05 <= (c.best_ask or 1.0) <= 0.95
     ]
     return _dedupe_top_n(qualified, n)
@@ -784,7 +784,7 @@ def select_claude_mid_endgame(
         if (c.best_bid or 0.0) >= 0.80
         and (c.best_ask or 1.0) <= 0.95
         and (c.hours_to_close or 99.0) <= 1.0
-        and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.02
+        and round((c.best_ask or 1.0) - (c.best_bid or 0.0), 4) <= 0.03
         and (c.volume or 0) >= 500.0
     ]
     return _dedupe_top_n(qualified, n)
