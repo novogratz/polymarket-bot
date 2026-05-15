@@ -35,7 +35,7 @@ cash_floor_pct = 0.10
 tp_pct = 1.00                            # TP désactivé — on laisse rouler jusqu'au resolved_exit 0.97
 sl_pct = 0.20                            # SL plus large pour absorber le bruit sur entrées 0.65+
 sl_min_age_minutes = 3
-near_expiry_minutes = 5
+near_expiry_minutes = 0                  # Désactivé — évite le flush prématuré à break-even alors qu'on veut rouler vers 0.97/$1.00
 resolved_exit_threshold = 0.97
 
 [telemetry]
