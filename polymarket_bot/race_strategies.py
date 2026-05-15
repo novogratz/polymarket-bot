@@ -1491,18 +1491,18 @@ weak_holder_flush_inverse_once, weak_holder_flush_inverse_loop = _race_strategy(
 def select_pm_le_pgm_weak_holder_flush_inverse(
     eligible: list[tuple[Candidate, float]], n: int
 ) -> list[Candidate]:
-    """Permissive live variant: any positive-momentum outcome above $300 vol.
+    """Restored to the original WHF-inverse thesis that won the dry race.
 
-    Original weak_holder_flush_inverse required mom ≥ +10% (then +5%),
-    which never fired in quiet markets. This drops the bar to +0.5%
-    so live actually trades every tick. Loses the 'panic continuation'
-    thesis — becomes 'any uptrending outcome with some volume'.
+    Buys the rising side (mom ≥ +10%, vol ≥ $2k) of a market where the
+    other outcome is being panic-dumped. Will sit idle when no markets
+    show that momentum — that's the point. The edge is in being
+    selective, not in trading constantly.
     """
     qualified = [
         (c, mom)
         for c, mom in eligible
-        if mom >= 0.005
-        and (c.volume or 0) >= 300.0
+        if mom >= 0.10
+        and (c.volume or 0) >= 2000.0
     ]
     return _dedupe_top_n(qualified, n)
 
