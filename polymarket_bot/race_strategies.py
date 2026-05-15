@@ -1488,10 +1488,27 @@ weak_holder_flush_once, weak_holder_flush_loop = _race_strategy(
 weak_holder_flush_inverse_once, weak_holder_flush_inverse_loop = _race_strategy(
     "weak_holder_flush_inverse", select_weak_holder_flush_inverse
 )
-# Renamed/promoted variant — same selector, prefixed for the live deployment.
-# Keeps the old registration around so existing dry-run history survives.
+def select_pm_le_pgm_weak_holder_flush_inverse(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """Permissive live variant: any positive-momentum outcome above $300 vol.
+
+    Original weak_holder_flush_inverse required mom ≥ +10% (then +5%),
+    which never fired in quiet markets. This drops the bar to +0.5%
+    so live actually trades every tick. Loses the 'panic continuation'
+    thesis — becomes 'any uptrending outcome with some volume'.
+    """
+    qualified = [
+        (c, mom)
+        for c, mom in eligible
+        if mom >= 0.005
+        and (c.volume or 0) >= 300.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
 pm_le_pgm_weak_holder_flush_inverse_once, pm_le_pgm_weak_holder_flush_inverse_loop = _race_strategy(
-    "pm_le_pgm_weak_holder_flush_inverse", select_weak_holder_flush_inverse
+    "pm_le_pgm_weak_holder_flush_inverse", select_pm_le_pgm_weak_holder_flush_inverse
 )
 claude_oversold_bounce_once, claude_oversold_bounce_loop = _race_strategy(
     "claude_oversold_bounce", select_claude_oversold_bounce
