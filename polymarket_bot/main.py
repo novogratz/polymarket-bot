@@ -2839,6 +2839,26 @@ def cli_auto_loop(
         from . import race_strategies as race_module
 
         race_module.claude_resolution_clock_loop(settings)
+    elif mode == "claude_endgame_sweep":
+        from . import race_strategies as race_module
+
+        race_module.claude_endgame_sweep_loop(settings)
+    elif mode == "claude_fade_extreme":
+        from . import race_strategies as race_module
+
+        race_module.claude_fade_extreme_loop(settings)
+    elif mode == "claude_mid_volume_band":
+        from . import race_strategies as race_module
+
+        race_module.claude_mid_volume_band_loop(settings)
+    elif mode == "claude_blue_chip":
+        from . import race_strategies as race_module
+
+        race_module.claude_blue_chip_loop(settings)
+    elif mode == "claude_volume_spike":
+        from . import race_strategies as race_module
+
+        race_module.claude_volume_spike_loop(settings)
     elif mode == "probability_drift":
         from . import race_strategies as race_module
 

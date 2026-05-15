@@ -683,6 +683,108 @@ def select_claude_resolution_clock(
     return _dedupe_top_n(qualified, n)
 
 
+def select_claude_endgame_sweep(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """claude #6: documented endgame-sweep band (Datawallet/TradeTheOutcome).
+
+    Calibration data shows 0.92-0.985 bid + ≤2h + tight spread + some
+    volume converges to 1.0 at very high rates. Narrower than
+    resolution_clock and uses 2h window (vs 15min) for more fires.
+    """
+    qualified = [
+        (c, c.best_bid or 0.0)
+        for c, _ in eligible
+        if 0.92 <= (c.best_bid or 0.0) <= 0.985
+        and (c.hours_to_close or 99.0) <= 2.0
+        and ((c.best_ask or 1.0) - (c.best_bid or 0.0)) <= 0.02
+        and (c.volume or 0) >= 500.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_fade_extreme(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """claude #7: fade the extreme underdog on liquid sentiment markets.
+
+    WEEX top-1% wallet pattern: buy ask ≤0.12 on $10k+ vol markets.
+    Thesis — sentiment-driven names overshoot. Asymmetric reward
+    (entry 0.10 → 0.50 = +400%) compensates the lower win rate.
+    """
+    qualified = [
+        (c, -(c.best_ask or 1.0))  # rank by cheapest first
+        for c, _ in eligible
+        if (c.best_ask or 1.0) <= 0.12
+        and (c.volume or 0) >= 10000.0
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_mid_volume_band(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """claude #8: mid-volume calibration sweet spot (TradeTheOutcome).
+
+    Markets with vol ≥$20k + mid-priced (10-90¢) + relative spread
+    ≤4% sit in the band where retail noise persists but liquidity
+    allows exits. Calibration peaks here.
+    """
+    qualified: list[tuple[Candidate, float]] = []
+    for c, _ in eligible:
+        ask = c.best_ask or 1.0
+        bid = c.best_bid or 0.0
+        if (c.volume or 0) < 20000.0:
+            continue
+        if not (0.10 <= ask <= 0.90):
+            continue
+        if ask <= 0 or (ask - bid) / ask > 0.04:
+            continue
+        qualified.append((c, c.volume or 0.0))
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_blue_chip(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """claude #9: top-volume markets with very tight absolute spread.
+
+    Calibration is 88-93% on markets with vol >$50k. Tight 2¢
+    absolute spread (vs relative) clears Polymarket fees cleanly.
+    Lowest-noise band, fewest fires.
+    """
+    qualified = [
+        (c, c.volume or 0.0)
+        for c, _ in eligible
+        if (c.volume or 0) >= 50000.0
+        and ((c.best_ask or 1.0) - (c.best_bid or 0.0)) <= 0.02
+        and 0.05 <= (c.best_ask or 1.0) <= 0.95
+    ]
+    return _dedupe_top_n(qualified, n)
+
+
+def select_claude_volume_spike(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """claude #10: disproportionate trading interest (vol/liquidity ≥3).
+
+    When volume traded is ≥3x the resting orderbook depth, retail
+    is pushing the market harder than the makers expected. Signal
+    of news/sentiment flow. Mid-priced only to avoid extremes.
+    """
+    qualified: list[tuple[Candidate, float]] = []
+    for c, _ in eligible:
+        liq = c.liquidity or 0.0
+        vol = c.volume or 0.0
+        ask = c.best_ask or 1.0
+        if liq <= 0 or vol / liq < 3.0:
+            continue
+        if not (0.15 <= ask <= 0.85):
+            continue
+        qualified.append((c, vol / liq))
+    return _dedupe_top_n(qualified, n)
+
+
 def select_weak_holder_flush_inverse(
     eligible: list[tuple[Candidate, float]], n: int
 ) -> list[Candidate]:
@@ -1352,6 +1454,21 @@ claude_balanced_mid_once, claude_balanced_mid_loop = _race_strategy(
 )
 claude_resolution_clock_once, claude_resolution_clock_loop = _race_strategy(
     "claude_resolution_clock", select_claude_resolution_clock
+)
+claude_endgame_sweep_once, claude_endgame_sweep_loop = _race_strategy(
+    "claude_endgame_sweep", select_claude_endgame_sweep
+)
+claude_fade_extreme_once, claude_fade_extreme_loop = _race_strategy(
+    "claude_fade_extreme", select_claude_fade_extreme
+)
+claude_mid_volume_band_once, claude_mid_volume_band_loop = _race_strategy(
+    "claude_mid_volume_band", select_claude_mid_volume_band
+)
+claude_blue_chip_once, claude_blue_chip_loop = _race_strategy(
+    "claude_blue_chip", select_claude_blue_chip
+)
+claude_volume_spike_once, claude_volume_spike_loop = _race_strategy(
+    "claude_volume_spike", select_claude_volume_spike
 )
 probability_drift_once, probability_drift_loop = _race_strategy(
     "probability_drift", select_probability_drift

@@ -62,6 +62,11 @@ run_bot claude_late_pump           claude_late_pump           "cl_pump   "
 run_bot claude_extreme_consensus   claude_extreme_consensus   "cl_xtreme "
 run_bot claude_balanced_mid        claude_balanced_mid        "cl_mid    "
 run_bot claude_resolution_clock    claude_resolution_clock    "cl_clock  "
+run_bot claude_endgame_sweep       claude_endgame_sweep       "cl_endgame"
+run_bot claude_fade_extreme        claude_fade_extreme        "cl_fade   "
+run_bot claude_mid_volume_band     claude_mid_volume_band     "cl_midvol "
+run_bot claude_blue_chip           claude_blue_chip           "cl_blue   "
+run_bot claude_volume_spike        claude_volume_spike        "cl_spike  "
 run_bot probability_drift          probability_drift          "probdrift "
 run_bot resolution_compression     resolution_compression     "rescomp   "
 run_bot liquidity_absorption       liquidity_absorption       "liqabsorb "
@@ -73,7 +78,7 @@ run_bot multi_signal_consensus     multi_signal_consensus     "multisig  "
 run_bot kzerlepgm_ultimatestrategy kzerlepgm_ultimatestrategy "kzer      "
 
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
-    --runs news,edge,baseline,random,contrarian,favorite,championdumonde_breakout,late_favorite,panic_fade,underdog,pmlepgm_counter_panic_fade,hybrid_smart_money,smart_wallet_consensus,whale_entry_detection,wallet_cluster_correlation,early_momentum_detection,liquidity_vacuum_breakout,mean_reversion_fade,range_channel_trading,aggressive_buyer_detection,orderbook_imbalance,late_momentum_chase,weak_holder_flush,weak_holder_flush_inverse,probability_drift,resolution_compression,liquidity_absorption,momentum_exhaustion_reversal,micro_scalping,multi_signal_consensus,kzerlepgm_ultimatestrategy,claude_oversold_bounce,claude_late_pump,claude_extreme_consensus,claude_balanced_mid,claude_resolution_clock \
+    --runs news,edge,baseline,random,contrarian,favorite,championdumonde_breakout,late_favorite,panic_fade,underdog,pmlepgm_counter_panic_fade,hybrid_smart_money,smart_wallet_consensus,whale_entry_detection,wallet_cluster_correlation,early_momentum_detection,liquidity_vacuum_breakout,mean_reversion_fade,range_channel_trading,aggressive_buyer_detection,orderbook_imbalance,late_momentum_chase,weak_holder_flush,weak_holder_flush_inverse,probability_drift,resolution_compression,liquidity_absorption,momentum_exhaustion_reversal,micro_scalping,multi_signal_consensus,kzerlepgm_ultimatestrategy,claude_oversold_bounce,claude_late_pump,claude_extreme_consensus,claude_balanced_mid,claude_resolution_clock,claude_endgame_sweep,claude_fade_extreme,claude_mid_volume_band,claude_blue_chip,claude_volume_spike \
     --interval 3 --telegram \
     2>&1 | sed -u 's/^/[board]     /' &
 
