@@ -113,6 +113,14 @@ run_bot claude_baseline_fresh       claude_baseline_fresh       "cb_fresh  "
 run_bot claude_baseline_quick_exit  claude_baseline_quick_exit  "cb_quick  "
 run_bot claude_baseline_let_run     claude_baseline_let_run     "cb_letrun "
 
+# ─── Autonomous analyst sidecar ──────────────────────────────────────
+# Every 15 min, reads per-strategy state, calls claude CLI for insights,
+# may SPAWN new auto_* strategies (TOML-only, additive) and KILL its
+# own underperformers (≥10 closed trades, ROI ≤ -10%, win_rate ≤ 35%).
+# Will NEVER touch human-curated bots. Posts to Telegram dry-run channel.
+# Kill-switch: write {"enabled": false} to data/autonomous_state.json
+python3 scripts/dry_analyst.py 2>&1 | sed -u 's/^/[analyst]   /' &
+
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
     --runs news,edge,baseline,random,contrarian,favorite,championdumonde_breakout,late_favorite,panic_fade,underdog,pmlepgm_counter_panic_fade,hybrid_smart_money,smart_wallet_consensus,whale_entry_detection,wallet_cluster_correlation,early_momentum_detection,liquidity_vacuum_breakout,mean_reversion_fade,range_channel_trading,aggressive_buyer_detection,orderbook_imbalance,late_momentum_chase,weak_holder_flush,weak_holder_flush_inverse,pm_le_pgm_weak_holder_flush_inverse,claude_anti_favorite,claude_mid_dump_fade,claude_resolution_sniper,claude_high_vol_quiet,claude_lottery_balanced,claude_strong_breakout,claude_frozen_favorite,claude_mid_rebound,claude_high_vol_panic,claude_high_vol_pop,claude_oversold_bounce,claude_late_pump,claude_extreme_consensus,claude_balanced_mid,claude_resolution_clock,claude_endgame_sweep,claude_fade_extreme,claude_mid_volume_band,claude_blue_chip,claude_volume_spike,claude_mid_endgame,probability_drift,resolution_compression,liquidity_absorption,momentum_exhaustion_reversal,micro_scalping,multi_signal_consensus,kzerlepgm_ultimatestrategy,kzerlepgm_baseline,smart_money_dry,smart_money_loose,claude_baseline_tight,claude_baseline_wide,claude_baseline_persist,claude_baseline_fresh,claude_baseline_quick_exit,claude_baseline_let_run \
     --interval 3 --telegram \
