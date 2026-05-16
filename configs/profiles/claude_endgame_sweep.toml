@@ -5,7 +5,7 @@
 # ≈ probabilité implicite (~65% sur entrée 0.65).
 
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "claude_endgame_sweep"
 
 [sizing]

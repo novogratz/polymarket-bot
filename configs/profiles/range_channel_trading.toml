@@ -1,7 +1,7 @@
 # Profil "range_channel_trading" — #7 — low-volatility mid-range markets.
 
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "range_channel_trading"
 
 [sizing]
