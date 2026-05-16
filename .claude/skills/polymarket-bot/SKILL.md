@@ -7,12 +7,25 @@ description: Claude Code skill for the Polymarket smart-money copy-trading bot. 
 
 Use this skill when working in this repository: strategy code, filters, live commands, dashboard, trade journal, auto-tuner, BTC edge.
 
+## Current state (2026-05-15)
+
+**Live profile:** `pmlepgm_counter_panic_fade` (top dry performer at 66% wr / +$15.73 / 29 trades). Buys the winning side of any binary market with a ≥15¢ intraday move + ≥$3k volume, holds to TP +25% / SL -25% / resolved 0.97.
+
+**Bankroll:** $42.43 USDC.
+
+**Live launcher:** `bash scripts/run_live_70.sh`.
+
+**Universal race rules:** `starting_cash=42.43`, `stake_pct=0.15`, `max_orders_per_tick=5`, `cash_floor_pct=0.02`, `max_hours=4.0`, `sl_min_age_minutes=3`, `resolved_exit_threshold=0.97`, **near-expiry flush removed**, **duplicates allowed**, **daily DD halt at -15%**.
+
+**Dry race:** 52 strategies in `scripts/run_both_dry.sh`. Profile files in `configs/profiles/`. Top three historical performers: `weak_holder_flush_inverse`, `pmlepgm_counter_panic_fade`, `aggressive_buyer_detection`.
+
 ## Guardrails (non-negotiable)
 
 - Never print or commit `.env` values, private keys, API secrets, or passphrases.
-- Live trading stays gated by `POLYMARKET_ENABLE_LIVE_TRADING=1`. The only sanctioned bypass is `POLYMARKET_DRY_RUN=1`, which short-circuits SDK BUY/SELL calls and writes to `data/dry_run_state.json` + `data/dry_run_journal.jsonl`.
-- No random trade entry beyond the bounded `noise_fallback` ($10/trade, 4/tick).
-- Any new live strategy must define explicit entry criteria, spread filters, sizing caps, and duplicate-position checks.
+- Live trading requires `--live` flag on `pmbot auto-loop`. The `--yes` flag exists only for script automation (e.g., `run_live_70.sh`).
+- `POLYMARKET_DRY_RUN` and `POLYMARKET_ENABLE_LIVE_TRADING` env vars are deprecated — use the CLI flags.
+- No random trade entry beyond the bounded `noise_fallback` ($10/trade, 4/tick) — currently disabled on most profiles.
+- Any new live strategy must define explicit entry criteria, spread filters, sizing caps.
 - Update tests when strategy behavior changes.
 - No LLM call (Claude, Codex, anything else) in the scanning or trade-selection path. The scanner stays deterministic Python over Polymarket APIs.
 - The bot must not have the capability to write or push source code on its own.

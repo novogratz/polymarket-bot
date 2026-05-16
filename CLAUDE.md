@@ -4,6 +4,32 @@ Claude Code entry point for the Polymarket bot. See also the structured skill in
 
 The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, see `.github/workflows/test.yml`).
 
+## Current state snapshot (2026-05-15)
+
+**Live strategy:** `pmlepgm_counter_panic_fade` (66% win rate / +$15.73 / 29 trades in dry validation). Bets WITH big intraday moves (≥15¢ + ≥$3k volume) on the winning side. See `docs/STRATEGIES.md` for full strategy list.
+
+**Bankroll:** $42.43 USDC starting baseline (matches real CLOB at session anchor).
+
+**Universal rules across all race strategies:**
+- `starting_cash = 42.43`, `stake_pct = 0.15` (15% per trade), `max_orders_per_tick = 5`
+- `cash_floor_pct = 0.02` (98% deployable), `max_hours = 4.0` (hard 4h-only rule)
+- Exits: TP +25% / SL -25% / resolved at bid ≥0.97 / 3-min min-hold
+- **Near-expiry flush rule removed** (was selling at break-even prematurely)
+- **Duplicate stacking allowed** (per-tick `pending_token` guard only)
+- **Daily DD halt** at -15% of starting equity (race + edge both)
+
+**Dry race:** 52 strategies (30 originals + WHF_inverse + 11 claude_X + 10 new claude_*). Top dry performers historically: `weak_holder_flush_inverse`, `pmlepgm_counter_panic_fade`, `aggressive_buyer_detection`.
+
+**Recent code-level fixes:**
+- `portfolio.mark_to_market` uses `best_bid` (was `outcomePrices` last-trade — caused fake +800% PnL spikes)
+- `_update_position_from_live_api` no longer resurrects `sync_closed=True` positions (fixed close→reopen spam loop)
+- `_notify_and_journal_sync_close` is idempotent via `sync_closed_notified` marker
+- `parse_dt` always returns tz-aware UTC (fixed naive-vs-aware crash)
+- Auth/signature SELL errors retry, don't writeoff
+- Race strategies manage `live_sync` positions, not just own-tagged
+- Equity-floor alert gated on `error is None` (no false $0 alerts on tick failure)
+- Telegram silent for dry-run threshold/heartbeat alerts
+
 ## Safety
 
 - Never reveal `.env` values, private keys, API secrets, or passphrases.
