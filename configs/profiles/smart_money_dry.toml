@@ -4,7 +4,7 @@
 # documentée dans CLAUDE.md, ajustée pour validation dry-run.
 
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 # pas de mode = "" → défaut smart_money
 
 [sizing]

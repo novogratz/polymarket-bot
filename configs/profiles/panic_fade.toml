@@ -7,7 +7,7 @@
 # micro, mais le thesis est le même.
 
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "panic_fade"
 
 [sizing]

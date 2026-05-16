@@ -1,7 +1,7 @@
 # Profil "multi_signal_consensus" — #19 — require ≥3 of {momentum, volume, tight spread, mid-price}.
 
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "multi_signal_consensus"
 
 [sizing]
