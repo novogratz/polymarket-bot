@@ -50,11 +50,14 @@ run_bot championdumonde_breakout   championdumonde_breakout   "cdm_break "
 # Current live strategy (track its dry twin)
 run_bot pm_le_pgm_weak_holder_flush_inverse pm_le_pgm_weak_holder_flush_inverse "pm_whfi   "
 
+# Crypto-aware (edge has BS-from-vol on BTC/ETH thresholds)
+run_bot edge                       edge                       "edge      "
+
 # Control
 run_bot random                     random                     "random    "
 
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
-    --runs weak_holder_flush_inverse,pmlepgm_counter_panic_fade,aggressive_buyer_detection,claude_endgame_sweep,claude_resolution_sniper,claude_blue_chip,favorite,late_favorite,smart_wallet_consensus,championdumonde_breakout,pm_le_pgm_weak_holder_flush_inverse,random \
+    --runs weak_holder_flush_inverse,pmlepgm_counter_panic_fade,aggressive_buyer_detection,claude_endgame_sweep,claude_resolution_sniper,claude_blue_chip,favorite,late_favorite,smart_wallet_consensus,championdumonde_breakout,pm_le_pgm_weak_holder_flush_inverse,edge,random \
     --interval 3 --telegram \
     2>&1 | sed -u 's/^/[board]     /' &
 
