@@ -1,25 +1,15 @@
 # Aggressive whale-copy profile — bigger sizing, looser filters, faster exits.
 #
-# Pushed past copy-advanced. Same multi-wallet consensus rule (>=2), same
-# price band away from lottery tokens. The variance is much higher than
-# copy-advanced; expect deeper drawdowns. Daily/weekly halts are loosened
-# to give the strategy room to recover before pausing.
+# Multi-wallet mirror with looser entry filters than copy-advanced.
+# Variance is higher; expect deeper drawdowns.
 #
 # Usage:
 #   uv run pmbot auto-loop --profile copy-aggressive --dry-run --run yolo
 #   uv run pmbot auto-loop --profile copy-aggressive --live
 #
-# Diff vs copy-advanced:
-#   sizing       copy_ratio 0.50->0.75, tiered cap 0.75->1.00,
-#                size_usd 500->750, max_position_pct 0.50->0.60
-#   filters      min_target_stake 100->50, min_liquidity 10k->5k,
-#                max_chase 0.05->0.08, max_open 12->18,
-#                max_days_to_expiry 1->3
-#   drawdown     daily 5%->8%, weekly 12%->20%
-#   exits        TP ladder pulled in (first rung +15% vs +25%),
-#                trailing arms earlier, max_hold 24h->12h
-#   preserved    min_consensus>=2, price band 0.15-0.85, FINANCE+ECONOMICS
-#                excluded (earned from journal), stop loss -20% after 10min
+# Schema-supported [mirror] keys only. Orphan keys from an older
+# extended mirror schema were stripped during the test-suite cleanup
+# (the runtime never read them).
 
 [run]
 starting_cash = 100.0
@@ -28,40 +18,17 @@ mode = "mirror"
 [mirror]
 target = "bossoskil1, Pestle, surfandturf, JewishNinja, swisstony, RN1, Oddn, anoin123, wan123, Talvez10"
 
-discovery_enabled = true
-discovery_interval_hours = 6
-min_whale_pnl = 10000.0
-
 # Sizing — significantly larger stakes per trade.
-copy_ratio = 0.75
-tiered_copy_ratios = "0.0:0.50,25000:0.75,100000:1.00"
 size_usd = 750.0
-max_position_pct = 0.60
 
-# Filters — looser. Smaller whale stakes count, smaller markets allowed,
-# more headroom to chase, more concurrent positions, longer expiry horizon.
+# Filters — looser. Smaller whale stakes count, looser price band, more
+# headroom to chase, longer trade-age window.
 min_target_stake_usd = 50.0
-min_liquidity_usd = 5000.0
 max_chase_premium = 0.08
 min_buy_price = 0.15
 max_buy_price = 0.85
-max_open_positions = 18
-max_category_exposure_pct = 1.50
 max_trade_age_seconds = 3600
-max_days_to_expiry = 3
-
-# Earned from journal: FINANCE 10 trades avg -$6, ECONOMICS 1 trade -$28.
-# Keeping these excluded — "aggressive" is not "ignore evidence".
-excluded_categories = "FINANCE,ECONOMICS"
-
-# Drawdown — wider room before the bot pauses itself.
-daily_loss_limit_pct = 0.08
-weekly_loss_limit_pct = 0.20
-
-# Mirror-side stop loss kept tight (this is the line that actually fires
-# in mirror mode). -20% after 10 min in position.
-stop_loss_pct = 0.20
-stop_loss_min_age_minutes = 10
+mirror_sells = true
 
 [exits]
 # TP ladder pulled in: lock partials sooner so the bigger stakes don't

@@ -265,11 +265,15 @@ class NearCertaintyTests(unittest.TestCase):
 
 class CryptoEdgeIntegrationTests(unittest.TestCase):
     def test_filters_to_crypto_markets_only(self):
+        # NOTE: "Up or Down" markets are now blanket-excluded via
+        # is_excluded_market (low liquidity / FOK bounces). Use a
+        # threshold-style question instead so the test exercises the
+        # crypto filter rather than the exclusion logic.
         markets = [
-            _market(qid="btc1", question="Bitcoin Up or Down - 8AM ET", yes_ask=0.40, yes_bid=0.38),
+            _market(qid="btc1", question="Bitcoin above $79,000 by 8AM ET", yes_ask=0.40, yes_bid=0.38),
             _market(qid="other", question="Will Trump tweet today?", yes_ask=0.40, yes_bid=0.38),
         ]
-        # Make momentum favor "Up" so the BTC market produces a signal.
+        # Spot $80k vs threshold $79k → ~60% Yes probability via BS model.
         quote = SpotQuote(symbol="BTCUSDT", price=80000.0, momentum_5m=0.01, momentum_15m=0.02, fetched_at=0.0)
         settings = Settings(
             edge_max_hours=4.0,

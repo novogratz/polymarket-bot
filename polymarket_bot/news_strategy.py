@@ -426,8 +426,18 @@ def _news_sell_plan(
     if current_pnl_pct <= -sl_pct:
         return {"reason": "news_stop_loss", "shares": shares}
 
-    # Near-expiry flush removed: was selling at break-even just because
-    # the market was about to resolve, leaving real upside on the table.
+    # 4. Near-expiry positive flush: protect a gain right before close.
+    # Only fires when current PnL is strictly above the configured floor
+    # (default 0%) so we never close a losing trade just because time is
+    # short. Mirror of the smart-money near-expiry-positive-exit rule.
+    minutes_left = _minutes_to_close(position)
+    if (
+        minutes_left is not None
+        and minutes_left <= settings.news_near_expiry_minutes
+        and current_pnl_pct > settings.news_near_expiry_min_profit
+    ):
+        return {"reason": "news_near_expiry", "shares": shares}
+
     return None
 
 
