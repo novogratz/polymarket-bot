@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Lance le bot en LIVE avec le profil smart_wallet_consensus.
-# Stratégie race : volume 24h élevé comme proxy de l'activité multi-wallets,
-# entre WITH les marchés où le smart money est déjà présent.
-# Sizing (\$20 bankroll) : cap \$15/position, 15% par trade, 5 orders/tick.
-# Exits : TP +25% / SL -25% / resolved ≥0.97 / 4h hard rule.
-# Toute la config vit dans configs/profiles/smart_wallet_consensus.toml.
+# Lance le bot en LIVE avec le profil kzerlepgm_baseline.
+# Restauration de la baseline main qui marchait, + règle 4h.
+# Mode smart_money (default) : leaderboard WEEK top 50, multi-wallet
+# consensus ≥2 sur même token < 240min, min_copied_usdc=\$50,
+# max_chase_premium=12%. Exit stack complet (TP ladder + trailing +
+# peak-protect + SL -40% + cohort-sell). Auto-tune ON à 30 trades.
+# Sizing 10%/trade, cap \$25/position. assumed_live_balance_usd=\$42.43.
+# Toute la config vit dans configs/profiles/kzerlepgm_baseline.toml.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,4 +25,4 @@ export TELEGRAM_ALERT_HEARTBEAT=1
 export TELEGRAM_ALERT_PORTFOLIO_UPDATES=1
 export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
-exec uv run pmbot auto-loop --live --profile smart_wallet_consensus --yes
+exec uv run pmbot auto-loop --live --profile kzerlepgm_baseline --yes
