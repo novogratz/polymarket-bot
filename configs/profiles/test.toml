@@ -11,7 +11,7 @@
 # basée sur du signal, c'est du remplissage.
 
 [run]
-starting_cash = 46.0
+starting_cash = 42.43
 
 [sizing]
 position_pct = 0.10

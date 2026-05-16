@@ -1,7 +1,7 @@
 # Profil "weak_holder_flush" — #12 — buy panic dumps with volume absorption.
 
 [run]
-starting_cash = 46.0
+starting_cash = 42.43
 mode = "weak_holder_flush"
 
 [sizing]

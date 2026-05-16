@@ -7,7 +7,7 @@
 # Toutes les clés sont documentées dans docs/PROFILES.md.
 
 [run]
-starting_cash = 46.0
+starting_cash = 42.43
 
 [sizing]
 position_pct = 0.18

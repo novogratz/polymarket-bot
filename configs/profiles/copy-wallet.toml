@@ -11,7 +11,7 @@
 # inutiles dans ce mode mais on garde un starting_cash de référence.
 
 [run]
-starting_cash = 46.0
+starting_cash = 42.43
 mode = "mirror"
 
 [mirror]

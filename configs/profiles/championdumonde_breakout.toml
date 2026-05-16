@@ -5,7 +5,7 @@
 # whale pousse un orderbook illiquide.
 
 [run]
-starting_cash = 46.0
+starting_cash = 42.43
 mode = "championdumonde_breakout"
 
 [sizing]

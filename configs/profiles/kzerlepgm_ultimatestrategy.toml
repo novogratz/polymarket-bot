@@ -6,7 +6,7 @@
 # spread ≤1¢ + vol ≥$500.
 
 [run]
-starting_cash = 46.0
+starting_cash = 42.43
 mode = "kzerlepgm_ultimatestrategy"
 
 [sizing]

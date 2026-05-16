@@ -11,7 +11,7 @@
 #   uv run pmbot auto-loop --profile copy-top6 --live
 
 [run]
-starting_cash = 46.0
+starting_cash = 42.43
 mode = "mirror"
 
 [mirror]
