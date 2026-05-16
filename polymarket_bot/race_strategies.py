@@ -1201,6 +1201,34 @@ def _run_race_tick(
         except Exception as exc:
             print(f"   live cash refresh failed: {type(exc).__name__}: {exc}")
 
+    # Daily drawdown gate — block new entries when realized PnL today
+    # is ≤ -X% of starting equity. Existing positions still run exits.
+    if settings.race_daily_drawdown_pct > 0:
+        from .edge_strategy import _daily_realized_pnl
+        starting_equity = max(settings.paper_balance_usd, settings.assumed_live_balance_usd, 1.0)
+        realized_today = _daily_realized_pnl(settings.trade_journal_path)
+        dd_limit = -starting_equity * settings.race_daily_drawdown_pct
+        if realized_today <= dd_limit:
+            print(
+                f"🛑 {strategy_name}: daily drawdown limit hit "
+                f"(${realized_today:+.2f} ≤ ${dd_limit:+.2f}) — entries paused",
+                flush=True,
+            )
+            portfolio.save(settings.state_path)
+            return {
+                "trade": None,
+                "strategy": strategy_name,
+                "trades": [],
+                "orders_placed": 0,
+                "exits": exits,
+                "rejected_signals": [],
+                "scan_counts": {"raw_markets": len(markets), "eligible": len(eligible), "picks": 0},
+                "summary": portfolio.summary(),
+                "status": "daily_drawdown_halt",
+                "realized_today_usd": realized_today,
+                "drawdown_limit_usd": dd_limit,
+            }
+
     picks = select_fn(eligible)
     open_assets = _open_asset_keys(portfolio)
     executed: list[dict[str, Any]] = []
