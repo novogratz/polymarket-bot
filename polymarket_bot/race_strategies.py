@@ -1230,6 +1230,21 @@ def _run_race_tick(
             }
 
     picks = select_fn(eligible)
+
+    # Noise fallback: if the selector returned nothing AND there are no
+    # open positions, fire a random eligible candidate so the strategy
+    # always trades. User explicitly wants action over discrimination.
+    fallback_used = False
+    if (
+        not picks
+        and settings.race_noise_fallback_enabled
+        and eligible
+    ):
+        open_count = sum(1 for p in portfolio.positions if p.get("status") == "open" and p.get("live"))
+        if open_count == 0:
+            picks = random.sample([c for c, _ in eligible], min(1, len(eligible)))
+            fallback_used = True
+
     open_assets = _open_asset_keys(portfolio)
     executed: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
@@ -1300,7 +1315,7 @@ def _run_race_tick(
         "orders_placed": len(executed),
         "exits": exits,
         "rejected_signals": rejected,
-        "scan_counts": {"raw_markets": len(markets), "eligible": len(eligible), "picks": len(picks)},
+        "scan_counts": {"raw_markets": len(markets), "eligible": len(eligible), "picks": len(picks), "fallback_used": fallback_used},
         "summary": portfolio.summary(),
     }
 
