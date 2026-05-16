@@ -1250,16 +1250,29 @@ def _run_race_tick(
     rejected: list[dict[str, Any]] = []
     cash_floor = portfolio.summary().get("equity", 0) * settings.race_cash_floor_pct
 
+    # Event-exposure cap: how many open positions share the same event
+    # slug already. Block any new pick that would push past the cap.
+    event_exposure: dict[str, int] = {}
+    for pos in portfolio.positions:
+        if pos.get("status") == "open":
+            ev = str(pos.get("event_slug") or "")
+            if ev:
+                event_exposure[ev] = event_exposure.get(ev, 0) + 1
+    EVENT_EXPOSURE_CAP = 2
+
     for candidate in picks:
         if len(executed) >= settings.race_max_orders_per_tick:
             break
         if not candidate.token_id:
             continue
-        # Stacking allowed — user wants max capital deployment, OK to
-        # add to an existing position on the same market/event/token.
-        # Only guard against same-tick double-fire via pending_token.
+        # Stacking allowed up to the per-event cap. pending_token still
+        # blocks same-tick double-fire on the exact same outcome.
         if portfolio.has_pending_token(candidate.token_id):
             rejected.append({"question": candidate.question, "reason": "pending_order"})
+            continue
+        ev_slug = str(candidate.event_slug or "")
+        if ev_slug and event_exposure.get(ev_slug, 0) >= EVENT_EXPOSURE_CAP:
+            rejected.append({"question": candidate.question, "reason": f"event_exposure_cap:{ev_slug}"})
             continue
         asset_key = _asset_key(candidate.question, candidate.event_slug or "", candidate.slug or "")
         cash_above_floor = max(0.0, portfolio.cash - cash_floor)
@@ -1303,6 +1316,8 @@ def _run_race_tick(
             executed.append({"strategy": strategy_name, "order": result.order, "response": result.response, "signal": signal_payload})
             if asset_key:
                 open_assets.add(asset_key)
+            if ev_slug:
+                event_exposure[ev_slug] = event_exposure.get(ev_slug, 0) + 1
             portfolio.save(settings.state_path)
         except Exception as exc:
             rejected.append({"question": candidate.question, "reason": f"{type(exc).__name__}: {exc}"})

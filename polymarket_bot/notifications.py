@@ -88,6 +88,7 @@ class _State:
     dedupe_seen: dict[str, dict[str, Any]] = field(default_factory=dict)
     drawdown_armed: bool = False  # True quand on a déjà alerté sur ce pic
     last_heartbeat_ts: float | None = None
+    last_daily_summary_date: str | None = None  # YYYY-MM-DD UTC
 
 
 def _default_state_path() -> Path:
@@ -116,6 +117,7 @@ def _load_state(path: Path) -> _State:
             if data.get("last_heartbeat_ts") is not None
             else None
         ),
+        last_daily_summary_date=data.get("last_daily_summary_date"),
     )
 
 
@@ -165,6 +167,7 @@ def _save_state(path: Path, state: _State) -> None:
         "dedupe_seen": state.dedupe_seen,
         "drawdown_armed": state.drawdown_armed,
         "last_heartbeat_ts": state.last_heartbeat_ts,
+        "last_daily_summary_date": state.last_daily_summary_date,
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -708,4 +711,53 @@ def notify_heartbeat(snapshot: dict[str, Any]) -> None:
 
     if _post("\n".join(lines)):
         state.last_heartbeat_ts = now
+        _save_state(path, state)
+
+
+def notify_daily_summary(snapshot: dict[str, Any]) -> None:
+    """Post a once-per-UTC-day summary to Telegram.
+
+    Fires on the first tick of a new UTC day. Dedupe via
+    state.last_daily_summary_date (YYYY-MM-DD). Skipped in dry-run.
+    """
+    if not is_enabled() or not _flag("TELEGRAM_ALERT_DAILY_SUMMARY"):
+        return
+    if _is_dry_run():
+        return
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    path = _default_state_path()
+    state = _load_state(path)
+    if state.last_daily_summary_date == today:
+        return  # already posted today
+
+    strategy = str(snapshot.get("strategy") or "?")
+    equity = float(snapshot.get("equity_usd", 0) or 0)
+    cash = float(snapshot.get("cash_usd", 0) or 0)
+    trades = int(snapshot.get("trades_24h", 0) or 0)
+    wins = int(snapshot.get("wins_24h", 0) or 0)
+    losses = int(snapshot.get("losses_24h", 0) or 0)
+    realized = float(snapshot.get("realized_pnl_24h_usd", 0) or 0)
+    decided = wins + losses
+    wr = (wins / decided * 100.0) if decided > 0 else 0.0
+
+    color = "🟢" if realized > 0 else ("🔴" if realized < 0 else "⚪")
+    lines = [
+        f"📅 *Daily summary* · {_md_escape(today)}",
+        "",
+        f"{color} Realized 24h: *{_md_escape(_fmt_signed_money_fr(realized))}*",
+        f"📊 Trades: {_md_escape(str(trades))} \\| {_md_escape(f'{wins}W/{losses}L')} \\| WR {_md_escape(f'{wr:.0f}%')}",
+        f"💰 Equity: *{_md_escape(_fmt_amount(equity))}* \\| cash {_md_escape(_fmt_amount(cash))}",
+        f"🎯 Strategy: `{_md_escape(strategy)}`",
+    ]
+    top_w_line = _heartbeat_top_line("🏆", snapshot.get("top_winner") or {})
+    top_l_line = _heartbeat_top_line("💸", snapshot.get("top_loser") or {})
+    if top_w_line or top_l_line:
+        lines.append("")
+        if top_w_line:
+            lines.append(top_w_line)
+        if top_l_line:
+            lines.append(top_l_line)
+
+    if _post("\n".join(lines)):
+        state.last_daily_summary_date = today
         _save_state(path, state)

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# La grande race dry-run — toutes les stratégies + leaderboard sidecar.
+# Curated dry-run race — 12 strategies selected for clean signal.
 #
-# Each $100 starting cash, own ledger + journal. Telegram alerts (BUY/SELL/
-# errors/threshold/heartbeat) stream to TELEGRAM_CHAT_ID_DRY_RUN, prefixed
-# per-run via POLYMARKET_RUN_NAME. Expect a firehose with ~28 bots in
-# parallel — flip TELEGRAM_ALERT_TRADES=0 below if you need to mute.
+# Why 12: 52 strategies was too noisy and most were variations of the
+# same thesis. This set keeps the dry-validated winners, the research-
+# backed ones, distinct theses, and a random control. The full 52-bot
+# legacy script is preserved at scripts/run_both_dry_full.sh.bak.
 #
-# Ctrl+C arrête tout. Logs interleaved préfixés.
+# Each $20 starting cash, own ledger + journal. Telegram alerts stream
+# to TELEGRAM_CHAT_ID_DRY_RUN. Ctrl+C stops everything.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,67 +31,30 @@ run_bot() {
         2>&1 | sed -u "s/^/[${prefix}] /" &
 }
 
-# Original 10
-run_bot news                       news                       "news      "
-run_bot edge                       edge                       "edge      "
-run_bot baseline                   baseline                   "baseline  "
-run_bot random                     random                     "random    "
-run_bot contrarian                 contrarian                 "contra    "
-run_bot favorite                   favorite                   "favorite  "
-run_bot championdumonde_breakout   championdumonde_breakout   "cdm_break "
-run_bot late_favorite              late_favorite              "late_fav  "
-run_bot panic_fade                 panic_fade                 "panic_fade"
-run_bot underdog                   underdog                   "underdog  "
+# Dry-validated winners (60%+ wr in earlier sample)
+run_bot weak_holder_flush_inverse  weak_holder_flush_inverse  "whfi      "
 run_bot pmlepgm_counter_panic_fade pmlepgm_counter_panic_fade "cpanic    "
-
-# Framework-rules 18 (race-mode approximations of the spec)
-run_bot hybrid_smart_money         hybrid_smart_money         "hybrid    "
-run_bot smart_wallet_consensus     smart_wallet_consensus     "swallet   "
-run_bot whale_entry_detection      whale_entry_detection      "whale     "
-run_bot wallet_cluster_correlation wallet_cluster_correlation "wcluster  "
-run_bot early_momentum_detection   early_momentum_detection   "earlymom  "
-run_bot liquidity_vacuum_breakout  liquidity_vacuum_breakout  "vacuum    "
-run_bot mean_reversion_fade        mean_reversion_fade        "meanrev   "
-run_bot range_channel_trading      range_channel_trading      "range     "
 run_bot aggressive_buyer_detection aggressive_buyer_detection "aggbuy    "
-run_bot orderbook_imbalance        orderbook_imbalance        "obimb     "
-run_bot late_momentum_chase        late_momentum_chase        "latemom   "
-run_bot weak_holder_flush          weak_holder_flush          "weakhold  "
-run_bot weak_holder_flush_inverse  weak_holder_flush_inverse  "weakhold_i"
-run_bot pm_le_pgm_weak_holder_flush_inverse pm_le_pgm_weak_holder_flush_inverse "pm_whfi   "
-run_bot claude_anti_favorite       claude_anti_favorite       "cl_antifav"
-run_bot claude_mid_dump_fade       claude_mid_dump_fade       "cl_dumpfd "
-run_bot claude_resolution_sniper   claude_resolution_sniper   "cl_snipe  "
-run_bot claude_high_vol_quiet      claude_high_vol_quiet      "cl_hv_qt  "
-run_bot claude_lottery_balanced    claude_lottery_balanced    "cl_lottery"
-run_bot claude_strong_breakout     claude_strong_breakout     "cl_strong "
-run_bot claude_frozen_favorite     claude_frozen_favorite     "cl_frozen "
-run_bot claude_mid_rebound         claude_mid_rebound         "cl_rebd   "
-run_bot claude_high_vol_panic      claude_high_vol_panic      "cl_hv_pnc "
-run_bot claude_high_vol_pop        claude_high_vol_pop        "cl_hv_pop "
-run_bot claude_oversold_bounce     claude_oversold_bounce     "cl_bounce "
-run_bot claude_late_pump           claude_late_pump           "cl_pump   "
-run_bot claude_extreme_consensus   claude_extreme_consensus   "cl_xtreme "
-run_bot claude_balanced_mid        claude_balanced_mid        "cl_mid    "
-run_bot claude_resolution_clock    claude_resolution_clock    "cl_clock  "
-run_bot claude_endgame_sweep       claude_endgame_sweep       "cl_endgame"
-run_bot claude_fade_extreme        claude_fade_extreme        "cl_fade   "
-run_bot claude_mid_volume_band     claude_mid_volume_band     "cl_midvol "
-run_bot claude_blue_chip           claude_blue_chip           "cl_blue   "
-run_bot claude_volume_spike        claude_volume_spike        "cl_spike  "
-run_bot claude_mid_endgame         claude_mid_endgame         "cl_midend "
-run_bot probability_drift          probability_drift          "probdrift "
-run_bot resolution_compression     resolution_compression     "rescomp   "
-run_bot liquidity_absorption       liquidity_absorption       "liqabsorb "
-run_bot momentum_exhaustion_reversal momentum_exhaustion_reversal "momexh    "
-run_bot micro_scalping             micro_scalping             "micro     "
-run_bot multi_signal_consensus     multi_signal_consensus     "multisig  "
 
-# kzer paired arb (dry-run scanner — live path not wired)
-run_bot kzerlepgm_ultimatestrategy kzerlepgm_ultimatestrategy "kzer      "
+# Research-backed (calibration data / smart-money literature)
+run_bot claude_endgame_sweep       claude_endgame_sweep       "cl_endgame"
+run_bot claude_resolution_sniper   claude_resolution_sniper   "cl_snipe  "
+run_bot claude_blue_chip           claude_blue_chip           "cl_blue   "
+
+# Distinct theses to A/B against
+run_bot favorite                   favorite                   "favorite  "
+run_bot late_favorite              late_favorite              "late_fav  "
+run_bot smart_wallet_consensus     smart_wallet_consensus     "swallet   "
+run_bot championdumonde_breakout   championdumonde_breakout   "cdm_break "
+
+# Current live strategy (track its dry twin)
+run_bot pm_le_pgm_weak_holder_flush_inverse pm_le_pgm_weak_holder_flush_inverse "pm_whfi   "
+
+# Control
+run_bot random                     random                     "random    "
 
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
-    --runs news,edge,baseline,random,contrarian,favorite,championdumonde_breakout,late_favorite,panic_fade,underdog,pmlepgm_counter_panic_fade,hybrid_smart_money,smart_wallet_consensus,whale_entry_detection,wallet_cluster_correlation,early_momentum_detection,liquidity_vacuum_breakout,mean_reversion_fade,range_channel_trading,aggressive_buyer_detection,orderbook_imbalance,late_momentum_chase,weak_holder_flush,weak_holder_flush_inverse,probability_drift,resolution_compression,liquidity_absorption,momentum_exhaustion_reversal,micro_scalping,multi_signal_consensus,kzerlepgm_ultimatestrategy,claude_oversold_bounce,claude_late_pump,claude_extreme_consensus,claude_balanced_mid,claude_resolution_clock,claude_endgame_sweep,claude_fade_extreme,claude_mid_volume_band,claude_blue_chip,claude_volume_spike,claude_mid_endgame,pm_le_pgm_weak_holder_flush_inverse,claude_anti_favorite,claude_mid_dump_fade,claude_resolution_sniper,claude_high_vol_quiet,claude_lottery_balanced,claude_strong_breakout,claude_frozen_favorite,claude_mid_rebound,claude_high_vol_panic,claude_high_vol_pop \
+    --runs weak_holder_flush_inverse,pmlepgm_counter_panic_fade,aggressive_buyer_detection,claude_endgame_sweep,claude_resolution_sniper,claude_blue_chip,favorite,late_favorite,smart_wallet_consensus,championdumonde_breakout,pm_le_pgm_weak_holder_flush_inverse,random \
     --interval 3 --telegram \
     2>&1 | sed -u 's/^/[board]     /' &
 

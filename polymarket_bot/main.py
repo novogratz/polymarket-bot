@@ -2307,6 +2307,19 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                     "top_loser": top_l,
                 }
             )
+            notifications.notify_daily_summary(
+                {
+                    "strategy": strategy_name,
+                    "equity_usd": equity_val,
+                    "cash_usd": cash_val,
+                    "trades_24h": trades_24h,
+                    "wins_24h": wins_24h,
+                    "losses_24h": losses_24h,
+                    "realized_pnl_24h_usd": realized_24h,
+                    "top_winner": top_w,
+                    "top_loser": top_l,
+                }
+            )
             if settings.stdout_heartbeat_minutes > 0:
                 now_ts = time.time()
                 if now_ts - last_heartbeat_ts >= settings.stdout_heartbeat_minutes * 60:
