@@ -243,7 +243,10 @@ def select_breakout(
         for c, mom in eligible
         if mom >= min_momentum and c.volume >= min_volume_24h
     ]
-    qualified.sort(key=lambda t: t[1] * (t[0].volume or 0.0), reverse=True)
+    # Rank by momentum strength; volume is a gate (already filtered above),
+    # not a weight — multiplying mom×volume let a 0.5%×$500k move tie a
+    # 5%×$50k move, defeating the momentum-continuation thesis.
+    qualified.sort(key=lambda t: t[1], reverse=True)
     seen: set[str] = set()
     picks: list[Candidate] = []
     for c, _ in qualified:
@@ -863,7 +866,10 @@ def select_liquidity_absorption(
     qualified = [
         (c, c.volume or 0.0)
         for c, mom in eligible
-        if -0.15 <= mom <= 0 and (c.volume or 0) >= 150.0
+        # Tightened: was -0.15..0 which accepted -14% as "small drop";
+        # docstring says -2%..-6%, so honor the thesis. High-volume on
+        # the small dip is the absorption signal (buyers stepped in).
+        if -0.06 <= mom <= -0.02 and (c.volume or 0) >= 1000.0
     ]
     return _dedupe_top_n(qualified, n)
 

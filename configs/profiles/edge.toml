@@ -37,9 +37,9 @@ min_liquidity_usd = 500.0
 min_volume_24h_usd = 150.0
 min_price = 0.05
 max_price = 0.95
-max_spread = 0.08
+max_spread = 0.05                       # tight spread required for near-cert math
 fee_pct = 0.02                          # estimation slippage + frais
-min_edge_pct = 0.003                    # 0.3% edge min (loosened: lanes were starving)
+min_edge_pct = 0.005                    # 0.5% edge min after fees (was 0.003 — too loose)
 kelly_fraction = 0.25                   # 1/4 Kelly (sizing prudent)
 max_position_pct = 0.15                 # 15% du capital par trade (=$15 sur $100)
 max_orders_per_tick = 5                 # jusqu'à 4 entrées par tick
@@ -68,12 +68,16 @@ crypto_direction_enabled = true         # "Up or Down" model re-enabled per user
 crypto_annual_vol = 0.60                # vol annualisée pour BTC/ETH
 crypto_momentum_alpha = 4.0             # (legacy — only used if direction re-enabled)
 
-# Lane near-certainty
+# Lane near-certainty — math: edge = bid*bias - ask - fee_pct ≥ min_edge_pct
+# With bias=1.04, fee=0.02, min_edge=0.005, the lane needs:
+#   bid ≥ 0.80 AND ask ≤ bid*1.04 - 0.025 (i.e. spread ≤ ~3c at bid=0.80)
+# Bumping min_bid from 0.55 → 0.80 concentrates the lane where math
+# actually produces positive edge after fees.
 near_cert_enabled = true
-near_cert_max_hours = 4.0               # élargi à 4h pour ratisser plus large
-near_cert_min_bid = 0.55                # loosened: 0.70 starved the lane to 0
-near_cert_max_ask = 0.98
-near_cert_bias_multiplier = 1.06        # bumped from 1.03 — sinon edge negligible vs spread+fees
+near_cert_max_hours = 4.0
+near_cert_min_bid = 0.80                # was 0.55 — lane was negative-edge below 0.78
+near_cert_max_ask = 0.96                # was 0.98 — 0.97+ resolves via resolved_exit
+near_cert_bias_multiplier = 1.04        # was 1.06 — paired with min_bid bump
 
 # Lane scalp (off par défaut — manque ordre limite + websocket)
 scalp_enabled = false
