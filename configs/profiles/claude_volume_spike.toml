@@ -3,7 +3,7 @@
 # Intérêt disproportionné = signal de flux news/sentiment.
 
 [run]
-starting_cash = 42.43
+starting_cash = 20.0
 mode = "claude_volume_spike"
 
 [sizing]

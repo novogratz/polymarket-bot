@@ -2,7 +2,7 @@
 # Race-mode approximation of the spec's main strategy.
 
 [run]
-starting_cash = 42.43
+starting_cash = 20.0
 mode = "hybrid_smart_money"
 
 [sizing]

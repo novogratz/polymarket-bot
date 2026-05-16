@@ -10,7 +10,7 @@
 # à -20%. Cash floor 10%.
 
 [run]
-starting_cash = 42.43
+starting_cash = 20.0
 mode = "edge"
 
 [sizing]
@@ -64,7 +64,7 @@ arb_max_position_pct = 0.25             # arb autorise plus de capital
 
 # Lane crypto directional
 crypto_enabled = true                   # threshold/band markets only
-crypto_direction_enabled = false        # "Up or Down" model disabled — momentum-bias is unprofitable live
+crypto_direction_enabled = true         # "Up or Down" model re-enabled per user request
 crypto_annual_vol = 0.60                # vol annualisée pour BTC/ETH
 crypto_momentum_alpha = 4.0             # (legacy — only used if direction re-enabled)
 

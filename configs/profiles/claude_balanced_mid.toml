@@ -3,7 +3,7 @@
 # momentum ≥+5% et volume ≥$3k.
 
 [run]
-starting_cash = 42.43
+starting_cash = 20.0
 mode = "claude_balanced_mid"
 
 [sizing]

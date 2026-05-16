@@ -1,7 +1,7 @@
 # Profil "mean_reversion_fade" — #6 — fade modest emotional dumps (-5..-10%).
 
 [run]
-starting_cash = 42.43
+starting_cash = 20.0
 mode = "mean_reversion_fade"
 
 [sizing]

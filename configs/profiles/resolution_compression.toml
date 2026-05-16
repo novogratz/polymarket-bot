@@ -1,7 +1,7 @@
 # Profil "resolution_compression" — #14 — favorites near expiry, looser than late_favorite.
 
 [run]
-starting_cash = 42.43
+starting_cash = 20.0
 mode = "resolution_compression"
 
 [sizing]

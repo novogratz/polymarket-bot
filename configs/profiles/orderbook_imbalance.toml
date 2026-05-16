@@ -1,7 +1,7 @@
 # Profil "orderbook_imbalance" — #9 — tight spread + mid-price + positive momentum.
 
 [run]
-starting_cash = 42.43
+starting_cash = 20.0
 mode = "orderbook_imbalance"
 
 [sizing]

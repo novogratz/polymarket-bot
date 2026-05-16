@@ -1,7 +1,7 @@
 # Profil "aggressive_buyer_detection" — #8 — strong momentum + high volume.
 
 [run]
-starting_cash = 42.43
+starting_cash = 20.0
 mode = "aggressive_buyer_detection"
 
 [sizing]
