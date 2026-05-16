@@ -2180,8 +2180,13 @@ def _print_stdout_heartbeat(
     stamp = time.strftime("%H:%M:%S", time.localtime())
     mode = "DRY-RUN" if settings.dry_run else "LIVE"
     sep = "─" * 64
+    profile_label = os.environ.get("POLYMARKET_PROFILE_LABEL", "")
+    if profile_label and profile_label != strategy_name:
+        label = f"{profile_label} ({strategy_name})"
+    else:
+        label = strategy_name
     print(sep, flush=True)
-    print(f"📊 PORTFOLIO HEARTBEAT · {stamp} · {strategy_name} · {mode}", flush=True)
+    print(f"📊 PORTFOLIO HEARTBEAT · {stamp} · {label} · {mode}", flush=True)
     print(
         f"   equity ${equity:.2f}  |  cash ${cash:.2f} ({cash_pct:.0f}%)  |  invested ${invested:.2f}",
         flush=True,
@@ -2705,6 +2710,11 @@ def cli_auto_loop(
     else:
         os.environ.pop("POLYMARKET_DRY_RUN", None)
         os.environ["POLYMARKET_RUN_NAME"] = "live"
+
+    # Expose profile stem so heartbeat/telemetry can show the source
+    # profile (e.g. "kzerlepgm_baseline") rather than the generic engine
+    # label ("smart_money"). Falls back gracefully if unset.
+    os.environ["POLYMARKET_PROFILE_LABEL"] = profile_path.stem
 
     settings = Settings()
 
