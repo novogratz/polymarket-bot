@@ -1567,12 +1567,12 @@ def select_claude_mid_dump_fade(eligible: list[tuple[Candidate, float]], n: int)
 
 
 def select_claude_resolution_sniper(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
-    """bid >= 0.97 + <= 30 min. Last-mile near-certain favorites."""
+    """bid >= 0.92 + <= 90 min. Last-mile near-certain favorites (loosened from 0.97/30min)."""
     qualified = [
         (c, c.best_bid or 0.0) for c, _ in eligible
-        if (c.best_bid or 0.0) >= 0.97
-        and (c.hours_to_close or 99.0) <= 0.5
-        and (c.volume or 0) >= 200.0
+        if (c.best_bid or 0.0) >= 0.92
+        and (c.hours_to_close or 99.0) <= 1.5
+        and (c.volume or 0) >= 100.0
     ]
     return _dedupe_top_n(qualified, n)
 

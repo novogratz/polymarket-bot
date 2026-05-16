@@ -33,13 +33,13 @@ enabled = false
 [edge]
 max_hours = 4.0                         # ⚠ règle dure
 scan_limit = 500
-min_liquidity_usd = 1000.0
-min_volume_24h_usd = 300.0
+min_liquidity_usd = 500.0
+min_volume_24h_usd = 150.0
 min_price = 0.05
 max_price = 0.95
-max_spread = 0.05
+max_spread = 0.08
 fee_pct = 0.02                          # estimation slippage + frais
-min_edge_pct = 0.005                    # 0.5% edge min — permissif pour que la lane near-cert fire
+min_edge_pct = 0.003                    # 0.3% edge min (loosened: lanes were starving)
 kelly_fraction = 0.25                   # 1/4 Kelly (sizing prudent)
 max_position_pct = 0.15                 # 15% du capital par trade (=$15 sur $100)
 max_orders_per_tick = 5                 # jusqu'à 4 entrées par tick
@@ -59,7 +59,7 @@ near_expiry_minutes = 5
 resolved_exit_threshold = 0.97
 
 # Lane arbitrage
-arb_fee_buffer = 0.02                   # YES+NO < 0.98 = arb
+arb_fee_buffer = 0.015                  # YES+NO < 0.985 = arb (loosened from 0.98)
 arb_max_position_pct = 0.25             # arb autorise plus de capital
 
 # Lane crypto directional
@@ -71,9 +71,9 @@ crypto_momentum_alpha = 4.0             # (legacy — only used if direction re-
 # Lane near-certainty
 near_cert_enabled = true
 near_cert_max_hours = 4.0               # élargi à 4h pour ratisser plus large
-near_cert_min_bid = 0.70                # élargi de 0.82 à 0.70 (plus de candidats)
-near_cert_max_ask = 0.97
-near_cert_bias_multiplier = 1.03        # léger biais favori (sinon edge = -spread, lane jamais déclenchée)
+near_cert_min_bid = 0.55                # loosened: 0.70 starved the lane to 0
+near_cert_max_ask = 0.98
+near_cert_bias_multiplier = 1.06        # bumped from 1.03 — sinon edge negligible vs spread+fees
 
 # Lane scalp (off par défaut — manque ordre limite + websocket)
 scalp_enabled = false
