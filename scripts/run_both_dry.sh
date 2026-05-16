@@ -33,6 +33,9 @@ run_bot() {
         POLYMARKET_SUPPRESS_BUY_LOGS=1 \
         uv run pmbot auto-loop --dry-run --profile "$profile" --run "$run" \
         2>&1 | sed -u "s/^/[${prefix}] /" &
+    # Stagger startup so 26 bots don't burst the Polymarket leaderboard API
+    # simultaneously (was hitting 429 with 9+ smart-money bots).
+    sleep 1.5
 }
 
 # Dry-validated winners (60%+ wr in earlier sample)

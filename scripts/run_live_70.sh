@@ -15,6 +15,10 @@ cd "$REPO_ROOT"
 # Sync live positions (toggle hors schéma).
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
+# Live tick interval — fast (10s) even though kzerlepgm_baseline TOML
+# now uses 60s for the dry-race rate-limit fix. Env var override wins.
+export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
+
 # Telegram: tout pousser en live (override .env qui a TELEGRAM_ALERT_TRADES=0
 # pour rester silencieux en dry-run).
 export TELEGRAM_ALERT_TRADES=1

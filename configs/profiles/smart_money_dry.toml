@@ -20,7 +20,6 @@ assumed_live_balance_usd = 0.0
 
 [trader_cohort]
 leaderboard_window = "MONTH"
-leaderboard_windows = "WEEK,MONTH,ALL"
 top_n = 100
 min_trader_pnl = 1000.0
 min_trader_volume = 2000.0
@@ -118,5 +117,5 @@ intersect_min = 2
 
 [telemetry]
 quiet = true
-auto_interval_seconds = 30
+auto_interval_seconds = 70
 stdout_heartbeat_minutes = 15

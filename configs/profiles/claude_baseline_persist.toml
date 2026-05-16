@@ -134,4 +134,4 @@ intersect_min = 2
 
 [telemetry]
 quiet = false
-auto_interval_seconds = 10
+auto_interval_seconds = 130

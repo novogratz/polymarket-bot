@@ -132,4 +132,4 @@ enabled = false                           # référence A/B sans filtre persista
 
 [telemetry]
 quiet = false
-auto_interval_seconds = 10
+auto_interval_seconds = 95
