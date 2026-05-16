@@ -4,7 +4,7 @@
 # Trigger : panic move ≥15¢ confirmé par vol ≥\$3k. Parie AVEC le
 # mouvement (côté gagnant), thèse : une partie des panic moves
 # continue jusqu'à la résolution.
-# Sizing (\$46 bankroll) : cap \$15/position, 15% stake/trade, 5 orders/tick.
+# Sizing (\$20 bankroll) : cap \$15/position, 15% stake/trade (=\$3), 5 orders/tick.
 # Exits : TP +25% / SL -25% / resolved ≥0.97. Min-hold 3min.
 # Toute la config vit dans configs/profiles/pmlepgm_counter_panic_fade.toml.
 set -euo pipefail
