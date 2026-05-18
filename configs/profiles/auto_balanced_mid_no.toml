@@ -1,7 +1,7 @@
 # auto_balanced_mid_noSL — derived from auto_balanced_mid_panic_cut
 # Hypothesis: panic_cut sibling is -55% with 5 opens stuck; pure no-SL variant of claude_balanced_mid with TP25/SL60 and 5min min_age tests whether removing the tight cut alone preserves equity — if true, panic_cut's loss is the SL, not the mode
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "claude_balanced_mid"
 
 [sizing]

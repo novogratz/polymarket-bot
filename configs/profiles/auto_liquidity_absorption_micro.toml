@@ -1,7 +1,7 @@
 # auto_liquidity_absorption_micro — new lane, no parent in auto_ list yet
 # Hypothesis: liquidity_absorption fires when large size sits in the book; size tiny ($1.20) with ultra-fast TP 9% / SL 5% to maximize closed-trade count and break the 0% win-rate logjam.
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "liquidity_absorption"
 
 [sizing]

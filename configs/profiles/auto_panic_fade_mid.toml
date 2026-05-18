@@ -1,7 +1,7 @@
 # auto_panic_fade_mid — derived from pmlepgm_counter_panic_fade
 # Hypothesis: live winner is panic_fade — replicate but with looser entry (min_vol $1k vs $3k) and tighter SL (-15%) to catch a 4h-window panic earlier; bet WITH the winning side after a 10¢+ intraday spike
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "pmlepgm_counter_panic_fade"
 
 [sizing]

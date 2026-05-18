@@ -1,7 +1,7 @@
 # momentum_strong_continuation — claude_strong_breakout + let-winners-run exits
 # Thesis: 15%+ moves with room to run; +50% TP, hold through pullbacks
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "claude_strong_breakout"
 
 [sizing]

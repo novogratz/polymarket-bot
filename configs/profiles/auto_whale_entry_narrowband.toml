@@ -1,7 +1,7 @@
 # auto_whale_entry_narrowband — derived from auto_whale_solo_sniper
 # Hypothesis: whale_entry_detection picks single dominant wallet entries; restrict to 0.30–0.70 price band (avoids odds-compression near 0/1) with 12% TP / 7% SL — test if mid-band whale flow has cleaner reversion than edge bets
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "whale_entry_detection"
 
 [sizing]

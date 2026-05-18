@@ -1,0 +1,40 @@
+# auto_panic_fade_ultracut — derived from auto_buyer_fade_microcut
+# Hypothesis: microcut wins at 1.5h/TP5/SL3; compress further to 45min/TP3/SL2 — if fade-the-pile edge is real, it should fully play out within 45min of the buying climax, not need 1.5h to mature
+[run]
+starting_cash = 100.0
+mode = "panic_fade"
+
+[sizing]
+max_position_ceiling_usd = 2.0
+min_open_positions = 0
+starter_trade_usd = 1.0
+
+[market_filters]
+min_liquidity_usd = 500.0
+min_volume_usd = 2000.0
+
+[persistence]
+enabled = false
+
+[race]
+max_hours = 0.75
+scan_limit = 500
+min_liquidity_usd = 1200.0
+min_volume_24h_usd = 1500.0
+min_price = 0.10
+max_price = 0.85
+max_spread = 0.025
+stake_usd = 1.0
+stake_pct = 0.05
+max_orders_per_tick = 3
+cash_floor_pct = 0.05
+tp_pct = 0.03
+sl_pct = 0.02
+sl_min_age_minutes = 1
+near_expiry_minutes = 2
+resolved_exit_threshold = 0.97
+
+[telemetry]
+quiet = true
+auto_interval_seconds = 70
+stdout_heartbeat_minutes = 15

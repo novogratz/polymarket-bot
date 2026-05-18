@@ -1,7 +1,7 @@
 # auto_pmlepgm_micro_discipline — derived from pmlepgm_counter_panic_fade
 # Hypothesis: live winner pmlepgm_counter_panic_fade has +$15 / 66% wr in prior dry; port to race with ultra-tight 6% SL + 2.5% stake to test whether discipline preserves the with-momentum edge when capital is constrained ($20 vs $42)
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "pmlepgm_counter_panic_fade"
 
 [sizing]

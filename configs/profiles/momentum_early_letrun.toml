@@ -1,7 +1,7 @@
 # momentum_early_letrun — early_momentum_detection + +100% TP / no early cut
 # Thesis: early signal but high-conviction sizing, ride the asymmetric tail
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "early_momentum_detection"
 
 [sizing]

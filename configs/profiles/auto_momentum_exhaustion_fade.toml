@@ -1,7 +1,7 @@
 # auto_momentum_exhaustion_fade — derived from aggressive_buyer_detection (inverse hypothesis)
 # Hypothesis: aggressive_buyer at -87% chases late pumps; momentum_exhaustion_reversal fades those exact pumps. Tight 8% SL + 14% TP keeps asymmetry positive if fade-edge is real.
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "momentum_exhaustion_reversal"
 
 [sizing]

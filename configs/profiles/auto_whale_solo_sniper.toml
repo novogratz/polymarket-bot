@@ -1,7 +1,7 @@
 # auto_whale_solo_sniper — derived from whale_entry_detection
 # Hypothesis: cohort-consensus strategies are over-represented (6/10 running); test the opposite — single-whale BUY of $1k+ on a fresh token, fast TP at +15%, tight SL at -10%, exploit the 1-2 min window before the rest of the cohort piles in
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "whale_entry_detection"
 
 [sizing]

@@ -69,7 +69,8 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-CYCLE_SECONDS = int(os.environ.get("ANALYST_CYCLE_SECONDS", "300"))   # 5 min (was 15)
+CYCLE_SECONDS = int(os.environ.get("ANALYST_CYCLE_SECONDS", "900"))   # 15min reports
+SPAWN_KILL_INTERVAL = int(os.environ.get("ANALYST_SPAWN_KILL_INTERVAL_SECONDS", "3600"))  # 1h — spawn/kill less frequently than reports
 MAX_BOTS_TOTAL = int(os.environ.get("ANALYST_MAX_BOTS", "150"))
 MAX_SPAWNS_PER_CYCLE = int(os.environ.get("ANALYST_MAX_SPAWNS", "3"))   # was 1
 MAX_TUNES_PER_CYCLE = int(os.environ.get("ANALYST_MAX_TUNES", "2"))     # in-place reroll
@@ -300,7 +301,7 @@ For each new strategy, emit a TOML fenced block:
 # auto_<short_name> — derived from <parent>
 # Hypothesis: <one sentence — what specific param/combo change you're testing>
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "<existing mode name, copy from parent>"
 
 [sizing]
@@ -325,7 +326,7 @@ followed by a full new TOML block (same format as new strategy, with a DIFFERENT
 - New profile name MUST start with `auto_` and be unique (not in existing list above).
 - `mode` MUST be one of: smart_money (default — leave unset), edge, news, mirror, hybrid_smart_money, smart_wallet_consensus, whale_entry_detection, wallet_cluster_correlation, early_momentum_detection, liquidity_vacuum_breakout, mean_reversion_fade, range_channel_trading, aggressive_buyer_detection, orderbook_imbalance, late_momentum_chase, weak_holder_flush, weak_holder_flush_inverse, pmlepgm_counter_panic_fade, pm_le_pgm_weak_holder_flush_inverse, championdumonde_breakout, late_favorite, panic_fade, underdog, favorite, contrarian, random, multi_signal_consensus, claude_resolution_sniper, claude_endgame_sweep, claude_blue_chip, claude_balanced_mid, claude_late_pump, claude_strong_breakout, claude_extreme_consensus, claude_resolution_clock, probability_drift, resolution_compression, liquidity_absorption, momentum_exhaustion_reversal, micro_scalping, kzerlepgm_ultimatestrategy.
 - ONLY parameter variants. No new TOML sections, no Python in TOML.
-- starting_cash MUST be 20.0.
+- starting_cash MUST be 100.0.
 - 4h-only rule: max_hours = 4.0 in [race], max_hours_to_close = 4.0 in [filters] for smart_money mode.
 
 Output: narrative first, then TOML/tune blocks separated by blank lines. Be decisive."""
@@ -396,8 +397,8 @@ def validate_proposal(name: str, toml_body: str) -> str | None:
         return f"name must start with `{SPAWN_PREFIX}`"
     if (PROFILES_DIR / f"{name}.toml").exists():
         return f"profile {name} already exists"
-    if "starting_cash" not in toml_body or "starting_cash = 20" not in toml_body:
-        return "starting_cash must be 20.0"
+    if "starting_cash" not in toml_body or "starting_cash = 100" not in toml_body:
+        return "starting_cash must be 100.0"
     # Reject anything that looks like Python (defensive). Match only at
     # start-of-line so the words "from"/"import" in comments are fine.
     if re.search(r"^\s*(import|from|def|class)\s+\w+", toml_body, re.M):
@@ -600,25 +601,26 @@ def build_main_message(narrative: str, top: list[StratMetrics],
         for m in live_close[:5]:
             parts.append(f"  • `{m.name}` ROI={m.roi_pct:+.1f}% ({m.win_rate:.0f}% wr, {m.closed} closed)")
         parts.append("")
+    def _fmt_row(idx: int, m: "StratMetrics", *, bullet: str = "") -> list[str]:
+        sign = "+" if m.pnl >= 0 else ""
+        marker = bullet if bullet else f"{idx}."
+        # Recover starting from equity - pnl (cheaper than re-reading TOML).
+        starting = max(0.0, m.equity - m.pnl)
+        return [
+            f"  {marker} `{m.name}`",
+            f"      ${starting:.2f} → *${m.equity:.2f}*   {sign}${m.pnl:.2f} ({m.roi_pct:+.1f}%)",
+            f"      WR {m.win_rate:.0f}%  •  closed {m.closed}  •  open {m.open_positions}",
+        ]
+
     if top:
-        parts.append("*🏆 Top 5 — equity / PnL$ / ROI% (started $20)*")
+        parts.append("*🏆 Top 5*")
         for i, m in enumerate(top, 1):
-            sign = "+" if m.pnl >= 0 else ""
-            parts.append(
-                f"  {i}. `{m.name}` "
-                f"${m.equity:.2f}  {sign}${m.pnl:.2f}  {m.roi_pct:+.1f}%  "
-                f"({m.win_rate:.0f}% wr, {m.closed} closed)"
-            )
+            parts.extend(_fmt_row(i, m))
         parts.append("")
     if bottom:
         parts.append("*📉 Bottom 3*")
         for m in bottom:
-            sign = "+" if m.pnl >= 0 else ""
-            parts.append(
-                f"  • `{m.name}` "
-                f"${m.equity:.2f}  {sign}${m.pnl:.2f}  {m.roi_pct:+.1f}%  "
-                f"({m.win_rate:.0f}% wr, {m.closed} closed)"
-            )
+            parts.extend(_fmt_row(0, m, bullet="•"))
         parts.append("")
     if narrative:
         parts.append("*🧠 Insights*")
@@ -638,7 +640,64 @@ def build_main_message(narrative: str, top: list[StratMetrics],
         parts.append("*💀 Killed (underperformers — ROI ≤ -10% & wr ≤ 40%)*")
         for name in killed:
             parts.append(f"  • `{name}`")
+        parts.append("")
+
+    # Recommendation footer — always present.
+    # Logic:
+    #   1. Prefer live-ready candidates (n>=30 AND ROI>=+10% AND wr>=55%)
+    #   2. Else best by ROI with n>=10 and ROI>0
+    #   3. Else best by ROI overall (with caveat about small sample)
+    #   4. Else "no data yet"
+    favorite, reason = _pick_favorite(top + bottom or [])
+    parts.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    if favorite is None:
+        parts.append("🎯 *My favorite strategy currently for live*: _none yet — no rated strategies_")
+    else:
+        sign = "+" if favorite.pnl >= 0 else ""
+        starting = max(0.0, favorite.equity - favorite.pnl)
+        parts.append(f"🎯 *My favorite strategy currently for live*: `{favorite.name}`")
+        parts.append(f"   *Why:* {reason}")
+        parts.append(f"   *Performance:* ${starting:.2f} → *${favorite.equity:.2f}*  {sign}${favorite.pnl:.2f} ({favorite.roi_pct:+.1f}%)")
+        parts.append(f"   *Stats:* WR {favorite.win_rate:.0f}%  •  closed {favorite.closed}  •  open {favorite.open_positions}")
     return "\n".join(parts)
+
+
+def _pick_favorite(metrics: list[StratMetrics]) -> tuple["StratMetrics | None", str]:
+    """Pick the best live candidate + the human-readable reason."""
+    if not metrics:
+        return None, ""
+    # Tier 1 — actually live-ready
+    ready, _ = assess_live_readiness(metrics)
+    if ready:
+        m = ready[0]
+        return m, (
+            f"LIVE-READY — {m.closed} closed trades (≥{LIVE_READY_MIN_TRADES} threshold), "
+            f"ROI {m.roi_pct:+.1f}% (≥{LIVE_READY_MIN_ROI:.0f}% threshold), "
+            f"WR {m.win_rate:.0f}% (≥{LIVE_READY_MIN_WR:.0f}% threshold). "
+            f"Statistically credible — promote with confidence."
+        )
+    # Tier 2 — best by ROI with at least decent sample
+    decent = sorted(
+        [m for m in metrics if m.closed >= 10 and m.pnl > 0],
+        key=lambda m: m.roi_pct, reverse=True,
+    )
+    if decent:
+        m = decent[0]
+        return m, (
+            f"Best risk-adjusted candidate so far — {m.closed} closed trades, "
+            f"ROI {m.roi_pct:+.1f}%, WR {m.win_rate:.0f}%. Sample still below "
+            f"{LIVE_READY_MIN_TRADES}-trade live threshold, so promote only if you accept variance risk."
+        )
+    # Tier 3 — best by PnL with caveat
+    by_pnl = sorted(metrics, key=lambda m: m.pnl, reverse=True)
+    m = by_pnl[0]
+    if m.pnl > 0:
+        return m, (
+            f"Top of board on PnL but only {m.closed} closed trade(s) — "
+            f"variance dominates at this sample. Wait for ≥30 closed trades "
+            f"before serious consideration."
+        )
+    return None, ""
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -802,25 +861,32 @@ def cycle_once() -> None:
     if not state.get("enabled", True):
         print("[analyst] disabled via state file; reporting only", flush=True)
 
-    # Self-heal: if there's a pre-auto-discover leaderboard process
-    # running (stale --runs list), kill+relaunch with auto-discover so
-    # new spawned bots appear without the user restarting anything.
     ensure_leaderboard_auto_discover()
 
     metrics = collect_metrics()
     top, bottom = rank(metrics)
     n_total = len(metrics)
 
-    # Kill auto-spawned underperformers first (frees up bot slot for new spawn)
-    killed = evaluate_kills(metrics, state)
-    if killed:
-        save_autonomous_state(state)
-
-    narrative = ""
+    # Throttle spawn/kill to SPAWN_KILL_INTERVAL (default 1h), but always
+    # post a fresh report (default 15min cycle). This way the user gets
+    # frequent status updates without churning the strategy pool too fast.
+    now_ts = int(time.time())
+    last_action_ts = int(state.get("last_action_ts", 0) or 0)
+    action_due = (now_ts - last_action_ts) >= SPAWN_KILL_INTERVAL
+    killed: list[str] = []
     spawned: list[str] = []
     tuned: list[str] = []
+    narrative = ""
 
-    if top or bottom or n_total >= 5:
+    if action_due:
+        killed = evaluate_kills(metrics, state)
+        if killed:
+            save_autonomous_state(state)
+    else:
+        mins_until = max(0, (SPAWN_KILL_INTERVAL - (now_ts - last_action_ts)) // 60)
+        print(f"[analyst] spawn/kill skipped — next action in {mins_until}min", flush=True)
+
+    if action_due and (top or bottom or n_total >= 5):
         existing_autos = existing_auto_strategies()
         prompt = PROMPT_TEMPLATE.format(
             n_total=n_total,
@@ -897,6 +963,8 @@ def cycle_once() -> None:
         narrative = f"Only {n_total} strategies tracked, none rated yet (need ≥{MIN_TRADES_TO_RATE} closed trades)."
 
     state["last_cycle_ts"] = int(time.time())
+    if action_due and (killed or spawned or tuned):
+        state["last_action_ts"] = int(time.time())
     save_autonomous_state(state)
 
     live_ready, live_close = assess_live_readiness(metrics)
@@ -909,8 +977,21 @@ def cycle_once() -> None:
 def main() -> int:
     print(f"[analyst] starting — cycle={CYCLE_SECONDS}s, max_bots={MAX_BOTS_TOTAL}",
           flush=True)
-    # First cycle after 60s so dry race has time to write initial state
-    time.sleep(60)
+    # Initial wait so bots can write some state. First REPORT fires in
+    # CYCLE_SECONDS (15min), first SPAWN/KILL cycle in SPAWN_KILL_INTERVAL
+    # (1h) once we have enough sample.
+    print(
+        f"[analyst] cycle={CYCLE_SECONDS}s reports, "
+        f"spawn/kill every {SPAWN_KILL_INTERVAL}s",
+        flush=True,
+    )
+    # Stamp last_action_ts to now so the first spawn/kill waits a full
+    # SPAWN_KILL_INTERVAL — gives bots time to accumulate sample.
+    initial_state = load_autonomous_state()
+    initial_state["last_action_ts"] = int(time.time())
+    save_autonomous_state(initial_state)
+    print(f"[analyst] first report in 90s, first spawn/kill in {SPAWN_KILL_INTERVAL//60}min", flush=True)
+    time.sleep(90)
     while True:
         try:
             cycle_once()

@@ -1,7 +1,7 @@
 # auto_kzerlepgm_aggressive — derived from kzerlepgm_ultimatestrategy
 # Hypothesis: kzerlepgm mode is absent from current race despite being available; deploy with mid-aggressive sizing (6% stake) + wide TP (25%) to test whether the ultimate-strategy composite outperforms current losers in mark-to-market terms
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "kzerlepgm_ultimatestrategy"
 
 [sizing]

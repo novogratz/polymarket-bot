@@ -1,7 +1,7 @@
 # auto_resolution_compression_clock — new lane, no parent in auto_ list yet
 # Hypothesis: resolution_compression rides last-mile odds tightening as expiry nears; with 4h-only universe this should fire frequently. Wide TP 25% / tight SL 9% to capture compression asymmetry without overstaying.
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "resolution_compression"
 
 [sizing]

@@ -6,7 +6,7 @@
 #   - fallback_consensus 2 → 1 (relax fallback only, strict stays 2)
 
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 
 [sizing]
 position_pct = 0.10
@@ -17,7 +17,7 @@ high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 5
 starter_trade_usd = 5.0
-assumed_live_balance_usd = 20.0
+assumed_live_balance_usd = 100.0
 
 [trader_cohort]
 leaderboard_window = "WEEK"

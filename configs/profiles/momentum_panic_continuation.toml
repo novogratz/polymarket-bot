@@ -1,7 +1,7 @@
 # momentum_panic_continuation — pmlepgm_counter_panic_fade + bigger size
 # Thesis: panic moves of 15%+ have momentum, ride WITH them aggressively
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "pmlepgm_counter_panic_fade"
 
 [sizing]

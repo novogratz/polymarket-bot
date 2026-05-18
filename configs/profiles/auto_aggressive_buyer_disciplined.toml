@@ -1,7 +1,7 @@
 # auto_aggressive_buyer_disciplined — derived from aggressive_buyer_detection
 # Hypothesis: aggressive_buyer_detection at -87% (n=0) isn't worse than baseline — the signal may have edge, but loose 25% SL lets losers compound; force discipline with 8% SL + 12% TP to capture the asymmetric early-momentum edge if it exists
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "aggressive_buyer_detection"
 
 [sizing]

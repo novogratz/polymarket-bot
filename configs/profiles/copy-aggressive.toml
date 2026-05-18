@@ -12,7 +12,7 @@
 # (the runtime never read them).
 
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "mirror"
 
 [mirror]

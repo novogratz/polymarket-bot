@@ -1,7 +1,7 @@
 # momentum_volume_spike_safe — claude_volume_spike + defensive exits
 # Thesis: volume bursts often precede momentum; protect against fakeouts
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "claude_volume_spike"
 
 [sizing]

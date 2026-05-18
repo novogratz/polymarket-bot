@@ -1,7 +1,7 @@
 # momentum_early_quickprofit — early_momentum_detection + +15% TP / -10% SL
 # Thesis: small-momentum captures, take +15% and bounce, never bleed
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "early_momentum_detection"
 
 [sizing]

@@ -1,7 +1,7 @@
 # auto_balanced_mid_blade — derived from auto_balanced_mid_panic_cut
 # Hypothesis: balanced_mid with panic_cut still bleeding -55.5% (5 stuck opens) suggests its problem is hold-time not entry; port the microcut exit profile (1h/TP6/SL3) onto balanced_mid to test if the entry signal is salvageable with blade discipline
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "claude_balanced_mid"
 
 [sizing]

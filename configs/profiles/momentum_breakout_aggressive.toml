@@ -1,7 +1,7 @@
 # momentum_breakout_aggressive — championdumonde_breakout + larger stake + loose SL
 # Thesis: ride big breakouts hard, let them run, take the variance
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "championdumonde_breakout"
 
 [sizing]

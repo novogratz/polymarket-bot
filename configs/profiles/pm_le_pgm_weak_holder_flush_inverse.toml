@@ -4,7 +4,7 @@
 # le côté opposé d'un dump de panique : mom ≥ +10% et vol ≥ $1k.
 
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "pm_le_pgm_weak_holder_flush_inverse"
 
 [sizing]

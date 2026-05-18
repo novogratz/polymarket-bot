@@ -1,0 +1,40 @@
+# auto_whf_inverse_ultracohort — derived from auto_weak_flush_inv_scalp
+# Hypothesis: weak_holder_flush_inverse alpha is concentrated when a flush is followed by a sharp tightening of the cohort; test 3% spread floor + premium 0.30-0.70 band with micro stake — if positive vs the wide variant, the inverse edge requires execution quality at re-entry
+[run]
+starting_cash = 100.0
+mode = "weak_holder_flush_inverse"
+
+[sizing]
+max_position_ceiling_usd = 2.0
+min_open_positions = 0
+starter_trade_usd = 1.0
+
+[market_filters]
+min_liquidity_usd = 1500.0
+min_volume_usd = 4000.0
+
+[persistence]
+enabled = false
+
+[race]
+max_hours = 4.0
+scan_limit = 400
+min_liquidity_usd = 2500.0
+min_volume_24h_usd = 4000.0
+min_price = 0.30
+max_price = 0.70
+max_spread = 0.012
+stake_usd = 1.2
+stake_pct = 0.06
+max_orders_per_tick = 2
+cash_floor_pct = 0.05
+tp_pct = 0.08
+sl_pct = 0.04
+sl_min_age_minutes = 2
+near_expiry_minutes = 4
+resolved_exit_threshold = 0.97
+
+[telemetry]
+quiet = true
+auto_interval_seconds = 125
+stdout_heartbeat_minutes = 15

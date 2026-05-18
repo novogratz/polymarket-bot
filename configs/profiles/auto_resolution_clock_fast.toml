@@ -1,7 +1,7 @@
 # auto_resolution_clock_fast — derived from claude_resolution_clock
 # Hypothesis: field has 0 closed trades after multiple cycles — entries sit too long without resolving; force resolution_clock mode with 90-min max_hours and aggressive near-expiry exit at 3 min to mechanically convert mark-to-market into realized PnL
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "claude_resolution_clock"
 
 [sizing]

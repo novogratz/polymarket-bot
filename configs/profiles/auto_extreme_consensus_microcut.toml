@@ -1,7 +1,7 @@
 # auto_extreme_consensus_microcut — derived from auto_extreme_consensus_fast_cut
 # Hypothesis: fast_cut at 1.5h/TP10/SL6 is the best consensus variant (-6%); compress to 1h max with TP 7% / SL 4% and 1c spread cap to test whether the 1.5h-to-1h window holds any further edge or if even 1h is too long for the extreme-consensus signal
 [run]
-starting_cash = 20.0
+starting_cash = 100.0
 mode = "claude_extreme_consensus"
 
 [sizing]
