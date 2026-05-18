@@ -89,6 +89,12 @@ KILL_HUMAN_MIN_TRADES = int(os.environ.get("ANALYST_KILL_HUMAN_MIN_TRADES", "20"
 KILL_ROI_THRESHOLD = float(os.environ.get("ANALYST_KILL_ROI", "-10.0"))
 KILL_WR_THRESHOLD = float(os.environ.get("ANALYST_KILL_WR", "40.0"))
 
+# Absolute equity halt — catastrophic-loss circuit breaker. Fires
+# regardless of closed-trade count, so it catches bots like panic_fade
+# that bled $98/$100 entirely in unrealized losses (0W/0L closed but
+# positions worth pennies). Default: kill at equity <= 50% of start.
+KILL_EQUITY_FLOOR_PCT = float(os.environ.get("ANALYST_KILL_EQUITY_FLOOR_PCT", "50.0"))
+
 # Live-readiness criteria (a strategy is "ready for live" when it has
 # accumulated enough sample to back-test confidence):
 LIVE_READY_MIN_TRADES = int(os.environ.get("ANALYST_LIVE_READY_MIN_TRADES", "30"))
@@ -820,11 +826,19 @@ def evaluate_kills(metrics: list[StratMetrics], state: dict) -> list[str]:
                        if not r.get("killed_at")}
     killed: list[str] = []
     for m in metrics:
-        if not (m.roi_pct <= KILL_ROI_THRESHOLD and m.win_rate <= KILL_WR_THRESHOLD):
+        # Two paths to kill:
+        #   (a) catastrophic equity collapse (ROI <= -50%) — fires
+        #       regardless of closed-trade count, catches "all loss
+        #       in unrealized" bots like panic_fade
+        #   (b) sustained underperformance — needs sample AND both
+        #       ROI <= -10% AND wr <= 40%
+        catastrophic = m.roi_pct <= -KILL_EQUITY_FLOOR_PCT
+        if not catastrophic and not (m.roi_pct <= KILL_ROI_THRESHOLD
+                                       and m.win_rate <= KILL_WR_THRESHOLD):
             continue
         is_auto = m.name in spawned_records
         min_trades = KILL_AUTO_MIN_TRADES if is_auto else KILL_HUMAN_MIN_TRADES
-        if m.closed < min_trades:
+        if not catastrophic and m.closed < min_trades:
             continue
         pid = (spawned_records[m.name].get("pid") if is_auto
                else find_bot_pid_by_name(m.name))
@@ -833,7 +847,10 @@ def evaluate_kills(metrics: list[StratMetrics], state: dict) -> list[str]:
             continue
         ok = kill_bot(pid, m.name)
         archive_profile(m.name)
-        reason = f"ROI={m.roi_pct:.1f}% wr={m.win_rate:.0f}% n={m.closed}"
+        if catastrophic:
+            reason = f"💥 catastrophic ROI={m.roi_pct:.1f}% (≤-{KILL_EQUITY_FLOOR_PCT:.0f}%)"
+        else:
+            reason = f"ROI={m.roi_pct:.1f}% wr={m.win_rate:.0f}% n={m.closed}"
         if is_auto:
             rec = spawned_records[m.name]
             rec["killed_at"] = int(time.time())
