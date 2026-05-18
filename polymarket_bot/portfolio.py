@@ -173,7 +173,7 @@ class Portfolio:
         reason: str | None = None,
     ) -> dict[str, Any] | None:
         current_shares = float(position.get("shares", 0.0))
-        if shares <= 0.0 or exit_price <= 0.0 or current_shares <= 0.0:
+        if shares <= 0.0 or exit_price < 0.0 or current_shares <= 0.0:
             return None
         sold_shares = min(shares, current_shares)
         stake = float(position.get("stake", 0.0))
@@ -195,6 +195,32 @@ class Portfolio:
             exit_record["reason"] = reason
         position.setdefault("exits", []).append(exit_record)
         position["realized_pnl"] = round(float(position.get("realized_pnl", 0.0)) + realized_pnl, 2)
+        # BIG WIN / BIG LOSS stdout banner — uses the same thresholds as the
+        # Telegram alerts so it's tunable from one place.
+        import os as _os
+        try:
+            big_win = float(_os.environ.get("TELEGRAM_BIG_WIN_USD", "10.0"))
+            big_loss = float(_os.environ.get("TELEGRAM_BIG_LOSS_USD", "5.0"))
+        except ValueError:
+            big_win, big_loss = 10.0, 5.0
+        title = (
+            position.get("question")
+            or position.get("title")
+            or position.get("market_title")
+            or "?"
+        )
+        side = position.get("outcome") or "?"
+        strategy = position.get("strategy") or "?"
+        if realized_pnl >= big_win:
+            print(
+                f"🟢 BIG WIN [{strategy}] +${realized_pnl:.2f} on '{str(title)[:55]}' ({side})",
+                flush=True,
+            )
+        elif realized_pnl <= -big_loss:
+            print(
+                f"🔴 BIG LOSS [{strategy}] -${abs(realized_pnl):.2f} on '{str(title)[:55]}' ({side})",
+                flush=True,
+            )
         self.cash = round(self.cash + proceeds, 2)
         position["shares"] = round(current_shares - sold_shares, 6)
         position["stake"] = round(max(0.0, stake - cost_basis), 2)
@@ -241,6 +267,7 @@ class Portfolio:
                 outcome=str(position.get("outcome", "") or ""),
                 held_seconds=held_seconds,
                 market_url=str(position.get("url") or "") or None,
+                strategy=str(position.get("strategy") or "") or None,
             )
         except Exception as exc:
             print(f"[notif] trade_sell hook failed: {exc}", file=sys.stderr, flush=True)
@@ -290,12 +317,20 @@ class Portfolio:
                 candidate = by_market_outcome.get((position.get("market_id"), position.get("outcome")))
             if candidate is None:
                 continue
-            current_value = float(position["shares"]) * candidate.price
-            position["current_price"] = candidate.price
+            # Mark to the bid (what we'd actually sell at). outcomePrices is the
+            # last-trade print and can be stale for minutes, producing fake huge
+            # PnL spikes that wrongly arm peak/trailing exits.
+            mark_price = (
+                candidate.best_bid
+                if candidate.best_bid is not None and candidate.best_bid > 0
+                else candidate.price
+            )
+            current_value = float(position["shares"]) * mark_price
+            position["current_price"] = mark_price
             position["unrealized_pnl"] = round(current_value - float(position["stake"]), 2)
             entry_price = float(position.get("entry_price", 0.0))
             if entry_price > 0:
-                pnl_pct = (candidate.price - entry_price) / entry_price
+                pnl_pct = (mark_price - entry_price) / entry_price
                 position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", pnl_pct)), pnl_pct)
             if candidate.end_date and not position.get("end_date"):
                 position["end_date"] = candidate.end_date.isoformat()

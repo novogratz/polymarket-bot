@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Lance le bot en LIVE avec le profil live-90.
-# La config "schéma" (sizing, filtres, exits, BTC, noise_fallback, auto_tune)
-# vit dans configs/profiles/live-90.toml. Ce script complète avec les env vars
-# hors schéma (discovery, reverse-lookup, crypto cohort, cohort exit, sport
-# penalty, etc.) — TODO: les migrer progressivement dans le profil.
+# Lance le bot en LIVE avec le profil claude_baseline_quick_exit.
+# Variante défensive de kzerlepgm_baseline : protège les gains tôt.
+# Mode smart_money (default) : leaderboard WEEK top 50, multi-wallet
+# consensus ≥2 sur même token < 240min, min_copied_usdc=\$50.
+# Exits aggressifs : SL -25% (vs -40%), peak-protect armé à +50%
+# (exit dès retour à +20%), trailing armé à +15%, stop_loss_min_age 5min.
+# Sizing 10%/trade, cap \$25/position. assumed_live_balance_usd=\$20.
+# Toute la config vit dans configs/profiles/claude_baseline_quick_exit.toml.
 #
 # Ce script passe --yes : la confirmation interactive est skipée, donc aucun
 # besoin de TTY. Pour une exécution sans --yes (auto-loop --live tout court),
@@ -14,78 +17,36 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# === Env vars hors schéma du profil ===
-# (Toutes les variables ici devraient finir dans configs/profiles/live-90.toml
-# à terme via une extension du _SCHEMA.)
-
 # Sync live positions (toggle hors schéma).
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
-# Discovery (catégories + mots-clés + fenêtres temporelles).
-export POLYMARKET_SMART_CATEGORIES=OVERALL,FINANCE,ECONOMICS,TECH,POLITICS,SPORTS,CULTURE,WEATHER
-export POLYMARKET_SMART_DISCOVERY_KEYWORDS='election,trump,senate,congress,fed,inflation,cpi,unemployment,gdp,weather,rain,snow,hurricane,temperature,box office,movie,earnings,stock,nasdaq'
-export POLYMARKET_SMART_TIME_PERIODS=MONTH,ALL
+# Live tick interval — fast (10s) even though kzerlepgm_baseline TOML
+# now uses 60s for the dry-race rate-limit fix. Env var override wins.
+export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
 
-# Reverse-lookup des tokens à fort flux smart-money.
-export POLYMARKET_SMART_REVERSE_LOOKUP_ENABLED=1
-export POLYMARKET_SMART_REVERSE_LOOKUP_MAX_TOKENS=100
-export POLYMARKET_SMART_REVERSE_LOOKUP_MIN_COPIED_USDC=50
-export POLYMARKET_SMART_REVERSE_LOOKUP_MIN_LIQUIDITY_USD=200
-export POLYMARKET_SMART_REVERSE_LOOKUP_MIN_VOLUME_USD=500
+# Telegram: tout pousser en live (override .env qui a TELEGRAM_ALERT_TRADES=0
+# pour rester silencieux en dry-run).
+export TELEGRAM_ALERT_TRADES=1
+export TELEGRAM_ALERT_TRADES_BUY=1
+export TELEGRAM_ALERT_ERRORS=1
+export TELEGRAM_ALERT_THRESHOLDS=1
+export TELEGRAM_ALERT_HEARTBEAT=1
+export TELEGRAM_ALERT_PORTFOLIO_UPDATES=1
+export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
-# Cohorte crypto (filtres dédiés).
-export POLYMARKET_SMART_ALLOW_CRYPTO=1
-export POLYMARKET_SMART_CRYPTO_MIN_BUY_PRICE=0.70
-export POLYMARKET_SMART_CRYPTO_MIN_HOURS_TO_CLOSE=2
-export POLYMARKET_SMART_CRYPTO_MAX_HOURS_TO_CLOSE=48
-export POLYMARKET_SMART_CRYPTO_MIN_COPIED_USDC=1500
+# ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
+# Every 30 min: reads paper_state + trade_journal, compares vs dry race
+# leaders, calls `claude` CLI for insights. NEVER touches the live bot;
+# pure observability. Kill via Ctrl+C (same process group).
+cleanup() {
+    kill 0 2>/dev/null || true
+    wait 2>/dev/null || true
+}
+trap cleanup INT TERM EXIT
+python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
 
-# Sizing complémentaire hors schéma.
-export POLYMARKET_MAX_POSITION_USD=7
-export POLYMARKET_SMART_MAX_TRADE_USD=7
-export POLYMARKET_SMART_HIGH_CONVICTION_BALANCE_FRACTION=0.15
+# Profile is set so the heartbeat shows the profile label; live_analyst
+# reads this env var too.
+export POLYMARKET_PROFILE_LABEL=claude_baseline_quick_exit
 
-# BTC edge — détails fins hors schéma.
-export POLYMARKET_BTC_MIN_TRADE_USD=1
-export POLYMARKET_BTC_MIN_BUY_PRICE=0.05
-export POLYMARKET_BTC_MAX_BUY_PRICE=0.95
-export POLYMARKET_BTC_MAX_SPREAD=0.04
-export POLYMARKET_BTC_MIN_MODEL_PROBABILITY=0.90
-export POLYMARKET_BTC_MIN_HOURS_TO_CLOSE=1.0
-
-# Noise fallback — bornes de prix et spread (hors schéma).
-export POLYMARKET_SMART_NOISE_FALLBACK_MIN_BUY_PRICE=0.15
-export POLYMARKET_SMART_NOISE_FALLBACK_MAX_BUY_PRICE=0.85
-export POLYMARKET_SMART_NOISE_FALLBACK_MAX_SPREAD=0.06
-
-# Passes fallback (consensus relâché + deep fallback).
-export POLYMARKET_SMART_FALLBACK_CONSENSUS=2
-export POLYMARKET_SMART_DEEP_FALLBACK_ENABLED=1
-export POLYMARKET_SMART_DEEP_FALLBACK_MIN_COPIED_USDC=25
-
-# Entrées — bornes additionnelles.
-export POLYMARKET_SMART_MIN_TRADE_USD=1
-export POLYMARKET_SMART_MAX_ENTRY_SLIPPAGE=0.12
-
-# Pondération catégories et cap sport.
-export POLYMARKET_SMART_PRIORITY_CATEGORY_BONUS=8
-export POLYMARKET_SMART_SPORTS_SCORE_PENALTY=12
-export POLYMARKET_SMART_MAX_SPORTS_POSITIONS=3
-
-# Fenêtres horaires d'éligibilité.
-export POLYMARKET_SMART_SOON_HOURS=168
-export POLYMARKET_SMART_MIN_HOURS_TO_CLOSE=1
-export POLYMARKET_SMART_MAX_HOURS_TO_CLOSE=72
-
-# Cohort exit (sortie active si la cohorte vend).
-export POLYMARKET_SMART_COHORT_EXIT_ENABLED=1
-export POLYMARKET_SMART_COHORT_EXIT_LOOKBACK_MINUTES=120
-export POLYMARKET_SMART_COHORT_EXIT_MIN_AGE_MINUTES=20
-export POLYMARKET_SMART_COHORT_EXIT_MIN_WALLETS=2
-
-# Exits supplémentaires (near-expiry positif, résolution).
-export POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE=20
-export POLYMARKET_SMART_EXIT_MIN_PROFIT=0.05
-export POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD=0.97
-
-exec uv run pmbot auto-loop --live --profile live-90 --yes
+uv run pmbot auto-loop --live --profile claude_baseline_quick_exit --yes

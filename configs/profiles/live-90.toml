@@ -7,7 +7,7 @@
 
 [run]
 # Côté live cette valeur est ignorée (cash réel synchronisé depuis Polymarket).
-starting_cash = 100.0
+starting_cash = 20.0
 
 [sizing]
 position_pct = 0.18
@@ -15,10 +15,10 @@ max_position_ceiling_usd = 150.0
 max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.30
-cash_floor_pct = 0.05
+cash_floor_pct = 0.02
 min_open_positions = 7
 starter_trade_usd = 15.0
-assumed_live_balance_usd = 90.0
+assumed_live_balance_usd = 20.0
 
 [trader_cohort]
 leaderboard_window = "MONTH"
@@ -52,7 +52,7 @@ max_absolute_spread = 0.08
 max_relative_spread = 0.45
 signal_staleness_seconds = 10
 min_hours_to_close = 0.25
-max_hours_to_close = 72.0
+max_hours_to_close = 4.0
 max_orders_per_tick = 0
 max_sports_positions = 3
 sports_score_penalty = 8.0
@@ -60,7 +60,7 @@ sports_score_penalty = 8.0
 [crypto]
 min_buy_price = 0.70
 min_hours_to_close = 6.0
-max_hours_to_close = 48.0
+max_hours_to_close = 4.0
 min_copied_usdc = 1000.0
 min_consensus = 3
 micro_min_consensus = 3

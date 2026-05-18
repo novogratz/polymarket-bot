@@ -1889,14 +1889,11 @@ def _position_age_minutes(position: dict[str, object]) -> float:
 
 
 def _should_exit_before_expiry(candidate, current_pnl_pct: float, settings: Settings) -> bool:
-    if settings.smart_exit_minutes_to_close <= 0:
-        return False
-    if candidate.hours_to_close is None:
-        return False
-    return (
-        candidate.hours_to_close * 60 <= settings.smart_exit_minutes_to_close
-        and current_pnl_pct >= settings.smart_exit_min_profit
-    )
+    # Near-expiry flush removed across the bot. It was selling at
+    # break-even just because the market was about to resolve, leaving
+    # real upside on the table. Now always returns False; positions
+    # exit only via TP / SL / resolved / cohort signals.
+    return False
 
 
 def _take_profit_tiers(settings: Settings) -> list[tuple[float, float]]:
@@ -1910,6 +1907,56 @@ def _take_profit_tiers(settings: Settings) -> list[tuple[float, float]]:
         except ValueError:
             continue
     return sorted(tiers)
+
+
+def _notify_and_journal_sync_close(settings: Settings, position: dict[str, object]) -> None:
+    """Telegram + journal a sync-detected close.
+
+    The bot's exit path normally handles BUY/SELL alerts; positions that
+    disappear from the CLOB response (manually closed on the Polymarket
+    UI, resolved markets, etc.) bypass that path. Without this hook, the
+    user sees the position vanish from the bot with no record anywhere.
+
+    Idempotent: marks the position with ``sync_closed_notified=True``
+    after the first call and short-circuits on subsequent invocations
+    so a CLOB blip can't trigger duplicate Telegram + journal entries.
+    """
+    if position.get("sync_closed_notified"):
+        return
+    position["sync_closed_notified"] = True
+    try:
+        stake = float(position.get("stake") or 0.0)
+        realized = float(position.get("realized_pnl") or 0.0)
+        pnl_pct = (realized / stake * 100.0) if stake > 0 else None
+        held: int | None = None
+        opened_at = position.get("opened_at")
+        closed_at = position.get("closed_at")
+        if opened_at and closed_at:
+            try:
+                opened_dt = datetime.fromisoformat(str(opened_at).replace("Z", "+00:00"))
+                closed_dt = datetime.fromisoformat(str(closed_at).replace("Z", "+00:00"))
+                held = int((closed_dt - opened_dt).total_seconds())
+            except (TypeError, ValueError):
+                pass
+        notifications.notify_trade_sell(
+            market_title=str(position.get("question") or ""),
+            token_id=str(position.get("token_id") or ""),
+            price=float(position.get("current_price") or 0.0),
+            size_usd=stake,
+            realized_pnl_usd=realized,
+            realized_pnl_pct=pnl_pct,
+            reason="sync_closed",
+            outcome=str(position.get("outcome") or ""),
+            held_seconds=held,
+            market_url=str(position.get("url") or ""),
+            strategy=str(position.get("strategy") or ""),
+        )
+    except Exception as exc:
+        print(f"⚠️  sync_closed notify failed: {type(exc).__name__}: {exc}", flush=True)
+    try:
+        _append_trade_journal(settings, position, "sync_closed")
+    except Exception as exc:
+        print(f"⚠️  sync_closed journal failed: {type(exc).__name__}: {exc}", flush=True)
 
 
 def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[str, object]]:
@@ -1942,7 +1989,15 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
             position["status"] = "closed"
             position["closed_at"] = utc_now().isoformat()
             position["sync_closed"] = True
+            # No actual exit price available (the position is just gone from
+            # the CLOB response). Approximate realized PnL from the last
+            # known mark — best signal until a dedicated close-lookup exists.
+            if not position.get("realized_pnl"):
+                position["realized_pnl"] = round(
+                    float(position.get("unrealized_pnl") or 0.0), 2
+                )
             report.append({"action": "closed_stale_local_position", "token_id": token_id})
+            _notify_and_journal_sync_close(settings, position)
 
     for token_id, item in active_by_token.items():
         position = local_by_token.get(token_id)
@@ -2002,7 +2057,12 @@ def _update_position_from_live_api(position: dict[str, object], item: dict[str, 
     position["initial_shares"] = max(_float(position.get("initial_shares")), _float(item.get("totalBought"), size), size)
     position["unrealized_pnl"] = round(_float(item.get("currentValue"), size * current_price) - stake, 2)
     position["realized_pnl"] = round(_float(item.get("realizedPnl"), _float(position.get("realized_pnl"))), 2)
-    position["status"] = "open"
+    # Never resurrect a position we already sync-closed. CLOB sometimes
+    # blips closed positions back into the active list transiently
+    # (timing / min-value floor / dust), which would loop the
+    # close→notify→reopen cycle and spam Telegram.
+    if not position.get("sync_closed"):
+        position["status"] = "open"
     position["synced_from_polymarket"] = True
     if item.get("eventSlug"):
         position["event_slug"] = str(item.get("eventSlug") or "")
@@ -2048,11 +2108,226 @@ def _is_unfilled_market_order_error(message: str) -> bool:
     )
 
 
+def _all_time_realized_pnl(journal_path: Path) -> tuple[float, int, int, int]:
+    """Sum realized PnL across every closed trade in the journal.
+
+    Returns ``(realized_total, closed_count, wins, losses)``. Safe on
+    missing/malformed files: returns zeros instead of raising.
+    """
+    if not journal_path.is_file():
+        return 0.0, 0, 0, 0
+    total = 0.0
+    closed = 0
+    wins = 0
+    losses = 0
+    try:
+        with journal_path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                closed += 1
+                try:
+                    pnl = float(rec.get("realized_pnl", 0) or 0)
+                except (TypeError, ValueError):
+                    pnl = 0.0
+                total += pnl
+                if pnl > 0:
+                    wins += 1
+                elif pnl < 0:
+                    losses += 1
+    except Exception:
+        return 0.0, 0, 0, 0
+    return total, closed, wins, losses
+
+
+def _print_stdout_heartbeat(
+    settings: Settings,
+    *,
+    strategy_name: str,
+    summary: dict[str, object],
+    trades_24h: int,
+    wins_24h: int,
+    losses_24h: int,
+    realized_24h: float,
+) -> None:
+    """Multi-line portfolio snapshot to stdout.
+
+    Triggered from ``strategy_loop`` at most every
+    ``settings.stdout_heartbeat_minutes`` minutes. Independent of the
+    Telegram heartbeat — both can be enabled at once.
+    """
+    equity = float(summary.get("equity", 0) or 0)
+    cash = float(summary.get("cash", 0) or 0)
+    invested = float(summary.get("invested", 0) or 0)
+    unrealized = float(summary.get("unrealized_pnl", 0) or 0)
+    positions = int(summary.get("open_positions", 0) or 0)
+    cash_pct = (cash / equity * 100.0) if equity > 0 else 0.0
+    decided_24h = wins_24h + losses_24h
+    win_rate = (wins_24h / decided_24h * 100.0) if decided_24h > 0 else 0.0
+    realized_all, closed_all, wins_all, losses_all = _all_time_realized_pnl(
+        settings.trade_journal_path
+    )
+    net_since_start = realized_all + unrealized
+    decided_all = wins_all + losses_all
+    win_rate_all = (wins_all / decided_all * 100.0) if decided_all > 0 else 0.0
+    stamp = time.strftime("%H:%M:%S", time.localtime())
+    mode = "DRY-RUN" if settings.dry_run else "LIVE"
+    sep = "─" * 64
+    profile_label = os.environ.get("POLYMARKET_PROFILE_LABEL", "")
+    if profile_label and profile_label != strategy_name:
+        label = f"{profile_label} ({strategy_name})"
+    else:
+        label = strategy_name
+    print(sep, flush=True)
+    print(f"📊 PORTFOLIO HEARTBEAT · {stamp} · {label} · {mode}", flush=True)
+    print(
+        f"   equity ${equity:.2f}  |  cash ${cash:.2f} ({cash_pct:.0f}%)  |  invested ${invested:.2f}",
+        flush=True,
+    )
+    print(f"   open positions: {positions}  |  unrealized PnL: {unrealized:+.2f}", flush=True)
+    print(
+        f"   since start: realized {realized_all:+.2f} + unrealized {unrealized:+.2f} = "
+        f"net {net_since_start:+.2f} ({closed_all} closed, {wins_all}W/{losses_all}L, "
+        f"{win_rate_all:.0f}% win rate)",
+        flush=True,
+    )
+    if trades_24h > 0:
+        print(
+            f"   last 24h: {trades_24h} closed  |  {wins_24h}W/{losses_24h}L "
+            f"({win_rate:.0f}% win rate)  |  realized {realized_24h:+.2f}",
+            flush=True,
+        )
+    else:
+        print("   last 24h: no closed trades yet", flush=True)
+    print(sep, flush=True)
+
+
+def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> list[dict]:
+    """Universal auto-sell for resolved markets across ALL strategies.
+
+    Every tick, iterate the local portfolio and close any position whose
+    cached ``current_price`` indicates the market has effectively resolved:
+      - WIN-side: current_price >= smart_resolved_exit_threshold (default 0.97)
+      - LOSS-side: current_price <= 0.03 (the inverse — market resolved
+        against us, recoup what little remains and stop bleeding)
+
+    Why this exists: when a market resolves on Polymarket, it stops being
+    returned by the Gamma scan API, so the per-strategy exit loops (which
+    need a fresh ``candidate.best_bid``) never fire ``resolved_market_exit``.
+    Resolved-winners sit at 0.999 forever; resolved-losers sit at 0.001
+    forever. This sweep closes both, regardless of which strategy mode
+    opened them.
+
+    Works in live + dry-run. In live, real USDC distribution happens on
+    chain when the market resolves — this just makes the local ledger
+    consistent. In dry-run, it realises the cached PnL.
+    """
+    win_threshold = float(getattr(settings, "smart_resolved_exit_threshold", 0.97) or 0.97)
+    # Mirror image of the win threshold: if a position's value has collapsed
+    # below 1 - win_threshold (default 0.03), the market has resolved
+    # against us.
+    loss_threshold = round(1.0 - win_threshold, 4)
+    try:
+        from .portfolio import Portfolio
+    except Exception:
+        return []
+    try:
+        portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+    except Exception:
+        return []
+    closed_records: list[dict] = []
+    changed = False
+    now = utc_now()
+    for position in list(portfolio.positions):
+        if position.get("status") != "open":
+            continue
+        cur = position.get("current_price")
+        if cur is None:
+            continue
+        try:
+            cur_f = float(cur)
+        except (TypeError, ValueError):
+            continue
+        # Only close if either tail
+        if cur_f < win_threshold and cur_f > loss_threshold:
+            continue
+        entry = float(position.get("entry_price") or 0.0)
+        shares = float(position.get("shares") or 0.0)
+        if entry <= 0 or shares <= 0:
+            continue
+        cost_basis = float(position.get("stake") or position.get("cost_basis") or (entry * shares))
+        proceeds = cur_f * shares
+        realized_pnl = proceeds - cost_basis
+        side = "win" if cur_f >= win_threshold else "loss"
+        reason = f"resolved_market_sweep_{side}"
+        position["status"] = "closed"
+        position["closed_at"] = now.isoformat()
+        position["realized_pnl"] = round(realized_pnl, 4)
+        position["exit_reason"] = reason
+        position["exit_price"] = cur_f
+        portfolio.cash = float(portfolio.cash or 0.0) + proceeds
+        changed = True
+        closed_records.append({
+            "event": "position_closed",
+            "closed_at": now.isoformat(),
+            "opened_at": position.get("opened_at"),
+            "market_id": position.get("market_id"),
+            "question": position.get("question"),
+            "outcome": position.get("outcome"),
+            "token_id": position.get("token_id"),
+            "strategy": strategy_name,
+            "exit_reason": reason,
+            "entry_price": entry,
+            "exit_price": cur_f,
+            "shares": shares,
+            "cost_basis": round(cost_basis, 4),
+            "realized_pnl_usd": round(realized_pnl, 4),
+            "realized_pnl_pct": round(realized_pnl / cost_basis, 4) if cost_basis > 0 else 0.0,
+        })
+    if changed:
+        try:
+            portfolio.save(settings.state_path)
+        except Exception as exc:
+            print(f"[sweep] failed to save portfolio: {exc}", flush=True)
+        # Append to journal
+        try:
+            journal_path = Path(settings.trade_journal_path)
+            journal_path.parent.mkdir(parents=True, exist_ok=True)
+            with journal_path.open("a", encoding="utf-8") as fh:
+                for rec in closed_records:
+                    fh.write(json.dumps(rec) + "\n")
+        except Exception as exc:
+            print(f"[sweep] failed to append journal: {exc}", flush=True)
+        for rec in closed_records:
+            emoji = "💰" if "win" in rec.get("exit_reason", "") else "💸"
+            sign = "+" if rec["realized_pnl_usd"] >= 0 else ""
+            print(
+                f"{emoji} sweep-close {rec['outcome']} @ {rec['exit_price']:.3f}  "
+                f"pnl {sign}${rec['realized_pnl_usd']:.2f} ({rec['realized_pnl_pct']*100:+.1f}%)  "
+                f"{(rec['question'] or '')[:50]}",
+                flush=True,
+            )
+    return closed_records
+
+
 def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
+    last_heartbeat_ts: float = 0.0
     tick = 0
     while settings.auto_max_ticks <= 0 or tick < settings.auto_max_ticks:
         tick += 1
         started_at = utc_now()
+        # Universal sweep BEFORE the tick: closes positions at cached
+        # price ≥ 0.97 (e.g. resolved markets no longer in Gamma scans).
+        # Runs for every strategy mode — smart_money, race, edge, news.
+        try:
+            _force_close_resolved_positions(settings, strategy_name)
+        except Exception as exc:
+            print(f"[sweep] failed: {type(exc).__name__}: {exc}", flush=True)
         error: dict[str, str] | None = None
         tick_result: dict[str, object] = {}
         try:
@@ -2120,15 +2395,19 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
             cash_val = float(summary_snap.get("cash", 0) or 0)
             unrealized_val = float(summary_snap.get("unrealized_pnl", 0) or 0)
             open_positions_count = int(summary_snap.get("open_positions", 0) or 0)
-            notifications.notify_threshold("drawdown", {"equity_usd": equity_val})
-            notifications.notify_threshold(
-                "equity_floor",
-                {
-                    "equity_usd": equity_val,
-                    "open_positions": open_positions_count,
-                    "cash_usd": cash_val,
-                },
-            )
+            # Skip threshold alerts when the tick errored — summary_snap
+            # is {} in that case and equity_val=$0 would falsely trigger
+            # the equity_floor "🚨 Floor" alert.
+            if error is None:
+                notifications.notify_threshold("drawdown", {"equity_usd": equity_val})
+                notifications.notify_threshold(
+                    "equity_floor",
+                    {
+                        "equity_usd": equity_val,
+                        "open_positions": open_positions_count,
+                        "cash_usd": cash_val,
+                    },
+                )
             trades_24h, wins_24h, losses_24h, top_w, top_l, realized_24h = (
                 _journal_stats_last_24h(settings.trade_journal_path)
             )
@@ -2146,6 +2425,21 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                     "top_loser": top_l,
                 }
             )
+            # Daily summary now handled by scripts/dry_analyst.py
+            # sidecar (cross-strategy view), removed from per-bot loop.
+            if settings.stdout_heartbeat_minutes > 0:
+                now_ts = time.time()
+                if now_ts - last_heartbeat_ts >= settings.stdout_heartbeat_minutes * 60:
+                    _print_stdout_heartbeat(
+                        settings,
+                        strategy_name=strategy_name,
+                        summary=summary_snap,
+                        trades_24h=trades_24h,
+                        wins_24h=wins_24h,
+                        losses_24h=losses_24h,
+                        realized_24h=realized_24h,
+                    )
+                    last_heartbeat_ts = now_ts
         except Exception as exc:
             print(f"[notif] post-tick hook failed: {exc}", file=sys.stderr, flush=True)
 
@@ -2519,6 +2813,11 @@ def cli_auto_loop(
         os.environ.pop("POLYMARKET_DRY_RUN", None)
         os.environ["POLYMARKET_RUN_NAME"] = "live"
 
+    # Expose profile stem so heartbeat/telemetry can show the source
+    # profile (e.g. "kzerlepgm_baseline") rather than the generic engine
+    # label ("smart_money"). Falls back gracefully if unset.
+    os.environ["POLYMARKET_PROFILE_LABEL"] = profile_path.stem
+
     settings = Settings()
     notifications.set_dry_run(settings.dry_run)
 
@@ -2544,7 +2843,8 @@ def cli_auto_loop(
             err=True,
         )
 
-    if (settings.run_mode or "smart_money").lower() == "mirror":
+    mode = (settings.run_mode or "smart_money").lower()
+    if mode == "mirror":
         from . import mirror as mirror_module
 
         if not settings.mirror_target:
@@ -2554,6 +2854,204 @@ def cli_auto_loop(
             )
             raise typer.Exit(code=2)
         mirror_module.mirror_loop(settings)
+    elif mode == "news":
+        from . import news_strategy as news_module
+
+        news_module.news_loop(settings)
+    elif mode == "edge":
+        from . import edge_strategy as edge_module
+
+        edge_module.edge_loop(settings)
+    elif mode == "random":
+        from . import race_strategies as race_module
+
+        race_module.random_loop(settings)
+    elif mode == "contrarian":
+        from . import race_strategies as race_module
+
+        race_module.contrarian_loop(settings)
+    elif mode == "favorite":
+        from . import race_strategies as race_module
+
+        race_module.favorite_loop(settings)
+    elif mode == "championdumonde_breakout":
+        from . import race_strategies as race_module
+
+        race_module.championdumonde_breakout_loop(settings)
+    elif mode == "late_favorite":
+        from . import race_strategies as race_module
+
+        race_module.late_favorite_loop(settings)
+    elif mode == "panic_fade":
+        from . import race_strategies as race_module
+
+        race_module.panic_fade_loop(settings)
+    elif mode == "pmlepgm_counter_panic_fade":
+        from . import race_strategies as race_module
+
+        race_module.pmlepgm_counter_panic_fade_loop(settings)
+    elif mode == "underdog":
+        from . import race_strategies as race_module
+
+        race_module.underdog_loop(settings)
+    elif mode == "hybrid_smart_money":
+        from . import race_strategies as race_module
+
+        race_module.hybrid_smart_money_loop(settings)
+    elif mode == "smart_wallet_consensus":
+        from . import race_strategies as race_module
+
+        race_module.smart_wallet_consensus_loop(settings)
+    elif mode == "whale_entry_detection":
+        from . import race_strategies as race_module
+
+        race_module.whale_entry_loop(settings)
+    elif mode == "wallet_cluster_correlation":
+        from . import race_strategies as race_module
+
+        race_module.wallet_cluster_loop(settings)
+    elif mode == "early_momentum_detection":
+        from . import race_strategies as race_module
+
+        race_module.early_momentum_loop(settings)
+    elif mode == "liquidity_vacuum_breakout":
+        from . import race_strategies as race_module
+
+        race_module.liquidity_vacuum_loop(settings)
+    elif mode == "mean_reversion_fade":
+        from . import race_strategies as race_module
+
+        race_module.mean_reversion_fade_loop(settings)
+    elif mode == "range_channel_trading":
+        from . import race_strategies as race_module
+
+        race_module.range_channel_loop(settings)
+    elif mode == "aggressive_buyer_detection":
+        from . import race_strategies as race_module
+
+        race_module.aggressive_buyer_loop(settings)
+    elif mode == "orderbook_imbalance":
+        from . import race_strategies as race_module
+
+        race_module.orderbook_imbalance_loop(settings)
+    elif mode == "late_momentum_chase":
+        from . import race_strategies as race_module
+
+        race_module.late_momentum_chase_loop(settings)
+    elif mode == "weak_holder_flush":
+        from . import race_strategies as race_module
+
+        race_module.weak_holder_flush_loop(settings)
+    elif mode == "weak_holder_flush_inverse":
+        from . import race_strategies as race_module
+
+        race_module.weak_holder_flush_inverse_loop(settings)
+    elif mode == "pm_le_pgm_weak_holder_flush_inverse":
+        from . import race_strategies as race_module
+
+        race_module.pm_le_pgm_weak_holder_flush_inverse_loop(settings)
+    elif mode == "claude_anti_favorite":
+        from . import race_strategies as race_module
+        race_module.claude_anti_favorite_loop(settings)
+    elif mode == "claude_mid_dump_fade":
+        from . import race_strategies as race_module
+        race_module.claude_mid_dump_fade_loop(settings)
+    elif mode == "claude_resolution_sniper":
+        from . import race_strategies as race_module
+        race_module.claude_resolution_sniper_loop(settings)
+    elif mode == "claude_high_vol_quiet":
+        from . import race_strategies as race_module
+        race_module.claude_high_vol_quiet_loop(settings)
+    elif mode == "claude_lottery_balanced":
+        from . import race_strategies as race_module
+        race_module.claude_lottery_balanced_loop(settings)
+    elif mode == "claude_strong_breakout":
+        from . import race_strategies as race_module
+        race_module.claude_strong_breakout_loop(settings)
+    elif mode == "claude_frozen_favorite":
+        from . import race_strategies as race_module
+        race_module.claude_frozen_favorite_loop(settings)
+    elif mode == "claude_mid_rebound":
+        from . import race_strategies as race_module
+        race_module.claude_mid_rebound_loop(settings)
+    elif mode == "claude_high_vol_panic":
+        from . import race_strategies as race_module
+        race_module.claude_high_vol_panic_loop(settings)
+    elif mode == "claude_high_vol_pop":
+        from . import race_strategies as race_module
+        race_module.claude_high_vol_pop_loop(settings)
+    elif mode == "claude_oversold_bounce":
+        from . import race_strategies as race_module
+
+        race_module.claude_oversold_bounce_loop(settings)
+    elif mode == "claude_late_pump":
+        from . import race_strategies as race_module
+
+        race_module.claude_late_pump_loop(settings)
+    elif mode == "claude_extreme_consensus":
+        from . import race_strategies as race_module
+
+        race_module.claude_extreme_consensus_loop(settings)
+    elif mode == "claude_balanced_mid":
+        from . import race_strategies as race_module
+
+        race_module.claude_balanced_mid_loop(settings)
+    elif mode == "claude_resolution_clock":
+        from . import race_strategies as race_module
+
+        race_module.claude_resolution_clock_loop(settings)
+    elif mode == "claude_endgame_sweep":
+        from . import race_strategies as race_module
+
+        race_module.claude_endgame_sweep_loop(settings)
+    elif mode == "claude_fade_extreme":
+        from . import race_strategies as race_module
+
+        race_module.claude_fade_extreme_loop(settings)
+    elif mode == "claude_mid_volume_band":
+        from . import race_strategies as race_module
+
+        race_module.claude_mid_volume_band_loop(settings)
+    elif mode == "claude_blue_chip":
+        from . import race_strategies as race_module
+
+        race_module.claude_blue_chip_loop(settings)
+    elif mode == "claude_volume_spike":
+        from . import race_strategies as race_module
+
+        race_module.claude_volume_spike_loop(settings)
+    elif mode == "claude_mid_endgame":
+        from . import race_strategies as race_module
+
+        race_module.claude_mid_endgame_loop(settings)
+    elif mode == "probability_drift":
+        from . import race_strategies as race_module
+
+        race_module.probability_drift_loop(settings)
+    elif mode == "resolution_compression":
+        from . import race_strategies as race_module
+
+        race_module.resolution_compression_loop(settings)
+    elif mode == "liquidity_absorption":
+        from . import race_strategies as race_module
+
+        race_module.liquidity_absorption_loop(settings)
+    elif mode == "momentum_exhaustion_reversal":
+        from . import race_strategies as race_module
+
+        race_module.momentum_exhaustion_loop(settings)
+    elif mode == "micro_scalping":
+        from . import race_strategies as race_module
+
+        race_module.micro_scalping_loop(settings)
+    elif mode == "multi_signal_consensus":
+        from . import race_strategies as race_module
+
+        race_module.multi_signal_consensus_loop(settings)
+    elif mode == "kzerlepgm_ultimatestrategy":
+        from . import race_strategies as race_module
+
+        race_module.kzer_endgame_loop(settings)
     else:
         smart_money_loop(settings)
 
@@ -2606,6 +3104,85 @@ def status() -> None:
 def positions() -> None:
     """Affiche les positions ouvertes en table CLI, triées par PnL décroissant."""
     print_positions(Settings())
+
+
+@app.command("leaderboard")
+def cli_leaderboard(
+    runs: str = typer.Option(
+        "news,edge",
+        "--runs",
+        help="CSV of dry-run names to compare (e.g. 'news,edge'). Ignored when --auto-discover is set.",
+    ),
+    auto_discover: bool = typer.Option(
+        False,
+        "--auto-discover",
+        help="Include every dry_runs/* subdir (picks up bots spawned at runtime, e.g. by the autonomous analyst).",
+    ),
+    interval: int = typer.Option(
+        15,
+        "--interval",
+        help="Refresh interval in minutes (default 15). Use --once for a single snapshot.",
+    ),
+    once: bool = typer.Option(
+        False,
+        "--once",
+        help="Print the leaderboard once and exit (no polling loop).",
+    ),
+    telegram: bool = typer.Option(
+        False,
+        "--telegram",
+        help="Also broadcast each refresh to Telegram (requires TELEGRAM_* env vars).",
+    ),
+) -> None:
+    """Live leaderboard ranking dry-run strategies by ROI.
+
+    Reads each ``data/dry_runs/<name>/`` (state.json, journal.jsonl,
+    metadata.json) and prints a ranked scoreboard. Designed to run as
+    a sidecar process alongside the trading bots.
+
+    With ``--auto-discover`` the run list is rebuilt from disk on each
+    refresh, so bots spawned at runtime by the autonomous analyst
+    (``auto_*`` profiles) show up automatically.
+    """
+    from .leaderboard import (
+        format_leaderboard,
+        gather_live_stats,
+        gather_run_stats,
+        run_leaderboard_loop,
+    )
+
+    base_dir = Path(__file__).resolve().parent.parent / "data"
+
+    def _discover() -> list[str]:
+        d = base_dir / "dry_runs"
+        if not d.exists():
+            return []
+        return sorted(p.name for p in d.iterdir() if p.is_dir())
+
+    if auto_discover:
+        run_names = _discover()
+        if not run_names:
+            typer.echo("--auto-discover: data/dry_runs/ is empty", err=True)
+            raise typer.Exit(code=2)
+    else:
+        run_names = [r.strip() for r in runs.split(",") if r.strip()]
+        if not run_names:
+            typer.echo("--runs is empty", err=True)
+            raise typer.Exit(code=2)
+
+    if once:
+        stats = []
+        for name in run_names:
+            s = gather_run_stats(base_dir, name)
+            if s is not None:
+                stats.append(s)
+        live = gather_live_stats(base_dir)
+        typer.echo(format_leaderboard(stats, live=live))
+        return
+    run_leaderboard_loop(
+        base_dir, run_names, max(60, interval * 60),
+        telegram=telegram, auto_discover=auto_discover,
+    )
 
 
 @app.command("journal-stats")

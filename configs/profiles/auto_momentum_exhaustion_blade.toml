@@ -1,0 +1,40 @@
+# auto_momentum_exhaustion_blade — derived from auto_momentum_exhaustion_micro
+# Hypothesis: panic_fade winners catch mean-revert moves AFTER exhaustion; momentum_exhaustion_reversal with a blade-fast 3%/2% exit pair may enter the same reverts ~10-20 min earlier and capture the panic_fade alpha before tail decay
+[run]
+starting_cash = 20.0
+mode = "momentum_exhaustion_reversal"
+
+[sizing]
+max_position_ceiling_usd = 2.0
+min_open_positions = 0
+starter_trade_usd = 1.0
+
+[market_filters]
+min_liquidity_usd = 800.0
+min_volume_usd = 2500.0
+
+[persistence]
+enabled = false
+
+[race]
+max_hours = 4.0
+scan_limit = 500
+min_liquidity_usd = 1500.0
+min_volume_24h_usd = 2500.0
+min_price = 0.12
+max_price = 0.82
+max_spread = 0.020
+stake_usd = 1.3
+stake_pct = 0.065
+max_orders_per_tick = 3
+cash_floor_pct = 0.05
+tp_pct = 0.03
+sl_pct = 0.02
+sl_min_age_minutes = 1
+near_expiry_minutes = 3
+resolved_exit_threshold = 0.97
+
+[telemetry]
+quiet = true
+auto_interval_seconds = 110
+stdout_heartbeat_minutes = 15

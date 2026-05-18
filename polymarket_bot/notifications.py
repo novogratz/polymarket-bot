@@ -194,21 +194,50 @@ def _save_state(path: Path, state: _State) -> None:
 
 
 def _default_transport(payload: dict[str, Any]) -> bool:
-    """Transport par défaut: POST sur api.telegram.org via urllib."""
+    """Transport par défaut: POST sur api.telegram.org via urllib.
+
+    On HTTP 400 from Telegram (typically MarkdownV2 parse errors caused
+    by an unescaped char in a strategy name), retry the same message
+    with parse_mode stripped — plain text always goes through.
+    """
     token = _bot_token()
     if not token:
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"}, method="POST"
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
-            return 200 <= resp.status < 300
-    except (urllib.error.URLError, OSError, TimeoutError) as exc:
-        print(f"[notif] failed: {exc}", file=sys.stderr, flush=True)
-        return False
+
+    def _send(p: dict[str, Any]) -> tuple[bool, str]:
+        data = json.dumps(p).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
+                return (200 <= resp.status < 300), ""
+        except urllib.error.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="replace")[:300]
+            except Exception:
+                pass
+            return False, f"HTTP {exc.code}: {body}"
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+            return False, f"{type(exc).__name__}: {exc}"
+
+    ok, err = _send(payload)
+    if ok:
+        return True
+    # 400 → typically parse_mode error → retry as plain text
+    if "HTTP 400" in err and payload.get("parse_mode"):
+        retry = {**payload}
+        retry.pop("parse_mode", None)
+        ok, err2 = _send(retry)
+        if ok:
+            return True
+        err = f"{err} | retry-plain: {err2}"
+    print(f"[notif] failed: {err}", file=sys.stderr, flush=True)
+    return False
 
 
 def _get_transport() -> Transport:
@@ -296,6 +325,85 @@ def _truncate(text: str, max_len: int = 40) -> str:
     return text[: max_len - 1] + "…"
 
 
+def _journal_stats() -> tuple[float, int, int]:
+    """Return (total_realized_pnl_usd, wins, losses) from the trade journal.
+
+    A "win" is a journal entry whose net realized_pnl > 0; loss is < 0.
+    Zero-PnL entries (rare; usually fee-only exits) count as neither.
+    """
+    path = Path(os.environ.get("POLYMARKET_TRADE_JOURNAL_PATH", "data/trade_journal.jsonl"))
+    total = 0.0
+    wins = 0
+    losses = 0
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                entry_pnl = 0.0
+                if rec.get("realized_pnl") is not None:
+                    try:
+                        entry_pnl += float(rec["realized_pnl"])
+                    except (TypeError, ValueError):
+                        pass
+                for exit_rec in rec.get("exits") or []:
+                    try:
+                        entry_pnl += float(exit_rec.get("realized_pnl") or 0)
+                    except (TypeError, ValueError):
+                        pass
+                total += entry_pnl
+                if entry_pnl > 0.005:
+                    wins += 1
+                elif entry_pnl < -0.005:
+                    losses += 1
+    except (FileNotFoundError, OSError):
+        return 0.0, 0, 0
+    return total, wins, losses
+
+
+def _fmt_all_time_line(unrealized: float = 0.0) -> str:
+    """All-time PnL + win-rate, each color-coded.
+
+    Layout: `✅ All-time: +$X.XX  •  🟢 W/L 67% (8W/4L)`.
+    No closed trades yet -> `⚪ All-time: $0.00  •  ⚪ W/L --`.
+
+    ``unrealized`` (optional, USD) is added to the realized total so a
+    currently-winning open position surfaces in the heartbeat line.
+    """
+    pnl, wins, losses = _journal_stats()
+    total = pnl + float(unrealized or 0.0)
+    # PnL color
+    if total > 0.005:
+        pnl_emoji, sign = "✅", "+"
+    elif total < -0.005:
+        pnl_emoji, sign = "❌", "-"
+    else:
+        pnl_emoji, sign = "⚪", ""
+    amt = _fmt_amount(abs(total))  # "$X.XX"
+    pnl_part = f"{pnl_emoji} All\\-time: {_md_escape(sign + amt)}"
+
+    # Win-rate color
+    decided = wins + losses
+    if decided == 0:
+        wr_part = f"⚪ W/L \\-\\-"
+    else:
+        wr = wins / decided * 100.0
+        if wr >= 60:
+            wr_emoji = "🟢"
+        elif wr >= 40:
+            wr_emoji = "🟡"
+        else:
+            wr_emoji = "🔴"
+        wr_part = f"{wr_emoji} W/L {wr:.0f}% \\({wins}W/{losses}L\\)"
+
+    return f"{pnl_part}  •  {wr_part}"
+
+
 def notify_trade_buy(
     *,
     market_title: str,
@@ -305,8 +413,13 @@ def notify_trade_buy(
     signal: dict[str, Any],
     outcome: str | None = None,
     market_url: str | None = None,
+    strategy: str | None = None,
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
+        return
+    # Optional granular suppression: TELEGRAM_ALERT_TRADES_BUY=0 hides BUY
+    # alerts while keeping SELLs (which trigger via notify_trade_sell).
+    if not _flag("TELEGRAM_ALERT_TRADES_BUY"):
         return
     wallets = int(signal.get("wallets", 0) or 0)
     copied = float(signal.get("copied_usdc", 0) or 0)
@@ -332,7 +445,10 @@ def notify_trade_buy(
         footer_parts.append(signal_part)
     if market_url:
         footer_parts.append(f"[🔗]({market_url})")
-    lines = [f"🛒 *BUY* 💵 {size_str} @ {price_str}"]
+    head = f"🛒 *BUY* 💵 {size_str} @ {price_str}"
+    if strategy:
+        head += f"  \\[`{_md_escape(strategy)}`\\]"
+    lines = [head, _fmt_all_time_line()]
     if title and outcome_str:
         lines.append(f"🎯 _{_md_escape(title)}_ 👍 *{outcome_str}*")
     elif title:
@@ -356,6 +472,7 @@ def notify_trade_sell(
     outcome: str | None = None,
     held_seconds: int | None = None,
     market_url: str | None = None,
+    strategy: str | None = None,
 ) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_TRADES"):
         return
@@ -408,10 +525,17 @@ def notify_trade_sell(
         )
 
     outcome_str = _md_escape(outcome or "")
-    tag_line = f"🏷️ {_md_escape(reason)}"
+    tag_parts = [_md_escape(reason)]
+    if strategy:
+        tag_parts.append(f"`{_md_escape(strategy)}`")
+    tag_line = f"🏷️ {' • '.join(tag_parts)}"
     if market_url:
         tag_line += f" • [🔗]({market_url})"
-    lines = [action_line]
+    # BIG WIN / BIG LOSS messages omit the all-time line: they're meant
+    # as celebratory/lamentation banners, and the all-time line can carry
+    # a contradicting color (🔴 W/L 0%) that breaks the visual mood.
+    is_big = is_big_win or (thresholds_on and realized_pnl_usd <= -loss_thresh)
+    lines = [action_line] if is_big else [action_line, _fmt_all_time_line()]
     if title and outcome_str:
         lines.append(f"🎯 _{_md_escape(title)}_ 👍 *{outcome_str}*")
     elif title:
@@ -539,6 +663,10 @@ def _handle_auto_tune_change(payload: dict[str, Any]) -> None:
 def notify_threshold(kind: str, payload: dict[str, Any]) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_THRESHOLDS"):
         return
+    # Threshold alerts are live-only — DD / equity-floor pings from 30
+    # dry bots flood the channel with non-actionable noise.
+    if _is_dry_run():
+        return
     if kind == "drawdown":
         _handle_drawdown(payload)
     elif kind == "equity_floor":
@@ -567,6 +695,10 @@ def _heartbeat_top_line(emoji: str, entry: dict[str, Any]) -> str | None:
 def notify_heartbeat(snapshot: dict[str, Any]) -> None:
     if not is_enabled() or not _flag("TELEGRAM_ALERT_HEARTBEAT"):
         return
+    # Bilan heartbeat is live-only — 30 dry-run bots would firehose the
+    # channel with stale-balance updates that have no signal value.
+    if _is_dry_run():
+        return
     try:
         interval_min = float(os.environ.get("TELEGRAM_HEARTBEAT_MINUTES", "30"))
     except ValueError:
@@ -587,7 +719,8 @@ def notify_heartbeat(snapshot: dict[str, Any]) -> None:
     wins = int(snapshot.get("wins_24h", 0) or 0)
     losses = int(snapshot.get("losses_24h", 0) or 0)
     realized_24h = float(snapshot.get("realized_pnl_24h_usd", 0) or 0)
-    win_rate = (wins / trades * 100.0) if trades > 0 else 0.0
+    decided = wins + losses
+    win_rate = (wins / decided * 100.0) if decided > 0 else 0.0
 
     cash_pct = (cash / equity * 100.0) if equity > 0 else 0.0
     stamp = time.strftime("%Hh%M", time.localtime(now))
@@ -616,6 +749,8 @@ def notify_heartbeat(snapshot: dict[str, Any]) -> None:
     else:
         lines.append("📊 24h: aucun trade clôturé")
 
+    lines.append(_fmt_all_time_line(unrealized=unrealized))
+
     top_w_line = _heartbeat_top_line("🏆", snapshot.get("top_winner") or {})
     top_l_line = _heartbeat_top_line("💸", snapshot.get("top_loser") or {})
     if top_w_line or top_l_line:
@@ -628,3 +763,8 @@ def notify_heartbeat(snapshot: dict[str, Any]) -> None:
     if _post("\n".join(lines)):
         state.last_heartbeat_ts = now
         _save_state(path, state)
+
+
+# notify_daily_summary removed: the autonomous analyst sidecar
+# (scripts/dry_analyst.py) now handles cross-strategy summaries, and
+# the existing notify_heartbeat covers per-strategy daily context.

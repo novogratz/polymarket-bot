@@ -1,0 +1,40 @@
+# auto_contrarian_chase_inverse — derived from aggressive_buyer_detection (loser -87.9%)
+# Hypothesis: aggressive_buyer_detection bleeds badly — the buy-the-chase signal is anti-edge. Use contrarian mode with tight microcut exits to fade the exact same setups that bleed the parent
+[run]
+starting_cash = 20.0
+mode = "contrarian"
+
+[sizing]
+max_position_ceiling_usd = 2.5
+min_open_positions = 0
+starter_trade_usd = 1.5
+
+[market_filters]
+min_liquidity_usd = 600.0
+min_volume_usd = 2500.0
+
+[persistence]
+enabled = false
+
+[race]
+max_hours = 1.5
+scan_limit = 500
+min_liquidity_usd = 1500.0
+min_volume_24h_usd = 2000.0
+min_price = 0.15
+max_price = 0.80
+max_spread = 0.02
+stake_usd = 1.5
+stake_pct = 0.075
+max_orders_per_tick = 3
+cash_floor_pct = 0.05
+tp_pct = 0.05
+sl_pct = 0.03
+sl_min_age_minutes = 2
+near_expiry_minutes = 3
+resolved_exit_threshold = 0.97
+
+[telemetry]
+quiet = true
+auto_interval_seconds = 85
+stdout_heartbeat_minutes = 15

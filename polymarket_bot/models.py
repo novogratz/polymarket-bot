@@ -16,9 +16,15 @@ def parse_dt(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+    # Always return tz-aware (UTC). Without this, downstream subtraction
+    # against utc_now() throws "can't subtract offset-naive and
+    # offset-aware datetimes" when the source string has no timezone.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def utc_now() -> datetime:
@@ -44,6 +50,27 @@ def parse_json_list(value: Any) -> list[Any]:
     except ValueError:
         return []
     return parsed if isinstance(parsed, list) else []
+
+
+_EXCLUDED_QUESTION_SUBSTRINGS = ("up or down",)
+_EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down")
+
+
+def is_excluded_market(market: dict[str, Any]) -> bool:
+    """True for crypto Up/Down binaries — blocked across every strategy.
+
+    Why: these short-dated coin micros (`eth-updown-15m`, `Bitcoin Up or
+    Down…`) have visible spreads but no real book depth, so FOK orders
+    bounce and any fills that land bleed out before exit. Blanket-excluded
+    at the Candidate level so no profile can pick them.
+    """
+    q = str(market.get("question") or "").lower()
+    if any(pat in q for pat in _EXCLUDED_QUESTION_SUBSTRINGS):
+        return True
+    slug = str(market.get("slug") or "").lower()
+    if any(pat in slug for pat in _EXCLUDED_SLUG_SUBSTRINGS):
+        return True
+    return False
 
 
 @dataclass(frozen=True)

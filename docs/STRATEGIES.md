@@ -2,6 +2,32 @@
 
 Document maître expliquant **toutes les lanes** d'achat et toutes les conditions de vente du bot. Aucune ligne de code ici, juste la mécanique métier. Pour les paramètres, voir `docs/PROFILES.md`.
 
+## État actuel (2026-05-15)
+
+**Stratégie LIVE :** `pmlepgm_counter_panic_fade` — top performer du dry race (66% win rate / +$15.73 / 29 trades). Achète le côté gagnant d'un marché binaire ≤4h après un mouvement ≥15¢ confirmé par ≥$3k de volume.
+
+**52 stratégies en dry race**, principales catégories :
+- **Contrarian/fade** (les gagnantes en dry) : `weak_holder_flush_inverse`, `pmlepgm_counter_panic_fade`, `aggressive_buyer_detection`
+- **Smart-money** : `hybrid_smart_money`, `smart_wallet_consensus`, `whale_entry_detection`, `wallet_cluster_correlation`
+- **Resolution-band** : `claude_endgame_sweep`, `claude_resolution_sniper`, `late_favorite`, `resolution_compression`
+- **Momentum** : `breakout`, `early_momentum_detection`, `late_momentum_chase`, `claude_strong_breakout`, `claude_high_vol_pop`
+- **Mid-range** : `claude_balanced_mid`, `claude_mid_endgame`, `claude_mid_rebound`
+- **Volume-based** : `claude_blue_chip` (vol≥$25k), `claude_mid_volume_band`, `claude_volume_spike`
+- **Lottery/long-shots** : `underdog`, `claude_lottery_balanced`, `claude_fade_extreme`
+
+**Règles universelles (toutes les race strategies) :**
+- 4h max d'expiration (règle dure)
+- 15% de l'équité par trade
+- Max 5 ordres par tick
+- 2% cash floor (98% déployable)
+- 3 min min-hold avant toute sortie
+- TP +25% / SL -25% / resolved exit à bid ≥0.97
+- **Pas de near-expiry flush** (supprimée — vendait à break-even prématurément)
+- **Duplicates autorisés** (le bot peut stacker sur le même marché)
+- **Daily DD halt à -15%** de l'équité de départ
+
+Le smart-money path original (lanes décrites ci-dessous) reste actif sur les profils non-race (`edge`, `baseline`, `news`).
+
 ## Vue d'ensemble d'un tick
 
 Chaque tick exécute, dans cet ordre :

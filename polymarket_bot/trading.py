@@ -219,6 +219,32 @@ class TradingSession:
             return self.settings.assumed_live_balance_usd
         return balance
 
+    def live_share_balance(self, token_id: str) -> float | None:
+        """Query the wallet's available share balance for a specific outcome
+        token (CONDITIONAL asset type). Returns the number of shares the
+        wallet can actually sell right now (locked-in-resting-orders
+        excluded by the CLOB itself). Returns None on failure.
+        """
+        if not token_id or self.sdk_client is None:
+            return None
+        try:
+            asset_type, balance_params = _load_clob_types()
+            info = self.sdk_client.get_balance_allowance(
+                balance_params(asset_type=asset_type.CONDITIONAL, token_id=token_id)
+            )
+        except Exception as exc:
+            print(
+                f"   share-balance lookup failed for token {token_id[:12]}…: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return None
+        if not isinstance(info, dict):
+            return None
+        raw = info.get("balance")
+        normalized = self._normalize_amount(raw)
+        return normalized
+
     def derive_or_create_api_creds(self) -> ApiCreds:
         if self.sdk_client is not None:
             method = getattr(self.sdk_client, "create_or_derive_api_key", None)
@@ -351,15 +377,29 @@ class TradingSession:
         raise ValueError("installed Polymarket client does not support order cancellation")
 
     def cancel_active_orders_for_token(self, token_id: str) -> list[str]:
-        """List active CLOB orders, cancel any on the given token, return cancelled ids."""
+        """Best-effort enumerate-and-cancel of resting orders on a token.
+
+        Tries SDK v2 get_orders → legacy get_orders. If neither works the
+        caller is expected to fall back to force-closing the position locally,
+        since enumerate-less bulk cancel methods on this CLOB version all
+        return 400/405 with different shapes.
+        """
         cancelled: list[str] = []
         if not token_id:
             return cancelled
-        try:
-            orders = self.legacy_client.get_orders()
-        except Exception as exc:
-            print(f"⚠️  cancel_active_orders_for_token: get_orders failed: {type(exc).__name__}: {exc}", flush=True)
-            return cancelled
+        orders = None
+        if self.sdk_client is not None:
+            getter = getattr(self.sdk_client, "get_orders", None)
+            if callable(getter):
+                try:
+                    orders = getter()
+                except Exception:
+                    orders = None
+        if orders is None:
+            try:
+                orders = self.legacy_client.get_orders()
+            except Exception:
+                return cancelled
         if not isinstance(orders, list):
             return cancelled
         target = str(token_id)
@@ -419,6 +459,11 @@ class _DryRunClient:
         # No CLOB to ask — return 0 so the smart-money loop falls back
         # on portfolio.cash from the simulated ledger.
         return 0.0
+
+    def live_share_balance(self, token_id: str) -> float | None:
+        # Dry-run: no on-chain balance to fetch — caller should fall back
+        # on portfolio.shares.
+        return None
 
     def cancel_order(self, order_id: str) -> dict:
         return {"dry_run": True, "cancelled": order_id}
@@ -563,11 +608,14 @@ def execute_live_trade(
         )
 
     if settings.quiet:
-        prefix = "[DRY-RUN] " if settings.dry_run else ""
-        print(
-            f"🚀 {prefix}BUY {candidate.outcome} ${stake} @ {entry_price} | "
-            f"{candidate.question[:60]}"
-        )
+        # SELLs still print so operators can see exits without the noise of
+        # individual entries. Toggle via POLYMARKET_SUPPRESS_BUY_LOGS=1.
+        if not settings.suppress_buy_logs:
+            prefix = "[DRY-RUN] " if settings.dry_run else ""
+            print(
+                f"🚀 {prefix}BUY {candidate.outcome} ${stake} @ {entry_price} | "
+                f"{candidate.question[:60]}"
+            )
     else:
         print(f"\n🚀 MARKET BUY: {candidate.outcome} on {candidate.question}")
         print(f"   Stake: ${stake} USDC | Max price guard: {entry_price} | Est. shares: {size}")
@@ -661,6 +709,7 @@ def execute_live_trade(
                 signal=signal_payload,
                 outcome=str(candidate.outcome or ""),
                 market_url=market_url,
+                strategy=strategy,
             )
         except Exception as exc:
             print(f"[notif] trade_buy hook failed: {exc}", file=sys.stderr, flush=True)
@@ -716,6 +765,22 @@ def execute_live_sell(
 
     sell_price = round(min(max(candidate.best_bid, candidate.tick_size), 0.99), 3)
     available_shares = float(position.get("shares", 0.0))
+    # Clamp to on-chain share balance — local ledger can drift slightly from
+    # the wallet due to rounding, partial fills, or resting orders. Asking the
+    # CLOB to sell more than the wallet holds returns "balance is not enough"
+    # which leaves the position stuck. Query the live share balance and use
+    # the minimum.
+    if not settings.dry_run:
+        try:
+            on_chain = client.live_share_balance(str(candidate.token_id or ""))
+            if on_chain is not None and on_chain >= 0:
+                if on_chain < available_shares:
+                    available_shares = on_chain
+        except Exception as exc:
+            print(
+                f"   live share-balance check failed: {type(exc).__name__}: {exc}",
+                flush=True,
+            )
     size = round(min(shares, available_shares), 6)
     if size <= 0:
         raise ValueError("no shares available to sell")

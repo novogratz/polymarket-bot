@@ -12,7 +12,7 @@
 # Toutes les clés ci-dessous sont documentées dans docs/PROFILES.md.
 
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 
 [sizing]
 position_pct = 0.10
@@ -20,17 +20,17 @@ max_position_ceiling_usd = 25.0
 max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0                       # 0 = pas de cap absolu, c'est ceiling qui gouverne
 high_conviction_balance_fraction = 0.30
-cash_floor_pct = 0.05
+cash_floor_pct = 0.02
 min_open_positions = 5
 starter_trade_usd = 5.0
 assumed_live_balance_usd = 0.0
 
 [trader_cohort]
 leaderboard_window = "WEEK"
-top_n = 50
-min_trader_pnl = 500.0
-min_trader_volume = 1000.0
-min_trader_roi = 0.02
+top_n = 100
+min_trader_pnl = 100.0
+min_trader_volume = 200.0
+min_trader_roi = 0.005
 trade_fetch_concurrency = 16
 trade_lookback_minutes = 240
 
@@ -45,18 +45,18 @@ min_liquidity_usd = 500.0
 min_volume_usd = 1000.0
 
 [filters]
-min_consensus = 2
-fallback_consensus = 2
-min_copied_usdc = 50.0
+min_consensus = 1
+fallback_consensus = 1
+min_copied_usdc = 10.0
 min_trade_usd = 1.0
-max_chase_premium = 0.12
+max_chase_premium = 0.20
 price_min = 0.03
 price_max = 0.97
 max_absolute_spread = 0.10
 max_relative_spread = 0.35
 signal_staleness_seconds = 10             # en réalité minutes (env var en min) — clé legacy
 min_hours_to_close = 0.25
-max_hours_to_close = 72.0
+max_hours_to_close = 4.0
 max_orders_per_tick = 0                   # 0 = illimité (gouverné par cash floor)
 max_sports_positions = 3
 sports_score_penalty = 8.0
@@ -64,7 +64,7 @@ sports_score_penalty = 8.0
 [crypto]
 min_buy_price = 0.70
 min_hours_to_close = 6.0
-max_hours_to_close = 48.0
+max_hours_to_close = 4.0
 min_copied_usdc = 1000.0
 min_consensus = 3
 micro_min_consensus = 3

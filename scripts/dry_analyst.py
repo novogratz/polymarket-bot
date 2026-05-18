@@ -1,0 +1,1170 @@
+#!/usr/bin/env python3
+"""Autonomous dry-run analyst sidecar.
+
+Runs alongside the 62-bot dry race. Every 15 minutes:
+  1. Reads per-strategy state + journal from data/dry_runs/
+  2. Computes leaderboard (PnL, win-rate, sample size, avg win/loss)
+  3. Calls Claude CLI for a narrative + optional new-strategy proposal
+  4. Spawns new dry-run bot if proposal accepted (TOML-only, additive)
+  5. Kills auto-spawned bots that are clearly losing (≥KILL_MIN_TRADES
+     closed, ROI ≤ KILL_ROI_THRESHOLD, win_rate ≤ KILL_WR_THRESHOLD)
+  6. Posts a Markdown leaderboard + commentary to Telegram
+
+Hard rules (see MEMORY.md feedback_autonomous_analyst_override.md):
+  - Dry-run only. Never touches live profiles or live ledger.
+  - Kill scope: ONLY auto_* strategies the analyst itself spawned.
+    NEVER kills or modifies the 62 human-curated bots.
+  - TOML-only spawning: new strategies must reuse an existing mode.
+  - Hard caps: 1 spawn/cycle, MAX_BOTS_TOTAL ceiling, kill-switch.
+  - All spawned profile names prefixed `auto_` for traceability.
+
+Kill switch: write `{"enabled": false}` to data/autonomous_state.json
+to halt new spawns. Existing auto bots keep running; reporting continues.
+
+Cost note: ~$0.05-0.30 per Claude call × 96 calls/day ≈ $5-30/day.
+Adjust CYCLE_SECONDS or set enabled=false in autonomous_state.json
+if cost matters.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+import traceback
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DRY_RUNS_DIR = REPO_ROOT / "data" / "dry_runs"
+PROFILES_DIR = REPO_ROOT / "configs" / "profiles"
+STATE_FILE = REPO_ROOT / "data" / "autonomous_state.json"
+
+
+def _load_dotenv() -> None:
+    """Read .env into os.environ. Done explicitly because the analyst
+    runs as a plain python script (no pmbot autoloader). Without this,
+    TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID_DRY_RUN are unset and the
+    Telegram posts silently no-op."""
+    env_file = REPO_ROOT / ".env"
+    if not env_file.exists():
+        return
+    try:
+        for raw in env_file.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+    except Exception as exc:
+        print(f"[analyst] .env load failed: {exc}", file=sys.stderr, flush=True)
+
+
+_load_dotenv()
+
+CYCLE_SECONDS = int(os.environ.get("ANALYST_CYCLE_SECONDS", "900"))   # 15min reports
+SPAWN_KILL_INTERVAL = int(os.environ.get("ANALYST_SPAWN_KILL_INTERVAL_SECONDS", "3600"))  # 1h — spawn/kill less frequently than reports
+MAX_BOTS_TOTAL = int(os.environ.get("ANALYST_MAX_BOTS", "150"))
+MAX_SPAWNS_PER_CYCLE = int(os.environ.get("ANALYST_MAX_SPAWNS", "3"))   # was 1
+MAX_TUNES_PER_CYCLE = int(os.environ.get("ANALYST_MAX_TUNES", "2"))     # in-place reroll
+SPAWN_PREFIX = "auto_"
+CLAUDE_TIMEOUT_SECONDS = 240
+MIN_TRADES_TO_RATE = 1  # 1 trade is enough to appear on the leaderboard
+
+# Kill criteria. Two tiers:
+#   - auto_*  bots (analyst's own children): tight bar, cull fast
+#   - human-curated bots: 2.5× higher trade bar, same PnL/wr thresholds
+# A strategy is killed when it has ≥min_trades closed AND ROI ≤ ROI_THRESHOLD
+# AND win_rate ≤ WR_THRESHOLD. Profile is moved to configs/profiles/_archived/
+# so it can be recovered manually.
+KILL_AUTO_MIN_TRADES = int(os.environ.get("ANALYST_KILL_MIN_TRADES", "8"))
+KILL_HUMAN_MIN_TRADES = int(os.environ.get("ANALYST_KILL_HUMAN_MIN_TRADES", "20"))
+KILL_ROI_THRESHOLD = float(os.environ.get("ANALYST_KILL_ROI", "-10.0"))
+KILL_WR_THRESHOLD = float(os.environ.get("ANALYST_KILL_WR", "40.0"))
+
+# Absolute equity halt — catastrophic-loss circuit breaker. Fires
+# regardless of closed-trade count, so it catches bots like panic_fade
+# that bled $98/$100 entirely in unrealized losses (0W/0L closed but
+# positions worth pennies). Default: kill at equity <= 50% of start.
+KILL_EQUITY_FLOOR_PCT = float(os.environ.get("ANALYST_KILL_EQUITY_FLOOR_PCT", "50.0"))
+
+# Live-readiness criteria (a strategy is "ready for live" when it has
+# accumulated enough sample to back-test confidence):
+LIVE_READY_MIN_TRADES = int(os.environ.get("ANALYST_LIVE_READY_MIN_TRADES", "30"))
+LIVE_READY_MIN_ROI = float(os.environ.get("ANALYST_LIVE_READY_ROI", "10.0"))   # +10%
+LIVE_READY_MIN_WR = float(os.environ.get("ANALYST_LIVE_READY_WR", "55.0"))      # 55%
+
+
+@dataclass
+class StratMetrics:
+    name: str
+    cash: float
+    equity: float
+    pnl: float
+    roi_pct: float
+    open_positions: int
+    closed: int
+    wins: int
+    losses: int
+    win_rate: float
+    avg_win: float
+    avg_loss: float
+    big_win: float
+    big_loss: float
+    ticks: int
+
+
+# ────────────────────────────────────────────────────────────────────
+# State / kill-switch
+# ────────────────────────────────────────────────────────────────────
+
+
+def load_autonomous_state() -> dict:
+    if not STATE_FILE.exists():
+        return {"enabled": True, "spawned": [], "last_cycle_ts": 0}
+    try:
+        return json.loads(STATE_FILE.read_text())
+    except Exception:
+        return {"enabled": True, "spawned": [], "last_cycle_ts": 0}
+
+
+def save_autonomous_state(state: dict) -> None:
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(json.dumps(state, indent=2))
+
+
+# ────────────────────────────────────────────────────────────────────
+# Metric collection
+# ────────────────────────────────────────────────────────────────────
+
+
+def _starting_cash_for(name: str) -> float:
+    """Read starting_cash from the profile TOML (defaults to 100)."""
+    profile = PROFILES_DIR / f"{name}.toml"
+    if not profile.exists():
+        return 100.0
+    try:
+        text = profile.read_text()
+        m = re.search(r"^starting_cash\s*=\s*([\d.]+)", text, re.M)
+        return float(m.group(1)) if m else 100.0
+    except Exception:
+        return 100.0
+
+
+def collect_metrics() -> list[StratMetrics]:
+    """Walk data/dry_runs/* and compute per-strategy metrics."""
+    if not DRY_RUNS_DIR.exists():
+        return []
+    out: list[StratMetrics] = []
+    for run_dir in sorted(DRY_RUNS_DIR.iterdir()):
+        if not run_dir.is_dir():
+            continue
+        name = run_dir.name
+        state_file = run_dir / "state.json"
+        journal_file = run_dir / "journal.jsonl"
+        if not state_file.exists():
+            continue
+        try:
+            state = json.loads(state_file.read_text())
+        except Exception:
+            continue
+        cash = float(state.get("cash") or 0.0)
+        positions = state.get("positions", []) or []
+        open_positions = [p for p in positions if p.get("status") == "open"]
+        # Mark-to-market: use current_price × shares (NOT cost basis).
+        # Cost basis would hide unrealized losses and show fake +PnL
+        # when prices have moved against the position.
+        invested_mtm = 0.0
+        for p in open_positions:
+            cur = p.get("current_price")
+            shares = p.get("shares") or 0
+            if cur is not None and shares:
+                try:
+                    invested_mtm += float(cur) * float(shares)
+                    continue
+                except (TypeError, ValueError):
+                    pass
+            # Fallback to cost basis if no current_price
+            invested_mtm += float(
+                p.get("size_usd") or p.get("stake") or
+                p.get("notional_usd") or 0.0
+            )
+        equity = cash + invested_mtm
+        starting = _starting_cash_for(name)
+        pnl = equity - starting
+        roi_pct = (pnl / starting * 100.0) if starting > 0 else 0.0
+
+        wins = losses = closed = 0
+        win_pnls: list[float] = []
+        loss_pnls: list[float] = []
+        if journal_file.exists():
+            try:
+                for line in journal_file.read_text().splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    # Accept either:
+                    #   - explicit event=position_closed (my sweep entries)
+                    #   - any entry with closed_at (race / smart_money /
+                    #     news strategies don't set event field but always
+                    #     include closed_at when they realize a position)
+                    if (entry.get("event") != "position_closed"
+                            and not entry.get("closed_at")):
+                        continue
+                    # Journal entries from different code paths use
+                    # different field names. Sweep-close (my new code)
+                    # writes realized_pnl_usd; smart_money / race / news
+                    # write realized_pnl. Read both, prefer _usd if present.
+                    pnl_t = float(
+                        entry.get("realized_pnl_usd")
+                        or entry.get("realized_pnl")
+                        or 0.0
+                    )
+                    closed += 1
+                    if pnl_t > 0:
+                        wins += 1
+                        win_pnls.append(pnl_t)
+                    elif pnl_t < 0:
+                        losses += 1
+                        loss_pnls.append(pnl_t)
+            except Exception:
+                pass
+
+        ticks = 0
+        tick_file = run_dir / "tick_history.jsonl"
+        if tick_file.exists():
+            try:
+                ticks = sum(1 for _ in tick_file.open())
+            except Exception:
+                pass
+
+        decided = wins + losses
+        out.append(
+            StratMetrics(
+                name=name,
+                cash=cash,
+                equity=equity,
+                pnl=pnl,
+                roi_pct=roi_pct,
+                open_positions=len(open_positions),
+                closed=closed,
+                wins=wins,
+                losses=losses,
+                win_rate=(wins / decided * 100.0) if decided > 0 else 0.0,
+                avg_win=sum(win_pnls) / len(win_pnls) if win_pnls else 0.0,
+                avg_loss=sum(loss_pnls) / len(loss_pnls) if loss_pnls else 0.0,
+                big_win=max(win_pnls, default=0.0),
+                big_loss=min(loss_pnls, default=0.0),
+                ticks=ticks,
+            )
+        )
+    return out
+
+
+def rank(metrics: list[StratMetrics]) -> tuple[list[StratMetrics], list[StratMetrics]]:
+    """Return (top, bottom) — rated only by strategies with ≥MIN_TRADES_TO_RATE."""
+    rated = [m for m in metrics if m.closed >= MIN_TRADES_TO_RATE]
+    rated.sort(key=lambda m: m.pnl, reverse=True)
+    top = rated[:5]
+    bottom = rated[-3:] if len(rated) >= 3 else []
+    return top, bottom
+
+
+# ────────────────────────────────────────────────────────────────────
+# Claude CLI
+# ────────────────────────────────────────────────────────────────────
+
+
+PROMPT_TEMPLATE = """You are running a fully autonomous Polymarket strategy race. {n_total} strategies running, {n_rated} rated (≥{min_trades} closed trades). Your job is to GENERATE new strategies aggressively and keep the race exploring.
+
+## Per-strategy metrics (sorted by PnL)
+{leaderboard_table}
+
+## Existing auto-spawned strategies (don't dupe these)
+{existing_auto_names}
+
+## YOUR JOB — REQUIRED ACTIONS
+
+1. **Narrative (3-6 lines).** What's working? What's not? Be specific about parameter combinations (cohort tightness, momentum thresholds, exit timing). No generic statements.
+
+2. **Propose 1-3 new strategies — DERIVED FROM CURRENT WINNERS.** ALWAYS propose at least 1. Required priority:
+   a. PRIMARY: parameter variants of the TOP 3 profitable strategies (shift ONE knob — TP, SL, stake, lookback, consensus)
+   b. SECONDARY: combinations of features from two profitable strategies
+   c. TERTIARY: inverse/contrarian versions of clear losers
+   d. Last resort: aggressive variants when winners are slow
+   The bot is now auto-killing losers, so don't propose new bottom-tier theses.
+
+3. **Optionally tune existing auto_ strategies** that have ≥{min_trades} trades but ROI between -10% and 0% (borderline). Propose a parameter shift to test.
+
+## OUTPUT FORMAT — strict
+
+For each new strategy, emit a TOML fenced block:
+```toml
+# auto_<short_name> — derived from <parent>
+# Hypothesis: <one sentence — what specific param/combo change you're testing>
+[run]
+starting_cash = 20.0
+mode = "<existing mode name, copy from parent>"
+
+[sizing]
+...
+[race]
+max_hours = 4.0
+...
+[telemetry]
+quiet = true
+auto_interval_seconds = <staggered 30-180>
+stdout_heartbeat_minutes = 15
+```
+
+For each tune action, emit:
+```tune
+target: auto_<existing_name>
+hypothesis: <why this change>
+```
+followed by a full new TOML block (same format as new strategy, with a DIFFERENT auto_ name).
+
+## HARD CONSTRAINTS — your output is rejected if violated
+- New profile name MUST start with `auto_` and be unique (not in existing list above).
+- `mode` MUST be one of: smart_money (default — leave unset), edge, news, mirror, hybrid_smart_money, smart_wallet_consensus, whale_entry_detection, wallet_cluster_correlation, early_momentum_detection, liquidity_vacuum_breakout, mean_reversion_fade, range_channel_trading, aggressive_buyer_detection, orderbook_imbalance, late_momentum_chase, weak_holder_flush, weak_holder_flush_inverse, pmlepgm_counter_panic_fade, pm_le_pgm_weak_holder_flush_inverse, championdumonde_breakout, late_favorite, panic_fade, underdog, favorite, contrarian, random, multi_signal_consensus, claude_resolution_sniper, claude_endgame_sweep, claude_blue_chip, claude_balanced_mid, claude_late_pump, claude_strong_breakout, claude_extreme_consensus, claude_resolution_clock, probability_drift, resolution_compression, liquidity_absorption, momentum_exhaustion_reversal, micro_scalping, kzerlepgm_ultimatestrategy.
+- ONLY parameter variants. No new TOML sections, no Python in TOML.
+- starting_cash MUST be 20.0.
+- 4h-only rule: max_hours = 4.0 in [race], max_hours_to_close = 4.0 in [filters] for smart_money mode.
+
+Output: narrative first, then TOML/tune blocks separated by blank lines. Be decisive."""
+
+
+def call_claude(prompt: str) -> str:
+    """Invoke `claude -p` in non-interactive mode. Returns stdout."""
+    try:
+        result = subprocess.run(
+            ["claude", "--dangerously-skip-permissions", "-p", prompt],
+            capture_output=True,
+            text=True,
+            timeout=CLAUDE_TIMEOUT_SECONDS,
+        )
+        if result.returncode != 0:
+            return f"[claude error rc={result.returncode}]\n{result.stderr[:500]}"
+        return result.stdout
+    except subprocess.TimeoutExpired:
+        return "[claude timeout]"
+    except Exception as exc:
+        return f"[claude exception: {type(exc).__name__}: {exc}]"
+
+
+def parse_response(text: str) -> tuple[str, list[dict]]:
+    """Parse Claude's response into a narrative + list of proposed actions.
+
+    Each action is: {'kind': 'spawn'|'tune', 'name': str, 'body': str,
+                     'target': str | None}
+    """
+    actions: list[dict] = []
+    # Pull all toml blocks
+    for m in re.finditer(r"```toml\s*(.*?)```", text, re.S):
+        body = m.group(1).strip()
+        name_match = re.search(r"^#\s*(auto_[a-z0-9_]+)", body, re.M)
+        if not name_match:
+            continue
+        actions.append({"kind": "spawn", "name": name_match.group(1),
+                        "body": body, "target": None, "span": m.span()})
+    # Pull all tune blocks (each followed by a toml block)
+    for m in re.finditer(r"```tune\s*(.*?)```", text, re.S):
+        tune_body = m.group(1)
+        target_match = re.search(r"target:\s*(auto_[a-z0-9_]+)", tune_body)
+        if not target_match:
+            continue
+        # Find the next toml block after this tune block
+        after = text[m.end():]
+        toml_match = re.search(r"```toml\s*(.*?)```", after, re.S)
+        if not toml_match:
+            continue
+        body = toml_match.group(1).strip()
+        name_match = re.search(r"^#\s*(auto_[a-z0-9_]+)", body, re.M)
+        if not name_match:
+            continue
+        # Mark this toml as part of a tune (not a separate spawn)
+        for a in actions:
+            if a["name"] == name_match.group(1):
+                a["kind"] = "tune"
+                a["target"] = target_match.group(1)
+                break
+    # Narrative = everything outside the code blocks
+    narrative = re.sub(r"```(?:toml|tune).*?```", "", text, flags=re.S).strip()
+    return narrative, actions
+
+
+def validate_proposal(name: str, toml_body: str) -> str | None:
+    """Return error string if invalid, None if OK."""
+    if not name.startswith(SPAWN_PREFIX):
+        return f"name must start with `{SPAWN_PREFIX}`"
+    if (PROFILES_DIR / f"{name}.toml").exists():
+        return f"profile {name} already exists"
+    if "starting_cash" not in toml_body or "starting_cash = 20" not in toml_body:
+        return "starting_cash must be 20.0"
+    # Reject anything that looks like Python (defensive). Match only at
+    # start-of-line so the words "from"/"import" in comments are fine.
+    if re.search(r"^\s*(import|from|def|class)\s+\w+", toml_body, re.M):
+        return "contains Python-like syntax"
+    # Quick TOML parse check
+    try:
+        import tomllib
+        tomllib.loads(toml_body)
+    except Exception as exc:
+        return f"TOML parse error: {exc}"
+    # Full schema validation: load_profile catches unknown keys/sections.
+    # Write to a temp path, validate, delete — if invalid, the analyst
+    # never publishes a broken profile.
+    import tempfile
+    try:
+        from polymarket_bot.profiles import load_profile  # type: ignore
+    except Exception:
+        # If we can't import the validator, fall back to TOML-parse-only.
+        return None
+    with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as tmp:
+        tmp.write(toml_body)
+        tmp_path = tmp.name
+    try:
+        load_profile(Path(tmp_path))
+    except Exception as exc:
+        return f"schema validation: {exc}"
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+    return None
+
+
+# ────────────────────────────────────────────────────────────────────
+# Spawning
+# ────────────────────────────────────────────────────────────────────
+
+
+def write_profile(name: str, body: str) -> Path:
+    path = PROFILES_DIR / f"{name}.toml"
+    path.write_text(body)
+    return path
+
+
+def spawn_bot(name: str) -> int | None:
+    """Launch a dry-run bot in the background. Returns PID.
+
+    NOTE: We deliberately keep the child in the parent's process group
+    (no start_new_session/setsid) so Ctrl+C on the main race script
+    propagates and kills these too. No orphan bots after shutdown.
+    """
+    env = os.environ.copy()
+    env["POLYMARKET_QUIET"] = "1"
+    env["POLYMARKET_SUPPRESS_BUY_LOGS"] = "1"
+    # Tee output into the same logs dir so the user can see it
+    log_dir = REPO_ROOT / "data" / "dry_runs" / name
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "spawn_stdout.log"
+    log_fh = log_path.open("ab", buffering=0)
+    proc = subprocess.Popen(
+        [
+            "uv", "run", "pmbot", "auto-loop",
+            "--dry-run", "--profile", name, "--run", name,
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=log_fh,
+        stderr=subprocess.STDOUT,
+    )
+    return proc.pid
+
+
+def find_bot_pid_by_name(profile_name: str) -> int | None:
+    """Find the PID of a dry-run bot by its --profile arg.
+
+    Looks for the python process running ``pmbot auto-loop --dry-run
+    --profile <profile_name> --run <profile_name>``. Returns the parent
+    `uv run` pid (which propagates SIGTERM to the python child).
+    """
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", f"pmbot auto-loop --dry-run --profile {profile_name} --run"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.strip().splitlines():
+        try:
+            return int(line.strip())
+        except ValueError:
+            continue
+    return None
+
+
+def kill_bot(pid: int, name: str) -> bool:
+    """Kill an auto-spawned bot. SIGTERM first, escalate to SIGKILL after 5s."""
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    # Give it 5s to clean up
+    for _ in range(50):
+        time.sleep(0.1)
+        try:
+            os.kill(pid, 0)  # probe
+        except ProcessLookupError:
+            return True
+    # Force
+    try:
+        os.kill(pid, signal.SIGKILL)
+        return True
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+
+
+def archive_profile(name: str) -> None:
+    """Move a killed profile to configs/profiles/_archived/ so its name frees up."""
+    src = PROFILES_DIR / f"{name}.toml"
+    if not src.exists():
+        return
+    archive_dir = PROFILES_DIR / "_archived"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    dest = archive_dir / f"{name}_{int(time.time())}.toml"
+    src.rename(dest)
+
+
+# ────────────────────────────────────────────────────────────────────
+# Telegram
+# ────────────────────────────────────────────────────────────────────
+
+
+def telegram_post(text: str) -> bool:
+    token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat = (os.environ.get("TELEGRAM_CHAT_ID_DRY_RUN") or "").strip()
+    if not token or not chat:
+        print(f"[analyst] telegram disabled (token/chat missing)\n{text}", flush=True)
+        return False
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    # Telegram messages capped at 4096 chars
+    payload = json.dumps({
+        "chat_id": chat,
+        "text": text[:4000],
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return 200 <= resp.status < 300
+    except Exception as exc:
+        print(f"[analyst] telegram failed: {exc}", file=sys.stderr, flush=True)
+        return False
+
+
+# ────────────────────────────────────────────────────────────────────
+# Message formatting
+# ────────────────────────────────────────────────────────────────────
+
+
+def fmt_leaderboard(metrics: list[StratMetrics]) -> str:
+    lines = ["{:<32} {:>8} {:>7} {:>6} {:>5} {:>5}".format(
+        "strategy", "pnl$", "roi%", "wr%", "n", "open"
+    )]
+    lines.append("-" * 70)
+    for m in metrics:
+        lines.append("{:<32} {:>+8.2f} {:>+6.1f}% {:>5.0f}% {:>5} {:>5}".format(
+            m.name[:32], m.pnl, m.roi_pct, m.win_rate, m.closed, m.open_positions,
+        ))
+    return "\n".join(lines)
+
+
+def build_main_message(narrative: str, top: list[StratMetrics],
+                        bottom: list[StratMetrics], spawned: list[str],
+                        tuned: list[str], killed: list[str], n_total: int,
+                        live_ready: list[StratMetrics] | None = None,
+                        live_close: list[StratMetrics] | None = None,
+                        all_metrics: list[StratMetrics] | None = None) -> str:
+    stamp = time.strftime("%H:%M UTC", time.gmtime())
+    parts = [f"🤖 *AUTONOMOUS REPORT* · {stamp}",
+             f"_{n_total} strategies running, {len(top)+len(bottom)} rated (≥{MIN_TRADES_TO_RATE} closed trades)_",
+             ""]
+    if live_ready:
+        parts.append(f"*🎯 LIVE READY* (n≥{LIVE_READY_MIN_TRADES}, ROI≥+{LIVE_READY_MIN_ROI:.0f}%, wr≥{LIVE_READY_MIN_WR:.0f}%)")
+        for m in live_ready:
+            parts.append(f"  ✅ `{m.name}` {m.pnl:+.2f}$ ROI={m.roi_pct:+.1f}% ({m.win_rate:.0f}% wr, {m.closed} closed)")
+        parts.append("→ _Promote one of these to live: edit `scripts/run_live_70.sh` profile arg + restart_")
+        parts.append("")
+    if live_close:
+        parts.append("*👀 Close to live-ready*")
+        for m in live_close[:5]:
+            parts.append(f"  • `{m.name}` ROI={m.roi_pct:+.1f}% ({m.win_rate:.0f}% wr, {m.closed} closed)")
+        parts.append("")
+    def _fmt_row(idx: int, m: "StratMetrics", *, bullet: str = "") -> list[str]:
+        sign = "+" if m.pnl >= 0 else ""
+        marker = bullet if bullet else f"{idx}."
+        # Recover starting from equity - pnl (cheaper than re-reading TOML).
+        starting = max(0.0, m.equity - m.pnl)
+        return [
+            f"  {marker} `{m.name}`",
+            f"      ${starting:.2f} → *${m.equity:.2f}*   {sign}${m.pnl:.2f} ({m.roi_pct:+.1f}%)",
+            f"      WR {m.win_rate:.0f}%  •  closed {m.closed}  •  open {m.open_positions}",
+        ]
+
+    # Always surface every profitable strategy — most important section.
+    # Uses the full metrics set (not just rated top/bottom), so even
+    # strategies with 0 closed trades but positive unrealized PnL show.
+    source = all_metrics if all_metrics is not None else (top or []) + (bottom or [])
+    profitable_all = sorted(
+        {m.name: m for m in source if m.pnl > 0}.values(),
+        key=lambda m: m.roi_pct, reverse=True,
+    )
+    if profitable_all:
+        parts.append(f"*🟢 Profitable strategies ({len(profitable_all)})*")
+        for i, m in enumerate(profitable_all, 1):
+            parts.extend(_fmt_row(i, m))
+        parts.append("")
+    else:
+        parts.append("_⚠️ No profitable strategy yet — entire board down._")
+        parts.append("")
+
+    if top:
+        parts.append("*🏆 Top 5 by PnL*")
+        for i, m in enumerate(top, 1):
+            parts.extend(_fmt_row(i, m))
+        parts.append("")
+    if bottom:
+        parts.append("*📉 Bottom 3*")
+        for m in bottom:
+            parts.extend(_fmt_row(0, m, bullet="•"))
+        parts.append("")
+    if narrative:
+        parts.append("*🧠 Insights*")
+        parts.append(narrative[:1500])
+        parts.append("")
+    if spawned:
+        parts.append("*🆕 Spawned*")
+        for name in spawned:
+            parts.append(f"  • `{name}`")
+        parts.append("")
+    if tuned:
+        parts.append("*🔧 Tuned (in-place reroll)*")
+        for swap in tuned:
+            parts.append(f"  • `{swap}`")
+        parts.append("")
+    if killed:
+        parts.append("*💀 Killed (underperformers — ROI ≤ -10% & wr ≤ 40%)*")
+        for name in killed:
+            parts.append(f"  • `{name}`")
+        parts.append("")
+
+    # Recommendation footer — always present.
+    # Logic:
+    #   1. Prefer live-ready candidates (n>=30 AND ROI>=+10% AND wr>=55%)
+    #   2. Else best by ROI with n>=10 and ROI>0
+    #   3. Else best by ROI overall (with caveat about small sample)
+    #   4. Else "no data yet"
+    favorite, reason = _pick_favorite(all_metrics or top + bottom or [])
+    parts.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    if favorite is None:
+        parts.append("🎯 *My favorite strategy currently for live*: _none yet — no rated strategies_")
+    else:
+        sign = "+" if favorite.pnl >= 0 else ""
+        starting = max(0.0, favorite.equity - favorite.pnl)
+        parts.append(f"🎯 *My favorite strategy currently for live*: `{favorite.name}`")
+        parts.append(f"   *Why:* {reason}")
+        parts.append(f"   *Performance:* ${starting:.2f} → *${favorite.equity:.2f}*  {sign}${favorite.pnl:.2f} ({favorite.roi_pct:+.1f}%)")
+        parts.append(f"   *Stats:* WR {favorite.win_rate:.0f}%  •  closed {favorite.closed}  •  open {favorite.open_positions}")
+        # Detail block: top 3 closed wins + current open positions
+        top_trades, open_pos = _favorite_detail(favorite.name)
+        if top_trades:
+            parts.append("")
+            parts.append("*📊 Top 3 closed trades:*")
+            for i, t in enumerate(top_trades, 1):
+                psign = "+" if t["pnl"] >= 0 else ""
+                pct_str = f"{t['pct']:+.1f}%" if t["pct"] is not None else "—"
+                q = (t.get("question") or "?")[:55]
+                parts.append(
+                    f"  {i}. {psign}${t['pnl']:.2f} ({pct_str}) "
+                    f"{t.get('reason','?')}\n      {q}\n"
+                    f"      {t.get('side','?')} @ ${t.get('entry',0):.3f}, "
+                    f"held {t.get('held','?')}"
+                )
+        if open_pos:
+            parts.append("")
+            parts.append(f"*🔓 Open positions ({len(open_pos)}):*")
+            for p in open_pos[:6]:  # cap at 6 for Telegram size
+                psign = "+" if p["unr"] >= 0 else ""
+                q = (p.get("question") or "?")[:50]
+                parts.append(
+                    f"  • {q}\n"
+                    f"      {p.get('side','?')} @ ${p.get('entry',0):.3f} → ${p.get('cur',0):.3f}  "
+                    f"{psign}${p['unr']:.2f} ({p['unr_pct']:+.1f}%)"
+                )
+            if len(open_pos) > 6:
+                parts.append(f"  _… and {len(open_pos) - 6} more_")
+    return "\n".join(parts)
+
+
+def _favorite_detail(name: str) -> tuple[list[dict], list[dict]]:
+    """Read the favorite strategy's journal + state, return:
+       (top 3 closed by PnL, open positions)
+    Returns ([], []) if files missing/unreadable.
+    """
+    run_dir = DRY_RUNS_DIR / name
+    if not run_dir.exists():
+        return [], []
+    closed: list[dict] = []
+    journal = run_dir / "journal.jsonl"
+    if journal.exists():
+        try:
+            for line in journal.read_text().splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    e = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not (e.get("event") == "position_closed" or e.get("closed_at")):
+                    continue
+                pnl = float(
+                    e.get("realized_pnl_usd")
+                    or e.get("realized_pnl") or 0.0
+                )
+                pct_raw = e.get("realized_pnl_pct") or e.get("pnl_pct")
+                if pct_raw is not None:
+                    pct = float(pct_raw) * 100 if abs(float(pct_raw)) < 1 else float(pct_raw)
+                else:
+                    pct = None
+                held = ""
+                try:
+                    from datetime import datetime
+                    o = datetime.fromisoformat(str(e.get("opened_at")).replace("Z","+00:00"))
+                    c = datetime.fromisoformat(str(e.get("closed_at")).replace("Z","+00:00"))
+                    secs = int((c - o).total_seconds())
+                    if secs < 3600:
+                        held = f"{secs // 60}m"
+                    else:
+                        held = f"{secs // 3600}h{(secs % 3600) // 60:02d}m"
+                except Exception:
+                    pass
+                closed.append({
+                    "pnl": pnl, "pct": pct,
+                    "reason": e.get("exit_reason", "?"),
+                    "question": e.get("question") or e.get("market_title"),
+                    "side": e.get("outcome", "?"),
+                    "entry": float(e.get("entry_price") or 0),
+                    "held": held or "?",
+                })
+        except Exception:
+            pass
+    top_trades = sorted(closed, key=lambda x: x["pnl"], reverse=True)[:3]
+    # Open positions from state.json
+    open_pos: list[dict] = []
+    state_file = run_dir / "state.json"
+    if state_file.exists():
+        try:
+            s = json.loads(state_file.read_text())
+            for p in s.get("positions", []):
+                if p.get("status") != "open":
+                    continue
+                entry = float(p.get("entry_price") or 0)
+                shares = float(p.get("shares") or 0)
+                cur = float(p.get("current_price") or 0)
+                cost = float(p.get("stake") or entry * shares)
+                mtm = cur * shares
+                unr = mtm - cost
+                unr_pct = (unr / cost * 100) if cost else 0
+                open_pos.append({
+                    "question": p.get("question") or p.get("market_title"),
+                    "side": p.get("outcome", "?"),
+                    "entry": entry, "cur": cur,
+                    "unr": unr, "unr_pct": unr_pct,
+                })
+        except Exception:
+            pass
+    open_pos.sort(key=lambda x: x["unr"], reverse=True)
+    return top_trades, open_pos
+
+
+def _pick_favorite(metrics: list[StratMetrics]) -> tuple["StratMetrics | None", str]:
+    """Pick the best live candidate + the human-readable reason.
+
+    Always returns a candidate when metrics exist — only "None" when
+    there's no data at all. Falls through 4 tiers from best to worst.
+    """
+    if not metrics:
+        return None, ""
+    # Tier 1 — actually live-ready
+    ready, _ = assess_live_readiness(metrics)
+    if ready:
+        m = ready[0]
+        return m, (
+            f"LIVE-READY ✅ — {m.closed} closed trades (≥{LIVE_READY_MIN_TRADES}), "
+            f"ROI {m.roi_pct:+.1f}% (≥{LIVE_READY_MIN_ROI:.0f}%), "
+            f"WR {m.win_rate:.0f}% (≥{LIVE_READY_MIN_WR:.0f}%). "
+            f"Statistically credible — promote with confidence."
+        )
+    # Tier 2 — best by ROI with at least decent sample AND profitable
+    decent = sorted(
+        [m for m in metrics if m.closed >= 10 and m.pnl > 0],
+        key=lambda m: m.roi_pct, reverse=True,
+    )
+    if decent:
+        m = decent[0]
+        return m, (
+            f"Best risk-adjusted candidate so far — {m.closed} closed, "
+            f"ROI {m.roi_pct:+.1f}%, WR {m.win_rate:.0f}%. Sample still "
+            f"below the {LIVE_READY_MIN_TRADES}-trade bar; promote only "
+            f"if you accept variance."
+        )
+    # Tier 3 — any profitable bot, even with tiny sample
+    profitable = sorted([m for m in metrics if m.pnl > 0],
+                          key=lambda m: m.roi_pct, reverse=True)
+    if profitable:
+        m = profitable[0]
+        return m, (
+            f"Only profitable strategy on the board — but only "
+            f"{m.closed} closed trade(s). Variance dominates at this "
+            f"sample; wait for ≥30 trades before serious consideration."
+        )
+    # Tier 4 — nothing profitable, surface the least-bad anyway
+    by_pnl = sorted(metrics, key=lambda m: m.pnl, reverse=True)
+    m = by_pnl[0]
+    return m, (
+        f"⚠️ No profitable strategy yet — entire board is down. This is "
+        f"the least-bad: {m.closed} closed, ROI {m.roi_pct:+.1f}%. "
+        f"DO NOT promote to live. Wait for the race to find a winner."
+    )
+
+
+# ────────────────────────────────────────────────────────────────────
+# Main loop
+# ────────────────────────────────────────────────────────────────────
+
+
+def existing_auto_strategies() -> list[str]:
+    return sorted(p.stem for p in PROFILES_DIR.glob(f"{SPAWN_PREFIX}*.toml"))
+
+
+def total_running_bots() -> int:
+    """Count dry_runs subdirs as a rough proxy for running bots."""
+    if not DRY_RUNS_DIR.exists():
+        return 0
+    return sum(1 for p in DRY_RUNS_DIR.iterdir() if p.is_dir())
+
+
+def ensure_leaderboard_auto_discover() -> bool:
+    """Self-heal: if the leaderboard sidecar is running with the OLD
+    fixed --runs argument (pre auto-discover patch), kill it and start
+    a new one with --auto-discover. Returns True if action was taken.
+
+    This is what makes "fully autonomous" actually true: the user
+    doesn't have to restart the race to pick up the leaderboard fix.
+    """
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "pmbot leaderboard --runs"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return False
+    if result.returncode != 0 or not result.stdout.strip():
+        return False
+    pids = []
+    for line in result.stdout.strip().splitlines():
+        try:
+            pids.append(int(line.strip()))
+        except ValueError:
+            continue
+    if not pids:
+        return False
+    print(f"[analyst] stale leaderboard detected (pids={pids}); refreshing to --auto-discover", flush=True)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+    time.sleep(2)
+    # Kill any survivors
+    for pid in pids:
+        try:
+            os.kill(pid, 0)
+            os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    env = os.environ.copy()
+    env["POLYMARKET_DRY_RUN"] = "1"
+    try:
+        subprocess.Popen(
+            ["uv", "run", "pmbot", "leaderboard",
+             "--auto-discover", "--interval", "3", "--telegram"],
+            cwd=REPO_ROOT, env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        print("[analyst] ✓ leaderboard relaunched with --auto-discover", flush=True)
+        return True
+    except Exception as exc:
+        print(f"[analyst] failed to relaunch leaderboard: {exc}", flush=True)
+        return False
+
+
+def assess_live_readiness(metrics: list[StratMetrics]) -> tuple[list[StratMetrics], list[StratMetrics]]:
+    """Identify strategies ready for live deployment.
+
+    A strategy is "live ready" when:
+      - closed >= LIVE_READY_MIN_TRADES (default 30, enough sample to dismiss variance)
+      - roi_pct >= LIVE_READY_MIN_ROI (default +10%)
+      - win_rate >= LIVE_READY_MIN_WR (default 55%)
+
+    Also returns "close candidates" — those with ≥15 closed trades and
+    ROI/wr in the right direction but not yet at threshold. These are
+    early signals worth watching.
+
+    Returns (ready, close_candidates).
+    """
+    ready: list[StratMetrics] = []
+    close: list[StratMetrics] = []
+    for m in metrics:
+        if (m.closed >= LIVE_READY_MIN_TRADES
+                and m.roi_pct >= LIVE_READY_MIN_ROI
+                and m.win_rate >= LIVE_READY_MIN_WR):
+            ready.append(m)
+        elif (m.closed >= LIVE_READY_MIN_TRADES // 2
+                and m.roi_pct >= LIVE_READY_MIN_ROI / 2
+                and m.win_rate >= LIVE_READY_MIN_WR - 5):
+            close.append(m)
+    ready.sort(key=lambda m: m.roi_pct, reverse=True)
+    close.sort(key=lambda m: m.roi_pct, reverse=True)
+    return ready, close
+
+
+def evaluate_kills(metrics: list[StratMetrics], state: dict) -> list[str]:
+    """Identify bots that are clearly losing on enough sample, kill them.
+
+    Covers ALL strategies — auto-spawned AND human-curated. Sample bar
+    differs per tier:
+      - auto_* bots: KILL_AUTO_MIN_TRADES (default 8) — cull fast
+      - human-curated: KILL_HUMAN_MIN_TRADES (default 20) — more rope
+
+    Kill condition (both tiers): ROI <= KILL_ROI_THRESHOLD (-10%) AND
+    win_rate <= KILL_WR_THRESHOLD (40%).
+
+    Profile gets moved to configs/profiles/_archived/ so it cannot
+    auto-restart from a script restart. The TOML stays recoverable.
+    Process: SIGTERM then SIGKILL escalation via kill_bot().
+    """
+    spawned_records = {r["name"]: r for r in state.get("spawned", [])
+                       if not r.get("killed_at")}
+    killed: list[str] = []
+    for m in metrics:
+        # Two paths to kill:
+        #   (a) catastrophic equity collapse (ROI <= -50%) — fires
+        #       regardless of closed-trade count, catches "all loss
+        #       in unrealized" bots like panic_fade
+        #   (b) sustained underperformance — needs sample AND both
+        #       ROI <= -10% AND wr <= 40%
+        catastrophic = m.roi_pct <= -KILL_EQUITY_FLOOR_PCT
+        if not catastrophic and not (m.roi_pct <= KILL_ROI_THRESHOLD
+                                       and m.win_rate <= KILL_WR_THRESHOLD):
+            continue
+        is_auto = m.name in spawned_records
+        min_trades = KILL_AUTO_MIN_TRADES if is_auto else KILL_HUMAN_MIN_TRADES
+        if not catastrophic and m.closed < min_trades:
+            continue
+        pid = (spawned_records[m.name].get("pid") if is_auto
+               else find_bot_pid_by_name(m.name))
+        if not pid:
+            print(f"[analyst] kill {m.name}: no pid found, skip", flush=True)
+            continue
+        ok = kill_bot(pid, m.name)
+        archive_profile(m.name)
+        if catastrophic:
+            reason = f"💥 catastrophic ROI={m.roi_pct:.1f}% (≤-{KILL_EQUITY_FLOOR_PCT:.0f}%)"
+        else:
+            reason = f"ROI={m.roi_pct:.1f}% wr={m.win_rate:.0f}% n={m.closed}"
+        if is_auto:
+            rec = spawned_records[m.name]
+            rec["killed_at"] = int(time.time())
+            rec["killed_reason"] = reason
+            rec["kill_success"] = ok
+        else:
+            state.setdefault("killed_human", []).append({
+                "name": m.name, "pid": pid, "killed_at": int(time.time()),
+                "killed_reason": reason, "kill_success": ok,
+            })
+        killed.append(m.name)
+        tier = "auto" if is_auto else "HUMAN"
+        print(
+            f"\n{'='*70}\n"
+            f"[analyst] 💀💀💀 KILLED [{tier}] {m.name}\n"
+            f"[analyst]     pid={pid}, ok={ok}, {reason}\n"
+            f"{'='*70}\n",
+            flush=True,
+        )
+    return killed
+
+
+def cycle_once() -> None:
+    state = load_autonomous_state()
+    if not state.get("enabled", True):
+        print("[analyst] disabled via state file; reporting only", flush=True)
+
+    ensure_leaderboard_auto_discover()
+
+    metrics = collect_metrics()
+    top, bottom = rank(metrics)
+    n_total = len(metrics)
+
+    # Throttle spawn/kill to SPAWN_KILL_INTERVAL (default 1h), but always
+    # post a fresh report (default 15min cycle). This way the user gets
+    # frequent status updates without churning the strategy pool too fast.
+    now_ts = int(time.time())
+    last_action_ts = int(state.get("last_action_ts", 0) or 0)
+    action_due = (now_ts - last_action_ts) >= SPAWN_KILL_INTERVAL
+    killed: list[str] = []
+    spawned: list[str] = []
+    tuned: list[str] = []
+    narrative = ""
+
+    if action_due:
+        killed = evaluate_kills(metrics, state)
+        if killed:
+            save_autonomous_state(state)
+    else:
+        mins_until = max(0, (SPAWN_KILL_INTERVAL - (now_ts - last_action_ts)) // 60)
+        print(f"[analyst] spawn/kill skipped — next action in {mins_until}min", flush=True)
+
+    if action_due and (top or bottom or n_total >= 5):
+        existing_autos = existing_auto_strategies()
+        prompt = PROMPT_TEMPLATE.format(
+            n_total=n_total,
+            n_rated=len(top) + len(bottom),
+            min_trades=MIN_TRADES_TO_RATE,
+            leaderboard_table=fmt_leaderboard(top + bottom or metrics[:10]),
+            existing_auto_names=", ".join(existing_autos) or "(none yet)",
+        )
+        response = call_claude(prompt)
+        narrative, actions = parse_response(response)
+
+        if state.get("enabled", True):
+            spawn_count = tune_count = 0
+            for action in actions:
+                if total_running_bots() >= MAX_BOTS_TOTAL:
+                    narrative += f"\n\n⚠ bot cap {MAX_BOTS_TOTAL} reached; stopping spawns"
+                    break
+                if action["kind"] == "spawn" and spawn_count >= MAX_SPAWNS_PER_CYCLE:
+                    continue
+                if action["kind"] == "tune" and tune_count >= MAX_TUNES_PER_CYCLE:
+                    continue
+                err = validate_proposal(action["name"], action["body"])
+                if err:
+                    narrative += f"\n⚠ {action['name']} rejected: {err}"
+                    continue
+                # For tune: kill the target auto_ bot first
+                if action["kind"] == "tune" and action["target"]:
+                    target_record = next(
+                        (r for r in state.get("spawned", [])
+                         if r["name"] == action["target"] and not r.get("killed_at")),
+                        None,
+                    )
+                    if target_record:
+                        kill_bot(target_record.get("pid"), action["target"])
+                        archive_profile(action["target"])
+                        target_record["killed_at"] = int(time.time())
+                        target_record["killed_reason"] = f"tuned → {action['name']}"
+                # Spawn the new one
+                write_profile(action["name"], action["body"])
+                pid = spawn_bot(action["name"])
+                rec = {"name": action["name"], "pid": pid, "ts": int(time.time())}
+                if action["kind"] == "tune":
+                    rec["tuned_from"] = action["target"]
+                    tuned.append(f"{action['target']}→{action['name']}")
+                    tune_count += 1
+                else:
+                    spawned.append(action["name"])
+                    spawn_count += 1
+                state.setdefault("spawned", []).append(rec)
+                save_autonomous_state(state)
+                # Loud banner in the main race stdout (visible via
+                # the run_both_dry.sh `[analyst]` pipe-prefix).
+                alive = sum(1 for r in state.get("spawned", []) if not r.get("killed_at"))
+                emoji = "🔧" if action["kind"] == "tune" else "🆕"
+                if action["kind"] == "tune":
+                    print(
+                        f"\n{'='*70}\n"
+                        f"[analyst] {emoji}{emoji}{emoji} TUNED  {action['target']:32s} → {action['name']}\n"
+                        f"[analyst]     (pid={pid}, now {alive} live auto bots)\n"
+                        f"{'='*70}\n",
+                        flush=True,
+                    )
+                else:
+                    print(
+                        f"\n{'='*70}\n"
+                        f"[analyst] {emoji}{emoji}{emoji} SPAWNED {action['name']}\n"
+                        f"[analyst]     (pid={pid}, now {alive} live auto bots, +{spawn_count}/{MAX_SPAWNS_PER_CYCLE} this cycle)\n"
+                        f"{'='*70}\n",
+                        flush=True,
+                    )
+    elif not metrics:
+        narrative = "No dry-run state yet — waiting for the race to start writing journals."
+    else:
+        narrative = f"Only {n_total} strategies tracked, none rated yet (need ≥{MIN_TRADES_TO_RATE} closed trades)."
+
+    state["last_cycle_ts"] = int(time.time())
+    if action_due and (killed or spawned or tuned):
+        state["last_action_ts"] = int(time.time())
+    save_autonomous_state(state)
+
+    live_ready, live_close = assess_live_readiness(metrics)
+    msg = build_main_message(narrative, top, bottom, spawned, tuned, killed,
+                              n_total, live_ready=live_ready,
+                              live_close=live_close, all_metrics=metrics)
+    telegram_post(msg)
+    print(msg, flush=True)
+
+
+def main() -> int:
+    print(f"[analyst] starting — cycle={CYCLE_SECONDS}s, max_bots={MAX_BOTS_TOTAL}",
+          flush=True)
+    # Initial wait so bots can write some state. First REPORT fires in
+    # CYCLE_SECONDS (15min), first SPAWN/KILL cycle in SPAWN_KILL_INTERVAL
+    # (1h) once we have enough sample.
+    print(
+        f"[analyst] cycle={CYCLE_SECONDS}s reports, "
+        f"spawn/kill every {SPAWN_KILL_INTERVAL}s",
+        flush=True,
+    )
+    # Stamp last_action_ts to now so the first spawn/kill waits a full
+    # SPAWN_KILL_INTERVAL — gives bots time to accumulate sample.
+    initial_state = load_autonomous_state()
+    initial_state["last_action_ts"] = int(time.time())
+    save_autonomous_state(initial_state)
+    print(f"[analyst] first report in 90s, first spawn/kill in {SPAWN_KILL_INTERVAL//60}min", flush=True)
+    time.sleep(90)
+    while True:
+        try:
+            cycle_once()
+        except Exception:
+            tb = traceback.format_exc()
+            print(f"[analyst] cycle failed:\n{tb}", file=sys.stderr, flush=True)
+            telegram_post(f"⚠️ *Analyst error*\n```\n{tb[:1500]}\n```")
+        time.sleep(CYCLE_SECONDS)
+
+
+if __name__ == "__main__":
+    sys.exit(main() or 0)
