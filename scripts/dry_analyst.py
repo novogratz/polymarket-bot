@@ -551,6 +551,61 @@ def total_running_bots() -> int:
     return sum(1 for p in DRY_RUNS_DIR.iterdir() if p.is_dir())
 
 
+def ensure_leaderboard_auto_discover() -> bool:
+    """Self-heal: if the leaderboard sidecar is running with the OLD
+    fixed --runs argument (pre auto-discover patch), kill it and start
+    a new one with --auto-discover. Returns True if action was taken.
+
+    This is what makes "fully autonomous" actually true: the user
+    doesn't have to restart the race to pick up the leaderboard fix.
+    """
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "pmbot leaderboard --runs"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return False
+    if result.returncode != 0 or not result.stdout.strip():
+        return False
+    pids = []
+    for line in result.stdout.strip().splitlines():
+        try:
+            pids.append(int(line.strip()))
+        except ValueError:
+            continue
+    if not pids:
+        return False
+    print(f"[analyst] stale leaderboard detected (pids={pids}); refreshing to --auto-discover", flush=True)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+    time.sleep(2)
+    # Kill any survivors
+    for pid in pids:
+        try:
+            os.kill(pid, 0)
+            os.kill(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    env = os.environ.copy()
+    env["POLYMARKET_DRY_RUN"] = "1"
+    try:
+        subprocess.Popen(
+            ["uv", "run", "pmbot", "leaderboard",
+             "--auto-discover", "--interval", "3", "--telegram"],
+            cwd=REPO_ROOT, env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        print("[analyst] ✓ leaderboard relaunched with --auto-discover", flush=True)
+        return True
+    except Exception as exc:
+        print(f"[analyst] failed to relaunch leaderboard: {exc}", flush=True)
+        return False
+
+
 def evaluate_kills(metrics: list[StratMetrics], state: dict) -> list[str]:
     """Identify auto-spawned bots that are clearly losing, kill them.
 
@@ -585,6 +640,11 @@ def cycle_once() -> None:
     state = load_autonomous_state()
     if not state.get("enabled", True):
         print("[analyst] disabled via state file; reporting only", flush=True)
+
+    # Self-heal: if there's a pre-auto-discover leaderboard process
+    # running (stale --runs list), kill+relaunch with auto-discover so
+    # new spawned bots appear without the user restarting anything.
+    ensure_leaderboard_auto_discover()
 
     metrics = collect_metrics()
     top, bottom = rank(metrics)
@@ -650,7 +710,26 @@ def cycle_once() -> None:
                     spawn_count += 1
                 state.setdefault("spawned", []).append(rec)
                 save_autonomous_state(state)
-                print(f"[analyst] {action['kind']} {action['name']} (pid={pid})", flush=True)
+                # Loud banner in the main race stdout (visible via
+                # the run_both_dry.sh `[analyst]` pipe-prefix).
+                alive = sum(1 for r in state.get("spawned", []) if not r.get("killed_at"))
+                emoji = "🔧" if action["kind"] == "tune" else "🆕"
+                if action["kind"] == "tune":
+                    print(
+                        f"\n{'='*70}\n"
+                        f"[analyst] {emoji}{emoji}{emoji} TUNED  {action['target']:32s} → {action['name']}\n"
+                        f"[analyst]     (pid={pid}, now {alive} live auto bots)\n"
+                        f"{'='*70}\n",
+                        flush=True,
+                    )
+                else:
+                    print(
+                        f"\n{'='*70}\n"
+                        f"[analyst] {emoji}{emoji}{emoji} SPAWNED {action['name']}\n"
+                        f"[analyst]     (pid={pid}, now {alive} live auto bots, +{spawn_count}/{MAX_SPAWNS_PER_CYCLE} this cycle)\n"
+                        f"{'='*70}\n",
+                        flush=True,
+                    )
     elif not metrics:
         narrative = "No dry-run state yet — waiting for the race to start writing journals."
     else:
