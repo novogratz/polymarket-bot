@@ -113,6 +113,22 @@ run_bot claude_baseline_fresh       claude_baseline_fresh       "cb_fresh  "
 run_bot claude_baseline_quick_exit  claude_baseline_quick_exit  "cb_quick  "
 run_bot claude_baseline_let_run     claude_baseline_let_run     "cb_letrun "
 
+# ─── User-curated momentum family (10 bots — user's favorite thesis) ─
+# Each wraps an existing momentum-themed mode with a distinct sizing +
+# exit combo. The selector logic is hardcoded in race_strategies, so
+# what these A/B-test is exit timing + position sizing × momentum mode.
+# All 4h-cap, $20 starting cash, sizing range micro ($2) → aggressive ($8).
+run_bot momentum_breakout_aggressive   momentum_breakout_aggressive   "mom_brk_a "
+run_bot momentum_breakout_defensive    momentum_breakout_defensive    "mom_brk_d "
+run_bot momentum_strong_continuation   momentum_strong_continuation   "mom_strong"
+run_bot momentum_early_quickprofit     momentum_early_quickprofit     "mom_early+"
+run_bot momentum_early_letrun          momentum_early_letrun          "mom_early="
+run_bot momentum_late_chase_strict     momentum_late_chase_strict     "mom_late  "
+run_bot momentum_volume_spike_safe     momentum_volume_spike_safe     "mom_vspike"
+run_bot momentum_exhaustion_fade       momentum_exhaustion_fade       "mom_exh   "
+run_bot momentum_panic_continuation    momentum_panic_continuation    "mom_panic "
+run_bot momentum_high_vol_pop_micro    momentum_high_vol_pop_micro    "mom_pop_µ "
+
 # ─── Autonomous analyst sidecar ──────────────────────────────────────
 # Every 15 min, reads per-strategy state, calls claude CLI for insights,
 # may SPAWN new auto_* strategies (TOML-only, additive) and KILL its
