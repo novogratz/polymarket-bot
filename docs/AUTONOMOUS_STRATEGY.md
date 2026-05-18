@@ -126,3 +126,33 @@ Defensive only — the tuner never loosens after wins. Disabled by default below
 - Last-tick scanner candidates and rejection breakdown.
 
 The dashboard is passive. It never places orders.
+
+## Autonomous analyst sidecar (`scripts/dry_analyst.py`)
+
+Auto-launched by `scripts/run_both_dry.sh`. Runs alongside the dry race.
+
+**Two cadences:**
+- **Report every 15 min** (`ANALYST_CYCLE_SECONDS=900`): full status to Telegram, including:
+  - Profitable strategies (all of them, with `$start → $current`, +/-$, +/-%, WR, closed, open)
+  - Top 5 by PnL + Bottom 3
+  - Claude CLI narrative (1–3 paragraphs analysing top + bottom)
+  - 🎯 *Favorite for live*: a 4-tier recommendation (live-ready / best risk-adjusted / any-profitable / least-bad) with the favorite's top 3 closed trades + open positions appended
+  - 🆕 Spawned / 🔧 Tuned / 💀 Killed events from the last action cycle
+- **Spawn/kill every 1 hour** (`ANALYST_SPAWN_KILL_INTERVAL_SECONDS=3600`):
+  - Spawns up to 3 new `auto_*` profiles per cycle, derived from current winners via `claude` CLI proposals
+  - Tunes up to 2 existing `auto_*` profiles in place
+  - Kills underperformers:
+    - Catastrophic: ROI ≤ -50% (any sample size)
+    - Sustained: ROI ≤ -10% AND wr ≤ 40% AND n ≥ 8 (auto) / n ≥ 20 (human)
+  - Killed TOMLs → `configs/profiles/_archived/<name>_<ts>.toml` (recoverable)
+  - Hard cap: 150 total bots (`ANALYST_MAX_BOTS`)
+
+**Kill switch:** `echo '{"enabled":false}' > data/autonomous_state.json` halts new spawns + kills (reports continue).
+
+**Live analyst (`scripts/live_analyst.py`)** is a separate, read-only sidecar launched by `run_live_70.sh`. It cross-compares the live profile to the dry leaderboard and posts insights to `TELEGRAM_CHAT_ID_LIVE` every 30 min. NEVER spawns/kills/modifies anything live.
+
+**Universal sweep** runs every tick in `strategy_loop._force_close_resolved_positions`:
+- Closes any open position with cached `current_price ≥ 0.97` (winner)
+- Closes any open position with cached `current_price ≤ 0.03` (loser)
+- Works for all strategy modes (smart_money, race, edge, news) in both live + dry
+- Catches resolved markets that drop out of Gamma scans before per-strategy exit logic fires

@@ -12,7 +12,7 @@ from datetime import timedelta
 from typing import Any
 
 from .config import Settings
-from .models import Candidate, as_float, parse_dt, parse_json_list, utc_now
+from .models import Candidate, as_float, is_excluded_market, parse_dt, parse_json_list, utc_now
 
 
 def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Candidate]:
@@ -21,6 +21,8 @@ def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Cand
     candidates: list[Candidate] = []
 
     for market in markets:
+        if is_excluded_market(market):
+            continue
         end_date = parse_dt(market.get("endDate"))
         if end_date is None or end_date < now or end_date > horizon:
             continue
