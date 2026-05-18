@@ -439,17 +439,30 @@ def format_leaderboard_telegram(
     *,
     live: RunStats | None = None,
     now: datetime | None = None,
+    top_n: int = 15,
+    bottom_n: int = 5,
 ) -> str:
-    """Compact Telegram leaderboard — ranked by ROI."""
+    """Compact Telegram leaderboard — ranked by ROI, truncated.
+
+    Telegram caps messages at 4096 chars. With 100+ strategies running
+    in the auto-discover race, the full board would exceed that and
+    Telegram returns HTTP 400. We show TOP top_n + BOTTOM bottom_n
+    + a count of the middle band.
+    """
     if not stats and live is None:
         return "🏁 *Leaderboard*: no runs found"
     ranked = sorted(stats, key=lambda s: s.roi_pct, reverse=True)
     now = now or datetime.now(timezone.utc)
     stamp = notifications._md_escape(now.strftime("%H:%M"))
 
-    lines = [f"🏁 *Leaderboard* · {stamp} UTC · {len(ranked)} strategies", ""]
-    for i, s in enumerate(ranked, 1):
-        rank_str = notifications._md_escape(f"{i:>2}.")
+    profitable = sum(1 for s in ranked if s.roi_pct > 0)
+    lines = [
+        f"🏁 *Leaderboard* · {stamp} UTC · {len(ranked)} strategies "
+        f"\\({profitable} profitable\\)",
+        "",
+    ]
+
+    def _fmt_row(i: int, s: "RunStats") -> str:
         name = notifications._md_escape(s.run_name)
         if s.roi_pct > 0:
             color = "🟢"
@@ -459,12 +472,29 @@ def format_leaderboard_telegram(
             color = "⚪"
         roi_str = notifications._md_escape(f"{s.roi_pct:+5.1f}%")
         eq_str = notifications._md_escape(f"${s.equity:.0f}")
-        cash_str = notifications._md_escape(f"💵${s.cash:.0f}")
         open_str = notifications._md_escape(f"📦{s.open_positions}")
         wl_str = notifications._md_escape(f"{s.wins}W/{s.losses}L")
-        lines.append(
-            f"{rank_str} `{name}` {color} {eq_str} {cash_str} {open_str} {roi_str} {wl_str}"
-        )
+        rank_str = notifications._md_escape(f"{i:>3}.")
+        return f"{rank_str} `{name}` {color} {eq_str} {open_str} {roi_str} {wl_str}"
+
+    top = ranked[:top_n]
+    bottom = ranked[-bottom_n:] if len(ranked) > top_n + bottom_n else []
+
+    if top:
+        lines.append(f"*🏆 Top {len(top)} (by ROI)*")
+        for i, s in enumerate(top, 1):
+            lines.append(_fmt_row(i, s))
+
+    if bottom:
+        middle = len(ranked) - len(top) - len(bottom)
+        if middle > 0:
+            lines.append("")
+            lines.append(notifications._md_escape(f"… {middle} more in the middle band …"))
+        lines.append("")
+        lines.append(f"*📉 Bottom {len(bottom)}*")
+        for s in bottom:
+            i = ranked.index(s) + 1
+            lines.append(_fmt_row(i, s))
 
     if live is not None:
         hypo_rank = 1 + sum(1 for s in ranked if s.roi_pct > live.roi_pct)
