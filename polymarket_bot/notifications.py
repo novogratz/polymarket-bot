@@ -603,7 +603,8 @@ def notify_heartbeat(snapshot: dict[str, Any]) -> None:
 
     if positions > 0:
         unreal_str = _md_escape(_fmt_signed_money_fr(unrealized))
-        lines.append(f"📦 {positions} positions — non\\-réalisé *{unreal_str}*")
+        label = "position" if positions == 1 else "positions"
+        lines.append(f"📦 {positions} {label} — non\\-réalisé *{unreal_str}*")
     else:
         lines.append("📦 aucune position ouverte")
 
