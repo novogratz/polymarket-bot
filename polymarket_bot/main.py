@@ -653,18 +653,14 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 raise
 
     noise_trades: list[dict[str, object]] = []
-    if settings.smart_noise_fallback_enabled:
+    if settings.smart_noise_fallback_enabled and not executed_trades:
         noise_picks = _noise_fallback_candidates(
             settings, portfolio, candidates, open_categories, smart_data=smart_data
         )
         if noise_picks:
-            label = (
-                "below min positions or above cash-pressure threshold"
-                if not executed_trades
-                else "smart-money fired but cash still idle"
-            )
             print(
-                f"   noise fallback: trying {len(noise_picks)} small bet(s) ({label})",
+                f"   noise fallback: trying {len(noise_picks)} small bet(s) "
+                "(below min positions or above cash-pressure threshold)",
                 flush=True,
             )
             for candidate in noise_picks:
@@ -741,6 +737,9 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "scan_counts": scan_counts,
         "summary": portfolio.summary(),
         "auto_tune_info": auto_tune_info,
+        "api_errors": {
+            "trades_fetch": getattr(smart_data, "trades_fetch_errors", 0),
+        },
     }
     if settings.btc_edge_integrated:
         try:
@@ -899,7 +898,6 @@ def _execute_sell_strategy(
                 "market_id": position.get("market_id"),
                 "question": position.get("question"),
                 "outcome": position.get("outcome"),
-                "question": position.get("question"),
                 "action": "sell",
                 "reason": plan["reason"],
                 "pnl_pct": round(current_pnl_pct, 4),
@@ -2821,6 +2819,7 @@ def cli_auto_loop(
     os.environ["POLYMARKET_PROFILE_LABEL"] = profile_path.stem
 
     settings = Settings()
+    notifications.set_dry_run(settings.dry_run)
 
     # 5) Snapshot effective config.
     if dry_run and paths is not None:

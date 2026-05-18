@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from ._atomic_io import atomic_write_text
+
 _HTTP_TIMEOUT_SEC = 5.0
 
 # Transport: callable qui prend un dict payload (chat_id, text, parse_mode)
@@ -25,11 +27,17 @@ Transport = Callable[[dict[str, Any]], bool]
 
 _transport_override: Transport | None = None
 
+# Mode flag set explicitly by the CLI entrypoint (see ``main.py``).
+# When ``None``, we fall back to reading ``POLYMARKET_DRY_RUN`` for
+# backwards compatibility with scripts that bypass the CLI flag plumbing.
+_dry_run_override: bool | None = None
+
 
 def _reset_for_tests() -> None:
     """Réinitialise l'état module entre tests."""
-    global _transport_override
+    global _transport_override, _dry_run_override
     _transport_override = None
+    _dry_run_override = None
 
 
 def set_transport_for_test(transport: Transport | None) -> None:
@@ -38,11 +46,24 @@ def set_transport_for_test(transport: Transport | None) -> None:
     _transport_override = transport
 
 
+def set_dry_run(dry_run: bool) -> None:
+    """Override the dry-run flag explicitly (call once from the CLI).
+
+    Avoids the fragile coupling of reading ``POLYMARKET_DRY_RUN`` on every
+    notification, which would diverge from ``Settings.dry_run`` if the env
+    var changes mid-process.
+    """
+    global _dry_run_override
+    _dry_run_override = bool(dry_run)
+
+
 def _bot_token() -> str:
     return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 
 
 def _is_dry_run() -> bool:
+    if _dry_run_override is not None:
+        return _dry_run_override
     return os.environ.get("POLYMARKET_DRY_RUN", "").strip() in {"1", "true", "True"}
 
 
@@ -167,8 +188,7 @@ def _save_state(path: Path, state: _State) -> None:
         "last_heartbeat_ts": state.last_heartbeat_ts,
     }
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        atomic_write_text(path, json.dumps(payload, indent=2))
     except OSError as exc:
         print(f"[notif] failed to save state: {exc}", file=sys.stderr, flush=True)
 
@@ -716,7 +736,8 @@ def notify_heartbeat(snapshot: dict[str, Any]) -> None:
 
     if positions > 0:
         unreal_str = _md_escape(_fmt_signed_money_fr(unrealized))
-        lines.append(f"📦 {positions} positions — non\\-réalisé *{unreal_str}*")
+        label = "position" if positions == 1 else "positions"
+        lines.append(f"📦 {positions} {label} — non\\-réalisé *{unreal_str}*")
     else:
         lines.append("📦 aucune position ouverte")
 

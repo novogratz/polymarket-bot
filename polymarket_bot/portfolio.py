@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from . import notifications
+from ._atomic_io import atomic_write_text
 from .config import Settings
 from .models import Candidate, utc_now
 
@@ -39,13 +40,13 @@ class Portfolio:
         )
 
     def save(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
+        atomic_write_text(
+            path,
             json.dumps(
                 {"cash": self.cash, "positions": self.positions, "pending_orders": self.pending_orders or []},
                 indent=2,
                 sort_keys=True,
-            )
+            ),
         )
 
     def has_open_position(self, market_id: str, outcome: str | None = None) -> bool:

@@ -248,6 +248,41 @@ class EnsureOpenPositionsInPoolTests(unittest.TestCase):
         self.assertAlmostEqual(clob_cand.tick_size, 0.005)
         self.assertTrue(clob_cand.neg_risk)
 
+    def test_clob_pricing_preserves_stored_neg_risk_when_scan_default_false(self):
+        """Quand le scan revient avec neg_risk=False par défaut (champ absent
+        côté Gamma) mais que la position a enregistré neg_risk=True à
+        l'entrée, le candidat CLOB doit conserver le True stocké — sinon
+        un sell ultérieur signerait avec le mauvais exchange."""
+        portfolio = Portfolio(
+            cash=100.0,
+            positions=[{
+                "status": "open", "token_id": "tok-a", "stake": 10.0,
+                "market_id": "m1", "outcome": "Yes",
+                "tick_size": 0.01, "neg_risk": True,
+            }],
+            pending_orders=[],
+        )
+        scan_cand = Candidate(
+            market_id="m1", question="q", slug="s",
+            end_date=utc_now() + timedelta(hours=10), hours_to_close=10.0,
+            liquidity=1000.0, volume=2000.0, outcome="Yes", price=0.50,
+            token_id="tok-a", score=1.0, url="https://polymarket.com",
+            best_bid=0.49, best_ask=0.50, tick_size=0.01, neg_risk=False,
+            accepts_orders=True, event_slug="",
+        )
+        fake = _FakeClobClient(
+            midpoints={"tok-a": "0.55"},
+            prices={"tok-a": {"BUY": "0.54", "SELL": "0.56"}},
+        )
+        mod, orig = self._patch_clob(fake)
+        try:
+            result = ensure_open_positions_in_pool(self._settings(), portfolio, [scan_cand])
+        finally:
+            mod.ClobClient = orig
+
+        clob_cand = next(c for c in result if c.token_id == "tok-a" and c.score == 0.0)
+        self.assertTrue(clob_cand.neg_risk)
+
     def test_falls_back_to_gamma_when_clob_has_no_data(self):
         portfolio = Portfolio(
             cash=100.0,

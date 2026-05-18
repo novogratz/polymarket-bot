@@ -206,6 +206,21 @@ Cible : `.env` ne contient que secrets (`PRIVATE_KEY`, `API_KEY`...), endpoints 
 
 Le filtre passe si **(intersect ≥ intersect_min) OU (cache ≥ cache_threshold)**. Tant que le cache n'a pas atteint `window_days / 2` snapshots, il est ignoré (warmup).
 
+## Section `[mirror]` — mode copy-trade d'un ou plusieurs wallets
+
+Activée uniquement quand `[run].mode = "mirror"`. Le bot ne fait alors aucun scan smart-money — il poll les trades des wallets cibles et les reproduit avec un sizing fixe.
+
+| Clé | Type | Rôle |
+|---|---|---|
+| `target` | str | Wallet unique à copier (legacy, mutuellement exclusif avec `targets`). |
+| `targets` | list[str] | Liste de wallets (multi-target). |
+| `size_usd` | float | Taille fixe par BUY mirroré (USD). |
+| `mirror_sells` | bool | Copier aussi les SELL du wallet cible. Indispensable pour les wallets short-hold. |
+| `min_target_stake_usd` | float | Filtre micro-trades côté wallet cible. |
+| `max_trade_age_seconds` | int | **Défaut : 60s.** Trades plus vieux que ce seuil sont ignorés. Mettre `0` pour désactiver le filtre (rejouera jusqu'aux 100 dernières trades par wallet — utile pour un bootstrap, dangereux en redémarrage long). |
+
+Le défaut `60s` s'applique à **tous les profils mirror** qui ne déclarent pas explicitement la clé. Un profil hérité (`copy-wallet`, `copy-0x4924`) qui pollait toutes les trades fraîches obtient désormais ce comportement. Pour rejouer un historique au redémarrage, mettre `max_trade_age_seconds = 0` dans le profil.
+
 ## Section `[telemetry]` — affichage
 
 | Clé | Type | Rôle |

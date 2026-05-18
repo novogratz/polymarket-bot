@@ -7,6 +7,11 @@
 # (exit dès retour à +20%), trailing armé à +15%, stop_loss_min_age 5min.
 # Sizing 10%/trade, cap \$25/position. assumed_live_balance_usd=\$20.
 # Toute la config vit dans configs/profiles/claude_baseline_quick_exit.toml.
+#
+# Ce script passe --yes : la confirmation interactive est skipée, donc aucun
+# besoin de TTY. Pour une exécution sans --yes (auto-loop --live tout court),
+# l'opérateur DOIT être attaché à un TTY ; sans cela, prompt_live_confirmation
+# refuse et abort proprement (cf. live_confirm.py:48).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
