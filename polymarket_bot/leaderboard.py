@@ -463,19 +463,20 @@ def format_leaderboard_telegram(
     ]
 
     def _fmt_row(i: int, s: "RunStats") -> str:
-        name = notifications._md_escape(s.run_name)
+        # Plain text rows — _post() retries with parse_mode stripped on
+        # HTTP 400, so we keep formatting minimal to avoid MarkdownV2
+        # escape headaches with strategy names full of underscores.
         if s.roi_pct > 0:
             color = "🟢"
         elif s.roi_pct < 0:
             color = "🔴"
         else:
             color = "⚪"
-        roi_str = notifications._md_escape(f"{s.roi_pct:+5.1f}%")
-        eq_str = notifications._md_escape(f"${s.equity:.0f}")
-        open_str = notifications._md_escape(f"📦{s.open_positions}")
-        wl_str = notifications._md_escape(f"{s.wins}W/{s.losses}L")
-        rank_str = notifications._md_escape(f"{i:>3}.")
-        return f"{rank_str} `{name}` {color} {eq_str} {open_str} {roi_str} {wl_str}"
+        return (
+            f"{i:>3}. {color} {s.run_name:<38s} "
+            f"${s.equity:>7.2f}  {s.roi_pct:+6.1f}%  "
+            f"📦{s.open_positions}  {s.wins}W/{s.losses}L"
+        )
 
     top = ranked[:top_n]
     bottom = ranked[-bottom_n:] if len(ranked) > top_n + bottom_n else []

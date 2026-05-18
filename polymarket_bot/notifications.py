@@ -174,21 +174,50 @@ def _save_state(path: Path, state: _State) -> None:
 
 
 def _default_transport(payload: dict[str, Any]) -> bool:
-    """Transport par défaut: POST sur api.telegram.org via urllib."""
+    """Transport par défaut: POST sur api.telegram.org via urllib.
+
+    On HTTP 400 from Telegram (typically MarkdownV2 parse errors caused
+    by an unescaped char in a strategy name), retry the same message
+    with parse_mode stripped — plain text always goes through.
+    """
     token = _bot_token()
     if not token:
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"}, method="POST"
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
-            return 200 <= resp.status < 300
-    except (urllib.error.URLError, OSError, TimeoutError) as exc:
-        print(f"[notif] failed: {exc}", file=sys.stderr, flush=True)
-        return False
+
+    def _send(p: dict[str, Any]) -> tuple[bool, str]:
+        data = json.dumps(p).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
+                return (200 <= resp.status < 300), ""
+        except urllib.error.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="replace")[:300]
+            except Exception:
+                pass
+            return False, f"HTTP {exc.code}: {body}"
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+            return False, f"{type(exc).__name__}: {exc}"
+
+    ok, err = _send(payload)
+    if ok:
+        return True
+    # 400 → typically parse_mode error → retry as plain text
+    if "HTTP 400" in err and payload.get("parse_mode"):
+        retry = {**payload}
+        retry.pop("parse_mode", None)
+        ok, err2 = _send(retry)
+        if ok:
+            return True
+        err = f"{err} | retry-plain: {err2}"
+    print(f"[notif] failed: {err}", file=sys.stderr, flush=True)
+    return False
 
 
 def _get_transport() -> Transport:
