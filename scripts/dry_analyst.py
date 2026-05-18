@@ -349,6 +349,27 @@ def validate_proposal(name: str, toml_body: str) -> str | None:
         tomllib.loads(toml_body)
     except Exception as exc:
         return f"TOML parse error: {exc}"
+    # Full schema validation: load_profile catches unknown keys/sections.
+    # Write to a temp path, validate, delete — if invalid, the analyst
+    # never publishes a broken profile.
+    import tempfile
+    try:
+        from polymarket_bot.profiles import load_profile  # type: ignore
+    except Exception:
+        # If we can't import the validator, fall back to TOML-parse-only.
+        return None
+    with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as tmp:
+        tmp.write(toml_body)
+        tmp_path = tmp.name
+    try:
+        load_profile(Path(tmp_path))
+    except Exception as exc:
+        return f"schema validation: {exc}"
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
     return None
 
 

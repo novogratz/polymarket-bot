@@ -1,0 +1,40 @@
+# auto_pmlepgm_ultra_scalp — derived from auto_pmlepgm_micro_discipline
+# Hypothesis: current pmlepgm_micro at 2.5% stake + 6% SL is best risk-preserver in pmlepgm family; halve stake again (1.5%) and TP to 10% to force fast realized turnover and confirm the with-momentum edge converts into closed wins
+[run]
+starting_cash = 20.0
+mode = "pmlepgm_counter_panic_fade"
+
+[sizing]
+max_position_ceiling_usd = 2.5
+min_open_positions = 0
+starter_trade_usd = 1.5
+
+[market_filters]
+min_liquidity_usd = 300.0
+min_volume_usd = 1000.0
+
+[persistence]
+enabled = false
+
+[race]
+max_hours = 4.0
+scan_limit = 500
+min_liquidity_usd = 1500.0
+min_volume_24h_usd = 1200.0
+min_price = 0.10
+max_price = 0.90
+max_spread = 0.03
+stake_usd = 1.5
+stake_pct = 0.015
+max_orders_per_tick = 4
+cash_floor_pct = 0.05
+tp_pct = 0.10
+sl_pct = 0.05
+sl_min_age_minutes = 1
+near_expiry_minutes = 5
+resolved_exit_threshold = 0.97
+
+[telemetry]
+quiet = true
+auto_interval_seconds = 60
+stdout_heartbeat_minutes = 15

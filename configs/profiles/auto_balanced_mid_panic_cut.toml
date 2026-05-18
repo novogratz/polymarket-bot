@@ -1,0 +1,40 @@
+# auto_balanced_mid_panic_cut — derived from claude_balanced_mid
+# Hypothesis: leader claude_balanced_mid is best only by accident of low N — slam SL to 10% and stake_pct to 5% to confirm whether quick-cut + small bet actually preserves equity vs. the 25/15 default
+[run]
+starting_cash = 20.0
+mode = "claude_balanced_mid"
+
+[sizing]
+max_position_ceiling_usd = 5.0
+min_open_positions = 0
+starter_trade_usd = 2.0
+
+[market_filters]
+min_liquidity_usd = 100.0
+min_volume_usd = 100.0
+
+[persistence]
+enabled = false
+
+[race]
+max_hours = 4.0
+scan_limit = 500
+min_liquidity_usd = 500.0
+min_volume_24h_usd = 200.0
+min_price = 0.05
+max_price = 0.95
+max_spread = 0.05
+stake_usd = 2.0
+stake_pct = 0.05
+max_orders_per_tick = 3
+cash_floor_pct = 0.02
+tp_pct = 0.15
+sl_pct = 0.10
+sl_min_age_minutes = 2
+near_expiry_minutes = 5
+resolved_exit_threshold = 0.97
+
+[telemetry]
+quiet = true
+auto_interval_seconds = 45
+stdout_heartbeat_minutes = 15

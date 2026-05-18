@@ -2997,7 +2997,12 @@ def cli_leaderboard(
     runs: str = typer.Option(
         "news,edge",
         "--runs",
-        help="CSV of dry-run names to compare (e.g. 'news,edge').",
+        help="CSV of dry-run names to compare (e.g. 'news,edge'). Ignored when --auto-discover is set.",
+    ),
+    auto_discover: bool = typer.Option(
+        False,
+        "--auto-discover",
+        help="Include every dry_runs/* subdir (picks up bots spawned at runtime, e.g. by the autonomous analyst).",
     ),
     interval: int = typer.Option(
         15,
@@ -3020,6 +3025,10 @@ def cli_leaderboard(
     Reads each ``data/dry_runs/<name>/`` (state.json, journal.jsonl,
     metadata.json) and prints a ranked scoreboard. Designed to run as
     a sidecar process alongside the trading bots.
+
+    With ``--auto-discover`` the run list is rebuilt from disk on each
+    refresh, so bots spawned at runtime by the autonomous analyst
+    (``auto_*`` profiles) show up automatically.
     """
     from .leaderboard import (
         format_leaderboard,
@@ -3029,10 +3038,24 @@ def cli_leaderboard(
     )
 
     base_dir = Path(__file__).resolve().parent.parent / "data"
-    run_names = [r.strip() for r in runs.split(",") if r.strip()]
-    if not run_names:
-        typer.echo("--runs is empty", err=True)
-        raise typer.Exit(code=2)
+
+    def _discover() -> list[str]:
+        d = base_dir / "dry_runs"
+        if not d.exists():
+            return []
+        return sorted(p.name for p in d.iterdir() if p.is_dir())
+
+    if auto_discover:
+        run_names = _discover()
+        if not run_names:
+            typer.echo("--auto-discover: data/dry_runs/ is empty", err=True)
+            raise typer.Exit(code=2)
+    else:
+        run_names = [r.strip() for r in runs.split(",") if r.strip()]
+        if not run_names:
+            typer.echo("--runs is empty", err=True)
+            raise typer.Exit(code=2)
+
     if once:
         stats = []
         for name in run_names:
@@ -3042,7 +3065,10 @@ def cli_leaderboard(
         live = gather_live_stats(base_dir)
         typer.echo(format_leaderboard(stats, live=live))
         return
-    run_leaderboard_loop(base_dir, run_names, max(60, interval * 60), telegram=telegram)
+    run_leaderboard_loop(
+        base_dir, run_names, max(60, interval * 60),
+        telegram=telegram, auto_discover=auto_discover,
+    )
 
 
 @app.command("journal-stats")

@@ -501,22 +501,43 @@ def run_leaderboard_loop(
     interval_seconds: int,
     *,
     telegram: bool = False,
+    auto_discover: bool = False,
 ) -> None:
     """Print the leaderboard immediately, then every ``interval_seconds``.
 
     When ``telegram=True`` and the Telegram integration is enabled
     (env vars set), each refresh is also posted to Telegram.
+
+    When ``auto_discover=True``, the run list is rebuilt from
+    ``data/dry_runs/`` on each tick — picks up new bots spawned at
+    runtime (e.g. by ``scripts/dry_analyst.py``).
     """
-    print(
-        f"🏁 leaderboard: tracking {', '.join(run_names)} every {interval_seconds // 60}m "
-        f"(reading {base_dir}/dry_runs/)"
-        + (" + Telegram" if telegram and notifications.is_enabled() else ""),
-        flush=True,
-    )
+    dry_dir = base_dir / "dry_runs"
+
+    def _rediscover() -> list[str]:
+        if not dry_dir.exists():
+            return []
+        return sorted(p.name for p in dry_dir.iterdir() if p.is_dir())
+
+    if auto_discover:
+        print(
+            f"🏁 leaderboard: auto-discover ON, watching {dry_dir} "
+            f"every {interval_seconds // 60}m"
+            + (" + Telegram" if telegram and notifications.is_enabled() else ""),
+            flush=True,
+        )
+    else:
+        print(
+            f"🏁 leaderboard: tracking {', '.join(run_names)} every {interval_seconds // 60}m "
+            f"(reading {base_dir}/dry_runs/)"
+            + (" + Telegram" if telegram and notifications.is_enabled() else ""),
+            flush=True,
+        )
     while True:
         try:
+            current = _rediscover() if auto_discover else run_names
             stats: list[RunStats] = []
-            for name in run_names:
+            for name in current:
                 s = gather_run_stats(base_dir, name)
                 if s is not None:
                     stats.append(s)

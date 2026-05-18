@@ -1,0 +1,40 @@
+# auto_resolution_tightcohort — derived from claude_resolution_sniper
+# Hypothesis: pmlepgm/kzerlepgm aggressive variants bleed because they enter early in 4h window; restrict to last 75min before expiry where price discovery has converged and noise is low, with 2-wallet $400 consensus floor
+[run]
+starting_cash = 20.0
+mode = "claude_resolution_sniper"
+
+[sizing]
+max_position_ceiling_usd = 3.5
+min_open_positions = 0
+starter_trade_usd = 1.8
+
+[market_filters]
+min_liquidity_usd = 300.0
+min_volume_usd = 600.0
+
+[persistence]
+enabled = false
+
+[race]
+max_hours = 4.0
+scan_limit = 500
+min_liquidity_usd = 500.0
+min_volume_24h_usd = 800.0
+min_price = 0.15
+max_price = 0.85
+max_spread = 0.05
+stake_usd = 1.8
+stake_pct = 0.09
+max_orders_per_tick = 3
+cash_floor_pct = 0.05
+tp_pct = 0.18
+sl_pct = 0.15
+sl_min_age_minutes = 2
+near_expiry_minutes = 8
+resolved_exit_threshold = 0.97
+
+[telemetry]
+quiet = true
+auto_interval_seconds = 60
+stdout_heartbeat_minutes = 15
