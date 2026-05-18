@@ -88,6 +88,12 @@ KILL_HUMAN_MIN_TRADES = int(os.environ.get("ANALYST_KILL_HUMAN_MIN_TRADES", "20"
 KILL_ROI_THRESHOLD = float(os.environ.get("ANALYST_KILL_ROI", "-10.0"))
 KILL_WR_THRESHOLD = float(os.environ.get("ANALYST_KILL_WR", "40.0"))
 
+# Live-readiness criteria (a strategy is "ready for live" when it has
+# accumulated enough sample to back-test confidence):
+LIVE_READY_MIN_TRADES = int(os.environ.get("ANALYST_LIVE_READY_MIN_TRADES", "30"))
+LIVE_READY_MIN_ROI = float(os.environ.get("ANALYST_LIVE_READY_ROI", "10.0"))   # +10%
+LIVE_READY_MIN_WR = float(os.environ.get("ANALYST_LIVE_READY_WR", "55.0"))      # 55%
+
 
 @dataclass
 class StratMetrics:
@@ -165,11 +171,25 @@ def collect_metrics() -> list[StratMetrics]:
         cash = float(state.get("cash") or 0.0)
         positions = state.get("positions", []) or []
         open_positions = [p for p in positions if p.get("status") == "open"]
-        invested = sum(
-            float(p.get("size_usd") or p.get("notional_usd") or 0.0)
-            for p in open_positions
-        )
-        equity = cash + invested
+        # Mark-to-market: use current_price × shares (NOT cost basis).
+        # Cost basis would hide unrealized losses and show fake +PnL
+        # when prices have moved against the position.
+        invested_mtm = 0.0
+        for p in open_positions:
+            cur = p.get("current_price")
+            shares = p.get("shares") or 0
+            if cur is not None and shares:
+                try:
+                    invested_mtm += float(cur) * float(shares)
+                    continue
+                except (TypeError, ValueError):
+                    pass
+            # Fallback to cost basis if no current_price
+            invested_mtm += float(
+                p.get("size_usd") or p.get("stake") or
+                p.get("notional_usd") or 0.0
+            )
+        equity = cash + invested_mtm
         starting = _starting_cash_for(name)
         pnl = equity - starting
         roi_pct = (pnl / starting * 100.0) if starting > 0 else 0.0
@@ -188,7 +208,15 @@ def collect_metrics() -> list[StratMetrics]:
                         continue
                     if entry.get("event") != "position_closed":
                         continue
-                    pnl_t = float(entry.get("realized_pnl_usd") or 0.0)
+                    # Journal entries from different code paths use
+                    # different field names. Sweep-close (my new code)
+                    # writes realized_pnl_usd; smart_money / race / news
+                    # write realized_pnl. Read both, prefer _usd if present.
+                    pnl_t = float(
+                        entry.get("realized_pnl_usd")
+                        or entry.get("realized_pnl")
+                        or 0.0
+                    )
                     closed += 1
                     if pnl_t > 0:
                         wins += 1
@@ -554,20 +582,43 @@ def fmt_leaderboard(metrics: list[StratMetrics]) -> str:
 
 def build_main_message(narrative: str, top: list[StratMetrics],
                         bottom: list[StratMetrics], spawned: list[str],
-                        tuned: list[str], killed: list[str], n_total: int) -> str:
+                        tuned: list[str], killed: list[str], n_total: int,
+                        live_ready: list[StratMetrics] | None = None,
+                        live_close: list[StratMetrics] | None = None) -> str:
     stamp = time.strftime("%H:%M UTC", time.gmtime())
     parts = [f"🤖 *AUTONOMOUS REPORT* · {stamp}",
              f"_{n_total} strategies running, {len(top)+len(bottom)} rated (≥{MIN_TRADES_TO_RATE} closed trades)_",
              ""]
+    if live_ready:
+        parts.append(f"*🎯 LIVE READY* (n≥{LIVE_READY_MIN_TRADES}, ROI≥+{LIVE_READY_MIN_ROI:.0f}%, wr≥{LIVE_READY_MIN_WR:.0f}%)")
+        for m in live_ready:
+            parts.append(f"  ✅ `{m.name}` {m.pnl:+.2f}$ ROI={m.roi_pct:+.1f}% ({m.win_rate:.0f}% wr, {m.closed} closed)")
+        parts.append("→ _Promote one of these to live: edit `scripts/run_live_70.sh` profile arg + restart_")
+        parts.append("")
+    if live_close:
+        parts.append("*👀 Close to live-ready*")
+        for m in live_close[:5]:
+            parts.append(f"  • `{m.name}` ROI={m.roi_pct:+.1f}% ({m.win_rate:.0f}% wr, {m.closed} closed)")
+        parts.append("")
     if top:
-        parts.append("*🏆 Top 5 (by PnL)*")
+        parts.append("*🏆 Top 5 — equity / PnL$ / ROI% (started $20)*")
         for i, m in enumerate(top, 1):
-            parts.append(f"  {i}. `{m.name}` {m.pnl:+.2f}$ ({m.win_rate:.0f}% wr, {m.closed} closed)")
+            sign = "+" if m.pnl >= 0 else ""
+            parts.append(
+                f"  {i}. `{m.name}` "
+                f"${m.equity:.2f}  {sign}${m.pnl:.2f}  {m.roi_pct:+.1f}%  "
+                f"({m.win_rate:.0f}% wr, {m.closed} closed)"
+            )
         parts.append("")
     if bottom:
         parts.append("*📉 Bottom 3*")
         for m in bottom:
-            parts.append(f"  • `{m.name}` {m.pnl:+.2f}$ ({m.win_rate:.0f}% wr, {m.closed} closed)")
+            sign = "+" if m.pnl >= 0 else ""
+            parts.append(
+                f"  • `{m.name}` "
+                f"${m.equity:.2f}  {sign}${m.pnl:.2f}  {m.roi_pct:+.1f}%  "
+                f"({m.win_rate:.0f}% wr, {m.closed} closed)"
+            )
         parts.append("")
     if narrative:
         parts.append("*🧠 Insights*")
@@ -659,6 +710,36 @@ def ensure_leaderboard_auto_discover() -> bool:
     except Exception as exc:
         print(f"[analyst] failed to relaunch leaderboard: {exc}", flush=True)
         return False
+
+
+def assess_live_readiness(metrics: list[StratMetrics]) -> tuple[list[StratMetrics], list[StratMetrics]]:
+    """Identify strategies ready for live deployment.
+
+    A strategy is "live ready" when:
+      - closed >= LIVE_READY_MIN_TRADES (default 30, enough sample to dismiss variance)
+      - roi_pct >= LIVE_READY_MIN_ROI (default +10%)
+      - win_rate >= LIVE_READY_MIN_WR (default 55%)
+
+    Also returns "close candidates" — those with ≥15 closed trades and
+    ROI/wr in the right direction but not yet at threshold. These are
+    early signals worth watching.
+
+    Returns (ready, close_candidates).
+    """
+    ready: list[StratMetrics] = []
+    close: list[StratMetrics] = []
+    for m in metrics:
+        if (m.closed >= LIVE_READY_MIN_TRADES
+                and m.roi_pct >= LIVE_READY_MIN_ROI
+                and m.win_rate >= LIVE_READY_MIN_WR):
+            ready.append(m)
+        elif (m.closed >= LIVE_READY_MIN_TRADES // 2
+                and m.roi_pct >= LIVE_READY_MIN_ROI / 2
+                and m.win_rate >= LIVE_READY_MIN_WR - 5):
+            close.append(m)
+    ready.sort(key=lambda m: m.roi_pct, reverse=True)
+    close.sort(key=lambda m: m.roi_pct, reverse=True)
+    return ready, close
 
 
 def evaluate_kills(metrics: list[StratMetrics], state: dict) -> list[str]:
@@ -818,7 +899,9 @@ def cycle_once() -> None:
     state["last_cycle_ts"] = int(time.time())
     save_autonomous_state(state)
 
-    msg = build_main_message(narrative, top, bottom, spawned, tuned, killed, n_total)
+    live_ready, live_close = assess_live_readiness(metrics)
+    msg = build_main_message(narrative, top, bottom, spawned, tuned, killed,
+                              n_total, live_ready=live_ready, live_close=live_close)
     telegram_post(msg)
     print(msg, flush=True)
 
