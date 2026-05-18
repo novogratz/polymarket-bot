@@ -76,7 +76,7 @@ MAX_SPAWNS_PER_CYCLE = int(os.environ.get("ANALYST_MAX_SPAWNS", "3"))   # was 1
 MAX_TUNES_PER_CYCLE = int(os.environ.get("ANALYST_MAX_TUNES", "2"))     # in-place reroll
 SPAWN_PREFIX = "auto_"
 CLAUDE_TIMEOUT_SECONDS = 240
-MIN_TRADES_TO_RATE = 2  # was 3 — get insights faster
+MIN_TRADES_TO_RATE = 1  # 1 trade is enough to appear on the leaderboard
 
 # Kill criteria. Two tiers:
 #   - auto_*  bots (analyst's own children): tight bar, cull fast
@@ -213,7 +213,13 @@ def collect_metrics() -> list[StratMetrics]:
                         entry = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if entry.get("event") != "position_closed":
+                    # Accept either:
+                    #   - explicit event=position_closed (my sweep entries)
+                    #   - any entry with closed_at (race / smart_money /
+                    #     news strategies don't set event field but always
+                    #     include closed_at when they realize a position)
+                    if (entry.get("event") != "position_closed"
+                            and not entry.get("closed_at")):
                         continue
                     # Journal entries from different code paths use
                     # different field names. Sweep-close (my new code)
@@ -591,7 +597,8 @@ def build_main_message(narrative: str, top: list[StratMetrics],
                         bottom: list[StratMetrics], spawned: list[str],
                         tuned: list[str], killed: list[str], n_total: int,
                         live_ready: list[StratMetrics] | None = None,
-                        live_close: list[StratMetrics] | None = None) -> str:
+                        live_close: list[StratMetrics] | None = None,
+                        all_metrics: list[StratMetrics] | None = None) -> str:
     stamp = time.strftime("%H:%M UTC", time.gmtime())
     parts = [f"🤖 *AUTONOMOUS REPORT* · {stamp}",
              f"_{n_total} strategies running, {len(top)+len(bottom)} rated (≥{MIN_TRADES_TO_RATE} closed trades)_",
@@ -618,8 +625,25 @@ def build_main_message(narrative: str, top: list[StratMetrics],
             f"      WR {m.win_rate:.0f}%  •  closed {m.closed}  •  open {m.open_positions}",
         ]
 
+    # Always surface every profitable strategy — most important section.
+    # Uses the full metrics set (not just rated top/bottom), so even
+    # strategies with 0 closed trades but positive unrealized PnL show.
+    source = all_metrics if all_metrics is not None else (top or []) + (bottom or [])
+    profitable_all = sorted(
+        {m.name: m for m in source if m.pnl > 0}.values(),
+        key=lambda m: m.roi_pct, reverse=True,
+    )
+    if profitable_all:
+        parts.append(f"*🟢 Profitable strategies ({len(profitable_all)})*")
+        for i, m in enumerate(profitable_all, 1):
+            parts.extend(_fmt_row(i, m))
+        parts.append("")
+    else:
+        parts.append("_⚠️ No profitable strategy yet — entire board down._")
+        parts.append("")
+
     if top:
-        parts.append("*🏆 Top 5*")
+        parts.append("*🏆 Top 5 by PnL*")
         for i, m in enumerate(top, 1):
             parts.extend(_fmt_row(i, m))
         parts.append("")
@@ -654,7 +678,7 @@ def build_main_message(narrative: str, top: list[StratMetrics],
     #   2. Else best by ROI with n>=10 and ROI>0
     #   3. Else best by ROI overall (with caveat about small sample)
     #   4. Else "no data yet"
-    favorite, reason = _pick_favorite(top + bottom or [])
+    favorite, reason = _pick_favorite(all_metrics or top + bottom or [])
     parts.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     if favorite is None:
         parts.append("🎯 *My favorite strategy currently for live*: _none yet — no rated strategies_")
@@ -669,7 +693,11 @@ def build_main_message(narrative: str, top: list[StratMetrics],
 
 
 def _pick_favorite(metrics: list[StratMetrics]) -> tuple["StratMetrics | None", str]:
-    """Pick the best live candidate + the human-readable reason."""
+    """Pick the best live candidate + the human-readable reason.
+
+    Always returns a candidate when metrics exist — only "None" when
+    there's no data at all. Falls through 4 tiers from best to worst.
+    """
     if not metrics:
         return None, ""
     # Tier 1 — actually live-ready
@@ -677,12 +705,12 @@ def _pick_favorite(metrics: list[StratMetrics]) -> tuple["StratMetrics | None", 
     if ready:
         m = ready[0]
         return m, (
-            f"LIVE-READY — {m.closed} closed trades (≥{LIVE_READY_MIN_TRADES} threshold), "
-            f"ROI {m.roi_pct:+.1f}% (≥{LIVE_READY_MIN_ROI:.0f}% threshold), "
-            f"WR {m.win_rate:.0f}% (≥{LIVE_READY_MIN_WR:.0f}% threshold). "
+            f"LIVE-READY ✅ — {m.closed} closed trades (≥{LIVE_READY_MIN_TRADES}), "
+            f"ROI {m.roi_pct:+.1f}% (≥{LIVE_READY_MIN_ROI:.0f}%), "
+            f"WR {m.win_rate:.0f}% (≥{LIVE_READY_MIN_WR:.0f}%). "
             f"Statistically credible — promote with confidence."
         )
-    # Tier 2 — best by ROI with at least decent sample
+    # Tier 2 — best by ROI with at least decent sample AND profitable
     decent = sorted(
         [m for m in metrics if m.closed >= 10 and m.pnl > 0],
         key=lambda m: m.roi_pct, reverse=True,
@@ -690,20 +718,29 @@ def _pick_favorite(metrics: list[StratMetrics]) -> tuple["StratMetrics | None", 
     if decent:
         m = decent[0]
         return m, (
-            f"Best risk-adjusted candidate so far — {m.closed} closed trades, "
-            f"ROI {m.roi_pct:+.1f}%, WR {m.win_rate:.0f}%. Sample still below "
-            f"{LIVE_READY_MIN_TRADES}-trade live threshold, so promote only if you accept variance risk."
+            f"Best risk-adjusted candidate so far — {m.closed} closed, "
+            f"ROI {m.roi_pct:+.1f}%, WR {m.win_rate:.0f}%. Sample still "
+            f"below the {LIVE_READY_MIN_TRADES}-trade bar; promote only "
+            f"if you accept variance."
         )
-    # Tier 3 — best by PnL with caveat
+    # Tier 3 — any profitable bot, even with tiny sample
+    profitable = sorted([m for m in metrics if m.pnl > 0],
+                          key=lambda m: m.roi_pct, reverse=True)
+    if profitable:
+        m = profitable[0]
+        return m, (
+            f"Only profitable strategy on the board — but only "
+            f"{m.closed} closed trade(s). Variance dominates at this "
+            f"sample; wait for ≥30 trades before serious consideration."
+        )
+    # Tier 4 — nothing profitable, surface the least-bad anyway
     by_pnl = sorted(metrics, key=lambda m: m.pnl, reverse=True)
     m = by_pnl[0]
-    if m.pnl > 0:
-        return m, (
-            f"Top of board on PnL but only {m.closed} closed trade(s) — "
-            f"variance dominates at this sample. Wait for ≥30 closed trades "
-            f"before serious consideration."
-        )
-    return None, ""
+    return m, (
+        f"⚠️ No profitable strategy yet — entire board is down. This is "
+        f"the least-bad: {m.closed} closed, ROI {m.roi_pct:+.1f}%. "
+        f"DO NOT promote to live. Wait for the race to find a winner."
+    )
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -986,7 +1023,8 @@ def cycle_once() -> None:
 
     live_ready, live_close = assess_live_readiness(metrics)
     msg = build_main_message(narrative, top, bottom, spawned, tuned, killed,
-                              n_total, live_ready=live_ready, live_close=live_close)
+                              n_total, live_ready=live_ready,
+                              live_close=live_close, all_metrics=metrics)
     telegram_post(msg)
     print(msg, flush=True)
 
