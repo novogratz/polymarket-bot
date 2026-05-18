@@ -2209,12 +2209,115 @@ def _print_stdout_heartbeat(
     print(sep, flush=True)
 
 
+def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> list[dict]:
+    """Universal auto-sell for resolved markets across ALL strategies.
+
+    Every tick, iterate the local portfolio. For each open position whose
+    cached ``current_price`` is ≥ ``smart_resolved_exit_threshold`` (default
+    0.97), mark it closed at that price and write a journal entry.
+
+    Why this exists: when a market resolves on Polymarket, it stops being
+    returned by the Gamma scan API, so the per-strategy exit loops (which
+    need a fresh ``candidate.best_bid``) never fire ``resolved_market_exit``.
+    The position sits forever at its stale 0.999 cache. This sweep closes
+    those, regardless of which strategy mode opened them.
+
+    Works in live + dry-run. In live, real USDC distribution happens on
+    chain when the market resolves — this just makes the local ledger
+    consistent. In dry-run, it realises the cached gain.
+    """
+    threshold = float(getattr(settings, "smart_resolved_exit_threshold", 0.97) or 0.97)
+    try:
+        from .portfolio import Portfolio
+    except Exception:
+        return []
+    try:
+        portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+    except Exception:
+        return []
+    closed_records: list[dict] = []
+    changed = False
+    now = utc_now()
+    for position in list(portfolio.positions):
+        if position.get("status") != "open":
+            continue
+        cur = position.get("current_price")
+        if cur is None:
+            continue
+        try:
+            cur_f = float(cur)
+        except (TypeError, ValueError):
+            continue
+        if cur_f < threshold:
+            continue
+        entry = float(position.get("entry_price") or 0.0)
+        shares = float(position.get("shares") or 0.0)
+        if entry <= 0 or shares <= 0:
+            continue
+        cost_basis = float(position.get("stake") or position.get("cost_basis") or (entry * shares))
+        proceeds = cur_f * shares
+        realized_pnl = proceeds - cost_basis
+        position["status"] = "closed"
+        position["closed_at"] = now.isoformat()
+        position["realized_pnl"] = round(realized_pnl, 4)
+        position["exit_reason"] = "resolved_market_sweep"
+        position["exit_price"] = cur_f
+        portfolio.cash = float(portfolio.cash or 0.0) + proceeds
+        changed = True
+        closed_records.append({
+            "event": "position_closed",
+            "closed_at": now.isoformat(),
+            "opened_at": position.get("opened_at"),
+            "market_id": position.get("market_id"),
+            "question": position.get("question"),
+            "outcome": position.get("outcome"),
+            "token_id": position.get("token_id"),
+            "strategy": strategy_name,
+            "exit_reason": "resolved_market_sweep",
+            "entry_price": entry,
+            "exit_price": cur_f,
+            "shares": shares,
+            "cost_basis": round(cost_basis, 4),
+            "realized_pnl_usd": round(realized_pnl, 4),
+            "realized_pnl_pct": round(realized_pnl / cost_basis, 4) if cost_basis > 0 else 0.0,
+        })
+    if changed:
+        try:
+            portfolio.save(settings.state_path)
+        except Exception as exc:
+            print(f"[sweep] failed to save portfolio: {exc}", flush=True)
+        # Append to journal
+        try:
+            journal_path = Path(settings.trade_journal_path)
+            journal_path.parent.mkdir(parents=True, exist_ok=True)
+            with journal_path.open("a", encoding="utf-8") as fh:
+                for rec in closed_records:
+                    fh.write(json.dumps(rec) + "\n")
+        except Exception as exc:
+            print(f"[sweep] failed to append journal: {exc}", flush=True)
+        for rec in closed_records:
+            print(
+                f"💰 sweep-close {rec['outcome']} @ {rec['exit_price']:.3f}  "
+                f"pnl +${rec['realized_pnl_usd']:.2f} ({rec['realized_pnl_pct']*100:+.1f}%)  "
+                f"{(rec['question'] or '')[:50]}",
+                flush=True,
+            )
+    return closed_records
+
+
 def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
     last_heartbeat_ts: float = 0.0
     tick = 0
     while settings.auto_max_ticks <= 0 or tick < settings.auto_max_ticks:
         tick += 1
         started_at = utc_now()
+        # Universal sweep BEFORE the tick: closes positions at cached
+        # price ≥ 0.97 (e.g. resolved markets no longer in Gamma scans).
+        # Runs for every strategy mode — smart_money, race, edge, news.
+        try:
+            _force_close_resolved_positions(settings, strategy_name)
+        except Exception as exc:
+            print(f"[sweep] failed: {type(exc).__name__}: {exc}", flush=True)
         error: dict[str, str] | None = None
         tick_result: dict[str, object] = {}
         try:
