@@ -44,17 +44,19 @@ DRY_RUNS_DIR = REPO_ROOT / "data" / "dry_runs"
 PROFILES_DIR = REPO_ROOT / "configs" / "profiles"
 STATE_FILE = REPO_ROOT / "data" / "autonomous_state.json"
 
-CYCLE_SECONDS = int(os.environ.get("ANALYST_CYCLE_SECONDS", "900"))   # 15 min
-MAX_BOTS_TOTAL = int(os.environ.get("ANALYST_MAX_BOTS", "100"))
+CYCLE_SECONDS = int(os.environ.get("ANALYST_CYCLE_SECONDS", "300"))   # 5 min (was 15)
+MAX_BOTS_TOTAL = int(os.environ.get("ANALYST_MAX_BOTS", "150"))
+MAX_SPAWNS_PER_CYCLE = int(os.environ.get("ANALYST_MAX_SPAWNS", "3"))   # was 1
+MAX_TUNES_PER_CYCLE = int(os.environ.get("ANALYST_MAX_TUNES", "2"))     # in-place reroll
 SPAWN_PREFIX = "auto_"
 CLAUDE_TIMEOUT_SECONDS = 240
-MIN_TRADES_TO_RATE = 3  # require ≥3 closed trades before a strategy is "rated"
+MIN_TRADES_TO_RATE = 2  # was 3 — get insights faster
 
 # Kill criteria for auto-spawned bots only. Conservative: must have enough
 # sample AND be clearly losing on both PnL and win-rate.
-KILL_MIN_TRADES = int(os.environ.get("ANALYST_KILL_MIN_TRADES", "10"))
+KILL_MIN_TRADES = int(os.environ.get("ANALYST_KILL_MIN_TRADES", "8"))    # was 10
 KILL_ROI_THRESHOLD = float(os.environ.get("ANALYST_KILL_ROI", "-10.0"))   # ROI% ≤ -10
-KILL_WR_THRESHOLD = float(os.environ.get("ANALYST_KILL_WR", "35.0"))      # win_rate% ≤ 35
+KILL_WR_THRESHOLD = float(os.environ.get("ANALYST_KILL_WR", "40.0"))      # was 35
 
 
 @dataclass
@@ -212,46 +214,62 @@ def rank(metrics: list[StratMetrics]) -> tuple[list[StratMetrics], list[StratMet
 # ────────────────────────────────────────────────────────────────────
 
 
-PROMPT_TEMPLATE = """You analyse a Polymarket prediction-market dry-run race. {n_total} strategies running, {n_rated} have ≥{min_trades} closed trades.
+PROMPT_TEMPLATE = """You are running a fully autonomous Polymarket strategy race. {n_total} strategies running, {n_rated} rated (≥{min_trades} closed trades). Your job is to GENERATE new strategies aggressively and keep the race exploring.
 
 ## Per-strategy metrics (sorted by PnL)
 {leaderboard_table}
 
-## Your job
-1. **Narrative (3-5 lines max).** Why are the top 3 winning? Why are the bottom 3 losing? Be specific about what filter combination or exit logic likely drove the result. Avoid generic statements.
+## Existing auto-spawned strategies (don't dupe these)
+{existing_auto_names}
 
-2. **Optional new strategy proposal.** If you see a clear pattern that suggests a tunable variant of a winner, propose ONE new TOML profile. Otherwise reply `NO_PROPOSAL`.
+## YOUR JOB — REQUIRED ACTIONS
 
-If you propose, output a TOML block fenced like this:
+1. **Narrative (3-6 lines).** What's working? What's not? Be specific about parameter combinations (cohort tightness, momentum thresholds, exit timing). No generic statements.
+
+2. **Propose 1-3 new strategies.** ALWAYS propose at least 1 unless the data is identical to your last cycle. Each must explore a DIFFERENT hypothesis. Bias toward:
+   - Variants of profitable strategies with one parameter shifted
+   - Inverse/contrarian versions of clear losers
+   - Combinations of two winners' features
+   - Aggressive risk variants when slow winners exist
+
+3. **Optionally tune existing auto_ strategies** that have ≥{min_trades} trades but ROI between -10% and 0% (borderline). Propose a parameter shift to test.
+
+## OUTPUT FORMAT — strict
+
+For each new strategy, emit a TOML fenced block:
 ```toml
-# auto_<short_descriptive_name> — derived from <parent_strategy>
-# Hypothesis: <one sentence why this should outperform parent>
+# auto_<short_name> — derived from <parent>
+# Hypothesis: <one sentence — what specific param/combo change you're testing>
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "<existing mode name, copy from parent>"
 
 [sizing]
 ...
 [race]
+max_hours = 4.0
 ...
 [telemetry]
 quiet = true
-auto_interval_seconds = <staggered: pick a value 30-90 not used by others>
+auto_interval_seconds = <staggered 30-180>
 stdout_heartbeat_minutes = 15
 ```
 
-Constraints (HARD — your output will be rejected if violated):
-- The new profile name MUST start with `auto_`.
-- The `mode` MUST be one of the existing modes (no new Python selectors).
-- ONLY parameter variants. Don't invent new TOML sections.
-- starting_cash MUST be 100.0.
-- max_hours = 4.0 hard rule (4h-only).
+For each tune action, emit:
+```tune
+target: auto_<existing_name>
+hypothesis: <why this change>
+```
+followed by a full new TOML block (same format as new strategy, with a DIFFERENT auto_ name).
 
-Existing modes you can reuse: smart_money (default — leave mode unset), edge, news, mirror, hybrid_smart_money, smart_wallet_consensus, whale_entry_detection, wallet_cluster_correlation, early_momentum_detection, liquidity_vacuum_breakout, mean_reversion_fade, range_channel_trading, aggressive_buyer_detection, orderbook_imbalance, late_momentum_chase, weak_holder_flush, weak_holder_flush_inverse, pmlepgm_counter_panic_fade, pm_le_pgm_weak_holder_flush_inverse, championdumonde_breakout, late_favorite, panic_fade, underdog, favorite, contrarian, random, multi_signal_consensus, claude_resolution_sniper, claude_endgame_sweep, claude_blue_chip, claude_balanced_mid, claude_late_pump, claude_strong_breakout, claude_extreme_consensus, claude_resolution_clock, etc.
+## HARD CONSTRAINTS — your output is rejected if violated
+- New profile name MUST start with `auto_` and be unique (not in existing list above).
+- `mode` MUST be one of: smart_money (default — leave unset), edge, news, mirror, hybrid_smart_money, smart_wallet_consensus, whale_entry_detection, wallet_cluster_correlation, early_momentum_detection, liquidity_vacuum_breakout, mean_reversion_fade, range_channel_trading, aggressive_buyer_detection, orderbook_imbalance, late_momentum_chase, weak_holder_flush, weak_holder_flush_inverse, pmlepgm_counter_panic_fade, pm_le_pgm_weak_holder_flush_inverse, championdumonde_breakout, late_favorite, panic_fade, underdog, favorite, contrarian, random, multi_signal_consensus, claude_resolution_sniper, claude_endgame_sweep, claude_blue_chip, claude_balanced_mid, claude_late_pump, claude_strong_breakout, claude_extreme_consensus, claude_resolution_clock, probability_drift, resolution_compression, liquidity_absorption, momentum_exhaustion_reversal, micro_scalping, kzerlepgm_ultimatestrategy.
+- ONLY parameter variants. No new TOML sections, no Python in TOML.
+- starting_cash MUST be 20.0.
+- 4h-only rule: max_hours = 4.0 in [race], max_hours_to_close = 4.0 in [filters] for smart_money mode.
 
-Existing parent strategies to draw inspiration from (don't re-propose): {existing_auto_names}
-
-Output format: narrative first, then either the toml block or `NO_PROPOSAL`."""
+Output: narrative first, then TOML/tune blocks separated by blank lines. Be decisive."""
 
 
 def call_claude(prompt: str) -> str:
@@ -272,19 +290,45 @@ def call_claude(prompt: str) -> str:
         return f"[claude exception: {type(exc).__name__}: {exc}]"
 
 
-def parse_response(text: str) -> tuple[str, str | None, str | None]:
-    """Return (narrative, toml_content, profile_name) — toml_content/name may be None."""
-    # Strip toml block
-    toml_match = re.search(r"```toml\s*(.*?)```", text, re.S)
-    if not toml_match:
-        return text.strip(), None, None
-    toml_body = toml_match.group(1).strip()
-    # Extract profile name from header comment `# auto_<name>`
-    name_match = re.search(r"^#\s*(auto_[a-z0-9_]+)", toml_body, re.M)
-    if not name_match:
-        return text.strip(), None, None
-    narrative = (text[: toml_match.start()] + text[toml_match.end():]).strip()
-    return narrative, toml_body, name_match.group(1)
+def parse_response(text: str) -> tuple[str, list[dict]]:
+    """Parse Claude's response into a narrative + list of proposed actions.
+
+    Each action is: {'kind': 'spawn'|'tune', 'name': str, 'body': str,
+                     'target': str | None}
+    """
+    actions: list[dict] = []
+    # Pull all toml blocks
+    for m in re.finditer(r"```toml\s*(.*?)```", text, re.S):
+        body = m.group(1).strip()
+        name_match = re.search(r"^#\s*(auto_[a-z0-9_]+)", body, re.M)
+        if not name_match:
+            continue
+        actions.append({"kind": "spawn", "name": name_match.group(1),
+                        "body": body, "target": None, "span": m.span()})
+    # Pull all tune blocks (each followed by a toml block)
+    for m in re.finditer(r"```tune\s*(.*?)```", text, re.S):
+        tune_body = m.group(1)
+        target_match = re.search(r"target:\s*(auto_[a-z0-9_]+)", tune_body)
+        if not target_match:
+            continue
+        # Find the next toml block after this tune block
+        after = text[m.end():]
+        toml_match = re.search(r"```toml\s*(.*?)```", after, re.S)
+        if not toml_match:
+            continue
+        body = toml_match.group(1).strip()
+        name_match = re.search(r"^#\s*(auto_[a-z0-9_]+)", body, re.M)
+        if not name_match:
+            continue
+        # Mark this toml as part of a tune (not a separate spawn)
+        for a in actions:
+            if a["name"] == name_match.group(1):
+                a["kind"] = "tune"
+                a["target"] = target_match.group(1)
+                break
+    # Narrative = everything outside the code blocks
+    narrative = re.sub(r"```(?:toml|tune).*?```", "", text, flags=re.S).strip()
+    return narrative, actions
 
 
 def validate_proposal(name: str, toml_body: str) -> str | None:
@@ -293,8 +337,8 @@ def validate_proposal(name: str, toml_body: str) -> str | None:
         return f"name must start with `{SPAWN_PREFIX}`"
     if (PROFILES_DIR / f"{name}.toml").exists():
         return f"profile {name} already exists"
-    if "starting_cash" not in toml_body or "starting_cash = 100" not in toml_body:
-        return "starting_cash must be 100.0"
+    if "starting_cash" not in toml_body or "starting_cash = 20" not in toml_body:
+        return "starting_cash must be 20.0"
     # Reject anything that looks like Python (defensive). Match only at
     # start-of-line so the words "from"/"import" in comments are fine.
     if re.search(r"^\s*(import|from|def|class)\s+\w+", toml_body, re.M):
@@ -434,7 +478,7 @@ def fmt_leaderboard(metrics: list[StratMetrics]) -> str:
 
 def build_main_message(narrative: str, top: list[StratMetrics],
                         bottom: list[StratMetrics], spawned: list[str],
-                        killed: list[str], n_total: int) -> str:
+                        tuned: list[str], killed: list[str], n_total: int) -> str:
     stamp = time.strftime("%H:%M UTC", time.gmtime())
     parts = [f"🤖 *AUTONOMOUS REPORT* · {stamp}",
              f"_{n_total} strategies running, {len(top)+len(bottom)} rated (≥{MIN_TRADES_TO_RATE} closed trades)_",
@@ -457,6 +501,11 @@ def build_main_message(narrative: str, top: list[StratMetrics],
         parts.append("*🆕 Spawned*")
         for name in spawned:
             parts.append(f"  • `{name}`")
+        parts.append("")
+    if tuned:
+        parts.append("*🔧 Tuned (in-place reroll)*")
+        for swap in tuned:
+            parts.append(f"  • `{swap}`")
         parts.append("")
     if killed:
         parts.append("*💀 Killed (auto-spawned underperformers)*")
@@ -527,41 +576,69 @@ def cycle_once() -> None:
 
     narrative = ""
     spawned: list[str] = []
+    tuned: list[str] = []
 
-    if top:
+    if top or bottom or n_total >= 5:
         existing_autos = existing_auto_strategies()
         prompt = PROMPT_TEMPLATE.format(
             n_total=n_total,
             n_rated=len(top) + len(bottom),
             min_trades=MIN_TRADES_TO_RATE,
-            leaderboard_table=fmt_leaderboard(top + bottom),
+            leaderboard_table=fmt_leaderboard(top + bottom or metrics[:10]),
             existing_auto_names=", ".join(existing_autos) or "(none yet)",
         )
         response = call_claude(prompt)
-        narrative, toml_body, name = parse_response(response)
+        narrative, actions = parse_response(response)
 
-        if (state.get("enabled", True)
-                and toml_body and name
-                and total_running_bots() < MAX_BOTS_TOTAL):
-            err = validate_proposal(name, toml_body)
-            if err:
-                narrative += f"\n\n⚠ proposal rejected: {err}"
-            else:
-                write_profile(name, toml_body)
-                pid = spawn_bot(name)
-                spawned.append(name)
-                state.setdefault("spawned", []).append({
-                    "name": name, "pid": pid, "ts": int(time.time()),
-                })
+        if state.get("enabled", True):
+            spawn_count = tune_count = 0
+            for action in actions:
+                if total_running_bots() >= MAX_BOTS_TOTAL:
+                    narrative += f"\n\n⚠ bot cap {MAX_BOTS_TOTAL} reached; stopping spawns"
+                    break
+                if action["kind"] == "spawn" and spawn_count >= MAX_SPAWNS_PER_CYCLE:
+                    continue
+                if action["kind"] == "tune" and tune_count >= MAX_TUNES_PER_CYCLE:
+                    continue
+                err = validate_proposal(action["name"], action["body"])
+                if err:
+                    narrative += f"\n⚠ {action['name']} rejected: {err}"
+                    continue
+                # For tune: kill the target auto_ bot first
+                if action["kind"] == "tune" and action["target"]:
+                    target_record = next(
+                        (r for r in state.get("spawned", [])
+                         if r["name"] == action["target"] and not r.get("killed_at")),
+                        None,
+                    )
+                    if target_record:
+                        kill_bot(target_record.get("pid"), action["target"])
+                        archive_profile(action["target"])
+                        target_record["killed_at"] = int(time.time())
+                        target_record["killed_reason"] = f"tuned → {action['name']}"
+                # Spawn the new one
+                write_profile(action["name"], action["body"])
+                pid = spawn_bot(action["name"])
+                rec = {"name": action["name"], "pid": pid, "ts": int(time.time())}
+                if action["kind"] == "tune":
+                    rec["tuned_from"] = action["target"]
+                    tuned.append(f"{action['target']}→{action['name']}")
+                    tune_count += 1
+                else:
+                    spawned.append(action["name"])
+                    spawn_count += 1
+                state.setdefault("spawned", []).append(rec)
                 save_autonomous_state(state)
-                print(f"[analyst] spawned {name} (pid={pid})", flush=True)
+                print(f"[analyst] {action['kind']} {action['name']} (pid={pid})", flush=True)
+    elif not metrics:
+        narrative = "No dry-run state yet — waiting for the race to start writing journals."
     else:
-        narrative = f"No strategy has ≥{MIN_TRADES_TO_RATE} closed trades yet — waiting for sample."
+        narrative = f"Only {n_total} strategies tracked, none rated yet (need ≥{MIN_TRADES_TO_RATE} closed trades)."
 
     state["last_cycle_ts"] = int(time.time())
     save_autonomous_state(state)
 
-    msg = build_main_message(narrative, top, bottom, spawned, killed, n_total)
+    msg = build_main_message(narrative, top, bottom, spawned, tuned, killed, n_total)
     telegram_post(msg)
     print(msg, flush=True)
 

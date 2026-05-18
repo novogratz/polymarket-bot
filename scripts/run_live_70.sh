@@ -29,4 +29,19 @@ export TELEGRAM_ALERT_HEARTBEAT=1
 export TELEGRAM_ALERT_PORTFOLIO_UPDATES=1
 export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
-exec uv run pmbot auto-loop --live --profile claude_baseline_quick_exit --yes
+# ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
+# Every 30 min: reads paper_state + trade_journal, compares vs dry race
+# leaders, calls `claude` CLI for insights. NEVER touches the live bot;
+# pure observability. Kill via Ctrl+C (same process group).
+cleanup() {
+    kill 0 2>/dev/null || true
+    wait 2>/dev/null || true
+}
+trap cleanup INT TERM EXIT
+python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
+
+# Profile is set so the heartbeat shows the profile label; live_analyst
+# reads this env var too.
+export POLYMARKET_PROFILE_LABEL=claude_baseline_quick_exit
+
+uv run pmbot auto-loop --live --profile claude_baseline_quick_exit --yes
