@@ -689,7 +689,116 @@ def build_main_message(narrative: str, top: list[StratMetrics],
         parts.append(f"   *Why:* {reason}")
         parts.append(f"   *Performance:* ${starting:.2f} → *${favorite.equity:.2f}*  {sign}${favorite.pnl:.2f} ({favorite.roi_pct:+.1f}%)")
         parts.append(f"   *Stats:* WR {favorite.win_rate:.0f}%  •  closed {favorite.closed}  •  open {favorite.open_positions}")
+        # Detail block: top 3 closed wins + current open positions
+        top_trades, open_pos = _favorite_detail(favorite.name)
+        if top_trades:
+            parts.append("")
+            parts.append("*📊 Top 3 closed trades:*")
+            for i, t in enumerate(top_trades, 1):
+                psign = "+" if t["pnl"] >= 0 else ""
+                pct_str = f"{t['pct']:+.1f}%" if t["pct"] is not None else "—"
+                q = (t.get("question") or "?")[:55]
+                parts.append(
+                    f"  {i}. {psign}${t['pnl']:.2f} ({pct_str}) "
+                    f"{t.get('reason','?')}\n      {q}\n"
+                    f"      {t.get('side','?')} @ ${t.get('entry',0):.3f}, "
+                    f"held {t.get('held','?')}"
+                )
+        if open_pos:
+            parts.append("")
+            parts.append(f"*🔓 Open positions ({len(open_pos)}):*")
+            for p in open_pos[:6]:  # cap at 6 for Telegram size
+                psign = "+" if p["unr"] >= 0 else ""
+                q = (p.get("question") or "?")[:50]
+                parts.append(
+                    f"  • {q}\n"
+                    f"      {p.get('side','?')} @ ${p.get('entry',0):.3f} → ${p.get('cur',0):.3f}  "
+                    f"{psign}${p['unr']:.2f} ({p['unr_pct']:+.1f}%)"
+                )
+            if len(open_pos) > 6:
+                parts.append(f"  _… and {len(open_pos) - 6} more_")
     return "\n".join(parts)
+
+
+def _favorite_detail(name: str) -> tuple[list[dict], list[dict]]:
+    """Read the favorite strategy's journal + state, return:
+       (top 3 closed by PnL, open positions)
+    Returns ([], []) if files missing/unreadable.
+    """
+    run_dir = DRY_RUNS_DIR / name
+    if not run_dir.exists():
+        return [], []
+    closed: list[dict] = []
+    journal = run_dir / "journal.jsonl"
+    if journal.exists():
+        try:
+            for line in journal.read_text().splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    e = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not (e.get("event") == "position_closed" or e.get("closed_at")):
+                    continue
+                pnl = float(
+                    e.get("realized_pnl_usd")
+                    or e.get("realized_pnl") or 0.0
+                )
+                pct_raw = e.get("realized_pnl_pct") or e.get("pnl_pct")
+                if pct_raw is not None:
+                    pct = float(pct_raw) * 100 if abs(float(pct_raw)) < 1 else float(pct_raw)
+                else:
+                    pct = None
+                held = ""
+                try:
+                    from datetime import datetime
+                    o = datetime.fromisoformat(str(e.get("opened_at")).replace("Z","+00:00"))
+                    c = datetime.fromisoformat(str(e.get("closed_at")).replace("Z","+00:00"))
+                    secs = int((c - o).total_seconds())
+                    if secs < 3600:
+                        held = f"{secs // 60}m"
+                    else:
+                        held = f"{secs // 3600}h{(secs % 3600) // 60:02d}m"
+                except Exception:
+                    pass
+                closed.append({
+                    "pnl": pnl, "pct": pct,
+                    "reason": e.get("exit_reason", "?"),
+                    "question": e.get("question") or e.get("market_title"),
+                    "side": e.get("outcome", "?"),
+                    "entry": float(e.get("entry_price") or 0),
+                    "held": held or "?",
+                })
+        except Exception:
+            pass
+    top_trades = sorted(closed, key=lambda x: x["pnl"], reverse=True)[:3]
+    # Open positions from state.json
+    open_pos: list[dict] = []
+    state_file = run_dir / "state.json"
+    if state_file.exists():
+        try:
+            s = json.loads(state_file.read_text())
+            for p in s.get("positions", []):
+                if p.get("status") != "open":
+                    continue
+                entry = float(p.get("entry_price") or 0)
+                shares = float(p.get("shares") or 0)
+                cur = float(p.get("current_price") or 0)
+                cost = float(p.get("stake") or entry * shares)
+                mtm = cur * shares
+                unr = mtm - cost
+                unr_pct = (unr / cost * 100) if cost else 0
+                open_pos.append({
+                    "question": p.get("question") or p.get("market_title"),
+                    "side": p.get("outcome", "?"),
+                    "entry": entry, "cur": cur,
+                    "unr": unr, "unr_pct": unr_pct,
+                })
+        except Exception:
+            pass
+    open_pos.sort(key=lambda x: x["unr"], reverse=True)
+    return top_trades, open_pos
 
 
 def _pick_favorite(metrics: list[StratMetrics]) -> tuple["StratMetrics | None", str]:
