@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ._atomic_io import atomic_write_text
 from .config import Settings
 
 _HISTORY_CAP = 200
@@ -32,11 +33,8 @@ def write_tick(settings: Settings, record: dict[str, Any]) -> None:
     try:
         last_path = settings.tick_state_path
         history_path = settings.tick_history_path
-        last_path.parent.mkdir(parents=True, exist_ok=True)
-        history_path.parent.mkdir(parents=True, exist_ok=True)
-
         encoded = json.dumps(record)
-        last_path.write_text(encoded)
+        atomic_write_text(last_path, encoded)
 
         existing: list[str] = []
         if history_path.exists():
@@ -44,7 +42,7 @@ def write_tick(settings: Settings, record: dict[str, Any]) -> None:
         existing.append(encoded)
         if len(existing) > _HISTORY_CAP:
             existing = existing[-_HISTORY_CAP:]
-        history_path.write_text("\n".join(existing) + "\n")
+        atomic_write_text(history_path, "\n".join(existing) + "\n")
     except Exception:
         return
 

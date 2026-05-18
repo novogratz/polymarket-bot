@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from . import notifications
+from ._atomic_io import atomic_write_text
 from .config import Settings
 from .models import utc_now
 
@@ -125,8 +126,7 @@ def maybe_tune(settings: Settings) -> tuple[dict[str, Any], int]:
         previous_overrides = {}
 
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2))
+        atomic_write_text(path, json.dumps(payload, indent=2))
     except Exception:
         pass
 

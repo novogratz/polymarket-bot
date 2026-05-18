@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ._atomic_io import atomic_write_text
 from .config import Settings
 from .gamma import GammaClient
 from .models import Candidate
@@ -59,7 +60,6 @@ def _load_state(path: Path) -> dict[str, Any]:
 
 
 def _save_state(path: Path, state: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "seen": list(state.get("seen", []))[-_MAX_SEEN:],
         "last_ts_by_target": {
@@ -67,7 +67,7 @@ def _save_state(path: Path, state: dict[str, Any]) -> None:
             for k, v in (state.get("last_ts_by_target") or {}).items()
         },
     }
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    atomic_write_text(path, json.dumps(payload, indent=2))
 
 
 def _last_ts_for(state: dict[str, Any], target: str) -> int:

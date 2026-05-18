@@ -12,6 +12,7 @@ scan are not silently dropped.
 from __future__ import annotations
 
 import json
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -283,6 +284,7 @@ class SmartMoneyData:
     persistence_signals: dict[str, PersistenceSignal] = field(default_factory=dict)
     cohort_before_persistence: int = 0
     cohort_after_persistence: int = 0
+    trades_fetch_errors: int = 0
 
 
 def fetch_smart_money_data(
@@ -376,12 +378,14 @@ def fetch_smart_money_data(
     start = int(time.time()) - (settings.smart_trade_lookback_minutes * 60)
     trades: list[SmartTrade] = []
     traders_used = 0
+    fetch_errors: list[tuple[str, str]] = []
     concurrency = max(1, settings.smart_trade_fetch_concurrency)
 
     def _pull(trader: SmartTrader) -> list[SmartTrade]:
         try:
             return client.trades(user=trader.wallet, start=start)
-        except Exception:
+        except Exception as exc:
+            fetch_errors.append((trader.wallet, f"{type(exc).__name__}: {exc}"))
             return []
 
     if concurrency > 1 and len(qualified) > 1:
@@ -408,6 +412,15 @@ def fetch_smart_money_data(
                     flush=True,
                 )
             trades.extend(_pull(trader))
+    if fetch_errors:
+        # Sample the first 3 distinct error messages so we don't dump 24 identical 429s.
+        sample = list(dict.fromkeys(msg for _, msg in fetch_errors))[:3]
+        print(
+            f"      ⚠️  {len(fetch_errors)}/{len(qualified)} trade fetches failed "
+            f"(sample: {' | '.join(sample)})",
+            file=sys.stderr,
+            flush=True,
+        )
     return SmartMoneyData(
         traders=traders,
         trades=trades,
@@ -416,6 +429,7 @@ def fetch_smart_money_data(
         persistence_signals=persistence_signals,
         cohort_before_persistence=cohort_before,
         cohort_after_persistence=cohort_after,
+        trades_fetch_errors=len(fetch_errors),
     )
 
 
