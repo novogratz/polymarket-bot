@@ -37,6 +37,27 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
 DRY_RUNS_DIR = DATA_DIR / "dry_runs"
 
+
+def _load_dotenv() -> None:
+    env_file = REPO_ROOT / ".env"
+    if not env_file.exists():
+        return
+    try:
+        for raw in env_file.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+    except Exception as exc:
+        print(f"[live-analyst] .env load failed: {exc}", file=sys.stderr, flush=True)
+
+
+_load_dotenv()
+
 CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))   # 30 min
 CLAUDE_TIMEOUT_SECONDS = 240
 

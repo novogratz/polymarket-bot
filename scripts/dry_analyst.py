@@ -44,6 +44,31 @@ DRY_RUNS_DIR = REPO_ROOT / "data" / "dry_runs"
 PROFILES_DIR = REPO_ROOT / "configs" / "profiles"
 STATE_FILE = REPO_ROOT / "data" / "autonomous_state.json"
 
+
+def _load_dotenv() -> None:
+    """Read .env into os.environ. Done explicitly because the analyst
+    runs as a plain python script (no pmbot autoloader). Without this,
+    TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID_DRY_RUN are unset and the
+    Telegram posts silently no-op."""
+    env_file = REPO_ROOT / ".env"
+    if not env_file.exists():
+        return
+    try:
+        for raw in env_file.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+    except Exception as exc:
+        print(f"[analyst] .env load failed: {exc}", file=sys.stderr, flush=True)
+
+
+_load_dotenv()
+
 CYCLE_SECONDS = int(os.environ.get("ANALYST_CYCLE_SECONDS", "300"))   # 5 min (was 15)
 MAX_BOTS_TOTAL = int(os.environ.get("ANALYST_MAX_BOTS", "150"))
 MAX_SPAWNS_PER_CYCLE = int(os.environ.get("ANALYST_MAX_SPAWNS", "3"))   # was 1
