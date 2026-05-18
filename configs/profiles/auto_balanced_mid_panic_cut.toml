@@ -1,7 +1,7 @@
 # auto_balanced_mid_panic_cut — derived from claude_balanced_mid
 # Hypothesis: leader claude_balanced_mid is best only by accident of low N — slam SL to 10% and stake_pct to 5% to confirm whether quick-cut + small bet actually preserves equity vs. the 25/15 default
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "claude_balanced_mid"
 
 [sizing]

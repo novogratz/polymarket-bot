@@ -1,7 +1,7 @@
 # auto_pmlepgm_ultra_scalp — derived from auto_pmlepgm_micro_discipline
 # Hypothesis: current pmlepgm_micro at 2.5% stake + 6% SL is best risk-preserver in pmlepgm family; halve stake again (1.5%) and TP to 10% to force fast realized turnover and confirm the with-momentum edge converts into closed wins
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "pmlepgm_counter_panic_fade"
 
 [sizing]

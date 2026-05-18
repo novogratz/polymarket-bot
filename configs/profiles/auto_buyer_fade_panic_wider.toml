@@ -1,7 +1,7 @@
 # auto_buyer_fade_panic_wider — derived from auto_buyer_fade_microcut
 # Hypothesis: only positive strategy uses 1.5h/TP5/SL3 microcut — widen to 3h/TP8/SL6 to test whether the edge is the panic_fade lane itself vs. the microcut speed; if mean-reversion needs time, this beats the parent
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "panic_fade"
 
 [sizing]

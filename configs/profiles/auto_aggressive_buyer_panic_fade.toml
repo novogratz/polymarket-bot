@@ -1,7 +1,7 @@
 # auto_aggressive_buyer_panic_fade — derived from aggressive_buyer_detection
 # Hypothesis: aggressive_buyer_detection is the worst-bleeding lane (-88%, -80% across two variants); fade it with panic_fade mode, mid-strict liquidity, 8% TP / 5% SL — bet that the buyers everyone is chasing are tops, not bottoms
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "panic_fade"
 
 [sizing]

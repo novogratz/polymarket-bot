@@ -1,7 +1,7 @@
 # auto_resolution_sniper_microblade — derived from claude_resolution_sniper
 # Hypothesis: race-wide problem is unrealized positions dragging equity, not entry quality; deploy claude_resolution_sniper (resolution-focused mode never auto-spawned) with micro ceiling (1.5 stake, 2.0 max) + 1h race + 2-min near-expiry to force mechanical realization on every entry
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "claude_resolution_sniper"
 
 [sizing]

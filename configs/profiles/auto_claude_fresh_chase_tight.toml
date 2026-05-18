@@ -1,7 +1,7 @@
 # auto_claude_fresh_chase_tight — derived from claude_baseline_fresh
 # Hypothesis: fresh-signal winner pays up to 12¢ chase premium — tightening to 6¢ on the freshest signals should preserve the edge by only entering when the move hasn't already happened.
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 
 [sizing]
 position_pct = 0.10
@@ -12,7 +12,7 @@ high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 5
 starter_trade_usd = 5.0
-assumed_live_balance_usd = 100.0
+assumed_live_balance_usd = 20.0
 
 [trader_cohort]
 leaderboard_window = "WEEK"

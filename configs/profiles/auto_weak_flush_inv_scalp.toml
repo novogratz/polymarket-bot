@@ -1,7 +1,7 @@
 # auto_weak_flush_inv_scalp — derived from weak_holder_flush_inverse
 # Hypothesis: weak_holder_flush_inverse was a historical dry winner per CLAUDE.md but no current auto_ uses it; test a fast-scalp variant (8% TP, 5% SL, 90s min hold) to capture the brief reversal pop without bleeding into the full 4h window
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "weak_holder_flush_inverse"
 
 [sizing]

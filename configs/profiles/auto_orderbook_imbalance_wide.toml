@@ -1,7 +1,7 @@
 # auto_orderbook_imbalance_wide — derived from auto_orderbook_imbalance_micro
 # Hypothesis: micro variant uses tight stake; widen size + push SL to 9% / TP to 16% to test whether orderbook imbalance signal needs more room to play out vs. micro-cutting on noise
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "orderbook_imbalance"
 
 [sizing]

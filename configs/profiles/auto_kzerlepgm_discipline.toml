@@ -1,7 +1,7 @@
 # auto_kzerlepgm_discipline — derived from auto_kzerlepgm_aggressive
 # Hypothesis: the aggressive kzerlepgm (-62%, 6% stake, 25% TP) is bleeding from over-sizing on a composite signal whose strength we don't yet know; deploy the disciplined mirror — 2% stake, tight 8% TP / 5% SL, narrow price band, micro positions — to isolate whether the mode has any baseline edge before scaling
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "kzerlepgm_ultimatestrategy"
 
 [sizing]

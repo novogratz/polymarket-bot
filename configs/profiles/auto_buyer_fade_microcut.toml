@@ -1,7 +1,7 @@
 # auto_buyer_fade_microcut — derived from auto_aggressive_buyer_panic_fade
 # Hypothesis: panic_fade beat aggressive_buyer 5x (-13.6% vs -87.9%); compress its 4h/TP8/SL5 into 1.5h/TP5/SL3 with tighter entries — if fading retail piles is real edge it should fire faster and reverse quickly, not bleed for 4h
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "panic_fade"
 
 [sizing]

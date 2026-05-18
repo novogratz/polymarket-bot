@@ -1,7 +1,7 @@
 # auto_contrarian_inverse_pack — derived from contrarian
 # Hypothesis: the entire pack is at -80%→-100%, meaning consensus entries hit losers; trade contrarian mode with strict spread/momentum filters and tight SL to confirm the inverse edge exists
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "contrarian"
 
 [sizing]

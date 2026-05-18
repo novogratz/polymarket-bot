@@ -1,7 +1,7 @@
 # auto_panic_fade_atomscalp — derived from auto_buyer_fade_microcut
 # Hypothesis: microcut (+15.1%) is the only profitable variant; compress its 1.5h/TP5/SL3 to 45min/TP3/SL2 to test if the panic_fade edge is entirely in the first ~30min revertal window
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "panic_fade"
 
 [sizing]

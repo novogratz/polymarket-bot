@@ -1,7 +1,7 @@
 # auto_claude_persist_pressize — derived from claude_baseline_persist
 # Hypothesis: with 100% WR on closed trades, the winner is undersized at 0.10 position_pct. Bump to 0.16 (60% larger bets) while keeping everything else identical — let the validated filter run hotter.
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 
 [sizing]
 position_pct = 0.16
@@ -12,7 +12,7 @@ high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 5
 starter_trade_usd = 5.0
-assumed_live_balance_usd = 100.0
+assumed_live_balance_usd = 20.0
 
 [trader_cohort]
 leaderboard_window = "WEEK"

@@ -1,7 +1,7 @@
 # auto_extreme_consensus_patient — derived from claude_extreme_consensus
 # Hypothesis: counter-test to the high-frequency micro_discipline/ultra_scalp pair — when 5+ wallets converge on the same token in a tight window, the trade can run; use larger ceiling ($6), wider TP (+30%) and looser SL (-18%) to let strong consensus play out instead of micro-cutting at 5%
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "claude_extreme_consensus"
 
 [sizing]

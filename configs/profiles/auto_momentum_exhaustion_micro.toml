@@ -1,7 +1,7 @@
 # auto_momentum_exhaustion_micro — derived from auto_mean_reversion_fade_micro
 # Hypothesis: aggressive_buyer loses -87% so its inverse should win; mean_reversion_fade is one inverse path, momentum_exhaustion_reversal is another — different mode reading same exhaustion signal; if both inverse modes work, the edge is the fade itself, not a particular mode's heuristic
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "momentum_exhaustion_reversal"
 
 [sizing]

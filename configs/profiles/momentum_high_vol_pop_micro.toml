@@ -1,7 +1,7 @@
 # momentum_high_vol_pop_micro — claude_high_vol_pop + micro stakes
 # Thesis: high-vol pops have edge but variance; spread risk across many tiny bets
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "claude_high_vol_pop"
 
 [sizing]

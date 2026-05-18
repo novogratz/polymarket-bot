@@ -1,7 +1,7 @@
 # auto_panic_fade_wide_retail — derived from auto_buyer_fade_microcut
 # Hypothesis: aggressive_buyer_detection bleeds -88% because retail-pile signals systematically fade; combine microcut TP5/SL3 panic_fade WITH aggressive_buyer's wide entry envelope (0.05–0.95, max_spread 0.04, more orders/tick) to harvest the exact piles aggressive_buyer is losing on
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "panic_fade"
 
 [sizing]

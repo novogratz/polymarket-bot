@@ -1,7 +1,7 @@
 # auto_momentum_exhaustion_blade — derived from auto_momentum_exhaustion_micro
 # Hypothesis: panic_fade winners catch mean-revert moves AFTER exhaustion; momentum_exhaustion_reversal with a blade-fast 3%/2% exit pair may enter the same reverts ~10-20 min earlier and capture the panic_fade alpha before tail decay
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "momentum_exhaustion_reversal"
 
 [sizing]

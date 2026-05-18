@@ -1,7 +1,7 @@
 # auto_panic_fade_thickbook — derived from auto_buyer_fade_microcut
 # Hypothesis: microcut's edge may come from *liquidity* (orderbook can absorb the panic). Keep tight TP/SL but require 3x deeper liquidity ($4.5k/$8k); if reversion is liquidity-gated, win rate should jump vs microcut parent
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "panic_fade"
 
 [sizing]

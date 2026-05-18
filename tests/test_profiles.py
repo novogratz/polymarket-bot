@@ -301,7 +301,7 @@ class ProfilesDirectoryTests(unittest.TestCase):
         repo_root = Path(__file__).resolve().parent.parent
         path = repo_root / "configs" / "profiles" / "baseline.toml"
         profile = load_profile(path)
-        self.assertEqual(profile.starting_cash, 100.0)
+        self.assertEqual(profile.starting_cash, 20.0)
         self.assertIn("POLYMARKET_SMART_POSITION_PCT", profile.values)
         self.assertIn("POLYMARKET_SMART_MIN_CONSENSUS", profile.values)
         self.assertIn("POLYMARKET_SMART_STOP_LOSS_PCT", profile.values)

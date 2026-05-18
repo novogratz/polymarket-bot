@@ -1,7 +1,7 @@
 # auto_extreme_consensus_blade — derived from auto_extreme_consensus_microcut
 # Hypothesis: patient consensus (-95.7%) and even fast_cut (-15%) bleed; collapse to 45min max with TP4/SL2 and 0.5c spread — if extreme-consensus has any edge it must show in <1h, otherwise it's noise we should not pay theta on
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "claude_extreme_consensus"
 
 [sizing]

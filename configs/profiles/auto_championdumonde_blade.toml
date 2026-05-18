@@ -1,7 +1,7 @@
 # auto_championdumonde_blade — derived from claude_baseline_fresh
 # Hypothesis: championdumonde_breakout mode has never been deployed in race; if breakout-detection alpha exists, a tight 0.5h race with 4% TP / 3% SL on a 0.20-0.80 mid-band should catch fast post-breakout drift before mean reversion kills it — distinct hypothesis from late_momentum_chase (entry timing earlier)
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "championdumonde_breakout"
 
 [sizing]

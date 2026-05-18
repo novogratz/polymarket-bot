@@ -1,7 +1,7 @@
 # auto_buyer_fade_wider_band — derived from auto_buyer_fade_quality_strict
 # Hypothesis: revert price band to 0.15-0.80 + min_volume to $3k while keeping the tight 0.015 spread and $2 stake; if PnL recovers vs strict, the edge is "noisy markets + execution quality" not "premium markets only"
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "panic_fade"
 
 [sizing]

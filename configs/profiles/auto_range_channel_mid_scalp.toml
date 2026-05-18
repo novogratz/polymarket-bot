@@ -1,7 +1,7 @@
 # auto_range_channel_mid_scalp — derived from auto_panic_fade_mid
 # Hypothesis: range_channel_trading mode untested in race; mid-band 0.42-0.58 with ultra-tight 1.5c spread + 4% TP captures range oscillation distinct from panic_fade (which fires only on shocks) — tests whether quiet markets have exploitable channel structure when panic_fade has nothing to fade
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "range_channel_trading"
 
 [sizing]

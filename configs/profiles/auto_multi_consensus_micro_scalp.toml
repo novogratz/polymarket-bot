@@ -1,7 +1,7 @@
 # auto_multi_consensus_micro_scalp — derived from auto_multi_consensus_safe
 # Hypothesis: combine multi_signal_consensus entry with micro_scalping-style 7% TP / 4% SL and tiny $1.5 stakes; tests whether consensus + ultra-small-size scalp can survive the current chop where every larger-size variant is underwater
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "multi_signal_consensus"
 
 [sizing]

@@ -1,7 +1,7 @@
 # auto_probability_drift_scalp — derived from probability_drift
 # Hypothesis: probability_drift mode is unspawned; if drift signals have real edge they should produce a steady stream of small TP wins; test with classic 8/4 scalp (TP wider than SL because drift implies directional persistence) at micro stake to keep blast radius bounded
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "probability_drift"
 
 [sizing]

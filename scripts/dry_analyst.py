@@ -313,7 +313,7 @@ For each new strategy, emit a TOML fenced block:
 # auto_<short_name> — derived from <parent>
 # Hypothesis: <one sentence — what specific param/combo change you're testing>
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "<existing mode name, copy from parent>"
 
 [sizing]
@@ -338,7 +338,7 @@ followed by a full new TOML block (same format as new strategy, with a DIFFERENT
 - New profile name MUST start with `auto_` and be unique (not in existing list above).
 - `mode` MUST be one of: smart_money (default — leave unset), edge, news, mirror, hybrid_smart_money, smart_wallet_consensus, whale_entry_detection, wallet_cluster_correlation, early_momentum_detection, liquidity_vacuum_breakout, mean_reversion_fade, range_channel_trading, aggressive_buyer_detection, orderbook_imbalance, late_momentum_chase, weak_holder_flush, weak_holder_flush_inverse, pmlepgm_counter_panic_fade, pm_le_pgm_weak_holder_flush_inverse, championdumonde_breakout, late_favorite, panic_fade, underdog, favorite, contrarian, random, multi_signal_consensus, claude_resolution_sniper, claude_endgame_sweep, claude_blue_chip, claude_balanced_mid, claude_late_pump, claude_strong_breakout, claude_extreme_consensus, claude_resolution_clock, probability_drift, resolution_compression, liquidity_absorption, momentum_exhaustion_reversal, micro_scalping, kzerlepgm_ultimatestrategy.
 - ONLY parameter variants. No new TOML sections, no Python in TOML.
-- starting_cash MUST be 100.0.
+- starting_cash MUST be 20.0.
 - 4h-only rule: max_hours = 4.0 in [race], max_hours_to_close = 4.0 in [filters] for smart_money mode.
 
 Output: narrative first, then TOML/tune blocks separated by blank lines. Be decisive."""
@@ -409,8 +409,8 @@ def validate_proposal(name: str, toml_body: str) -> str | None:
         return f"name must start with `{SPAWN_PREFIX}`"
     if (PROFILES_DIR / f"{name}.toml").exists():
         return f"profile {name} already exists"
-    if "starting_cash" not in toml_body or "starting_cash = 100" not in toml_body:
-        return "starting_cash must be 100.0"
+    if "starting_cash" not in toml_body or "starting_cash = 20" not in toml_body:
+        return "starting_cash must be 20.0"
     # Reject anything that looks like Python (defensive). Match only at
     # start-of-line so the words "from"/"import" in comments are fine.
     if re.search(r"^\s*(import|from|def|class)\s+\w+", toml_body, re.M):

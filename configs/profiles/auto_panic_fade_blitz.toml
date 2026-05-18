@@ -1,7 +1,7 @@
 # auto_panic_fade_blitz — derived from auto_buyer_fade_microcut
 # Hypothesis: +15% winner uses 1.5h/TP5/SL3; if exit speed IS the edge, halving everything to 0.75h/TP3/SL2 should improve PnL/hour and dodge tail risk — if it underperforms, we've found the floor of the speed dimension
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "panic_fade"
 
 [sizing]

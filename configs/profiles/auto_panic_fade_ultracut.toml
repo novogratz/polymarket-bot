@@ -1,7 +1,7 @@
 # auto_panic_fade_ultracut — derived from auto_buyer_fade_microcut
 # Hypothesis: microcut wins at 1.5h/TP5/SL3; compress further to 45min/TP3/SL2 — if fade-the-pile edge is real, it should fully play out within 45min of the buying climax, not need 1.5h to mature
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "panic_fade"
 
 [sizing]

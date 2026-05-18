@@ -1,7 +1,7 @@
 # auto_buyer_fade_micro_blade — derived from auto_buyer_fade_microcut
 # Hypothesis: the +15.1% microcut works because of fast cut, not micro size; push stop to 2% and tp to 4% with the same wide band to test whether speed-of-exit is the dominant edge versus stake compression
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "panic_fade"
 
 [sizing]

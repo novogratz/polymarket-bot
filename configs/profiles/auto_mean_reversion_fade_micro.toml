@@ -1,7 +1,7 @@
 # auto_mean_reversion_fade_micro — derived from mean_reversion_fade
 # Hypothesis: aggressive_buyer_detection bleeds -87% systematically, which implies the inverse trade (fading aggressive buys via mean_reversion_fade — mode never auto-spawned) should capture the symmetric edge; micro size + tight 6/4 exits validate the inverse hypothesis without committing capital
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "mean_reversion_fade"
 
 [sizing]

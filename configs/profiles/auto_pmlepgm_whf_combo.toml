@@ -1,7 +1,7 @@
 # auto_pmlepgm_whf_combo — derived from auto_pmlepgm_ultra_scalp
 # Hypothesis: pm_le_pgm_weak_holder_flush_inverse composite mode (top live strategy + top dry strategy, both per CLAUDE.md) is never deployed; if both edges are additive rather than redundant, a 1h race + tight 0.25-0.75 band + 6% TP / 4% SL should outperform either parent — tests the orthogonality assumption
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "pm_le_pgm_weak_holder_flush_inverse"
 
 [sizing]

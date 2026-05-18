@@ -1,7 +1,7 @@
 # auto_liq_vacuum_breakout_loose — derived from auto_liq_vacuum_breakout
 # Hypothesis: drop min_liquidity_usd 400→200 and min_volume 800→400 to actually enter; keep wide TP, tighter SL (-10%) since looser entries deserve faster cuts
 [run]
-starting_cash = 100.0
+starting_cash = 20.0
 mode = "liquidity_vacuum_breakout"
 
 [sizing]
