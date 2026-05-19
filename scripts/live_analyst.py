@@ -90,10 +90,23 @@ def load_live_snapshot() -> LiveSnapshot | None:
     cash = float(state.get("cash") or 0.0)
     positions = state.get("positions", []) or []
     open_positions = [p for p in positions if p.get("status") == "open"]
-    invested = sum(
-        float(p.get("size_usd") or p.get("notional_usd") or 0.0)
-        for p in open_positions
-    )
+    # Mark-to-market preferred. Live-synced positions don't always have
+    # size_usd/notional_usd, so fall back to current_price × shares,
+    # then to stake/cost_basis if no current_price either.
+    invested = 0.0
+    for p in open_positions:
+        shares = float(p.get("shares") or 0.0)
+        cur = p.get("current_price")
+        if cur is not None and shares > 0:
+            try:
+                invested += float(cur) * shares
+                continue
+            except (TypeError, ValueError):
+                pass
+        invested += float(
+            p.get("size_usd") or p.get("notional_usd")
+            or p.get("stake") or p.get("cost_basis") or 0.0
+        )
     equity = cash + invested
     closed = wins = losses = 0
     win_pnls: list[float] = []

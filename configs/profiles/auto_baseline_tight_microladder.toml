@@ -5,13 +5,13 @@ starting_cash = 29.90
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 25.0
-max_position_ceiling_pct = 0.30
-max_trade_usd = 0.0
-high_conviction_balance_fraction = 0.30
+max_position_ceiling_usd = 6.0                  # was 25, scaled for $30 bankroll
+max_position_ceiling_pct = 0.20                 # was 0.30, tighter cap given main.py:1275 max() bug
+max_trade_usd = 6.0                             # absolute backup cap
+high_conviction_balance_fraction = 0.20
 cash_floor_pct = 0.05
-min_open_positions = 5
-starter_trade_usd = 5.0
+min_open_positions = 3                          # was 5, leaves room for sizing discipline
+starter_trade_usd = 3.0                         # was 5
 assumed_live_balance_usd = 29.90
 
 [trader_cohort]
