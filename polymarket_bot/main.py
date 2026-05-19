@@ -2204,7 +2204,88 @@ def _print_stdout_heartbeat(
         )
     else:
         print("   last 24h: no closed trades yet", flush=True)
+    # LIVE only: compare to top 3 dry-run strategies (so user can see if
+    # the live strategy is keeping up with its dry twin and the leaders).
+    if not settings.dry_run:
+        twin = profile_label or strategy_name
+        dry_lines = _live_vs_dry_summary(twin)
+        for line in dry_lines:
+            print(line, flush=True)
     print(sep, flush=True)
+
+
+def _live_vs_dry_summary(live_profile: str) -> list[str]:
+    """Build a 1-3 line summary comparing live to the dry race top 3 +
+    the live profile's dry twin. Read-only — touches data/dry_runs/*."""
+    from pathlib import Path as _P
+    dry_root = _P(__file__).resolve().parent.parent / "data" / "dry_runs"
+    if not dry_root.exists():
+        return []
+    rows: list[tuple[str, float, float, int]] = []
+    twin_row: tuple[str, float, float, int] | None = None
+    for d in dry_root.iterdir():
+        if not d.is_dir():
+            continue
+        s = d / "state.json"
+        if not s.exists():
+            continue
+        try:
+            st = json.loads(s.read_text())
+        except Exception:
+            continue
+        cash = float(st.get("cash") or 0.0)
+        ops = [p for p in st.get("positions", []) if p.get("status") == "open"]
+        mtm = sum(
+            float(p.get("current_price") or 0) * float(p.get("shares") or 0)
+            for p in ops
+        )
+        eq = cash + mtm
+        # Read starting cash from profile (fallback $20)
+        starting = 20.0
+        profile = _P(__file__).resolve().parent.parent / "configs" / "profiles" / f"{d.name}.toml"
+        if profile.exists():
+            try:
+                import re as _re
+                m = _re.search(r"^starting_cash\s*=\s*([\d.]+)", profile.read_text(), _re.M)
+                if m:
+                    starting = float(m.group(1))
+            except Exception:
+                pass
+        pnl = eq - starting
+        roi = (pnl / starting * 100.0) if starting > 0 else 0.0
+        n_closed = 0
+        j = d / "journal.jsonl"
+        if j.exists():
+            try:
+                for line in j.read_text().splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        ev = json.loads(line)
+                    except Exception:
+                        continue
+                    if ev.get("event") == "position_closed" or ev.get("closed_at"):
+                        n_closed += 1
+            except Exception:
+                pass
+        rows.append((d.name, eq, roi, n_closed))
+        if d.name == live_profile:
+            twin_row = (d.name, eq, roi, n_closed)
+    if not rows:
+        return []
+    rows.sort(key=lambda r: r[2], reverse=True)
+    out: list[str] = ["   ─ live vs dry ─"]
+    if twin_row:
+        out.append(
+            f"     dry twin: {twin_row[0]} {twin_row[2]:+.1f}% "
+            f"(n={twin_row[3]})"
+        )
+    for r in rows[:3]:
+        marker = "★" if r[0] == live_profile else " "
+        out.append(
+            f"     {marker} {r[0]:38s} {r[2]:+6.1f}% (n={r[3]})"
+        )
+    return out
 
 
 def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> list[dict]:

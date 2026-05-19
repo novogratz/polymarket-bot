@@ -6,10 +6,16 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 ## Current state snapshot (2026-05-19)
 
-**Live strategy:** `claude_baseline_quick_exit` — defensive variant of `kzerlepgm_baseline` (which is `main:baseline.toml` + 4h hard cap). Real smart_money copy-trade pipeline with tighter exits.
-- Diff vs parent: SL -25% (vs -40%), peak-protect arms @+50% exit @+20% (vs +100%/+40%), trailing arms @+15% (vs +25%), `stop_loss_min_age_minutes` = 5 (vs 15).
+**Live strategy:** `auto_baseline_tight_microladder` — analyst-spawned variant of `claude_baseline_tight` (MONTH top 30, strict cohort) with a microladder TP profile that locks gains fast.
+- Dry race performance (the reason it was picked for live): **+64% ROI on 8 closed trades, 50% wr** — best risk-adjusted return on the board with sufficient sample
+- Engine: `smart_money` (real copy-trade pipeline)
+- Cohort: MONTH leaderboard, top 30, `min_trader_pnl=$2k`, `min_trader_volume=$5k`, `min_trader_roi=5%`
+- Entry: `min_consensus=3`, `min_copied_usdc=$150`, `max_chase_premium=0.12`
+- Sizing: `position_pct=0.10` (~$3/trade on $30 bankroll), ceiling 30% equity (~$9 cap)
+- Exits: microladder TP (locks gains tier-by-tier), SL -40% after 15min, trailing +25%/50% giveback, peak-protect +100%/exit +40%
+- Live tick interval: 10s. Heartbeat now includes a "live vs dry top 3" comparison line so you can see in real time if the live strategy is keeping up with its dry twin.
 
-**Bankroll:** $20 USDC starting baseline (all profiles share this).
+**Bankroll:** $29.90 USDC starting on live; $20 starting on all dry profiles.
 
 ### Strategy inventory (170 active profiles)
 
@@ -23,28 +29,31 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 | Other | 25 | Base race strategies (panic_fade, contrarian, favorite, etc.) + `edge`, `news`, `baseline`, `live-90` |
 | Archived | 31 | Catastrophic-loss kills (ROI ≤ -50%) — moved to `configs/profiles/_archived/` |
 
-### Best strategies right now (rated, sorted by equity)
+### Best strategies right now (rated, sorted by ROI)
 
-| Strategy | Equity | PnL | WR | Closed | Comment |
-|---|---|---|---|---|---|
-| `claude_baseline_tight` | $39.31 | +$19.31 | 100% | 3 | MONTH top 30, consensus=3, $150 USDC — strict cohort |
-| `auto_baseline_tight_microladder` | $36.12 | +$16.12 | 100% | 2 | Analyst-spawned variant of tight, micro TP ladder |
-| **`claude_baseline_quick_exit` (LIVE)** | **$31.89** | **+$11.89** | **50%** | **4** | Defensive exits, currently on live |
-| `claude_baseline_persist` | $31.70 | +$11.70 | 60% | 5 | Most balanced sample, persistence filter ON |
-| `auto_baseline_sizeup` | $21.91 | +$1.91 | 0% | 0 | Unrealized only, 3 open positions winning |
-| `claude_baseline_fresh` | $20.38 | +$0.38 | 50% | 2 | 30min lookback variant |
-| `claude_strong_breakout` | $20.31 | +$0.31 | 50% | 6 | Race-style, the only race strategy in the green |
+| Strategy | Equity | PnL | WR | Closed | $/trade | Comment |
+|---|---|---|---|---|---|---|
+| `auto_baseline_fresh_qe_combo` | $35.54 | +$15.54 | 100% | 4 | $3.89 | Highest ROI but small sample |
+| **`auto_baseline_tight_microladder` (LIVE)** | **$32.87** | **+$12.87** | **50%** | **8** | **$1.61** | **Best EV — sample big enough to trust** |
+| `auto_microladder_persist_combo` | $29.51 | +$9.51 | 60% | 6 | $1.59 | Stacks microladder + persistence filter |
+| `auto_tight_pnl5k` | $29.37 | +$9.37 | 75% | 4 | $2.34 | Wider PnL filter (≥$5k trader PnL) |
+| `claude_baseline_quick_exit` | $26.27 | +$6.27 | 50% | 12 | $0.52 | Most sample, was the prior live pick |
+| `claude_baseline_tight` | $25.70 | +$5.70 | 62% | 8 | $0.71 | Parent of the microladder variant |
+| `kzerlepgm_baseline` | $22.60 | +$2.60 | 50% | 2 | $1.30 | Reference (main:baseline + 4h) |
 
-### Recommendation for live
+### Recommendation for live (now active)
 
-**Stay on `claude_baseline_quick_exit`.** Reasons:
-1. **Already profitable** (+59% ROI on $20 base, 4 closed)
-2. **Defensive exit profile** = bounded downside while we wait for more sample
-3. **Switching costs sample continuity** — every restart resets the journal
-4. The leaders (`claude_baseline_tight` +97%, `auto_baseline_tight_microladder` +81%) have **tiny samples (2-3 trades)** — variance dominates. Could be statistical luck.
-5. The race needs ≥30 closed trades on any candidate before `🎯 LIVE READY ✅` triggers in the analyst report. None there yet.
+**Running `auto_baseline_tight_microladder`.** Picked over `claude_baseline_quick_exit` because:
+1. **+64% ROI on 8 closed** vs `quick_exit`'s +31% on 12 closed — **3× higher mean PnL per trade ($1.61 vs $0.52)** with comparable sample
+2. Same engine (`smart_money` mode) and same cohort family (tight) as the prior pick, so engine risk is unchanged
+3. Stricter signal bar (`min_consensus=3` vs 2, `min_copied_usdc=$150` vs $50) = higher-quality entries, fewer trades
+4. Microladder TP locks gains earlier than the parent's standard ladder
 
-If forced to switch, the runner-up is `claude_baseline_persist` (5 closed, 60% wr, +$11.70) — it has the most balanced sample of the leaders. But the marginal upgrade isn't worth the switch right now.
+**Caveat:** 8 closed trades is still below the 30-trade threshold for `🎯 LIVE READY ✅`. Variance risk exists. Live runs with $29.90 starting; the 5% cash floor + 25% SL means worst-case single-trade loss ≈ $2.25.
+
+**Watchlist (don't promote without ≥30 closed):**
+- `auto_baseline_fresh_qe_combo` (+78% on 4 closed — could be variance, could be the real winner once sample fills out)
+- `auto_microladder_persist_combo` (+47% on 6 closed — stacks two winning filters)
 
 ### What's working — pattern across all top strategies
 

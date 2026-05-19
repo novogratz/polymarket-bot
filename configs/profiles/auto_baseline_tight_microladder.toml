@@ -1,7 +1,7 @@
 # auto_baseline_tight_microladder — derived from claude_baseline_tight
 # Hypothesis: lockearly's +25%/40% lock was beaten by parent; push TP first rung to +15%/40% to capture micro-wins before mean-reversion, isolating earliness vs lockearly.
 [run]
-starting_cash = 20.0
+starting_cash = 29.90
 
 [sizing]
 position_pct = 0.10
@@ -12,7 +12,7 @@ high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 5
 starter_trade_usd = 5.0
-assumed_live_balance_usd = 20.0
+assumed_live_balance_usd = 29.90
 
 [trader_cohort]
 leaderboard_window = "MONTH"
