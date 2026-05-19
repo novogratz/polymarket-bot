@@ -129,6 +129,15 @@ run_bot momentum_exhaustion_fade       momentum_exhaustion_fade       "mom_exh  
 run_bot momentum_panic_continuation    momentum_panic_continuation    "mom_panic "
 run_bot momentum_high_vol_pop_micro    momentum_high_vol_pop_micro    "mom_pop_µ "
 
+# ─── Insider whale copy-trade family ─────────────────────────────────
+# Copy wallets with extreme lifetime PnL — proxy for inside-info traders.
+# insider_whales:       top 10 wallets, ≥\$1M lifetime PnL, ≥\$1k copied
+# insider_millionaires: top 30 wallets, ≥\$500k lifetime PnL, ≥\$750 copied
+# Both: min_consensus=1 (single whale = trigger), cohort-sell exit ON.
+# Sample will be sparse (insider trades are rare) but high-conviction.
+run_bot insider_whales           insider_whales           "ins_whale "
+run_bot insider_millionaires     insider_millionaires     "ins_M     "
+
 # ─── Autonomous analyst sidecar ──────────────────────────────────────
 # Every 15 min, reads per-strategy state, calls claude CLI for insights,
 # may SPAWN new auto_* strategies (TOML-only, additive) and KILL its

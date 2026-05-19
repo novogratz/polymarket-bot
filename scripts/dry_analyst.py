@@ -837,10 +837,16 @@ def _pick_favorite(metrics: list[StratMetrics]) -> tuple["StratMetrics | None", 
                           key=lambda m: m.roi_pct, reverse=True)
     if profitable:
         m = profitable[0]
+        n = len(profitable)
+        prefix = (
+            f"Only profitable strategy on the board"
+            if n == 1
+            else f"Top of {n} profitable strategies"
+        )
         return m, (
-            f"Only profitable strategy on the board — but only "
-            f"{m.closed} closed trade(s). Variance dominates at this "
-            f"sample; wait for ≥30 trades before serious consideration."
+            f"{prefix} — but only {m.closed} closed trade(s). "
+            f"Variance dominates at this sample; wait for ≥30 trades "
+            f"before serious consideration."
         )
     # Tier 4 — nothing profitable, surface the least-bad anyway
     by_pnl = sorted(metrics, key=lambda m: m.pnl, reverse=True)
