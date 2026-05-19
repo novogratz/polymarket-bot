@@ -257,29 +257,94 @@ def telegram_post(text: str, *, live: bool = True) -> bool:
         return False
 
 
-PROMPT = """You are the live observability analyst for a Polymarket trading bot.
+def load_open_positions() -> list[dict]:
+    """Read paper_state.json open positions with PnL details."""
+    paper_state = DATA_DIR / "paper_state.json"
+    if not paper_state.exists():
+        return []
+    try:
+        state = json.loads(paper_state.read_text())
+    except Exception:
+        return []
+    out = []
+    for p in state.get("positions", []) or []:
+        if p.get("status") != "open":
+            continue
+        entry = float(p.get("entry_price") or 0)
+        shares = float(p.get("shares") or 0)
+        cur = float(p.get("current_price") or 0)
+        cost = float(p.get("stake") or p.get("size_usd") or entry * shares)
+        mtm = cur * shares
+        unr = mtm - cost
+        unr_pct = (unr / cost * 100) if cost else 0
+        out.append({
+            "question": p.get("question") or p.get("market_title"),
+            "side": p.get("outcome", "?"),
+            "entry": entry, "cur": cur,
+            "shares": shares,
+            "cost": cost, "mtm": mtm,
+            "unr": unr, "unr_pct": unr_pct,
+            "opened_at": (p.get("opened_at") or "")[:19].replace("T", " "),
+        })
+    out.sort(key=lambda x: x["unr"], reverse=True)
+    return out
 
-## LIVE bot
+
+def load_top_closed_trades(n: int = 3) -> list[dict]:
+    """Pull top N closed trades by realized PnL from the live journal."""
+    journal = DATA_DIR / "trade_journal.jsonl"
+    if not journal.exists():
+        return []
+    rows = []
+    try:
+        for line in journal.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not (e.get("event") == "position_closed" or e.get("closed_at")):
+                continue
+            pnl = float(e.get("realized_pnl_usd") or e.get("realized_pnl") or 0.0)
+            pct_raw = e.get("realized_pnl_pct") or e.get("pnl_pct")
+            if pct_raw is not None:
+                pct = float(pct_raw) * 100 if abs(float(pct_raw)) < 1 else float(pct_raw)
+            else:
+                pct = 0
+            rows.append({
+                "pnl": pnl, "pct": pct,
+                "reason": e.get("exit_reason", "?"),
+                "question": e.get("question") or e.get("market_title") or "?",
+                "side": e.get("outcome", "?"),
+                "entry": float(e.get("entry_price") or 0),
+                "closed_at": (e.get("closed_at") or "")[:19].replace("T", " "),
+            })
+    except Exception:
+        pass
+    rows.sort(key=lambda r: r["pnl"], reverse=True)
+    return rows[:n]
+
+
+PROMPT = """You're the live trading analyst. The user gets this report on Telegram every 30min. Give ONE concise paragraph (3-4 lines max).
+
+## LIVE
 profile: {profile}
-equity: ${equity:.2f} (cash ${cash:.2f}, invested ${invested:.2f})
-positions open: {open_positions}
-closed trades: {closed} ({wins}W/{losses}L, {win_rate:.0f}% wr)
-realized PnL: ${realized_pnl:+.2f}
-avg win: ${avg_win:+.2f}, avg loss: ${avg_loss:+.2f}
-ticks elapsed: {ticks}
+equity: ${equity:.2f} (was ${starting:.2f}, {roi:+.1f}%)
+positions: {open_positions} open, {closed} closed ({wins}W/{losses}L, {win_rate:.0f}% wr)
+realized: ${realized_pnl:+.2f}
 
-## DRY RACE top 5 (for context)
+## DRY top 5
 {dry_top}
 
-## YOUR JOB (be terse, 4-6 lines max)
+## YOUR JOB
 
-1. **One-line live status** — is the live bot healthy? (drawdown? no trades? cash stuck?)
+Just 3-4 lines:
+1. Health check — is the bot healthy or stuck? Give specifics.
+2. Is live keeping up with the dry race leaders, or lagging? Give numbers.
+3. Verdict: "hold steady" / "investigate X" / one concrete action.
 
-2. **Live vs dry comparison** — which dry strategy is doing best? Is the live profile keeping up, or should the user consider switching? Give SPECIFIC numbers.
-
-3. **One actionable recommendation** OR "hold steady".
-
-Output: plain markdown, no code fences. Do NOT propose to switch live to a strategy with <10 closed trades or <55% win-rate."""
+No fluff. No "recommendation" headers. Just the lines."""
 
 
 def cycle_once() -> None:
@@ -290,36 +355,113 @@ def cycle_once() -> None:
         print(msg, flush=True)
         return
 
+    open_pos = load_open_positions()
+    top_closed = load_top_closed_trades(3)
     dry_top = load_dry_top_n(5)
+
+    # Find live's dry twin for direct comparison
+    twin = next((r for r in dry_top if r["name"] == snap.profile), None)
+    if not twin:
+        # Profile not in top 5 — search the full set
+        all_dry = load_dry_top_n(200)
+        twin = next((r for r in all_dry if r["name"] == snap.profile), None)
+
+    # Compute starting balance from realized + (equity - invested - cash); approximate
+    # Better: read assumed_live_balance_usd from profile TOML
+    starting = 29.90  # default; will refine below
+    profile_file = REPO_ROOT / "configs" / "profiles" / f"{snap.profile}.toml"
+    if profile_file.exists():
+        try:
+            import re as _re
+            m = _re.search(r"^assumed_live_balance_usd\s*=\s*([\d.]+)",
+                           profile_file.read_text(), _re.M)
+            if m:
+                starting = float(m.group(1))
+        except Exception:
+            pass
+    pnl_total = snap.equity - starting
+    roi = (pnl_total / starting * 100) if starting > 0 else 0
+
     dry_table = "\n".join(
-        f"  {i+1}. {r['name']:32s} equity=${r['equity']:.2f}  ({r['win_rate']:.0f}% wr, {r['closed']} closed)"
+        f"  {i+1}. {r['name']:38s} ${r['equity']:.2f} ({r['win_rate']:.0f}% wr, {r['closed']} closed)"
         for i, r in enumerate(dry_top)
     ) or "  (no dry-race data yet)"
 
     prompt = PROMPT.format(
-        profile=snap.profile, equity=snap.equity, cash=snap.cash,
-        invested=snap.invested, open_positions=snap.open_positions,
+        profile=snap.profile, equity=snap.equity, starting=starting, roi=roi,
+        open_positions=snap.open_positions,
         closed=snap.closed, wins=snap.wins, losses=snap.losses,
         win_rate=snap.win_rate, realized_pnl=snap.realized_pnl,
-        avg_win=snap.avg_win, avg_loss=snap.avg_loss, ticks=snap.ticks,
         dry_top=dry_table,
     )
     narrative = call_claude(prompt)
 
     stamp = time.strftime("%H:%M UTC", time.gmtime())
-    msg = "\n".join([
-        f"🔵 *LIVE ANALYST* · {stamp}",
+    sign = "+" if pnl_total >= 0 else ""
+
+    parts = [
+        f"🔵 *LIVE EXECUTIVE SUMMARY* · {stamp}",
+        f"_strategy:_ `{snap.profile}`",
         "",
-        f"`{snap.profile}` equity *${snap.equity:.2f}* "
-        f"({snap.closed} closed, {snap.win_rate:.0f}% wr, "
-        f"{snap.open_positions} open, ${snap.realized_pnl:+.2f} realized)",
+        f"💰 *${starting:.2f} → ${snap.equity:.2f}*  {sign}${pnl_total:.2f}  ({roi:+.1f}%)",
+        f"   cash ${snap.cash:.2f}  •  invested ${snap.invested:.2f}  •  realized ${snap.realized_pnl:+.2f}",
+        f"   {snap.closed} closed  •  {snap.wins}W/{snap.losses}L  •  {snap.win_rate:.0f}% wr  •  {snap.open_positions} open",
         "",
-        "*Dry race top 5*",
-        dry_table,
-        "",
-        "*🧠 Insights*",
-        narrative.strip()[:1500] or "(empty response)",
-    ])
+    ]
+
+    if open_pos:
+        parts.append(f"*🔓 Open positions ({len(open_pos)})*")
+        for p in open_pos[:6]:
+            psign = "+" if p["unr"] >= 0 else ""
+            q = (p.get("question") or "?")[:55]
+            parts.append(
+                f"  • {q}\n"
+                f"      {p.get('side','?')} @ ${p.get('entry',0):.3f} → ${p.get('cur',0):.3f}  "
+                f"{psign}${p['unr']:.2f} ({p['unr_pct']:+.1f}%)"
+            )
+        if len(open_pos) > 6:
+            parts.append(f"  _… and {len(open_pos)-6} more_")
+        parts.append("")
+
+    if top_closed:
+        parts.append("*📊 Top closed trades*")
+        for i, t in enumerate(top_closed, 1):
+            psign = "+" if t["pnl"] >= 0 else ""
+            q = (t.get("question") or "?")[:55]
+            emoji = "🟢" if t["pnl"] > 0 else "🔴"
+            parts.append(
+                f"  {i}. {emoji} {psign}${t['pnl']:.2f} ({t['pct']:+.1f}%) "
+                f"{t.get('reason','?')}\n      {q}"
+            )
+        parts.append("")
+    elif snap.closed == 0:
+        parts.append("_📊 No closed trades yet._")
+        parts.append("")
+
+    if twin:
+        twin_starting = 20.0  # dry race default
+        twin_roi = ((twin["equity"] - twin_starting) / twin_starting * 100) if twin_starting else 0
+        delta = roi - twin_roi
+        compare = (f"🏃 *vs dry twin:* live {roi:+.1f}%  |  dry "
+                   f"{twin_roi:+.1f}% ({twin['closed']} closed)  |  "
+                   f"Δ {delta:+.1f}pp")
+        parts.append(compare)
+        parts.append("")
+
+    parts.append("*🏆 Dry race top 5*")
+    for r in dry_top[:5]:
+        dry_starting = 20.0
+        r_roi = ((r["equity"] - dry_starting) / dry_starting * 100) if dry_starting else 0
+        marker = "★" if r["name"] == snap.profile else " "
+        parts.append(
+            f"  {marker} {r['name']:38s} {r_roi:+6.1f}% ({r['closed']} closed, {r['win_rate']:.0f}% wr)"
+        )
+    parts.append("")
+
+    parts.append("*🧠 Verdict*")
+    parts.append(narrative.strip()[:1000] or "(claude unavailable)")
+
+    msg = "\n".join(parts)
     telegram_post(msg)
     print(msg, flush=True)
 
