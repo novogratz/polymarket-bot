@@ -1,0 +1,40 @@
+# auto_panic_cont_wide_tp — derived from momentum_panic_continuation
+# Hypothesis: panic continuations have more legs than 0.35 TP captures; stretch TP→0.55, keep SL=0.25 to test asymmetry
+[run]
+starting_cash = 20.0
+mode = "pmlepgm_counter_panic_fade"
+
+[sizing]
+max_position_ceiling_usd = 15.0
+min_open_positions = 0
+starter_trade_usd = 6.0
+
+[market_filters]
+min_liquidity_usd = 200.0
+min_volume_usd = 200.0
+
+[persistence]
+enabled = false
+
+[race]
+max_hours = 4.0
+scan_limit = 500
+min_liquidity_usd = 500.0
+min_volume_24h_usd = 200.0
+min_price = 0.05
+max_price = 0.95
+max_spread = 0.05
+stake_usd = 8.0
+stake_pct = 0.25
+max_orders_per_tick = 5
+cash_floor_pct = 0.02
+tp_pct = 0.55
+sl_pct = 0.25
+sl_min_age_minutes = 4
+near_expiry_minutes = 5
+resolved_exit_threshold = 0.97
+
+[telemetry]
+quiet = true
+auto_interval_seconds = 90
+stdout_heartbeat_minutes = 15

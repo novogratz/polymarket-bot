@@ -1,0 +1,40 @@
+# auto_panic_cont_bigstake — derived from momentum_panic_continuation
+# Hypothesis: parent wins with stake=$8; concentrate harder at $14 (ceiling raised to $20) — does sizing up amplify the panic-continuation edge?
+[run]
+starting_cash = 20.0
+mode = "pmlepgm_counter_panic_fade"
+
+[sizing]
+max_position_ceiling_usd = 20.0
+min_open_positions = 0
+starter_trade_usd = 10.0
+
+[market_filters]
+min_liquidity_usd = 200.0
+min_volume_usd = 200.0
+
+[persistence]
+enabled = false
+
+[race]
+max_hours = 4.0
+scan_limit = 500
+min_liquidity_usd = 500.0
+min_volume_24h_usd = 200.0
+min_price = 0.05
+max_price = 0.95
+max_spread = 0.05
+stake_usd = 14.0
+stake_pct = 0.40
+max_orders_per_tick = 3
+cash_floor_pct = 0.02
+tp_pct = 0.35
+sl_pct = 0.25
+sl_min_age_minutes = 4
+near_expiry_minutes = 5
+resolved_exit_threshold = 0.97
+
+[telemetry]
+quiet = true
+auto_interval_seconds = 90
+stdout_heartbeat_minutes = 15

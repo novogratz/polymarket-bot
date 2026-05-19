@@ -4,12 +4,53 @@ Claude Code entry point for the Polymarket bot. See also the structured skill in
 
 The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, see `.github/workflows/test.yml`).
 
-## Current state snapshot (2026-05-18)
+## Current state snapshot (2026-05-19)
 
 **Live strategy:** `claude_baseline_quick_exit` — defensive variant of `kzerlepgm_baseline` (which is `main:baseline.toml` + 4h hard cap). Real smart_money copy-trade pipeline with tighter exits.
 - Diff vs parent: SL -25% (vs -40%), peak-protect arms @+50% exit @+20% (vs +100%/+40%), trailing arms @+15% (vs +25%), `stop_loss_min_age_minutes` = 5 (vs 15).
 
 **Bankroll:** $20 USDC starting baseline (all profiles share this).
+
+### Strategy inventory (170 active profiles)
+
+| Family | Count | Description |
+|---|---|---|
+| `auto_*` | 111 | Analyst-spawned variants (derived from current winners via `claude` CLI proposals) |
+| `claude_*` | 19 | Hand-curated A/B variants — exit/cohort/persistence experiments |
+| `momentum_*` | 9 | Momentum-themed (user's favorite thesis): breakout, exhaustion, continuation, panic |
+| `copy-*` | 4 | Mirror-mode single-wallet copy-trade |
+| `insider_*` | 2 | Top lifetime-PnL whale copy (≥$1M or ≥$500k all-time PnL) |
+| Other | 25 | Base race strategies (panic_fade, contrarian, favorite, etc.) + `edge`, `news`, `baseline`, `live-90` |
+| Archived | 31 | Catastrophic-loss kills (ROI ≤ -50%) — moved to `configs/profiles/_archived/` |
+
+### Best strategies right now (rated, sorted by equity)
+
+| Strategy | Equity | PnL | WR | Closed | Comment |
+|---|---|---|---|---|---|
+| `claude_baseline_tight` | $39.31 | +$19.31 | 100% | 3 | MONTH top 30, consensus=3, $150 USDC — strict cohort |
+| `auto_baseline_tight_microladder` | $36.12 | +$16.12 | 100% | 2 | Analyst-spawned variant of tight, micro TP ladder |
+| **`claude_baseline_quick_exit` (LIVE)** | **$31.89** | **+$11.89** | **50%** | **4** | Defensive exits, currently on live |
+| `claude_baseline_persist` | $31.70 | +$11.70 | 60% | 5 | Most balanced sample, persistence filter ON |
+| `auto_baseline_sizeup` | $21.91 | +$1.91 | 0% | 0 | Unrealized only, 3 open positions winning |
+| `claude_baseline_fresh` | $20.38 | +$0.38 | 50% | 2 | 30min lookback variant |
+| `claude_strong_breakout` | $20.31 | +$0.31 | 50% | 6 | Race-style, the only race strategy in the green |
+
+### Recommendation for live
+
+**Stay on `claude_baseline_quick_exit`.** Reasons:
+1. **Already profitable** (+59% ROI on $20 base, 4 closed)
+2. **Defensive exit profile** = bounded downside while we wait for more sample
+3. **Switching costs sample continuity** — every restart resets the journal
+4. The leaders (`claude_baseline_tight` +97%, `auto_baseline_tight_microladder` +81%) have **tiny samples (2-3 trades)** — variance dominates. Could be statistical luck.
+5. The race needs ≥30 closed trades on any candidate before `🎯 LIVE READY ✅` triggers in the analyst report. None there yet.
+
+If forced to switch, the runner-up is `claude_baseline_persist` (5 closed, 60% wr, +$11.70) — it has the most balanced sample of the leaders. But the marginal upgrade isn't worth the switch right now.
+
+### What's working — pattern across all top strategies
+
+**The smart_money pipeline is the only thesis earning money.** All 4 leaderboard top performers (`claude_baseline_tight`, `auto_baseline_tight_microladder`, `claude_baseline_quick_exit`, `claude_baseline_persist`) are smart_money mode variants. Race-style bots (panic_fade, contrarian, momentum_*) mostly destroyed themselves and got auto-killed by the catastrophic-equity-halt (ROI ≤ -50%). The 31 archived strategies are almost all race-style.
+
+**Key insight:** copy-trading on multi-wallet consensus + defensive exits beats every other thesis the race has tested. The differentiators between top performers are exit aggressiveness (let_run vs quick_exit) and cohort filter (tight vs wide vs persistence vs freshness). The smart_money cohort itself is the alpha source.
 
 **Autonomous loop — see `scripts/dry_analyst.py`:**
 - Runs as a sidecar alongside `bash scripts/run_both_dry.sh`
