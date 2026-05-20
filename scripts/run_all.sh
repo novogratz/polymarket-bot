@@ -75,9 +75,22 @@ run_dry_bot() {
     local profile="$1"
     local run="$2"
     local prefix="$3"
+    # CRITICAL: per-subshell env disables Telegram BUY/SELL/heartbeat
+    # alerts for dry bots only. Without this, every dry bot inherits
+    # the LIVE Telegram exports above and spams the user with hundreds
+    # of fake-trade alerts. The dry analyst + leaderboard sidecars do
+    # their own Telegram posts via direct chat_id; those still work.
     POLYMARKET_QUIET=1 \
         POLYMARKET_SUPPRESS_BUY_LOGS=1 \
         POLYMARKET_AUTO_INTERVAL_SECONDS=600 \
+        TELEGRAM_ALERT_TRADES=0 \
+        TELEGRAM_ALERT_TRADES_BUY=0 \
+        TELEGRAM_ALERT_TRADES_SELL=0 \
+        TELEGRAM_ALERT_ERRORS=0 \
+        TELEGRAM_ALERT_THRESHOLDS=0 \
+        TELEGRAM_ALERT_HEARTBEAT=0 \
+        TELEGRAM_ALERT_PORTFOLIO_UPDATES=0 \
+        TELEGRAM_ALERT_DAILY_SUMMARY=0 \
         uv run pmbot auto-loop --dry-run --profile "$profile" --run "$run" \
         2>&1 | sed -u "s/^/[${prefix}] /" &
     sleep 0.5

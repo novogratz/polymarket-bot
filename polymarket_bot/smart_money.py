@@ -12,12 +12,14 @@ scan are not silently dropped.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from .config import Settings
@@ -253,16 +255,77 @@ class DataApiClient:
         return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
 
     def _get_json(self, path: str, params: dict[str, str]) -> Any:
-        query = urllib.parse.urlencode(params)
+        query = urllib.parse.urlencode(sorted(params.items()))  # stable cache key
+        url = f"{self.base_url}{path}?{query}"
+
+        # Cross-process disk cache. When 50+ bots all want the same
+        # leaderboard or wallet trades, only the first one hits the
+        # network — the rest read from cache/. TTL default 90s; tunable
+        # via POLYMARKET_HTTP_CACHE_TTL_SECONDS.
+        cached = _cache_read(url)
+        if cached is not None:
+            return cached
+
         request = urllib.request.Request(
-            f"{self.base_url}{path}?{query}",
+            url,
             headers={
                 "Accept": "application/json",
                 "User-Agent": "polymarket-bot/0.1",
             },
         )
         with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
+            payload = json.loads(response.read().decode("utf-8"))
+        _cache_write(url, payload)
+        return payload
+
+
+# ─── Shared HTTP cache (cross-process, file-based) ────────────────────
+#
+# Why: every smart_money bot in the dry race fetches the SAME leaderboard
+# and (largely) the same wallet trade histories. With 50+ bots × 50 wallet
+# fetches per tick = 2,500 redundant API calls per minute. Caching the
+# JSON payload by URL with a short TTL (default 90s) collapses that to
+# ~50 total network calls regardless of bot count.
+#
+# Cross-process: each unique URL gets its own file under data/cache/http/.
+# First bot to need it fetches and writes; subsequent bots within the
+# TTL window read the file. Atomic via tempfile + rename.
+
+_CACHE_DIR = Path("data/cache/http")
+_CACHE_TTL = int(os.environ.get("POLYMARKET_HTTP_CACHE_TTL_SECONDS", "90"))
+
+
+def _cache_key(url: str) -> Path:
+    import hashlib as _h
+    h = _h.sha1(url.encode("utf-8")).hexdigest()[:32]
+    return _CACHE_DIR / f"{h}.json"
+
+
+def _cache_read(url: str) -> Any | None:
+    if _CACHE_TTL <= 0:
+        return None
+    try:
+        path = _cache_key(url)
+        if not path.exists():
+            return None
+        if time.time() - path.stat().st_mtime > _CACHE_TTL:
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _cache_write(url: str, payload: Any) -> None:
+    if _CACHE_TTL <= 0:
+        return
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        path = _cache_key(url)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.rename(path)
+    except Exception:
+        pass
 
 
 def choose_smart_money_trade(
