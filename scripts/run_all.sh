@@ -83,23 +83,58 @@ run_dry_bot() {
     sleep 0.5
 }
 
-# Drive all dry profiles that exist in configs/profiles/ except:
-#  - copy-* (mirror mode, needs target wallet)
-#  - the live profile (would compete with live for the same state path)
-#  - test.toml
-#  - live-90.toml (smart_money live config)
-for f in configs/profiles/*.toml; do
-    name=$(basename "$f" .toml)
-    case "$name" in
-        copy-*|test|live-90|aggressive-live) continue ;;
-        auto_baseline_tight_microladder) continue ;;  # live's twin already running
-    esac
-    # Use the strategy name as both --profile and --run, padded to 10 chars
+# Curated dry roster (~50 instead of 195) — focus on representative
+# strategies. Auto-spawned variants (~110 auto_*) are skipped here;
+# the dry_analyst will spawn its own auto_* on top if it sees signal.
+#
+# Pattern: keep one representative per "family" so the dry race
+# tests breadth without 110 near-duplicates competing for API quota.
+
+DRY_PROFILES=(
+    # Baseline family (the proven winners)
+    baseline kzerlepgm_baseline
+    claude_baseline_tight claude_baseline_fresh claude_baseline_persist
+    claude_baseline_quick_exit claude_baseline_let_run
+    # Smart-money + insider
+    smart_money_dry smart_money_loose
+    insider_whales insider_millionaires
+    # Race strategies (one per thesis)
+    aggressive_buyer_detection hybrid_smart_money smart_wallet_consensus
+    whale_entry_detection wallet_cluster_correlation
+    early_momentum_detection mean_reversion_fade
+    pmlepgm_counter_panic_fade pm_le_pgm_weak_holder_flush_inverse
+    weak_holder_flush_inverse championdumonde_breakout
+    favorite contrarian
+    # Claude race batch (representative — most are similar)
+    claude_anti_favorite claude_mid_dump_fade claude_resolution_sniper
+    claude_strong_breakout claude_frozen_favorite claude_mid_rebound
+    claude_oversold_bounce claude_late_pump claude_extreme_consensus
+    claude_balanced_mid claude_endgame_sweep claude_fade_extreme
+    claude_blue_chip claude_high_vol_quiet claude_high_vol_pop
+    # Momentum family (user's favorite thesis)
+    momentum_breakout_aggressive momentum_breakout_defensive
+    momentum_strong_continuation momentum_early_letrun
+    momentum_volume_spike_safe momentum_exhaustion_fade
+    momentum_panic_continuation momentum_high_vol_pop_micro
+    # Other
+    probability_drift liquidity_absorption momentum_exhaustion_reversal
+    micro_scalping multi_signal_consensus
+    kzerlepgm_ultimatestrategy
+    # Control
+    random
+)
+
+# Filter to only those that actually exist (some may be archived)
+LAUNCHED=0
+for name in "${DRY_PROFILES[@]}"; do
+    [ -f "configs/profiles/${name}.toml" ] || continue
+    [ "$name" = "auto_baseline_tight_microladder" ] && continue
     prefix=$(printf "%-10s" "${name:0:10}")
     run_dry_bot "$name" "$name" "$prefix"
+    LAUNCHED=$((LAUNCHED + 1))
 done
 
-echo "[run_all] dry race launched ($(ls configs/profiles/*.toml | wc -l) profiles), slowed to 10min/tick"
+echo "[run_all] dry race launched ($LAUNCHED curated profiles, tick 10min) — analyst will spawn auto_* on top"
 echo
 
 # ─── Step 3: Autonomous analyst sidecar ──────────────────────────────
