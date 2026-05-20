@@ -214,10 +214,51 @@ class TradingSession:
         if not quiet:
             print(f"💰 Live Balance: {balance} pUSD | Allowance: {allowance} (legacy USDC.e via SDK)")
 
-        if balance <= 0.0 and self.settings.assumed_live_balance_usd > 0.0:
-            print(f"⚠️  Using POLYMARKET_ASSUME_LIVE_BALANCE_USD={self.settings.assumed_live_balance_usd}")
-            return self.settings.assumed_live_balance_usd
+        if balance <= 0.0:
+            # On-chain RPC failed (rate-limited or down). The static
+            # assumed_live_balance_usd is the STARTING value — using it
+            # as cash mid-session over-counts (positions already deployed).
+            # Prefer the local ledger's current cash, which reflects the
+            # post-trade reality. Only fall back to the static assume
+            # when the ledger is empty (first tick).
+            ledger_cash = self._read_ledger_cash()
+            if ledger_cash is not None and ledger_cash > 0:
+                print(
+                    f"⚠️  pUSD RPC unavailable — using local ledger cash "
+                    f"${ledger_cash:.2f} (instead of stale assume "
+                    f"${self.settings.assumed_live_balance_usd:.2f})"
+                )
+                return ledger_cash
+            if self.settings.assumed_live_balance_usd > 0.0:
+                print(
+                    f"⚠️  Using POLYMARKET_ASSUME_LIVE_BALANCE_USD="
+                    f"{self.settings.assumed_live_balance_usd} (no ledger cash yet)"
+                )
+                return self.settings.assumed_live_balance_usd
         return balance
+
+    def _read_ledger_cash(self) -> float | None:
+        """Read the current cash from data/paper_state.json. Returns None
+        if the file is missing or unreadable. Used as a smarter fallback
+        for on-chain balance check failures — the ledger's cash reflects
+        the post-trade reality, while assumed_live_balance_usd is only
+        the starting value."""
+        try:
+            state_path = getattr(self.settings, "state_path", None)
+            if not state_path:
+                return None
+            import json as _j
+            from pathlib import Path as _P
+            p = _P(state_path) if not isinstance(state_path, _P) else state_path
+            if not p.exists():
+                return None
+            data = _j.loads(p.read_text(encoding="utf-8"))
+            cash = data.get("cash")
+            if cash is None:
+                return None
+            return float(cash)
+        except Exception:
+            return None
 
     def live_share_balance(self, token_id: str) -> float | None:
         """Query the wallet's available share balance for a specific outcome
