@@ -88,6 +88,22 @@ KILL_AUTO_MIN_TRADES = int(os.environ.get("ANALYST_KILL_MIN_TRADES", "8"))
 KILL_HUMAN_MIN_TRADES = int(os.environ.get("ANALYST_KILL_HUMAN_MIN_TRADES", "20"))
 KILL_ROI_THRESHOLD = float(os.environ.get("ANALYST_KILL_ROI", "-10.0"))
 KILL_WR_THRESHOLD = float(os.environ.get("ANALYST_KILL_WR", "40.0"))
+# Profiles the analyst is NEVER allowed to kill. These are reference /
+# control strategies (baseline = canonical fixture used by tests +
+# leaderboard delta computations, edge / news = thesis controls) and
+# the active live profiles (so a bad day in the dry mirror can't kill
+# the live config out from under the bot). Without this list the
+# analyst played whack-a-mole with baseline.toml every cycle.
+KILL_PROTECTED_PROFILES = {
+    "baseline",
+    "edge",
+    "news",
+    "kzerlepgm_baseline",
+    "random",
+    "claude_baseline_persist",  # active live profile (2026-05-20)
+    "auto_mombreak_locktight",  # recent live, kept for comparison
+    "whale_entry_detection",    # recent live, kept for comparison
+}
 
 # Absolute equity halt — catastrophic-loss circuit breaker. Fires
 # regardless of closed-trade count, so it catches bots like panic_fade
@@ -997,6 +1013,8 @@ def evaluate_kills(metrics: list[StratMetrics], state: dict) -> list[str]:
         #       in unrealized" bots like panic_fade
         #   (b) sustained underperformance — needs sample AND both
         #       ROI <= -10% AND wr <= 40%
+        if m.name in KILL_PROTECTED_PROFILES:
+            continue
         catastrophic = m.roi_pct <= -KILL_EQUITY_FLOOR_PCT
         if not catastrophic and not (m.roi_pct <= KILL_ROI_THRESHOLD
                                        and m.win_rate <= KILL_WR_THRESHOLD):
