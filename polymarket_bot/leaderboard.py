@@ -453,12 +453,12 @@ def format_leaderboard_telegram(
         return "🏁 *Leaderboard*: no runs found"
     ranked = sorted(stats, key=lambda s: s.roi_pct, reverse=True)
     now = now or datetime.now(timezone.utc)
-    stamp = notifications._md_escape(now.strftime("%H:%M"))
+    stamp = now.strftime("%H:%M")
 
     profitable = sum(1 for s in ranked if s.roi_pct > 0)
     lines = [
-        f"🏁 *Leaderboard* · {stamp} UTC · {len(ranked)} strategies "
-        f"\\({profitable} profitable\\)",
+        f"🏁 Leaderboard · {stamp} UTC · {len(ranked)} strategies "
+        f"({profitable} profitable)",
         "",
     ]
 
@@ -482,7 +482,7 @@ def format_leaderboard_telegram(
     bottom = ranked[-bottom_n:] if len(ranked) > top_n + bottom_n else []
 
     if top:
-        lines.append(f"*🏆 Top {len(top)} (by ROI)*")
+        lines.append(f"🏆 Top {len(top)} (by ROI)")
         for i, s in enumerate(top, 1):
             lines.append(_fmt_row(i, s))
 
@@ -490,9 +490,9 @@ def format_leaderboard_telegram(
         middle = len(ranked) - len(top) - len(bottom)
         if middle > 0:
             lines.append("")
-            lines.append(notifications._md_escape(f"… {middle} more in the middle band …"))
+            lines.append(f"… {middle} more in the middle band …")
         lines.append("")
-        lines.append(f"*📉 Bottom {len(bottom)}*")
+        lines.append(f"📉 Bottom {len(bottom)}")
         for s in bottom:
             i = ranked.index(s) + 1
             lines.append(_fmt_row(i, s))
@@ -506,18 +506,18 @@ def format_leaderboard_telegram(
             live_color = "🔴"
         else:
             live_color = "⚪"
-        eq_l = notifications._md_escape(f"${live.equity:.2f}")
-        roi_l = notifications._md_escape(f"{live.roi_pct:+.1f}%")
-        pnl_l = notifications._md_escape(f"{live.total_pnl:+.2f}")
-        wl_l = notifications._md_escape(f"{live.wins}W/{live.losses}L")
-        rank_l = notifications._md_escape(f"#{hypo_rank} of {total}")
-        sep = notifications._md_escape("━━━━━━━━━━━━━━━━━")
-        name_l = notifications._md_escape(live.run_name)
+        # Plain text — _post() auto-retries with parse_mode stripped on
+        # HTTP 400, and we kept all rows above plain too. No MarkdownV2
+        # escaping (was producing visible \. \- \! literals).
         lines.append("")
-        lines.append(sep)
-        lines.append(f"🔵 *{name_l} LIVE is also running\\!*")
-        lines.append(f"   Current: {live_color} {eq_l}  {roi_l}  PnL {pnl_l}  {wl_l}")
-        lines.append(f"   If listed: would rank {rank_l}")
+        lines.append("━━━━━━━━━━━━━━━━━")
+        lines.append(f"🔵 {live.run_name} LIVE is also running!")
+        lines.append(
+            f"   Current: {live_color} ${live.equity:.2f}  "
+            f"{live.roi_pct:+.1f}%  PnL {live.total_pnl:+.2f}  "
+            f"{live.wins}W/{live.losses}L"
+        )
+        lines.append(f"   If listed: would rank #{hypo_rank} of {total}")
 
     return "\n".join(lines)
 
