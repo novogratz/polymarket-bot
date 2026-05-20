@@ -292,7 +292,13 @@ class DataApiClient:
 # TTL window read the file. Atomic via tempfile + rename.
 
 _CACHE_DIR = Path("data/cache/http")
-_CACHE_TTL = int(os.environ.get("POLYMARKET_HTTP_CACHE_TTL_SECONDS", "90"))
+# Cache TTL default 600s (10min): the multi-bot cold-start spike is what
+# kills the 429 rate. 50 bots launching together can saturate the API
+# before any of them populate the cache. A longer TTL means subsequent
+# ticks (at minute +10 for dry bots) still see warm data, and the cache
+# pays off over many ticks. Set lower (e.g. 60) for fresher signal at
+# the cost of more API calls.
+_CACHE_TTL = int(os.environ.get("POLYMARKET_HTTP_CACHE_TTL_SECONDS", "600"))
 
 
 def _cache_key(url: str) -> Path:

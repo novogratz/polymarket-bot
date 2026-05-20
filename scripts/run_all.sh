@@ -61,6 +61,16 @@ LIVE_PID=$!
 echo "[run_all] live bot launching (pid=$LIVE_PID) — waiting 30s for warmup..."
 sleep 30
 
+# ─── Step 1.5: Pre-warm HTTP cache ──────────────────────────────────
+# Without this, 50 dry bots launching simultaneously all try to fetch
+# the same leaderboards + wallet trades in the first 30s, saturating
+# the API before any of them populate the cache. Running this once
+# upfront writes the common payloads to data/cache/http/ so the bot
+# swarm finds them already cached.
+echo "[run_all] pre-warming HTTP cache..."
+python3 scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache] /' || true
+echo
+
 # ─── Step 2: DRY race (slowed down — every dry bot ticks at 10min) ──
 echo "[run_all] launching dry race (slowed to 10min/tick for API quota)..."
 
