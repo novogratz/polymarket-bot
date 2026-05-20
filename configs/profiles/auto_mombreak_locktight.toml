@@ -1,13 +1,21 @@
-# auto_mombreak_locktight — derived from momentum_breakout_aggressive
-# Hypothesis: parent rides TP=0.50; lock at +25% instead — does the breakout edge come from the first leg or the full run?
+# auto_mombreak_locktight — derived from momentum_breakout_aggressive.
+# Dry-race lineage: 39 closed / 74% WR / +$12.40 realized at $20 baseline.
+# Promoted to live 2026-05-20 with bankroll reset to $8.49 (current
+# Polymarket equity after the whale_entry_detection bleed).
+# Hypothesis: parent rides TP=0.50; lock at +25% instead — does the
+# breakout edge come from the first leg or the full run?
 [run]
-starting_cash = 20.0
+starting_cash = 8.49
 mode = "championdumonde_breakout"
 
 [sizing]
-max_position_ceiling_usd = 15.0
-min_open_positions = 0
-starter_trade_usd = 5.0
+# Tight sizing for the $8.49 micro-bankroll. stake_pct 0.20 gives a
+# ~$1.70 base trade that clears Polymarket's $1 minimum BUY. Ceiling at
+# $2.50 (~30%) keeps any one position from being a knockout.
+max_position_ceiling_usd = 2.5
+min_open_positions = 2
+starter_trade_usd = 1.5
+assumed_live_balance_usd = 8.49
 
 [market_filters]
 min_liquidity_usd = 200.0
@@ -24,10 +32,10 @@ min_volume_24h_usd = 200.0
 min_price = 0.05
 max_price = 0.95
 max_spread = 0.05
-stake_usd = 8.0
-stake_pct = 0.25
-max_orders_per_tick = 5
-cash_floor_pct = 0.02
+stake_usd = 1.5
+stake_pct = 0.20
+max_orders_per_tick = 4
+cash_floor_pct = 0.05
 tp_pct = 0.25
 sl_pct = 0.35
 sl_min_age_minutes = 5
@@ -35,6 +43,6 @@ near_expiry_minutes = 5
 resolved_exit_threshold = 0.97
 
 [telemetry]
-quiet = true
-auto_interval_seconds = 45
+quiet = false
+auto_interval_seconds = 10
 stdout_heartbeat_minutes = 15
