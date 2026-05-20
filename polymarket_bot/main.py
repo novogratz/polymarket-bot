@@ -187,9 +187,22 @@ def reset_ledger(settings: Settings) -> dict[str, object]:
         if settings.sync_live_positions and settings.funder_address and not settings.dry_run:
             _sync_live_positions(settings, portfolio)
     portfolio.save(settings.state_path)
+    # Also wipe the leaderboard's live baseline snapshot. Without this
+    # the printed leaderboard keeps comparing fresh equity to a stale
+    # baseline from a prior bankroll era — e.g. resetting to a $45
+    # bankroll but the baseline still says $14, so ROI renders as
+    # +230% instead of 0%.
+    state_path = Path(settings.state_path)
+    baseline_path = state_path.parent / "live_baseline.json"
+    if baseline_path.is_file():
+        try:
+            baseline_path.unlink()
+        except OSError:
+            pass
     return {
         "reset": True,
         "balance_source": source,
+        "baseline_cleared": str(baseline_path),
         "summary": portfolio.summary(),
     }
 
