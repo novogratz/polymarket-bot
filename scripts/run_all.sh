@@ -46,6 +46,17 @@ echo "[run_all] step 1/4: pre-warming HTTP cache (~60s)..."
 uv run python scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache] /' || true
 echo
 
+# ─── Step 1.5: Rebuild live ledger from Polymarket reality ──────────
+# Wipes data/paper_state.json (LIVE only — dry ledgers untouched) and
+# rebuilds cash + open positions from the CLOB. Catches any drift from
+# previous runs (e.g. ghost position records from the pre-fix stacking
+# bug, missed sync imports, etc.) so the live bot starts every session
+# with a ledger that matches reality. Journal is a separate file and
+# stays intact.
+echo "[run_all] step 1.5/4: rebuilding live ledger from Polymarket..."
+uv run pmbot reset-ledger 2>&1 | sed -u 's/^/[reset] /' || true
+echo
+
 # ─── Step 2: LIVE bot (priority, fast tick, cache pre-populated) ────
 echo "[run_all] step 2/4: launching live bot (whale_entry_detection)..."
 
