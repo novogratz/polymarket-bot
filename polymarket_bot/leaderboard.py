@@ -65,13 +65,22 @@ def _starting_cash_from_profile(base_dir: Path, run_name: str) -> float | None:
 
     Lets the leaderboard infer the correct bankroll baseline when no
     metadata.json exists (which is the common case — the bot doesn't
-    currently write one).
+    currently write one). Falls back to configs/profiles/_archived/
+    for killed strategies so they don't end up compared against the
+    wrong baseline in the bottom-of-board section.
     """
     try:
         import tomllib  # py311+
     except ImportError:  # pragma: no cover
         return None
-    candidate = base_dir.parent / "configs" / "profiles" / f"{run_name}.toml"
+    profiles_dir = base_dir.parent / "configs" / "profiles"
+    candidate = profiles_dir / f"{run_name}.toml"
+    if not candidate.is_file():
+        archive_dir = profiles_dir / "_archived"
+        if archive_dir.is_dir():
+            archived = sorted(archive_dir.glob(f"{run_name}_*.toml"))
+            if archived:
+                candidate = archived[-1]
     if not candidate.is_file():
         return None
     try:

@@ -146,16 +146,29 @@ def save_autonomous_state(state: dict) -> None:
 
 
 def _starting_cash_for(name: str) -> float:
-    """Read starting_cash from the profile TOML (defaults to 100)."""
+    """Read starting_cash from the profile TOML.
+
+    Looks in configs/profiles/ first, then configs/profiles/_archived/
+    (most recent timestamped archive) for killed strategies. Defaults
+    to $20 — the dry-race convention. Old default of $100 made archived
+    strategies look like -90% ROI in reports when their real ROI in
+    the $20 era was much milder.
+    """
     profile = PROFILES_DIR / f"{name}.toml"
     if not profile.exists():
-        return 100.0
+        archive_dir = PROFILES_DIR / "_archived"
+        if archive_dir.exists():
+            candidates = sorted(archive_dir.glob(f"{name}_*.toml"))
+            if candidates:
+                profile = candidates[-1]
+    if not profile.exists():
+        return 20.0
     try:
         text = profile.read_text()
         m = re.search(r"^starting_cash\s*=\s*([\d.]+)", text, re.M)
-        return float(m.group(1)) if m else 100.0
+        return float(m.group(1)) if m else 20.0
     except Exception:
-        return 100.0
+        return 20.0
 
 
 def collect_metrics() -> list[StratMetrics]:
@@ -1129,7 +1142,32 @@ def cycle_once() -> None:
     elif not metrics:
         narrative = "No dry-run state yet — waiting for the race to start writing journals."
     else:
-        narrative = f"Only {n_total} strategies tracked, none rated yet (need ≥{MIN_TRADES_TO_RATE} closed trades)."
+        # Off-cycle report (claude is only called on the 1h spawn/kill
+        # tick). Build a deterministic summary from the metrics we
+        # already computed instead of a stale "none rated" placeholder.
+        rated = [m for m in metrics if m.closed >= MIN_TRADES_TO_RATE]
+        if not rated:
+            narrative = (
+                f"{n_total} strategies tracked, "
+                f"none with ≥{MIN_TRADES_TO_RATE} closed trades yet — early sample."
+            )
+        else:
+            winners = [m for m in rated if m.pnl > 0]
+            losers = [m for m in rated if m.pnl < 0]
+            top_n = sorted(rated, key=lambda m: m.pnl, reverse=True)[:3]
+            top_txt = ", ".join(
+                f"`{m.name}` (+{m.pnl/m.starting_cash*100:.0f}% / {m.closed}c)"
+                for m in top_n if m.starting_cash > 0
+            )
+            worst = min(rated, key=lambda m: m.pnl)
+            worst_pct = (worst.pnl / worst.starting_cash * 100) if worst.starting_cash > 0 else 0
+            narrative = (
+                f"{len(rated)}/{n_total} strategies have ≥{MIN_TRADES_TO_RATE} closed trade(s): "
+                f"{len(winners)} profitable, {len(losers)} losing. "
+                f"Top: {top_txt}. "
+                f"Worst: `{worst.name}` ({worst_pct:+.0f}% / {worst.closed}c). "
+                f"Next claude analysis on the 1h spawn/kill tick."
+            )
 
     state["last_cycle_ts"] = int(time.time())
     if action_due and (killed or spawned or tuned):
