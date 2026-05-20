@@ -1271,10 +1271,19 @@ def _run_race_tick(
             break
         if not candidate.token_id:
             continue
-        # Stacking allowed up to the per-event cap. pending_token still
-        # blocks same-tick double-fire on the exact same outcome.
         if portfolio.has_pending_token(candidate.token_id):
             rejected.append({"question": candidate.question, "reason": "pending_order"})
+            continue
+        # Token-level dedup. Without this, the same token gets re-bought
+        # every tick because each BUY just averages into the existing CLOB
+        # position — event_exposure (counted by ledger position records)
+        # never increments, so the per-event cap is useless against
+        # stacking on the same outcome. Real-world impact: $45 → $4 in
+        # 22 ticks when the race scanner re-picks the same 3 markets each
+        # tick. Exits still run separately, so a TP/SL on the position
+        # can fire and free the token for future entries.
+        if portfolio.has_open_token(candidate.token_id):
+            rejected.append({"question": candidate.question, "reason": "duplicate_open_token"})
             continue
         ev_slug = str(candidate.event_slug or "")
         if ev_slug and event_exposure.get(ev_slug, 0) >= EVENT_EXPOSURE_CAP:
