@@ -1,19 +1,20 @@
 # auto_mombreak_locktight — derived from momentum_breakout_aggressive.
 # Dry-race lineage: 39 closed / 74% WR / +$12.40 realized at $20 baseline.
-# Promoted to live 2026-05-20. Live config is BYTE-IDENTICAL to the
-# dry-validated config (same $20 bankroll, same ratios, same absolute
-# numbers). User fresh-deposits $20 and the bot runs the exact strategy
-# that earned the 39-closed track record.
+# Live config keeps the dry-validated RATIOS (stake_pct, ceiling %,
+# cash floor, TP/SL) — only the absolute USD numbers scale to the
+# $28.57 starting bankroll (user fresh-deposit 2026-05-20).
 # Hypothesis: parent rides TP=0.50; lock at +25% instead.
 [run]
-starting_cash = 20.0
+starting_cash = 28.57
 mode = "championdumonde_breakout"
 
 [sizing]
-max_position_ceiling_usd = 15.0
+# 75% ceiling matches dry ($15/$20). On $28.57 → $21.43.
+# starter mirrors dry $5/$20 = 25% → $7.14.
+max_position_ceiling_usd = 21.43
 min_open_positions = 0
-starter_trade_usd = 5.0
-assumed_live_balance_usd = 20.0
+starter_trade_usd = 7.14
+assumed_live_balance_usd = 28.57
 
 [market_filters]
 min_liquidity_usd = 200.0
@@ -30,7 +31,8 @@ min_volume_24h_usd = 200.0
 min_price = 0.05
 max_price = 0.95
 max_spread = 0.05
-stake_usd = 8.0
+# stake_pct 0.25 matches dry. On $28.57 → $7.14 per trade.
+stake_usd = 11.43
 stake_pct = 0.25
 max_orders_per_tick = 5
 cash_floor_pct = 0.02

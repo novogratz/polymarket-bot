@@ -9,7 +9,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 **Live strategy:** `auto_mombreak_locktight` — analyst-spawned variant of `momentum_breakout_aggressive` (race mode `championdumonde_breakout`) with TP locked at +25% instead of +50%. Promoted to live after the prior pick (`whale_entry_detection`) bled $45 → $8.49 from a stacking bug now fixed in `race_strategies.py`.
 - Engine: `championdumonde_breakout` race mode (no leaderboard fetch — immune to data-api 429s)
 - Dry-race lineage: **39 closed / 74% WR / +$12.40 realized** at $20 baseline — biggest sample of any profitable strategy on the board
-- Bankroll: **$20 USDC** starting (user fresh-deposited after the bleed reset). Live config is byte-identical to the dry-validated config — same `starting_cash=20`, same `stake_pct=0.25` (~$5/trade), same `max_position_ceiling_usd=15` (75%).
+- Bankroll: **$28.57 USDC** starting (user fresh-deposit + leftover post-bleed). Live config mirrors the dry-validated ratios — `stake_pct=0.25` (~$7.14/trade), `max_position_ceiling_usd=$21.43` (75% — matches dry's $15-on-$20 ratio).
 - Exits: TP +25% / SL -35% (min-age 5min), resolved exit at bid ≥0.97, near-expiry flush at 5min
 - Filters: liquidity ≥$500, 24h vol ≥$200, price 0.05–0.95, spread ≤5c, 4h hard cap, `max_orders_per_tick=4`
 - Live tick interval: 10s. Heartbeat includes a "live vs dry top 3" comparison block. `whale_entry_detection` is now back in the dry race for ongoing comparison.
@@ -238,7 +238,7 @@ Both scripts load `configs/profiles/auto_mombreak_locktight.toml` as the single 
 
 - Profile: `auto_mombreak_locktight` (race mode `championdumonde_breakout`, no leaderboard fetch)
 - `POLYMARKET_SYNC_LIVE_POSITIONS=1`, `POLYMARKET_AUTO_INTERVAL_SECONDS=10`
-- Sizing (byte-identical to dry-validated config): `starting_cash=20.0`, `assumed_live_balance_usd=20.0`, `stake_pct=0.25` (~$5/trade), `stake_usd=8.0`, `max_position_ceiling_usd=15.0` (75%), `starter_trade_usd=5.0`, `cash_floor_pct=0.02`, `min_open_positions=0`
+- Sizing (mirrors dry-validated config — only absolute USD scaled for $28.57 bankroll): `starting_cash=28.57`, `assumed_live_balance_usd=28.57`, `stake_pct=0.25` (~$7.14/trade), `stake_usd=11.43`, `max_position_ceiling_usd=21.43` (75%), `starter_trade_usd=7.14`, `cash_floor_pct=0.02`, `min_open_positions=0`
 - Race filters: `min_liquidity_usd=500`, `min_volume_24h_usd=200`, price 0.05–0.95, spread ≤5c, `max_orders_per_tick=5`, `max_hours=4.0` (hard 4h-only rule)
 - Exits: TP +25% / SL -35% (min-age 5min), resolved exit at bid ≥0.97, near-expiry flush at 5min. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
 - Live analyst sidecar (`scripts/live_analyst.py`) launches alongside; posts read-only insights every 30 min to `TELEGRAM_CHAT_ID_LIVE`.
