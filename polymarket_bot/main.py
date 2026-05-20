@@ -841,10 +841,17 @@ def _execute_sell_strategy(
             continue
         current_pnl_pct = (candidate.best_bid - entry_price) / entry_price
         position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", current_pnl_pct)), current_pnl_pct)
-        plan = _sell_plan(position, current_pnl_pct, settings)
+        # Resolved-market check runs BEFORE _sell_plan. When best_bid is
+        # at or above the resolved threshold (default 0.97) the market is
+        # functionally settled — every remaining tick at $1 just sits there
+        # waiting for redemption. Plus the TP ladder would otherwise pick
+        # a partial (15% / 25% / 50% of initial_shares) that on small
+        # positions falls below Polymarket's 5-share sell minimum and
+        # gets rejected, leaving the position stuck. Forcing a FULL
+        # sell here lets the 5.0-share Aston Villa / Pyramids positions
+        # liquidate at $0.999 instead of sitting until redemption.
         if (
-            plan is None
-            and settings.smart_resolved_exit_threshold > 0
+            settings.smart_resolved_exit_threshold > 0
             and candidate.best_bid is not None
             and candidate.best_bid >= settings.smart_resolved_exit_threshold
         ):
@@ -852,6 +859,8 @@ def _execute_sell_strategy(
                 "reason": "resolved_market_exit",
                 "shares": float(position.get("shares", 0.0)),
             }
+        else:
+            plan = _sell_plan(position, current_pnl_pct, settings)
         if plan is None and _should_exit_before_expiry(candidate, current_pnl_pct, settings):
             plan = {
                 "reason": "positive_pnl_before_expiry",
