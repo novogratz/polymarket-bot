@@ -151,13 +151,16 @@ POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
     --auto-discover --interval 5 --telegram \
     2>&1 | sed -u 's/^/[board] /' &
 
-# ─── Background: refresh the cache every 8 min (TTL is 10min) ───────
-# Without this loop, the cache goes stale 10min after step 1 — and the
-# next bot tick hits the API hard. Refresh at 8min keeps the cache
-# continuously warm with zero gaps.
+# ─── Background: refresh the cache every 3 min (TTL is 10min) ───────
+# Aggressive refresh interval: even though the cache TTL is 10min, ~25%
+# of wallets fail to populate on each warmer pass (data-api 429s during
+# the parallel burst). Re-running every 3 min means a wallet that
+# missed two consecutive passes still gets retried within 6 min, well
+# under the 10min TTL on the entries that did populate. Net effect:
+# steadier coverage of the 786-wallet set the dry race needs.
 (
     while true; do
-        sleep 480  # 8 min
+        sleep 180  # 3 min
         uv run python scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache-refresh] /' || true
     done
 ) &
@@ -170,7 +173,7 @@ echo "    1× live-analyst      (30min Telegram reports)"
 echo "    $LAUNCHED× DRY bots         (10min tick, simulated)"
 echo "    1× analyst           (15min reports, 1h spawn/kill)"
 echo "    1× leaderboard       (5min Telegram leaderboard)"
-echo "    1× cache-refresher   (re-warms cache every 8min, TTL 10min)"
+echo "    1× cache-refresher   (re-warms cache every 3min, TTL 10min)"
 echo
 echo "  Cache shared at: data/cache/http/"
 echo "  Ctrl+C to stop everything."

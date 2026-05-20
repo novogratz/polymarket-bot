@@ -85,19 +85,43 @@ def main() -> int:
     print(f"[cache_warmer] leaderboards: {leaderboard_ok}/{leaderboard_calls} ok in {time.time()-t0:.1f}s — collected {len(wallets)} unique wallets")
 
     # Step 2: wallet trade histories. Run in parallel batches.
-    print(f"[cache_warmer] fetching trade history for {len(wallets)} wallets...")
+    # Two-pass: first pass parallel-burst, second pass retries failures
+    # serially with backoff. Without the retry pass ~25% of wallets stay
+    # uncached after a 429 burst and the dry-bot swarm then re-fetches
+    # them live, triggering the very 429 storm the cache was supposed to
+    # prevent.
+    print(f"[cache_warmer] fetching trade history for {len(wallets)} wallets (pass 1)...")
     start_iso = None  # default — let the API use its own window
     t1 = time.time()
-    ok = fail = 0
+    failed: list[str] = []
+    ok = 0
+    fut_to_wallet = {}
     with ThreadPoolExecutor(max_workers=8) as ex:
-        futures = [ex.submit(client.trades, user=w, start=start_iso) for w in wallets]
-        for f in as_completed(futures):
+        for w in wallets:
+            fut_to_wallet[ex.submit(client.trades, user=w, start=start_iso)] = w
+        for f in as_completed(fut_to_wallet):
+            wallet = fut_to_wallet[f]
             try:
                 f.result()
                 ok += 1
             except Exception:
-                fail += 1
-    print(f"[cache_warmer] wallet trades: {ok}/{ok+fail} ok in {time.time()-t1:.1f}s")
+                failed.append(wallet)
+    print(f"[cache_warmer] pass 1: {ok}/{len(wallets)} ok in {time.time()-t1:.1f}s, {len(failed)} failed")
+
+    # Pass 2: retry serially with a short backoff. The data-api 429s the
+    # parallel burst when many bots hit it at once but is fine with
+    # sequential calls a few seconds apart.
+    if failed:
+        t2 = time.time()
+        retry_ok = 0
+        for w in failed:
+            try:
+                client.trades(user=w, start=start_iso)
+                retry_ok += 1
+            except Exception:
+                pass
+            time.sleep(0.2)
+        print(f"[cache_warmer] pass 2 retry: {retry_ok}/{len(failed)} recovered in {time.time()-t2:.1f}s")
 
     elapsed = time.time() - t0
     print(f"[cache_warmer] done — total {elapsed:.1f}s. Cache populated at {_CACHE_DIR}")
