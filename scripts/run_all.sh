@@ -155,7 +155,10 @@ DRY_PROFILES=(
 LAUNCHED=0
 for name in "${DRY_PROFILES[@]}"; do
     [ -f "configs/profiles/${name}.toml" ] || continue
-    [ "$name" = "auto_fresh_qe_persist_stack" ] && continue
+    # No skip for the live profile — running it in dry too gives a
+    # direct apples-to-apples comparison line on the leaderboard. Live
+    # and dry use separate state files (paper_state.json vs
+    # data/dry_runs/<name>/state.json) so they don't conflict.
     prefix=$(printf "%-10s" "${name:0:10}")
     run_dry_bot "$name" "$name" "$prefix"
     LAUNCHED=$((LAUNCHED + 1))

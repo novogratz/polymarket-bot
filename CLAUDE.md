@@ -10,7 +10,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - Engine: `smart_money` (real copy-trade pipeline + multi-wallet consensus)
 - Cohort: WEEK top 50, `min_trader_pnl=$500`, `min_trader_volume=$1k`, `min_trader_roi=2%`. Fresh lookback `trade_lookback_minutes=30` (vs persist's 240). Persistence ON: `intersect_periods=WEEK,MONTH,ALL`, `intersect_min=2`
 - Dry lineage: **14 closed / 64% WR / +$24.63 realized** at $20 baseline. Asymmetry +$1.75/trade (avg_win bigger than avg_loss). Biggest closed win +$15.78.
-- Bankroll: **~$33.53 USDC** (current equity at swap time, preserved). Live config: `position_pct=0.10`, `max_position_ceiling_usd=$41.91`, `max_position_ceiling_pct=0.30`, `cash_floor_pct=0.05`, `min_open_positions=5`
+- Bankroll: **$21 USDC** (fresh-start reset 2026-05-20). Live config: `position_pct=0.10`, `max_position_ceiling_usd=$26.25`, `max_position_ceiling_pct=0.30`, `cash_floor_pct=0.05`, `min_open_positions=5`
 - Exits: 5-tier TP ladder (+25/+50/+100/+200/+300 with 15/25/50/25/15 partials), trailing +15%/50% giveback, peak-protect +50% → exit at +20% (tighter than persist), stop_loss -25% (min-age 5min, tighter), max_hold **4h** (tighter), cohort-sell, resolved at bid ≥0.97
 - Filters: `min_consensus=2`, `min_copied_usdc=$50`, signal staleness ≤3min, price 0.03–0.97, abs spread ≤10c, rel spread ≤35%, **4h hard cap**
 - Live tick interval: 10s. Heartbeat includes "live vs dry top 3" comparison. `claude_baseline_persist`, `auto_mombreak_locktight`, `whale_entry_detection` all back in the dry race for ongoing comparison.
@@ -73,7 +73,7 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
 - Claude race batch: `claude_anti_favorite`, `claude_mid_dump_fade`, `claude_resolution_sniper`, etc.
 - Momentum family: 8 distinct exit/sizing combos
 - Control: `random`
-- `auto_fresh_qe_persist_stack` is excluded from the dry race (it's the live profile). `claude_baseline_persist`, `auto_mombreak_locktight`, `whale_entry_detection` are all back in the dry race for ongoing comparison.
+- The live profile (`auto_fresh_qe_persist_stack`) ALSO runs in the dry race for direct apples-to-apples comparison. Live and dry use separate state files (`paper_state.json` vs `data/dry_runs/<name>/state.json`) so they don't conflict. `claude_baseline_persist`, `auto_mombreak_locktight`, `whale_entry_detection` are all in the dry race too.
 
 The previous "all 195 profiles in dry" mode was retired because it crashed macOS and the data-api couldn't keep up. The curated roster covers every thesis family without the bloat.
 
@@ -239,7 +239,7 @@ Both scripts load `configs/profiles/auto_fresh_qe_persist_stack.toml` as the sin
 
 - Profile: `auto_fresh_qe_persist_stack` (smart_money pipeline + persistence + fresh lookback)
 - `POLYMARKET_SYNC_LIVE_POSITIONS=1`, `POLYMARKET_AUTO_INTERVAL_SECONDS=10`
-- Sizing (mirrors dry-validated config — scaled to ~$33.53 starting equity): `starting_cash=33.53`, `assumed_live_balance_usd=33.53`, `position_pct=0.10` (~$3.35/trade), `max_position_ceiling_usd=41.91`, `max_position_ceiling_pct=0.30` (~$10 cap on $33.53 equity), `cash_floor_pct=0.05`, `min_open_positions=5`, `starter_trade_usd=8.38`
+- Sizing (mirrors dry-validated config — scaled to $21 starting equity): `starting_cash=21.0`, `assumed_live_balance_usd=21.0`, `position_pct=0.10` (~$2.10/trade), `max_position_ceiling_usd=26.25`, `max_position_ceiling_pct=0.30` (~$6.30 cap on $21 equity), `cash_floor_pct=0.05`, `min_open_positions=5`, `starter_trade_usd=5.25`
 - Cohort: WEEK top 50, `min_trader_pnl=$500`, `min_trader_volume=$1k`, `min_trader_roi=2%`. Fresh `trade_lookback_minutes=30`. Persistence: `intersect_periods=WEEK,MONTH,ALL`, `intersect_min=2`
 - Entry filters: `min_consensus=2`, `min_copied_usdc=$50`, `max_chase_premium=0.12`, price 0.03–0.97, abs spread ≤10c, rel spread ≤35%, signal staleness ≤3min, **4h hard cap** (`max_hours_to_close=4.0`)
 - Exits: 5-tier TP ladder (+25/+50/+100/+200/+300 with 15/25/50/25/15 partials), trailing arms +15% / 50% giveback, peak-protect arms +50% / exits +20%, stop_loss -25% (min-age 5min), max_hold **4h**, cohort-sell, resolved at bid ≥0.97. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.

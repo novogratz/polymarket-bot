@@ -1,25 +1,23 @@
 # auto_fresh_qe_persist_stack — derived from auto_baseline_fresh_qe_combo
 # Hypothesis: top winner (100% WR n=3) currently uses single-window WEEK cohort. Adding the persistence filter (#3's edge — multi-window WEEK/MONTH/ALL intersect ≥2) should reject one-off lucky wallets without touching the fresh-lookback or defensive exits that produced 66.6% ROI.
 #
-# Promoted to live 2026-05-20. Dry lineage: 14 closed / 64% WR /
-# +$24.63 realized / avg_win $3.96 vs avg_loss $2.21 (asymmetry runs
-# right way). starting_cash scaled to the running ledger equity
-# (~$33.53) — live state preserved across the swap (journal +
-# baseline kept). assumed_live_balance_usd matches live equity for
-# sizing math.
+# Live 2026-05-20. Dry lineage: 14 closed / 64% WR / +$24.63 realized
+# / avg_win $3.96 vs avg_loss $2.21 (asymmetry runs right way).
+# Fresh-start reset to $21 wallet — ledger, journal, baseline all
+# wiped clean so ROI restarts at 0%.
 [run]
-starting_cash = 33.53
+starting_cash = 21.0
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 41.91                  # 25 × (33.53 / 20) — matches dry ratio
+max_position_ceiling_usd = 26.25                  # 25 × (21 / 20) — matches dry ratio
 max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 5
-starter_trade_usd = 8.38                          # 5 × (33.53 / 20)
-assumed_live_balance_usd = 33.53
+starter_trade_usd = 5.25                          # 5 × (21 / 20)
+assumed_live_balance_usd = 21.0
 
 [trader_cohort]
 leaderboard_window = "WEEK"
