@@ -1986,6 +1986,18 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
     }
     for token_id, position in local_by_token.items():
         if position.get("status") == "open" and token_id not in active_by_token:
+            # Data-api /positions lags the CLOB by 5-30s after a fill. Without
+            # a min-age guard we'd sync-close any just-bought position on the
+            # next 10s tick → phantom SELL alert, ledger flips closed, same
+            # candidate gets bought again → infinite BUY/sync_closed loop
+            # burning real cash on duplicate fills.
+            if _position_age_minutes(position) < 5.0:
+                report.append({
+                    "action": "skipped_sync_close_too_young",
+                    "token_id": token_id,
+                    "age_minutes": round(_position_age_minutes(position), 2),
+                })
+                continue
             position["status"] = "closed"
             position["closed_at"] = utc_now().isoformat()
             position["sync_closed"] = True
