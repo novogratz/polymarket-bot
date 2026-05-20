@@ -12,18 +12,27 @@
 #      (TTL is 10min, so refresh at 8min ensures no gap)
 #   6. Ctrl+C kill tout proprement (process group)
 
-set -euo pipefail
+# NOTE: no `set -u` — bash strict mode crashed on harmless unset vars
+# (e.g. LAUNCHED in the summary echo) and triggered the EXIT trap which
+# kills all bots. set -e stays to catch real failures.
+set -eo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+CLEANED_UP=0
 cleanup() {
+    # Idempotent: trap fires on multiple signals + EXIT; only do this once
+    [ "$CLEANED_UP" = "1" ] && return 0
+    CLEANED_UP=1
     echo ""
     echo "[run_all] stopping all bots..."
     kill 0 2>/dev/null || true
     wait 2>/dev/null || true
 }
-trap cleanup INT TERM EXIT
+# Only INT/TERM (user-initiated), not EXIT — avoids tearing everything
+# down on a harmless script-level error. If user wants to stop, Ctrl+C.
+trap cleanup INT TERM
 
 echo "═══════════════════════════════════════════════════════════════"
 echo "  🟢 LIVE + DRY race lancés ensemble — Ctrl+C pour tout stopper"
