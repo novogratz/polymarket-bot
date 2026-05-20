@@ -58,11 +58,11 @@ uv run pmbot reset-ledger 2>&1 | sed -u 's/^/[reset] /' || true
 echo
 
 # ─── Step 2: LIVE bot (priority, fast tick, cache pre-populated) ────
-echo "[run_all] step 2/4: launching live bot (auto_mombreak_locktight)..."
+echo "[run_all] step 2/4: launching live bot (claude_baseline_persist)..."
 
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 export POLYMARKET_AUTO_INTERVAL_SECONDS=10   # live tick = 10s
-export POLYMARKET_PROFILE_LABEL=auto_mombreak_locktight
+export POLYMARKET_PROFILE_LABEL=claude_baseline_persist
 
 # Live Telegram alerts ON
 export TELEGRAM_ALERT_TRADES=1
@@ -77,7 +77,7 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
 
 # Live bot itself
-uv run pmbot auto-loop --live --profile auto_mombreak_locktight --yes \
+uv run pmbot auto-loop --live --profile claude_baseline_persist --yes \
     2>&1 | sed -u 's/^/[LIVE] /' &
 LIVE_PID=$!
 echo "[run_all] live bot launched (pid=$LIVE_PID)"
@@ -120,7 +120,7 @@ DRY_PROFILES=(
     insider_whales insider_millionaires
     # Race strategies (one per thesis)
     aggressive_buyer_detection hybrid_smart_money smart_wallet_consensus
-    whale_entry_detection wallet_cluster_correlation
+    whale_entry_detection wallet_cluster_correlation auto_mombreak_locktight
     early_momentum_detection mean_reversion_fade
     pmlepgm_counter_panic_fade pm_le_pgm_weak_holder_flush_inverse
     weak_holder_flush_inverse championdumonde_breakout
@@ -147,7 +147,7 @@ DRY_PROFILES=(
 LAUNCHED=0
 for name in "${DRY_PROFILES[@]}"; do
     [ -f "configs/profiles/${name}.toml" ] || continue
-    [ "$name" = "auto_mombreak_locktight" ] && continue
+    [ "$name" = "claude_baseline_persist" ] && continue
     prefix=$(printf "%-10s" "${name:0:10}")
     run_dry_bot "$name" "$name" "$prefix"
     LAUNCHED=$((LAUNCHED + 1))
