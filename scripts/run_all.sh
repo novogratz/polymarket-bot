@@ -68,7 +68,8 @@ sleep 30
 # upfront writes the common payloads to data/cache/http/ so the bot
 # swarm finds them already cached.
 echo "[run_all] pre-warming HTTP cache..."
-python3 scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache] /' || true
+# Use `uv run python` so dotenv + project deps are available
+uv run python scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache] /' || true
 echo
 
 # ─── Step 2: DRY race (slowed down — every dry bot ticks at 10min) ──
