@@ -238,11 +238,16 @@ class TradingSession:
         return balance
 
     def _read_ledger_cash(self) -> float | None:
-        """Read the current cash from data/paper_state.json. Returns None
-        if the file is missing or unreadable. Used as a smarter fallback
-        for on-chain balance check failures — the ledger's cash reflects
-        the post-trade reality, while assumed_live_balance_usd is only
-        the starting value."""
+        """Estimate the current cash when on-chain RPC fails.
+
+        Returns ``min(ledger_cash, assume - sum(open_positions_at_cost))``
+        when ledger is present. The min guards against the LIVE_SYNC
+        path that imports positions WITHOUT debiting cash — leaving
+        ledger.cash + sum(positions) > assume (i.e. phantom money).
+
+        Returns ``None`` if file unreadable; let caller fall back to
+        the static assume (first-tick path).
+        """
         try:
             state_path = getattr(self.settings, "state_path", None)
             if not state_path:
@@ -256,7 +261,29 @@ class TradingSession:
             cash = data.get("cash")
             if cash is None:
                 return None
-            return float(cash)
+            ledger_cash = float(cash)
+            # Compute the upper bound consistent with assumed_live_balance.
+            # Open positions have a cost basis (stake or entry × shares);
+            # the bot's real CLOB cash cannot exceed assume - sum(costs)
+            # regardless of what the ledger says, because that money is
+            # locked in the positions.
+            assume = float(getattr(self.settings, "assumed_live_balance_usd", 0.0) or 0.0)
+            if assume > 0:
+                invested = 0.0
+                for pos in data.get("positions", []) or []:
+                    if pos.get("status") != "open":
+                        continue
+                    cost = pos.get("stake")
+                    if cost is None:
+                        entry = float(pos.get("entry_price") or 0)
+                        shares = float(pos.get("shares") or 0)
+                        cost = entry * shares
+                    invested += float(cost or 0)
+                derived_max = max(0.0, assume - invested)
+                # Use the LOWER of ledger cash and the derived max —
+                # protects against both stale ledger AND under-debited sync.
+                return min(ledger_cash, derived_max)
+            return ledger_cash
         except Exception:
             return None
 
