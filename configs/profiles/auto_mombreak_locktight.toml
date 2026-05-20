@@ -1,20 +1,21 @@
 # auto_mombreak_locktight — derived from momentum_breakout_aggressive.
 # Dry-race lineage: 39 closed / 74% WR / +$12.40 realized at $20 baseline.
-# Promoted to live 2026-05-20 with bankroll reset to $8.49 (current
-# Polymarket equity after the whale_entry_detection bleed).
-# Hypothesis: parent rides TP=0.50; lock at +25% instead — does the
-# breakout edge come from the first leg or the full run?
+# Promoted to live 2026-05-20. Live config mirrors the dry-validated
+# config exactly — only the absolute USD numbers are scaled for the
+# $8.49 post-bleed bankroll. Ratios (stake_pct, ceiling %, cash floor,
+# TP/SL, max_orders) all match the dry version that earned the 39c
+# track record.
+# Hypothesis: parent rides TP=0.50; lock at +25% instead.
 [run]
 starting_cash = 8.49
 mode = "championdumonde_breakout"
 
 [sizing]
-# Tight sizing for the $8.49 micro-bankroll. stake_pct 0.20 gives a
-# ~$1.70 base trade that clears Polymarket's $1 minimum BUY. Ceiling at
-# $2.50 (~30%) keeps any one position from being a knockout.
-max_position_ceiling_usd = 2.5
-min_open_positions = 2
-starter_trade_usd = 1.5
+# 75% ceiling matches dry ($15 on $20). On $8.49 → $6.37.
+# starter mirrors the dry $5/$20 = 25% ratio → $2.12.
+max_position_ceiling_usd = 6.37
+min_open_positions = 0
+starter_trade_usd = 2.12
 assumed_live_balance_usd = 8.49
 
 [market_filters]
@@ -32,10 +33,12 @@ min_volume_24h_usd = 200.0
 min_price = 0.05
 max_price = 0.95
 max_spread = 0.05
-stake_usd = 1.5
-stake_pct = 0.20
-max_orders_per_tick = 4
-cash_floor_pct = 0.05
+# stake_pct 0.25 matches dry. On $8.49 → $2.12 per trade (clears the
+# Polymarket $1 min BUY). stake_usd is the absolute floor.
+stake_usd = 2.12
+stake_pct = 0.25
+max_orders_per_tick = 5
+cash_floor_pct = 0.02
 tp_pct = 0.25
 sl_pct = 0.35
 sl_min_age_minutes = 5

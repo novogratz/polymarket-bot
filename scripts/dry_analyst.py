@@ -1156,16 +1156,14 @@ def cycle_once() -> None:
             losers = [m for m in rated if m.pnl < 0]
             top_n = sorted(rated, key=lambda m: m.pnl, reverse=True)[:3]
             top_txt = ", ".join(
-                f"`{m.name}` (+{m.pnl/m.starting_cash*100:.0f}% / {m.closed}c)"
-                for m in top_n if m.starting_cash > 0
+                f"`{m.name}` ({m.roi_pct:+.0f}% / {m.closed}c)" for m in top_n
             )
             worst = min(rated, key=lambda m: m.pnl)
-            worst_pct = (worst.pnl / worst.starting_cash * 100) if worst.starting_cash > 0 else 0
             narrative = (
                 f"{len(rated)}/{n_total} strategies have ≥{MIN_TRADES_TO_RATE} closed trade(s): "
                 f"{len(winners)} profitable, {len(losers)} losing. "
                 f"Top: {top_txt}. "
-                f"Worst: `{worst.name}` ({worst_pct:+.0f}% / {worst.closed}c). "
+                f"Worst: `{worst.name}` ({worst.roi_pct:+.0f}% / {worst.closed}c). "
                 f"Next claude analysis on the 1h spawn/kill tick."
             )
 

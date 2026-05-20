@@ -17,6 +17,7 @@ The formatter is pure (no I/O) so it's easy to unit-test.
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -235,12 +236,24 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
 
 
 def _live_strategy_name(base_dir: Path) -> str:
-    """Read the active live profile from data/live_config_snapshot.toml.
+    """Resolve the active live profile name for leaderboard display.
 
-    Falls back to ``"live"`` if the snapshot is missing or unparsable.
-    The bot writes this file on every live start, so it tracks profile
-    switches without code changes here.
+    Preference order:
+      1. ``POLYMARKET_PROFILE_LABEL`` env var — what run_all.sh / run_live_70.sh
+         export. This is the profile NAME (e.g. ``auto_mombreak_locktight``).
+      2. ``[run].mode`` from ``data/live_config_snapshot.toml`` — the engine
+         MODE (e.g. ``championdumonde_breakout``). Less useful but a fallback
+         when the bot was launched without the env var.
+      3. Literal ``"live"`` if neither is available.
+
+    The env var preference matters because many profiles share the same
+    engine mode (whale_entry_detection and auto_mombreak_locktight both
+    use ``championdumonde_breakout`` race mode under different filters /
+    sizing). The mode-only label hid which profile was actually running.
     """
+    label = os.environ.get("POLYMARKET_PROFILE_LABEL")
+    if label:
+        return label
     snap = base_dir / "live_config_snapshot.toml"
     if not snap.is_file():
         return "live"
