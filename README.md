@@ -32,13 +32,19 @@ Configure your wallet and API credentials in `.env` at the project root. Use `.e
 
 ## Run live
 
-Everything lives in the script:
+Preferred (live + dry race + sidecars + shared HTTP cache, all in one):
+
+```bash
+bash scripts/run_all.sh
+```
+
+Or live alone (no dry race, no cache pre-warm):
 
 ```bash
 bash scripts/run_live_70.sh
 ```
 
-Tuned for a ~$90 bankroll. Runs in the foreground; `Ctrl+C` to stop.
+Both scripts read `configs/profiles/whale_entry_detection.toml` as the live config (race mode, $45 bankroll). Run in the foreground; `Ctrl+C` to stop the whole process group.
 
 ## CLI commands
 
@@ -307,7 +313,7 @@ POLYMARKET_AUTO_INTERVAL_SECONDS=10
 POLYMARKET_SYNC_LIVE_POSITIONS=1
 ```
 
-The complete list lives in `polymarket_bot/config.py`. The canonical source of truth for live config is `scripts/run_live_70.sh`.
+The complete list lives in `polymarket_bot/config.py`. The canonical source of truth for live config is `configs/profiles/whale_entry_detection.toml`, loaded by `scripts/run_live_70.sh` (or `scripts/run_all.sh`).
 
 ## API credentials
 

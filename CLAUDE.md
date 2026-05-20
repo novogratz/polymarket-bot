@@ -4,65 +4,46 @@ Claude Code entry point for the Polymarket bot. See also the structured skill in
 
 The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, see `.github/workflows/test.yml`).
 
-## Current state snapshot (2026-05-19)
+## Current state snapshot (2026-05-16)
 
-**Live strategy:** `auto_baseline_tight_microladder` — analyst-spawned variant of `claude_baseline_tight` (MONTH top 30, strict cohort) with a microladder TP profile that locks gains fast.
-- Dry race performance (the reason it was picked for live): **+64% ROI on 8 closed trades, 50% wr** — best risk-adjusted return on the board with sufficient sample
-- Engine: `smart_money` (real copy-trade pipeline)
-- Cohort: MONTH leaderboard, top 30, `min_trader_pnl=$2k`, `min_trader_volume=$5k`, `min_trader_roi=5%`
-- Entry: `min_consensus=3`, `min_copied_usdc=$150`, `max_chase_premium=0.12`
-- Sizing: `position_pct=0.10` (~$3/trade on $30 bankroll), ceiling 30% equity (~$9 cap)
-- Exits: microladder TP (locks gains tier-by-tier), SL -40% after 15min, trailing +25%/50% giveback, peak-protect +100%/exit +40%
-- Live tick interval: 10s. Heartbeat now includes a "live vs dry top 3" comparison line so you can see in real time if the live strategy is keeping up with its dry twin.
+**Live strategy:** `whale_entry_detection` — race-style profile that mirrors outsized volume + positive momentum on short-dated markets (whale-trade proxy). Replaces the previous smart-money live picks because race mode has no leaderboard fetch dependency (immune to data-api 429s) and the dry race has demonstrated edge on the 4h-only universe.
+- Engine: `whale_entry_detection` race mode (not smart_money — no cohort fetch)
+- Bankroll: **$45 USDC** starting; sizing tuned to 10% per trade (~$4.50 base), max position $9 (~20%)
+- Exits: TP +25% / SL -25% (min-age 3min), resolved exit at bid ≥0.97, near-expiry flush at 5min
+- Filters: liquidity ≥$500, 24h vol ≥$200, price 0.05–0.95, spread ≤5c, 4h hard cap
+- Live tick interval: 10s. Heartbeat includes a "live vs dry top 3" comparison block.
 
-**Bankroll:** $29.90 USDC starting on live; $20 starting on all dry profiles.
+**Bankroll:** $45 USDC starting on live. Dry profiles run at their own configured `starting_cash`.
 
-### Strategy inventory (170 active profiles)
+### Unified launcher — `scripts/run_all.sh`
 
-| Family | Count | Description |
-|---|---|---|
-| `auto_*` | 111 | Analyst-spawned variants (derived from current winners via `claude` CLI proposals) |
-| `claude_*` | 19 | Hand-curated A/B variants — exit/cohort/persistence experiments |
-| `momentum_*` | 9 | Momentum-themed (user's favorite thesis): breakout, exhaustion, continuation, panic |
-| `copy-*` | 4 | Mirror-mode single-wallet copy-trade |
-| `insider_*` | 2 | Top lifetime-PnL whale copy (≥$1M or ≥$500k all-time PnL) |
-| Other | 25 | Base race strategies (panic_fade, contrarian, favorite, etc.) + `edge`, `news`, `baseline`, `live-90` |
-| Archived | 31 | Catastrophic-loss kills (ROI ≤ -50%) — moved to `configs/profiles/_archived/` |
+Single command boots the whole stack with shared HTTP cache:
 
-### Best strategies right now (rated, sorted by ROI)
+```bash
+bash scripts/run_all.sh
+```
 
-| Strategy | Equity | PnL | WR | Closed | $/trade | Comment |
-|---|---|---|---|---|---|---|
-| `auto_baseline_fresh_qe_combo` | $35.54 | +$15.54 | 100% | 4 | $3.89 | Highest ROI but small sample |
-| **`auto_baseline_tight_microladder` (LIVE)** | **$32.87** | **+$12.87** | **50%** | **8** | **$1.61** | **Best EV — sample big enough to trust** |
-| `auto_microladder_persist_combo` | $29.51 | +$9.51 | 60% | 6 | $1.59 | Stacks microladder + persistence filter |
-| `auto_tight_pnl5k` | $29.37 | +$9.37 | 75% | 4 | $2.34 | Wider PnL filter (≥$5k trader PnL) |
-| `claude_baseline_quick_exit` | $26.27 | +$6.27 | 50% | 12 | $0.52 | Most sample, was the prior live pick |
-| `claude_baseline_tight` | $25.70 | +$5.70 | 62% | 8 | $0.71 | Parent of the microladder variant |
-| `kzerlepgm_baseline` | $22.60 | +$2.60 | 50% | 2 | $1.30 | Reference (main:baseline + 4h) |
+Order of operations:
+1. **Pre-warm HTTP cache** (~60s) via `scripts/cache_warmer.py` — populates `data/cache/http/` with leaderboards (3 windows × 8 categories × 4 limits) + the top wallets' recent trade histories so the bot swarm starts with a warm cache and no first-tick 429 storm.
+2. **Live bot** (`whale_entry_detection`, 10s tick) + `scripts/live_analyst.py` sidecar (30min Telegram report).
+3. **Dry race** — ~50 curated profiles (NOT all 195 — that crashed mac), each ticking at 10min (`POLYMARKET_AUTO_INTERVAL_SECONDS=600`) with Telegram BUY/SELL alerts silenced per-subshell so only the live bot speaks.
+4. **Sidecars** — `scripts/dry_analyst.py` (15min report / 1h spawn-kill) + `pmbot leaderboard --telegram` (5min summary).
+5. **Background re-warmer** — re-runs `cache_warmer.py` every 8 min (cache TTL is 10 min) to keep both live + dry continuously warm.
 
-### Recommendation for live (now active)
+`Ctrl+C` cleans up the whole process group. Trap is on `INT/TERM` only (NOT `EXIT`) and the `cleanup()` is idempotent via a `CLEANED_UP=1` guard — a previous bug had `set -u` crash on an unset var triggering the EXIT trap and killing every bot.
 
-**Running `auto_baseline_tight_microladder`.** Picked over `claude_baseline_quick_exit` because:
-1. **+64% ROI on 8 closed** vs `quick_exit`'s +31% on 12 closed — **3× higher mean PnL per trade ($1.61 vs $0.52)** with comparable sample
-2. Same engine (`smart_money` mode) and same cohort family (tight) as the prior pick, so engine risk is unchanged
-3. Stricter signal bar (`min_consensus=3` vs 2, `min_copied_usdc=$150` vs $50) = higher-quality entries, fewer trades
-4. Microladder TP locks gains earlier than the parent's standard ladder
+### HTTP cache layer
 
-**Caveat:** 8 closed trades is still below the 30-trade threshold for `🎯 LIVE READY ✅`. Variance risk exists. Live runs with $29.90 starting; the 5% cash floor + 25% SL means worst-case single-trade loss ≈ $2.25.
+`polymarket_bot/smart_money.py:_get_json` wraps every data-api request behind a sha1-keyed disk cache at `data/cache/http/`. TTL defaults to 600s (env override `POLYMARKET_HTTP_CACHE_TTL_SECONDS`). With ~50 dry bots each previously firing their own `leaderboard()` + `trades()` calls, the load to data-api was ~2,500 calls/min and 70%+ failed with 429. With the shared cache that drops to ~33 calls/min from the cache-warmer's single pass.
 
-**Watchlist (don't promote without ≥30 closed):**
-- `auto_baseline_fresh_qe_combo` (+78% on 4 closed — could be variance, could be the real winner once sample fills out)
-- `auto_microladder_persist_combo` (+47% on 6 closed — stacks two winning filters)
+### Recommendation framework for live
 
-### What's working — pattern across all top strategies
+Promotion threshold for moving a dry profile to live: **≥10 closed trades AND ROI > 0** as a soft floor; `🎯 LIVE READY ✅` only at ≥30 closed. Below 10 closed = variance, not edge. Catastrophic halt (any strategy with ROI ≤ -50% regardless of sample) auto-archives the profile.
 
-**The smart_money pipeline is the only thesis earning money.** All 4 leaderboard top performers (`claude_baseline_tight`, `auto_baseline_tight_microladder`, `claude_baseline_quick_exit`, `claude_baseline_persist`) are smart_money mode variants. Race-style bots (panic_fade, contrarian, momentum_*) mostly destroyed themselves and got auto-killed by the catastrophic-equity-halt (ROI ≤ -50%). The 31 archived strategies are almost all race-style.
-
-**Key insight:** copy-trading on multi-wallet consensus + defensive exits beats every other thesis the race has tested. The differentiators between top performers are exit aggressiveness (let_run vs quick_exit) and cohort filter (tight vs wide vs persistence vs freshness). The smart_money cohort itself is the alpha source.
+The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies" when N > 1 — never lies about "only profitable strategy" when several are positive.
 
 **Autonomous loop — see `scripts/dry_analyst.py`:**
-- Runs as a sidecar alongside `bash scripts/run_both_dry.sh`
+- Runs as a sidecar alongside `bash scripts/run_all.sh`
 - **Report every 15 min** to `TELEGRAM_CHAT_ID_DRY_RUN`: full leaderboard with $start → $current / +/- $ / ROI% / WR / closed / open per strategy, top 3 trades + open positions for the favorite, plus a tiered live-readiness recommendation.
 - **Spawn/kill every 1 hour** (decoupled from report rhythm).
   - Spawns 1–3 new `auto_*` profiles per cycle via `claude` CLI, derived from current winners
@@ -75,7 +56,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
   - Force-close losers at `current_price ≤ 0.03`
   - Catches resolved markets that drop out of Gamma scans before per-strategy exit logic fires
 - **Telegram fallback:** `_default_transport` retries with `parse_mode` stripped on HTTP 400, so MarkdownV2 escape failures never silently swallow alerts.
-- **Live analyst (`scripts/live_analyst.py`)** — read-only sidecar wired into `run_live_70.sh`; reads paper_state + dry leaderboard, calls `claude` CLI, posts insights to `TELEGRAM_CHAT_ID_LIVE` every 30 min. Never spawns/modifies anything live.
+- **Live analyst (`scripts/live_analyst.py`)** — read-only sidecar wired into `run_all.sh` (and standalone `run_live_70.sh`); reads paper_state + dry leaderboard, calls `claude` CLI, posts executive-summary insights (open positions w/ entry→cur→PnL, top closed, dry-twin comparison) to `TELEGRAM_CHAT_ID_LIVE` every 30 min. Never spawns/modifies anything live.
 
 **Universal exit/sizing rules** for race-style strategies:
 - `stake_pct ≈ 0.10–0.25`, `max_orders_per_tick = 5`, `cash_floor_pct = 0.02`, `max_hours = 4.0` (hard 4h-only rule)
@@ -83,23 +64,30 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - Resolved exits at bid ≥ 0.97 (and now also ≤ 0.03 via universal sweep)
 - Daily DD halt at -15% of starting equity (race + edge)
 
-**Dry race composition:** ~60–130 strategies depending on auto_* spawns
-- 13 base strategies (original 10 + cpanic + edge + random control)
-- ~20 claude_* race variants
-- 6 framework rules (hybrid_smart_money, smart_wallet_consensus, whale_entry_detection, etc.)
-- 10 momentum_* (user's favorite thesis, distinct exit/sizing combos)
-- 6 claude_baseline_* A/B variants (tight, wide, persist, fresh, quick_exit, let_run)
-- `kzerlepgm_baseline` (main:baseline + 4h cap, real smart_money pipeline)
-- N `auto_*` spawned dynamically by the analyst
+**Dry race composition (curated in `scripts/run_all.sh:DRY_PROFILES`):** ~50 representative strategies
+- Baseline family: `baseline`, `kzerlepgm_baseline`, `claude_baseline_*` (tight, fresh, persist, quick_exit, let_run)
+- Smart-money + insider: `smart_money_dry`, `smart_money_loose`, `insider_whales`, `insider_millionaires`
+- Race strategies (one per thesis): `aggressive_buyer_detection`, `hybrid_smart_money`, `smart_wallet_consensus`, `wallet_cluster_correlation`, `early_momentum_detection`, `mean_reversion_fade`, `pmlepgm_counter_panic_fade`, `weak_holder_flush_inverse`, etc.
+- Claude race batch: `claude_anti_favorite`, `claude_mid_dump_fade`, `claude_resolution_sniper`, etc.
+- Momentum family: 8 distinct exit/sizing combos
+- Control: `random`
+- `whale_entry_detection` is excluded from the dry race (it's the live profile — duplicate would skew the comparison)
+
+The previous "all 195 profiles in dry" mode was retired because it crashed macOS and the data-api couldn't keep up. The curated roster covers every thesis family without the bloat.
 
 **Recent code-level fixes (since 2026-05-15):**
-- Auto-discover leaderboard (`pmbot leaderboard --auto-discover`) rebuilds run list from `data/dry_runs/*` each refresh — auto_* bots show up without restart
-- Telegram leaderboard truncated to top 15 + bottom 5 (was exceeding 4096-char cap with 100+ strategies)
-- Analyst plain-text fallback on HTTP 400; HTTPError body logged for diagnosis
+- HTTP cache layer in `smart_money.py:_get_json` (TTL 600s) + pre-warm via `scripts/cache_warmer.py`, re-warm loop every 8min in `run_all.sh`
+- `scripts/run_all.sh` — single launcher for live + dry race + sidecars + cache pre-warm + re-warm loop. Trap on INT/TERM only (not EXIT), idempotent cleanup, no `set -u` (crashed on harmless unset vars)
 - `_force_close_resolved_positions` runs in `strategy_loop` — universal across all strategy modes
-- Analyst journal counter accepts both `event=position_closed` AND any entry with `closed_at` (race/smart_money/news use different field conventions)
-- `claude_baseline_*` family + `momentum_*` family added
-- Hard reset workflow: all profiles bumpable between $20/$100, tests adapt, backups kept in `data/backups_full_<ts>_<reset>/`
+- `live_available_balance` smart fallback: when pUSD RPC fails, reads ledger cash and caps by `assume - sum(open_positions_cost)`; defends against live-sync importing positions without debiting cash. RPC failure log throttled to once per 5 min.
+- Per-position sizing bug fixed (`ceiling = min(...)` was `max(...)`, allowed $25 BUY on $29.90 bankroll)
+- Live analyst now sets `POLYMARKET_PROFILE_LABEL` BEFORE the sidecar spawns (else logs "(unknown)")
+- `load_live_snapshot` prefers `current_price × shares` for equity calculation, falls back to size_usd → notional_usd → stake → cost_basis
+- Telegram leaderboard truncated to top 15 + bottom 5, all plain text (no MarkdownV2 escape literals)
+- Dry-bot Telegram alerts silenced per-subshell via `TELEGRAM_ALERT_*=0` env vars in `run_dry_bot()` — only the live bot speaks
+- `_pick_favorite` tier 3 wording: "Top of N profitable strategies" when N > 1 (was always "Only profitable", which lied)
+- Analyst journal counter accepts both `realized_pnl_usd` (sweep) and `realized_pnl` (race/smart_money)
+- Hard reset workflow: backups kept in `data/backups_full_<ts>_<reset>/`
 
 ## Safety
 
@@ -132,7 +120,12 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - `polymarket_bot/gamma.py` — Gamma client (market scan + reverse-lookup by clob_token_ids).
 - `polymarket_bot/strategy.py` — candidate ranking from Gamma payloads.
 - `polymarket_bot/models.py` — shared dataclasses and parsing helpers.
-- `scripts/run_live_70.sh` — canonical live runner for ~$90 bankroll.
+- `scripts/run_all.sh` — preferred launcher: live + dry race + sidecars + HTTP cache pre-warm + 8min re-warm loop.
+- `scripts/run_live_70.sh` — live-only runner (loads `whale_entry_detection.toml`, $45 bankroll).
+- `scripts/cache_warmer.py` — pre-fetches leaderboards + wallet trade histories into `data/cache/http/` so the bot swarm starts warm.
+- `scripts/dry_analyst.py` — autonomous analyst sidecar: 15min reports, 1h spawn/kill via `claude` CLI.
+- `scripts/live_analyst.py` — read-only live analyst sidecar; 30min executive-summary Telegram reports.
+- `scripts/winner_consistency.py` — sliding-window analyzer (30min windows over 8h lookback).
 - `tests/test_strategy.py` — 52 tests covering scoring, sizing, exit plans, auto-tuner rules.
 - `docs/PROFILES.md` — référence exhaustive des clés TOML des profils (sections, types, défauts, rôles).
 - `docs/STRATEGIES.md` — document maître des 6 lanes d'achat et des 9 conditions d'exit.
@@ -228,26 +221,28 @@ POLYMARKET_QUIET=1 uv run pmbot auto-loop --dry-run --profile baseline
 
 ## Recommended live command
 
-Use the canonical script to avoid copy-paste pitfalls:
+Use `run_all.sh` (preferred — boots live + dry race + sidecars + cache pre-warm):
+
+```bash
+bash scripts/run_all.sh
+```
+
+Or just the live bot alone (no dry race, no cache pre-warm — only do this if you don't want the cache benefit):
 
 ```bash
 bash scripts/run_live_70.sh
 ```
 
-The script is the single source of truth for the live config. Current settings:
+Both scripts load `configs/profiles/whale_entry_detection.toml` as the single source of truth for the live config. Current settings:
 
-- Profile: `claude_baseline_quick_exit` (smart_money mode, defensive exits)
+- Profile: `whale_entry_detection` (race mode, no leaderboard fetch)
 - `POLYMARKET_SYNC_LIVE_POSITIONS=1`, `POLYMARKET_AUTO_INTERVAL_SECONDS=10`
-- Sizing (from `configs/profiles/claude_baseline_quick_exit.toml`): `position_pct=0.10`, `max_position_ceiling_usd=25`, `cash_floor_pct=0.05`, `min_open_positions=5`, `assumed_live_balance_usd=20`
-- Trader cohort: leaderboard `WEEK`, top 50, `min_trader_pnl=$500`, `min_trader_volume=$1k`, `min_trader_roi=2%`. Concurrency 16.
-- Entry filters: `min_consensus=2`, `min_copied_usdc=$50`, `max_chase_premium=0.12`, price band 0.03–0.97, absolute spread ≤10c, relative spread ≤35%, signal staleness ≤10 min, 4h hard cap.
-- Three-pass scan per tick: strict → relaxed → deep fallback.
-- Defensive exits (this is what differs from baseline): stop_loss -25%, peak-protect arms @+50% exits @+20%, trailing arms @+15% with 50% giveback, stop_loss_min_age 5min. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
+- Sizing (from `configs/profiles/whale_entry_detection.toml`): `starting_cash=45.0`, `assumed_live_balance_usd=45.0`, `stake_pct=0.10` (~$4.50 base), `stake_usd=4.50`, `max_position_ceiling_usd=9.0`, `cash_floor_pct=0.05`, `min_open_positions=3`
+- Race filters: `min_liquidity_usd=500`, `min_volume_24h_usd=200`, price 0.05–0.95, spread ≤5c, `max_orders_per_tick=4`, `max_hours=4.0` (hard 4h-only rule)
+- Exits: TP +25% / SL -25% (min-age 3min), resolved exit at bid ≥0.97, near-expiry flush at 5min. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
 - Live analyst sidecar (`scripts/live_analyst.py`) launches alongside; posts read-only insights every 30 min to `TELEGRAM_CHAT_ID_LIVE`.
 - Universal sweep closes positions at price ≥0.97 OR ≤0.03 every tick across all strategy modes.
-- BTC edge integrated: at the end of every smart-money tick `btc_edge_once` runs with $5/trade cap and 8% minimum modeled edge over market.
-- Noise fallback: up to 4 trades at $10 each, **only when smart-money executed zero trades in the tick** AND (positions below `MIN_OPEN_POSITIONS` OR cash share above 35% of equity). Tagged `noise_fallback` in the journal.
-- Auto-tune: `SMART_AUTO_TUNE_ENABLED=1` (paused below 30 closed trades; defensive only).
+- HTTP cache shared with the dry race at `data/cache/http/` (TTL 600s), refreshed every 8min by the background loop in `run_all.sh`.
 
 Dashboard at `http://127.0.0.1:8765` by default.
 

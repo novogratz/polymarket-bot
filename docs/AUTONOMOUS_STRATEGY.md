@@ -149,10 +149,12 @@ Auto-launched by `scripts/run_both_dry.sh`. Runs alongside the dry race.
 
 **Kill switch:** `echo '{"enabled":false}' > data/autonomous_state.json` halts new spawns + kills (reports continue).
 
-**Live analyst (`scripts/live_analyst.py`)** is a separate, read-only sidecar launched by `run_live_70.sh`. It cross-compares the live profile to the dry leaderboard and posts insights to `TELEGRAM_CHAT_ID_LIVE` every 30 min. NEVER spawns/kills/modifies anything live.
+**Live analyst (`scripts/live_analyst.py`)** is a separate, read-only sidecar launched by `run_all.sh` (or `run_live_70.sh` when running live alone). It cross-compares the live profile to the dry leaderboard and posts executive-summary insights (open positions w/ entry→current→PnL, top closed trades, dry-twin comparison) to `TELEGRAM_CHAT_ID_LIVE` every 30 min. NEVER spawns/kills/modifies anything live.
 
 **Universal sweep** runs every tick in `strategy_loop._force_close_resolved_positions`:
 - Closes any open position with cached `current_price ≥ 0.97` (winner)
 - Closes any open position with cached `current_price ≤ 0.03` (loser)
 - Works for all strategy modes (smart_money, race, edge, news) in both live + dry
 - Catches resolved markets that drop out of Gamma scans before per-strategy exit logic fires
+
+**Shared HTTP cache** — `polymarket_bot/smart_money.py:_get_json` wraps every data-api request behind a sha1-keyed disk cache at `data/cache/http/` (TTL 600s, override via `POLYMARKET_HTTP_CACHE_TTL_SECONDS`). `scripts/cache_warmer.py` pre-fetches leaderboards + top wallet trade histories at startup, and `run_all.sh` re-runs it every 8 min so live + dry bots never see a cold cache. Without this, 50+ dry bots each firing their own `leaderboard()` + `trades()` calls saturated the data-api with ~2,500 req/min and 70%+ 429s on the first tick.
