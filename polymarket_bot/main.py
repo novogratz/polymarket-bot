@@ -1865,6 +1865,19 @@ def _journal_stats_last_24h(
 
 
 def _append_trade_journal(settings: Settings, position: dict[str, object], reason: str) -> None:
+    # Idempotency guard. Each closed position should produce ONE journal
+    # entry, ever. Without this we observed 1500+ journal lines for ~8
+    # unique trades because multiple write paths fire on the same close:
+    #   - _force_close_resolved_positions (universal sweep, every tick)
+    #   - _execute_sell_strategy (TP/SL/cohort)
+    #   - _sync_live_positions → _notify_and_journal_sync_close
+    #   - concurrent processes (two live bots, observed in production)
+    # The flag is persisted in paper_state.json so a restart can't undo
+    # it. Re-journaling is still possible by clearing position["journaled"]
+    # explicitly (e.g. during a deliberate reset_ledger).
+    if position.get("journaled"):
+        return
+    position["journaled"] = True
     path = settings.trade_journal_path
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -2369,6 +2382,11 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
     for position in list(portfolio.positions):
         if position.get("status") != "open":
             continue
+        if position.get("journaled"):
+            # Some other code path (or a prior tick) already wrote this
+            # close to the journal. Skip — duplicate sweep writes are
+            # how we got 1500-line journals for 8 unique trades.
+            continue
         cur = position.get("current_price")
         if cur is None:
             continue
@@ -2393,6 +2411,7 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
         position["realized_pnl"] = round(realized_pnl, 4)
         position["exit_reason"] = reason
         position["exit_price"] = cur_f
+        position["journaled"] = True
         portfolio.cash = float(portfolio.cash or 0.0) + proceeds
         changed = True
         closed_records.append({
