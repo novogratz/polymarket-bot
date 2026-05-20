@@ -199,10 +199,27 @@ def reset_ledger(settings: Settings) -> dict[str, object]:
             baseline_path.unlink()
         except OSError:
             pass
+    # Rotate the trade journal. Race-mode profiles use a daily-drawdown
+    # halt that reads `realized_today_usd` from the journal — if a prior
+    # session bled $X today and we reset the bankroll to $Y < |X|, the
+    # halt fires on the first tick and entries stay paused. Rotating
+    # the journal to a timestamped .bak preserves history on disk but
+    # zeroes today's realized for the new session.
+    journal_path = Path(settings.trade_journal_path)
+    journal_rotated: str | None = None
+    if journal_path.is_file():
+        ts = int(time.time())
+        rotated = journal_path.with_name(f"{journal_path.stem}_{ts}.jsonl.bak")
+        try:
+            journal_path.rename(rotated)
+            journal_rotated = str(rotated)
+        except OSError:
+            pass
     return {
         "reset": True,
         "balance_source": source,
         "baseline_cleared": str(baseline_path),
+        "journal_rotated_to": journal_rotated,
         "summary": portfolio.summary(),
     }
 
