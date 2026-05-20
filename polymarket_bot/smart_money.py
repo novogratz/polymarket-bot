@@ -244,6 +244,11 @@ class DataApiClient:
         return trades
 
     def positions(self, *, user: str, limit: int = 500) -> list[dict[str, Any]]:
+        # use_cache=False: the live ledger sync depends on this being
+        # current. If a stale snapshot were cached for 600s, the live
+        # bot would miss positions that landed mid-cache-window and the
+        # local ledger would stay out of sync with Polymarket for up to
+        # 10min — observed in production as $4 local equity vs $46 real.
         payload = self._get_json(
             "/positions",
             {
@@ -251,20 +256,29 @@ class DataApiClient:
                 "limit": str(limit),
                 "sizeThreshold": "0",
             },
+            use_cache=False,
         )
         return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
 
-    def _get_json(self, path: str, params: dict[str, str]) -> Any:
+    def _get_json(
+        self,
+        path: str,
+        params: dict[str, str],
+        *,
+        use_cache: bool = True,
+    ) -> Any:
         query = urllib.parse.urlencode(sorted(params.items()))  # stable cache key
         url = f"{self.base_url}{path}?{query}"
 
         # Cross-process disk cache. When 50+ bots all want the same
         # leaderboard or wallet trades, only the first one hits the
-        # network — the rest read from cache/. TTL default 90s; tunable
-        # via POLYMARKET_HTTP_CACHE_TTL_SECONDS.
-        cached = _cache_read(url)
-        if cached is not None:
-            return cached
+        # network — the rest read from cache/. TTL default 600s; tunable
+        # via POLYMARKET_HTTP_CACHE_TTL_SECONDS. Per-user endpoints (like
+        # /positions for the live wallet) must bypass — see positions().
+        if use_cache:
+            cached = _cache_read(url)
+            if cached is not None:
+                return cached
 
         request = urllib.request.Request(
             url,
@@ -275,7 +289,8 @@ class DataApiClient:
         )
         with urllib.request.urlopen(request, timeout=self.timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
-        _cache_write(url, payload)
+        if use_cache:
+            _cache_write(url, payload)
         return payload
 
 
