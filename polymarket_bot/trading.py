@@ -189,7 +189,14 @@ class TradingSession:
         try:
             balance = read_pusd_balance(target_wallet, rpc_url=rpc_url)
         except Exception as e:
-            print(f"❌ pUSD on-chain balance check failed: {str(e)}")
+            # Rate-limit log spam: only print once per 5 min so terminal
+            # stays readable when the public RPC is throttling us.
+            import time as _t
+            last = getattr(self, "_last_rpc_err_ts", 0)
+            now = _t.time()
+            if now - last > 300:
+                print(f"❌ pUSD on-chain balance check failed: {str(e)}")
+                self._last_rpc_err_ts = now
             balance = 0.0
 
         allowance: float | None = None
@@ -222,18 +229,26 @@ class TradingSession:
             # post-trade reality. Only fall back to the static assume
             # when the ledger is empty (first tick).
             ledger_cash = self._read_ledger_cash()
+            # Same throttle as the RPC error — once per 5 min.
+            import time as _t
+            last = getattr(self, "_last_fallback_log_ts", 0)
+            now = _t.time()
             if ledger_cash is not None and ledger_cash > 0:
-                print(
-                    f"⚠️  pUSD RPC unavailable — using local ledger cash "
-                    f"${ledger_cash:.2f} (instead of stale assume "
-                    f"${self.settings.assumed_live_balance_usd:.2f})"
-                )
+                if now - last > 300:
+                    print(
+                        f"⚠️  pUSD RPC unavailable — using local ledger cash "
+                        f"${ledger_cash:.2f} (instead of stale assume "
+                        f"${self.settings.assumed_live_balance_usd:.2f})"
+                    )
+                    self._last_fallback_log_ts = now
                 return ledger_cash
             if self.settings.assumed_live_balance_usd > 0.0:
-                print(
-                    f"⚠️  Using POLYMARKET_ASSUME_LIVE_BALANCE_USD="
-                    f"{self.settings.assumed_live_balance_usd} (no ledger cash yet)"
-                )
+                if now - last > 300:
+                    print(
+                        f"⚠️  Using POLYMARKET_ASSUME_LIVE_BALANCE_USD="
+                        f"{self.settings.assumed_live_balance_usd} (no ledger cash yet)"
+                    )
+                    self._last_fallback_log_ts = now
                 return self.settings.assumed_live_balance_usd
         return balance
 
