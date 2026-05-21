@@ -2469,6 +2469,32 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
 def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
     last_heartbeat_ts: float = 0.0
     tick = 0
+    # Per-tick watchdog timeout. If a tick takes longer than this, SIGALRM
+    # raises TickTimeoutError, the except branch logs it, and the outer
+    # loop continues to the next tick. Without this, any network call
+    # that ignores its own timeout (or blocks on a slow read after the
+    # initial response) could hang the entire bot forever — observed
+    # in production where the live bot's state file went unwritten for
+    # 4+ hours while the bot's PID was alive but stuck. The watchdog
+    # makes the bot self-healing against deadlocks of any source.
+    import signal as _signal
+
+    class TickTimeoutError(Exception):
+        pass
+
+    tick_timeout_seconds = int(os.environ.get("POLYMARKET_TICK_TIMEOUT_SECONDS", "120"))
+
+    def _handle_tick_alarm(signum, frame):  # noqa: ARG001
+        raise TickTimeoutError(
+            f"tick exceeded {tick_timeout_seconds}s watchdog — likely a stuck network call"
+        )
+
+    # SIGALRM is Unix-only; on Windows the watchdog is a no-op. We trade
+    # zero hang-protection on Windows for one extra import. Acceptable.
+    watchdog_available = hasattr(_signal, "SIGALRM")
+    if watchdog_available:
+        _signal.signal(_signal.SIGALRM, _handle_tick_alarm)
+
     while settings.auto_max_ticks <= 0 or tick < settings.auto_max_ticks:
         tick += 1
         started_at = utc_now()
@@ -2482,7 +2508,24 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
         error: dict[str, str] | None = None
         tick_result: dict[str, object] = {}
         try:
+            if watchdog_available:
+                _signal.alarm(tick_timeout_seconds)
             tick_result = tick_fn(settings)
+        except TickTimeoutError as exc:
+            print(
+                f"⏱️  tick watchdog fired: {exc}. Skipping tick {tick}, "
+                f"continuing loop.",
+                flush=True,
+            )
+            error = {"type": "TickTimeoutError", "message": str(exc)}
+            try:
+                notifications.notify_error(
+                    "tick_timeout",
+                    str(exc)[:500],
+                    dedupe_key="tick_timeout",
+                )
+            except Exception:
+                pass
         except Exception as exc:
             error = {"type": type(exc).__name__, "message": str(exc)}
             try:
@@ -2493,6 +2536,11 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                 )
             except Exception:
                 pass
+        finally:
+            # Always cancel the alarm so it doesn't fire during the
+            # post-tick bookkeeping / sleep below.
+            if watchdog_available:
+                _signal.alarm(0)
 
         finished_at = utc_now()
         result: dict[str, object] = {
