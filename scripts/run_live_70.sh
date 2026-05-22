@@ -19,11 +19,12 @@ cd "$REPO_ROOT"
 # Sync live positions (toggle hors schéma).
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
-# Hard-baseline live + assumed balance to $10 (post-disaster reset 2026-05-22).
-# Wins over the profile TOML because apply_profile_to_env uses override=False
-# and won't touch env vars already set in the parent shell.
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-10.0}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-10.0}
+# Live bankroll = $29 (actual Polymarket balance 2026-05-22).
+# baseline.toml also has starting_cash=29 / assumed_live_balance_usd=29 so
+# these exports are redundant in normal use — left explicit in case the
+# profile is swapped to one with a different default.
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-29.0}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-29.0}
 
 # Live tick interval — fast (10s) even though kzerlepgm_baseline TOML
 # now uses 60s for the dry-race rate-limit fix. Env var override wins.

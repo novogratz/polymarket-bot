@@ -74,8 +74,8 @@ class CliAutoLoopFlagsTests(unittest.TestCase):
         settings = loop_mock.call_args.args[0]
         # baseline.toml sets position_pct = 0.10 (10% du cash par trade).
         self.assertAlmostEqual(settings.smart_position_pct, 0.10)
-        # baseline.toml sets starting_cash = 10.0 (paper_balance_usd)
-        self.assertAlmostEqual(settings.paper_balance_usd, 10.0)
+        # baseline.toml sets starting_cash = 29.0 (paper_balance_usd)
+        self.assertAlmostEqual(settings.paper_balance_usd, 29.0)
 
     def test_live_without_yes_aborts_on_non_tty(self):
         with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
@@ -159,14 +159,14 @@ class CliAutoLoopIntegrationTests(unittest.TestCase):
         self.assertAlmostEqual(settings.smart_position_pct, 0.33)
 
     def test_dry_run_starting_cash_from_profile(self):
-        # baseline.toml sets starting_cash = 10.0
+        # baseline.toml sets starting_cash = 29.0
         with patch("polymarket_bot.main.smart_money_loop") as loop_mock:
             result = self.runner.invoke(
                 self.app, ["auto-loop", "--dry-run", "--profile", "baseline"]
             )
         self.assertEqual(result.exit_code, 0)
         settings = loop_mock.call_args.args[0]
-        self.assertAlmostEqual(settings.paper_balance_usd, 10.0)
+        self.assertAlmostEqual(settings.paper_balance_usd, 29.0)
 
 
 class CliAutoLoopNamedRunTests(unittest.TestCase):

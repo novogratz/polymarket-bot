@@ -20,13 +20,12 @@ set -eo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# ─── Hard $10 baseline for live + every dry profile ─────────────────
-# Set BEFORE launching anything so subshells inherit. Each profile's
-# TOML starting_cash is ignored (apply_profile_to_env uses override=False
-# and skips env vars already set in the parent shell). Re-baselined to
-# $10 after baseline_tight live disaster 2026-05-22.
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-10.0}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-10.0}
+# Live bankroll = $29 (actual Polymarket balance 2026-05-22).
+# Dry race overrides per-subshell to $10 (see run_dry_bot). Two-tier split
+# after baseline_tight live disaster: cap dry exposure low while keeping
+# live aligned with real on-chain pUSD balance.
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-29.0}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-29.0}
 
 CLEANED_UP=0
 cleanup() {
@@ -109,9 +108,12 @@ run_dry_bot() {
     local profile="$1"
     local run="$2"
     local prefix="$3"
-    # Per-subshell env: dry bots silent on Telegram BUY/SELL (live keeps alerts)
+    # Per-subshell env: dry bots silent on Telegram BUY/SELL (live keeps alerts).
+    # Force dry bankroll = $10 here (live runs at $29 from parent shell export).
     POLYMARKET_QUIET=1 \
         POLYMARKET_SUPPRESS_BUY_LOGS=1 \
+        POLYMARKET_PAPER_BALANCE_USD=10.0 \
+        POLYMARKET_ASSUME_LIVE_BALANCE_USD=10.0 \
         POLYMARKET_AUTO_INTERVAL_SECONDS=600 \
         TELEGRAM_ALERT_TRADES=0 \
         TELEGRAM_ALERT_TRADES_BUY=0 \
