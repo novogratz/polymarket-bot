@@ -117,6 +117,8 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "max_hold_hours": ("POLYMARKET_SMART_MAX_HOLD_HOURS", "float"),
         "near_expiry_min_profit": ("POLYMARKET_SMART_EXIT_MIN_PROFIT", "float"),
         "near_expiry_minutes_to_close": ("POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE", "int"),
+        "near_expiry_exit_losers": ("POLYMARKET_SMART_NEAR_EXPIRY_EXIT_LOSERS", "bool"),
+        "near_expiry_loser_minutes": ("POLYMARKET_SMART_NEAR_EXPIRY_LOSER_MINUTES", "int"),
         "resolved_market_threshold": ("POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD", "float"),
     },
     "cohort_exit": {

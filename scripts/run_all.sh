@@ -66,11 +66,11 @@ fi
 echo
 
 # ─── Step 2: LIVE bot (priority, fast tick, cache pre-populated) ────
-echo "[run_all] step 2/4: launching live bot (baseline)..."
+echo "[run_all] step 2/4: launching live bot (baseline_tight)..."
 
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 export POLYMARKET_AUTO_INTERVAL_SECONDS=10   # live tick = 10s
-export POLYMARKET_PROFILE_LABEL=baseline
+export POLYMARKET_PROFILE_LABEL=baseline_tight
 
 # Live Telegram alerts ON
 export TELEGRAM_ALERT_TRADES=1
@@ -85,7 +85,7 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
 
 # Live bot itself
-uv run pmbot auto-loop --live --profile baseline --yes \
+uv run pmbot auto-loop --live --profile baseline_tight --yes \
     2>&1 | sed -u 's/^/[LIVE] /' &
 LIVE_PID=$!
 echo "[run_all] live bot launched (pid=$LIVE_PID)"
@@ -120,7 +120,7 @@ run_dry_bot() {
 
 DRY_PROFILES=(
     # Baseline family
-    baseline kzerlepgm_baseline
+    baseline baseline_tight kzerlepgm_baseline
     claude_baseline_tight claude_baseline_fresh claude_baseline_persist
     claude_baseline_quick_exit claude_baseline_let_run
     # Smart-money + insider

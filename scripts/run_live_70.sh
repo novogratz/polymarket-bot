@@ -35,7 +35,7 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
 # Profile label exported BEFORE the live_analyst spawns, so the
 # sidecar inherits it (else it logs "(unknown)" in reports).
-export POLYMARKET_PROFILE_LABEL=baseline
+export POLYMARKET_PROFILE_LABEL=baseline_tight
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
 # Every 30 min: reads paper_state + trade_journal, compares vs dry race
@@ -48,4 +48,4 @@ cleanup() {
 trap cleanup INT TERM EXIT
 python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
 
-uv run pmbot auto-loop --live --profile baseline --yes
+uv run pmbot auto-loop --live --profile baseline_tight --yes

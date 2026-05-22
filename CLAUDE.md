@@ -6,7 +6,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 ## Current state snapshot (2026-05-20)
 
-**Live strategy:** `baseline` — the canonical control profile. Switched from `auto_fresh_qe_persist_stack` on 2026-05-22 after a full hard reset (all dry profiles re-baselined to $20, all state files wiped + backed up to `data/backups/`). Chose baseline because every active dry bot had negative realized PnL — baseline had the smallest absolute loss (-$1.79 on 58 trades, 59% WR) and the closest-to-neutral asymmetry, making it the least-bad pick. Real verdict: the recent market regime is unfavorable for the cohort-copy thesis.
+**Live strategy:** `baseline_tight` — fork of `baseline` with two targeted fixes from baseline's 65-trade audit (oversized position cap + loser flush near expiry). Switched from `auto_fresh_qe_persist_stack` on 2026-05-22 after a full hard reset (all dry profiles re-baselined to $20, all state files wiped + backed up to `data/backups/`). Chose baseline because every active dry bot had negative realized PnL — baseline had the smallest absolute loss (-$1.79 on 58 trades, 59% WR) and the closest-to-neutral asymmetry, making it the least-bad pick. Real verdict: the recent market regime is unfavorable for the cohort-copy thesis.
 - Engine: `smart_money` (real copy-trade pipeline + multi-wallet consensus) — canonical config, no esoteric filters
 - Bankroll: **$20 USDC** baseline (fresh-start reset 2026-05-22)
 - Sizing: `position_pct=0.10` (~$2/trade base), `max_position_ceiling_usd=$25`, `max_position_ceiling_pct=0.30` (~$6 cap), `cash_floor_pct=0.02`, `min_open_positions=5`, `starter_trade_usd=5.0`, `assumed_live_balance_usd=20.0`

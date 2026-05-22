@@ -866,6 +866,23 @@ def _execute_sell_strategy(
                 "reason": "positive_pnl_before_expiry",
                 "shares": float(position.get("shares", 0.0)),
             }
+        # Loser flush near expiry. When enabled, cap the tail of
+        # \"resolved_market_sweep_loss\" by selling losing positions at
+        # the current (non-zero) bid before the market settles them to
+        # \$0. Was the biggest realized-PnL leak on baseline's 65-trade
+        # sample. Opt-in via settings.smart_near_expiry_exit_losers so
+        # the canonical baseline isn't changed; baseline_tight enables it.
+        if (
+            plan is None
+            and settings.smart_near_expiry_exit_losers
+            and current_pnl_pct < 0
+            and candidate.hours_to_close is not None
+            and candidate.hours_to_close * 60 < settings.smart_near_expiry_loser_minutes
+        ):
+            plan = {
+                "reason": "near_expiry_loser_flush",
+                "shares": float(position.get("shares", 0.0)),
+            }
         if plan is None and token_id in cohort_exit_tokens:
             plan = {
                 "reason": cohort_exit_tokens[token_id],

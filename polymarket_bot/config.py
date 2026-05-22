@@ -190,6 +190,14 @@ class Settings:
     persistence_intersect_min: int = field(default_factory=lambda: _int_env("POLYMARKET_PERSISTENCE_INTERSECT_MIN", 2))
     smart_exit_minutes_to_close: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE", 20))
     smart_exit_min_profit: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_EXIT_MIN_PROFIT", 0.05))
+    # When True, force-close losing positions within
+    # smart_near_expiry_loser_minutes of resolution. Caps the
+    # \"resolved_market_sweep_loss\" tail (positions that go to $0 when
+    # the market settles against the bot's bet). Tuned on the baseline
+    # profile's 65-trade sample: 12 sweep_losses averaging -$3.11 each
+    # were the biggest single bleed source.
+    smart_near_expiry_exit_losers: bool = field(default_factory=lambda: os.getenv("POLYMARKET_SMART_NEAR_EXPIRY_EXIT_LOSERS", "0").lower() in {"1", "true", "yes"})
+    smart_near_expiry_loser_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_NEAR_EXPIRY_LOSER_MINUTES", 30))
     smart_pending_order_ttl_seconds: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS", 45))
     live_position_min_value_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_LIVE_POSITION_MIN_VALUE_USD", 1.0))
     sync_live_positions: bool = field(default_factory=lambda: os.getenv("POLYMARKET_SYNC_LIVE_POSITIONS", "1").lower() in {"1", "true", "yes"})
