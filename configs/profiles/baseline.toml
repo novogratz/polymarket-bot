@@ -24,8 +24,8 @@ max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0                       # 0 = pas de cap absolu, c'est ceiling qui gouverne
 high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.02
-min_open_positions = 5
-starter_trade_usd = 3.0
+min_open_positions = 3
+starter_trade_usd = 2.0
 assumed_live_balance_usd = 29.0            # live bankroll 2026-05-22 (dry race overrides to $10 via env)
 
 [trader_cohort]
@@ -48,17 +48,21 @@ min_liquidity_usd = 500.0
 min_volume_usd = 1000.0
 
 [filters]
+# LOOSENED 2026-05-22: live wasn't buying because 8000+ wallet trades scanned,
+# only 4 matched market pool, all 4 rejected for spread/staleness/price-band.
+# Widened to let edge-case signals through. Still 4h-only rule (memory: every
+# strategy must restrict to markets expiring ≤4h).
 min_consensus = 1
 fallback_consensus = 1
-min_copied_usdc = 10.0
-min_trade_usd = 1.0
-max_chase_premium = 0.20
-price_min = 0.03
-price_max = 0.97
-max_absolute_spread = 0.10
-max_relative_spread = 0.35
-signal_staleness_seconds = 10             # en réalité minutes (env var en min) — clé legacy
-min_hours_to_close = 0.25
+min_copied_usdc = 1.0
+min_trade_usd = 0.5
+max_chase_premium = 0.30
+price_min = 0.02
+price_max = 0.98
+max_absolute_spread = 0.15
+max_relative_spread = 0.50
+signal_staleness_seconds = 60             # env var en min — was 10min, raised to 60min so cohort signals don't go stale between ticks
+min_hours_to_close = 0.5
 max_hours_to_close = 4.0
 max_orders_per_tick = 0                   # 0 = illimité (gouverné par cash floor)
 max_sports_positions = 3
@@ -100,7 +104,7 @@ min_wallets = 2
 
 [deep_fallback]
 enabled = true
-min_copied_usdc = 250.0
+min_copied_usdc = 25.0                    # was 250 — too tight when 4 matched tokens have <250 USDC
 
 [reverse_lookup]
 enabled = true
@@ -122,13 +126,16 @@ min_hours_to_close = 0.5
 volatility_days = 7
 
 [noise_fallback]
-enabled = false                           # baseline : aucun pari sans signal
+# ENABLED 2026-05-22: when smart-money fires 0 trades AND cash pressure is
+# high, take a small $1.50 micro-bet on the top-scored candidate. Capped at
+# 2 trades/tick. Won't fire when smart-money already produced a signal.
+enabled = true
 max_trades_per_tick = 2
-stake_usd = 7.39
+stake_usd = 1.50
 cash_pressure_threshold = 0.35
-min_buy_price = 0.20
-max_buy_price = 0.80
-max_spread = 0.04
+min_buy_price = 0.15
+max_buy_price = 0.85
+max_spread = 0.06
 
 [auto_tune]
 enabled = true

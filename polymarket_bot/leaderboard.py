@@ -427,7 +427,15 @@ def format_leaderboard(
     if not stats and live is None:
         return "🏁 LEADERBOARD: no runs found"
 
-    ranked = sorted(stats, key=lambda s: s.roi_pct, reverse=True)
+    # Hide profiles that have never ticked AND have no closed trades. They're
+    # just config files sitting in configs/profiles/ — surfacing 200 of them
+    # at the top of the board with +0.0% ROI buries the actually-running bots
+    # and makes the user think nothing is happening.
+    ranked = sorted(
+        [s for s in stats if s.total_ticks > 0 or s.closed_trades > 0 or s.open_positions > 0],
+        key=lambda s: s.roi_pct,
+        reverse=True,
+    )
     now = now or datetime.now(timezone.utc)
     stamp = now.strftime("%H:%M:%S")
 
