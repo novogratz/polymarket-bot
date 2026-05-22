@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Lance le bot en LIVE avec le profil baseline.
-# Variante analyst-spawned de claude_baseline_tight : MONTH top 30,
+# Variante analyst-spawned de claude_baseline : MONTH top 30,
 # min_consensus=3, min_copied_usdc=\$150, microladder TP qui lock les
 # gains tôt. Dry race: +64% ROI sur 8 closed (50% wr) — meilleur
 # expected value du board (sample raisonnable + ratio PnL/trade élevé).
@@ -19,6 +19,12 @@ cd "$REPO_ROOT"
 # Sync live positions (toggle hors schéma).
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
+# Hard-baseline live + assumed balance to $10 (post-disaster reset 2026-05-22).
+# Wins over the profile TOML because apply_profile_to_env uses override=False
+# and won't touch env vars already set in the parent shell.
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-10.0}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-10.0}
+
 # Live tick interval — fast (10s) even though kzerlepgm_baseline TOML
 # now uses 60s for the dry-race rate-limit fix. Env var override wins.
 export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
@@ -35,7 +41,7 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
 # Profile label exported BEFORE the live_analyst spawns, so the
 # sidecar inherits it (else it logs "(unknown)" in reports).
-export POLYMARKET_PROFILE_LABEL=baseline_tight
+export POLYMARKET_PROFILE_LABEL=baseline
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
 # Every 30 min: reads paper_state + trade_journal, compares vs dry race
@@ -48,4 +54,4 @@ cleanup() {
 trap cleanup INT TERM EXIT
 python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
 
-uv run pmbot auto-loop --live --profile baseline_tight --yes
+uv run pmbot auto-loop --live --profile baseline --yes

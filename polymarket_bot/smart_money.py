@@ -589,7 +589,18 @@ def smart_money_signals(
             rejected["no_matching_candidate_or_quote"] = rejected.get("no_matching_candidate_or_quote", 0) + 1
             continue
         matched_tokens += 1
-        if candidate.hours_to_close is not None and candidate.hours_to_close < settings.smart_min_hours_to_close:
+        # When the loser-flush exit is armed, any position opened inside the
+        # flush window will be sold on the next tick — so don't open it. The
+        # effective floor is max(smart_min_hours_to_close, flush_minutes/60).
+        # Bug bled $117 on a $30 bankroll in 7min when the windows overlapped
+        # (live baseline_tight 2026-05-22, market 2237157 Elon tweets).
+        effective_min_hours = settings.smart_min_hours_to_close
+        if settings.smart_near_expiry_exit_losers:
+            effective_min_hours = max(
+                effective_min_hours,
+                settings.smart_near_expiry_loser_minutes / 60.0,
+            )
+        if candidate.hours_to_close is not None and candidate.hours_to_close < effective_min_hours:
             rejected["too_close_to_expiry"] = rejected.get("too_close_to_expiry", 0) + 1
             continue
         if (

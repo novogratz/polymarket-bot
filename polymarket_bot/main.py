@@ -552,6 +552,27 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     }
                 )
                 continue
+            # Per-token cooldown after near_expiry_loser_flush. The flush
+            # exit is the right move (sell loser before it settles to $0),
+            # but the smart-money signal often stays valid for hours after
+            # the flush — re-entering the same token would just repeat the
+            # bleed. Lock out any token we've flushed in this process.
+            _token_id = opportunity.candidate.token_id
+            if _token_id and any(
+                str(p.get("token_id")) == str(_token_id)
+                and p.get("exit_reason") == "near_expiry_loser_flush"
+                for p in portfolio.positions
+            ):
+                rejected_signals.append(
+                    {
+                        "market_id": opportunity.candidate.market_id,
+                        "question": opportunity.candidate.question,
+                        "outcome": opportunity.candidate.outcome,
+                        "reason": "token_flushed_recently",
+                        "selection_reason": opportunity.to_dict()["selection_reason"],
+                    }
+                )
+                continue
             if portfolio.has_open_event_position(opportunity.candidate):
                 rejected_signals.append(
                     {

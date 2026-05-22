@@ -17,18 +17,18 @@
 # Live promoted 2026-05-22.
 
 [run]
-starting_cash = 29.55
+starting_cash = 10.0
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 8.87            # 30% × $20 — matches max_position_ceiling_pct
+max_position_ceiling_usd = 3.0             # 30% × $10
 max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.02
 min_open_positions = 5
-starter_trade_usd = 7.39
-assumed_live_balance_usd = 29.55
+starter_trade_usd = 2.0
+assumed_live_balance_usd = 10.0
 
 [trader_cohort]
 leaderboard_window = "WEEK"
