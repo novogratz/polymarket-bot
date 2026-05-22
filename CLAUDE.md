@@ -6,16 +6,16 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 ## Current state snapshot (2026-05-20)
 
-**Live strategy:** `auto_fresh_qe_persist_stack` — analyst-spawned variant of `auto_baseline_fresh_qe_combo` with persistence filter ON. Switched from `claude_baseline_persist` on 2026-05-20 because the asymmetry runs the right way (+$3.96 win / -$2.21 loss vs persist's negative spread). The swap PRESERVED the live ledger / journal / baseline — equity, ROI, and trade history continue from the existing $18.26 baseline (set when claude_baseline_persist took over).
-- Engine: `smart_money` (real copy-trade pipeline + multi-wallet consensus)
-- Cohort: WEEK top 50, `min_trader_pnl=$500`, `min_trader_volume=$1k`, `min_trader_roi=2%`. Fresh lookback `trade_lookback_minutes=30` (vs persist's 240). Persistence ON: `intersect_periods=WEEK,MONTH,ALL`, `intersect_min=2`
-- Dry lineage: **14 closed / 64% WR / +$24.63 realized** at $20 baseline. Asymmetry +$1.75/trade (avg_win bigger than avg_loss). Biggest closed win +$15.78.
-- Bankroll: **$21 USDC** (fresh-start reset 2026-05-20). Live config: `position_pct=0.10`, `max_position_ceiling_usd=$26.25`, `max_position_ceiling_pct=0.30`, `cash_floor_pct=0.05`, `min_open_positions=5`
-- Exits: 5-tier TP ladder (+25/+50/+100/+200/+300 with 15/25/50/25/15 partials), trailing +15%/50% giveback, peak-protect +50% → exit at +20% (tighter than persist), stop_loss -25% (min-age 5min, tighter), max_hold **4h** (tighter), cohort-sell, resolved at bid ≥0.97
-- Filters: `min_consensus=2`, `min_copied_usdc=$50`, signal staleness ≤3min, price 0.03–0.97, abs spread ≤10c, rel spread ≤35%, **4h hard cap**
-- Live tick interval: 10s. Heartbeat includes "live vs dry top 3" comparison. `claude_baseline_persist`, `auto_mombreak_locktight`, `whale_entry_detection` all back in the dry race for ongoing comparison.
+**Live strategy:** `baseline` — the canonical control profile. Switched from `auto_fresh_qe_persist_stack` on 2026-05-22 after a full hard reset (all dry profiles re-baselined to $20, all state files wiped + backed up to `data/backups/`). Chose baseline because every active dry bot had negative realized PnL — baseline had the smallest absolute loss (-$1.79 on 58 trades, 59% WR) and the closest-to-neutral asymmetry, making it the least-bad pick. Real verdict: the recent market regime is unfavorable for the cohort-copy thesis.
+- Engine: `smart_money` (real copy-trade pipeline + multi-wallet consensus) — canonical config, no esoteric filters
+- Bankroll: **$20 USDC** baseline (fresh-start reset 2026-05-22)
+- Sizing: `position_pct=0.10` (~$2/trade base), `max_position_ceiling_usd=$25`, `max_position_ceiling_pct=0.30` (~$6 cap), `cash_floor_pct=0.02`, `min_open_positions=5`, `starter_trade_usd=5.0`, `assumed_live_balance_usd=20.0`
+- Cohort: WEEK top 100, `min_trader_pnl=$1k`, `min_trader_volume=$2k`, `min_trader_roi=3%`. NO persistence filter (this is the canonical baseline — keep it simple)
+- Exits: 5-tier TP ladder (+25/+50/+100/+200/+300 with 15/25/50/25/15 partials), trailing +25%/50% giveback, peak-protect +100% → exit at +40%, stop_loss -40% (min-age 15min), max_hold 24h, cohort-sell, resolved at bid ≥0.97
+- Filters: `min_consensus=2`, `min_copied_usdc=$75`, price 0.03–0.96, **4h hard cap** (`max_hours_to_close=4.0`)
+- Live tick interval: 10s. Heartbeat includes "live vs dry top 3" comparison block.
 
-**Bankroll:** ~$33.53 USDC at last profile swap (preserved — `POLYMARKET_SKIP_LEDGER_RESET=1` env var keeps the ledger/journal/baseline across live profile switches). Dry profiles run at their own configured `starting_cash` (mostly $20).
+**Bankroll:** $20 USDC starting on live + all dry (fresh-start reset 2026-05-22). State backups in `data/backups/full_state_<timestamp>.tar.gz`.
 
 ### Unified launcher — `scripts/run_all.sh`
 
@@ -27,7 +27,7 @@ bash scripts/run_all.sh
 
 Order of operations:
 1. **Pre-warm HTTP cache** (~60s) via `scripts/cache_warmer.py` — populates `data/cache/http/` with leaderboards (3 windows × 8 categories × 4 limits) + the top wallets' recent trade histories so the bot swarm starts with a warm cache and no first-tick 429 storm.
-2. **Live bot** (`auto_fresh_qe_persist_stack`, 10s tick) + `scripts/live_analyst.py` sidecar (30min Telegram report).
+2. **Live bot** (`baseline`, 10s tick) + `scripts/live_analyst.py` sidecar (30min Telegram report).
 3. **Dry race** — ~50 curated profiles (NOT all 195 — that crashed mac), each ticking at 10min (`POLYMARKET_AUTO_INTERVAL_SECONDS=600`) with Telegram BUY/SELL alerts silenced per-subshell so only the live bot speaks.
 4. **Sidecars** — `scripts/dry_analyst.py` (15min report / 1h spawn-kill) + `pmbot leaderboard --telegram` (5min summary).
 5. **Background re-warmer** — re-runs `cache_warmer.py` every 8 min (cache TTL is 10 min) to keep both live + dry continuously warm.
@@ -73,7 +73,7 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
 - Claude race batch: `claude_anti_favorite`, `claude_mid_dump_fade`, `claude_resolution_sniper`, etc.
 - Momentum family: 8 distinct exit/sizing combos
 - Control: `random`
-- The live profile (`auto_fresh_qe_persist_stack`) ALSO runs in the dry race for direct apples-to-apples comparison. Live and dry use separate state files (`paper_state.json` vs `data/dry_runs/<name>/state.json`) so they don't conflict. `claude_baseline_persist`, `auto_mombreak_locktight`, `whale_entry_detection` are all in the dry race too.
+- The live profile (`baseline`) ALSO runs in the dry race for direct apples-to-apples comparison. Live and dry use separate state files (`paper_state.json` vs `data/dry_runs/<name>/state.json`) so they don't conflict.
 
 The previous "all 195 profiles in dry" mode was retired because it crashed macOS and the data-api couldn't keep up. The curated roster covers every thesis family without the bloat.
 
@@ -235,14 +235,14 @@ Or just the live bot alone (no dry race, no cache pre-warm — only do this if y
 bash scripts/run_live_70.sh
 ```
 
-Both scripts load `configs/profiles/auto_fresh_qe_persist_stack.toml` as the single source of truth for the live config. Current settings:
+Both scripts load `configs/profiles/baseline.toml` as the single source of truth for the live config. Current settings:
 
-- Profile: `auto_fresh_qe_persist_stack` (smart_money pipeline + persistence + fresh lookback)
+- Profile: `baseline` (canonical smart_money pipeline — no esoteric filters, the reference control strategy)
 - `POLYMARKET_SYNC_LIVE_POSITIONS=1`, `POLYMARKET_AUTO_INTERVAL_SECONDS=10`
-- Sizing (mirrors dry-validated config — scaled to $21 starting equity): `starting_cash=21.0`, `assumed_live_balance_usd=21.0`, `position_pct=0.10` (~$2.10/trade), `max_position_ceiling_usd=26.25`, `max_position_ceiling_pct=0.30` (~$6.30 cap on $21 equity), `cash_floor_pct=0.05`, `min_open_positions=5`, `starter_trade_usd=5.25`
-- Cohort: WEEK top 50, `min_trader_pnl=$500`, `min_trader_volume=$1k`, `min_trader_roi=2%`. Fresh `trade_lookback_minutes=30`. Persistence: `intersect_periods=WEEK,MONTH,ALL`, `intersect_min=2`
-- Entry filters: `min_consensus=2`, `min_copied_usdc=$50`, `max_chase_premium=0.12`, price 0.03–0.97, abs spread ≤10c, rel spread ≤35%, signal staleness ≤3min, **4h hard cap** (`max_hours_to_close=4.0`)
-- Exits: 5-tier TP ladder (+25/+50/+100/+200/+300 with 15/25/50/25/15 partials), trailing arms +15% / 50% giveback, peak-protect arms +50% / exits +20%, stop_loss -25% (min-age 5min), max_hold **4h**, cohort-sell, resolved at bid ≥0.97. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
+- Sizing ($20 fresh-start baseline 2026-05-22): `starting_cash=20.0`, `assumed_live_balance_usd=20.0`, `position_pct=0.10` (~$2/trade), `max_position_ceiling_usd=25.0`, `max_position_ceiling_pct=0.30` (~$6 cap on $20 equity), `cash_floor_pct=0.02`, `min_open_positions=5`, `starter_trade_usd=5.0`
+- Cohort: WEEK top 100, `min_trader_pnl=$1k`, `min_trader_volume=$2k`, `min_trader_roi=3%`. No persistence filter (canonical baseline)
+- Entry filters: `min_consensus=2`, `min_copied_usdc=$75`, `max_chase_premium=0.13`, price 0.03–0.96, **4h hard cap** (`max_hours_to_close=4.0`)
+- Exits: 5-tier TP ladder (+25/+50/+100/+200/+300 with 15/25/50/25/15 partials), trailing arms +25% / 50% giveback, peak-protect arms +100% / exits +40%, stop_loss -40% (min-age 15min), max_hold 24h, cohort-sell, resolved at bid ≥0.97. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
 - Live analyst sidecar (`scripts/live_analyst.py`) launches alongside; posts read-only insights every 30 min to `TELEGRAM_CHAT_ID_LIVE`.
 - Universal sweep closes positions at price ≥0.97 OR ≤0.03 every tick across all strategy modes.
 - HTTP cache shared with the dry race at `data/cache/http/` (TTL 600s), refreshed every 8min by the background loop in `run_all.sh`.

@@ -23,7 +23,7 @@ high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.02
 min_open_positions = 5
 starter_trade_usd = 5.0
-assumed_live_balance_usd = 0.0
+assumed_live_balance_usd = 20.0           # promoted to live 2026-05-22
 
 [trader_cohort]
 leaderboard_window = "WEEK"
