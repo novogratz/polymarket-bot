@@ -1,13 +1,13 @@
 # auto_weak_flush_inv_wide — derived from auto_weak_flush_inv_scalp
 # Hypothesis: weak_holder_flush_inverse is the historical top performer; the existing scalp variant may be too narrow; widen liquidity/price band, lift position ceiling and TP to 22% / SL 15% to capture the meatier flush-reversal moves rather than skimming micro-bounces
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 mode = "weak_holder_flush_inverse"
 
 [sizing]
-max_position_ceiling_usd = 5.5
+max_position_ceiling_usd = 8.13
 min_open_positions = 0
-starter_trade_usd = 2.5
+starter_trade_usd = 3.69
 
 [market_filters]
 min_liquidity_usd = 500.0
@@ -24,7 +24,7 @@ min_volume_24h_usd = 1500.0
 min_price = 0.05
 max_price = 0.95
 max_spread = 0.05
-stake_usd = 2.5
+stake_usd = 3.69
 stake_pct = 0.12
 max_orders_per_tick = 3
 cash_floor_pct = 0.05

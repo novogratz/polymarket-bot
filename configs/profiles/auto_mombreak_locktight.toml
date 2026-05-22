@@ -4,14 +4,14 @@
 # dry-only after the user switched live to claude_baseline_persist.
 # Hypothesis: parent rides TP=0.50; lock at +25% instead.
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 mode = "championdumonde_breakout"
 
 [sizing]
-max_position_ceiling_usd = 15.0
+max_position_ceiling_usd = 22.16
 min_open_positions = 0
-starter_trade_usd = 5.0
-assumed_live_balance_usd = 20.0
+starter_trade_usd = 7.39
+assumed_live_balance_usd = 29.55
 
 [market_filters]
 min_liquidity_usd = 200.0
@@ -28,7 +28,7 @@ min_volume_24h_usd = 200.0
 min_price = 0.05
 max_price = 0.95
 max_spread = 0.05
-stake_usd = 8.0
+stake_usd = 11.82
 stake_pct = 0.25
 max_orders_per_tick = 5
 cash_floor_pct = 0.02

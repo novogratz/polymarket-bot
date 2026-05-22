@@ -1,13 +1,13 @@
 # auto_strongbreak_midband — derived from claude_strong_breakout
 # Hypothesis: narrow price band (0.05–0.80 vs 0.05–0.95) keeps breakouts in the productive zone and avoids late blue-chip mean-reversion traps where breakout signal is weakest
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 mode = "claude_strong_breakout"
 
 [sizing]
-max_position_ceiling_usd = 15.0
+max_position_ceiling_usd = 22.16
 min_open_positions = 0
-starter_trade_usd = 5.0
+starter_trade_usd = 7.39
 
 [market_filters]
 min_liquidity_usd = 100.0
@@ -24,7 +24,7 @@ min_volume_24h_usd = 200.0
 min_price = 0.05
 max_price = 0.80
 max_spread = 0.05
-stake_usd = 5.0
+stake_usd = 7.39
 stake_pct = 0.15
 max_orders_per_tick = 5
 cash_floor_pct = 0.02

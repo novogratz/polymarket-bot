@@ -1,18 +1,18 @@
 # auto_tight_consensus4 — derived from claude_baseline_tight
 # Hypothesis: tight cohort wins because of signal quality; push min_consensus 3→4 and min_copied_usdc 150→300 to test if even stricter signal further improves WR/PnL. Trade count will drop, but tail outcomes should improve.
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 
 [sizing]
 position_pct = 0.12
-max_position_ceiling_usd = 25.0
+max_position_ceiling_usd = 36.94
 max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 4
-starter_trade_usd = 5.0
-assumed_live_balance_usd = 20.0
+starter_trade_usd = 7.39
+assumed_live_balance_usd = 29.55
 
 [trader_cohort]
 leaderboard_window = "MONTH"

@@ -1,18 +1,18 @@
 # auto_baseline_ultratight_microladder — derived from claude_baseline_tight + microladder fusion
 # Hypothesis: push cohort one notch stricter (top_n 30→20, PnL $2k→$3.5k, copied $150→$250) while keeping the winning micro TP ladder; tests whether the cohort-quality alpha is monotone or whether we already hit diminishing returns at top30.
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 25.0
+max_position_ceiling_usd = 36.94
 max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 5
-starter_trade_usd = 5.0
-assumed_live_balance_usd = 20.0
+starter_trade_usd = 7.39
+assumed_live_balance_usd = 29.55
 
 [trader_cohort]
 leaderboard_window = "MONTH"

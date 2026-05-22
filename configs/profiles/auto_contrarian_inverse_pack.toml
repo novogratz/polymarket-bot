@@ -1,13 +1,13 @@
 # auto_contrarian_inverse_pack — derived from contrarian
 # Hypothesis: the entire pack is at -80%→-100%, meaning consensus entries hit losers; trade contrarian mode with strict spread/momentum filters and tight SL to confirm the inverse edge exists
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 mode = "contrarian"
 
 [sizing]
-max_position_ceiling_usd = 8.0
+max_position_ceiling_usd = 11.82
 min_open_positions = 0
-starter_trade_usd = 3.0
+starter_trade_usd = 4.43
 
 [market_filters]
 min_liquidity_usd = 200.0
@@ -24,7 +24,7 @@ min_volume_24h_usd = 500.0
 min_price = 0.10
 max_price = 0.90
 max_spread = 0.04
-stake_usd = 3.0
+stake_usd = 4.43
 stake_pct = 0.08
 max_orders_per_tick = 3
 cash_floor_pct = 0.05

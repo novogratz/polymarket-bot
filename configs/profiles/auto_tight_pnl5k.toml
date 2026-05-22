@@ -1,18 +1,18 @@
 # auto_tight_pnl5k — derived from claude_baseline_tight
 # Hypothesis: tight cohort is the dominant alpha; bumping min_trader_pnl 2000→5000 (only knob shift) tests whether extreme-PnL-only wallets sharpen WR further on the already-winning MONTH/top30 cohort.
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 4.0                  # scaled for $20 bankroll (~20%)
+max_position_ceiling_usd = 5.91                  # scaled for $20 bankroll (~20%)
 max_position_ceiling_pct = 0.20
-max_trade_usd = 4.0                             # absolute hard cap
+max_trade_usd = 5.91                             # absolute hard cap
 high_conviction_balance_fraction = 0.20
 cash_floor_pct = 0.05
 min_open_positions = 3                          # matches dry-race peers at $20
-starter_trade_usd = 2.0
-assumed_live_balance_usd = 20.0
+starter_trade_usd = 2.96
+assumed_live_balance_usd = 29.55
 
 [trader_cohort]
 leaderboard_window = "MONTH"

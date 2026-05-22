@@ -1,18 +1,18 @@
 # auto_tight_runfar — derived from claude_baseline_tight
 # Hypothesis: tight cohort's +68.5% may leave upside on table due to TP ladder closing early. Shift one knob: delay peak_protect (arm 1.0→1.5, exit 0.4→0.6) and shift TP ladder later. Tests whether tight cohort signal sustains beyond +100% peaks.
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 25.0
+max_position_ceiling_usd = 36.94
 max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 5
-starter_trade_usd = 5.0
-assumed_live_balance_usd = 20.0
+starter_trade_usd = 7.39
+assumed_live_balance_usd = 29.55
 
 [trader_cohort]
 leaderboard_window = "MONTH"

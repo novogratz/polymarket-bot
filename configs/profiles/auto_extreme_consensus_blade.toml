@@ -1,13 +1,13 @@
 # auto_extreme_consensus_blade — derived from auto_extreme_consensus_microcut
 # Hypothesis: patient consensus (-95.7%) and even fast_cut (-15%) bleed; collapse to 45min max with TP4/SL2 and 0.5c spread — if extreme-consensus has any edge it must show in <1h, otherwise it's noise we should not pay theta on
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 mode = "claude_extreme_consensus"
 
 [sizing]
-max_position_ceiling_usd = 2.5
+max_position_ceiling_usd = 3.69
 min_open_positions = 0
-starter_trade_usd = 1.5
+starter_trade_usd = 2.22
 
 [market_filters]
 min_liquidity_usd = 2000.0
@@ -24,7 +24,7 @@ min_volume_24h_usd = 8000.0
 min_price = 0.30
 max_price = 0.70
 max_spread = 0.005
-stake_usd = 1.5
+stake_usd = 2.22
 stake_pct = 0.075
 max_orders_per_tick = 2
 cash_floor_pct = 0.05

@@ -1,18 +1,18 @@
 # auto_microladder_freshqe_stack — derived from auto_baseline_fresh_qe_combo + auto_baseline_tight_microladder
 # Hypothesis: apply top-2's microladder TP (front-loaded 40/30/20/10) to top-1's fresh 30min lookback + QE defensive stack. Pure feature stack — exits front-load gains, fresh lookback feeds fresh signals.
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 25.0
+max_position_ceiling_usd = 36.94
 max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 5
-starter_trade_usd = 5.0
-assumed_live_balance_usd = 20.0
+starter_trade_usd = 7.39
+assumed_live_balance_usd = 29.55
 
 [trader_cohort]
 leaderboard_window = "WEEK"

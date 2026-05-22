@@ -1,18 +1,18 @@
 # auto_tight_microblade — derived from auto_baseline_tight_microladder
 # Hypothesis: push microladder one notch earlier — first TP rung +10% (50%), second +25% (30%), third +50% (20%). Aim to bank micro-wins faster and tighten SL further to 0.22 to keep risk symmetric. Tests whether earliness gains outweigh giving up upside.
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 25.0
+max_position_ceiling_usd = 36.94
 max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 5
-starter_trade_usd = 5.0
-assumed_live_balance_usd = 20.0
+starter_trade_usd = 7.39
+assumed_live_balance_usd = 29.55
 
 [trader_cohort]
 leaderboard_window = "MONTH"

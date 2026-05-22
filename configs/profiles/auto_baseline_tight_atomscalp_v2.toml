@@ -1,18 +1,18 @@
 # auto_baseline_tight_atomscalp_v2 — derived from auto_baseline_tight_microladder
 # Hypothesis: if micro ladder beats standard ladder on tight cohort, push ladder one notch further — first rung at +10% locks 50%, second at +25% locks 30%. Tests whether "scalp-and-go" maximizes the tight cohort's small-but-frequent winning moves before mean-reversion bites.
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 25.0
+max_position_ceiling_usd = 36.94
 max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 5
-starter_trade_usd = 5.0
-assumed_live_balance_usd = 20.0
+starter_trade_usd = 7.39
+assumed_live_balance_usd = 29.55
 
 [trader_cohort]
 leaderboard_window = "MONTH"

@@ -1,18 +1,18 @@
 # auto_baseline_fresh_pressize — derived from claude_baseline_fresh
 # Hypothesis: fresh-signal lookback=30 + staleness=3 has +17% ROI at 10% stake; pushing position_pct to 0.15 and ceiling to $30 tests if the edge survives larger sizing (rather than being size-fragile).
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 
 [sizing]
 position_pct = 0.15
-max_position_ceiling_usd = 30.0
+max_position_ceiling_usd = 44.33
 max_position_ceiling_pct = 0.35
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 4
-starter_trade_usd = 5.0
-assumed_live_balance_usd = 20.0
+starter_trade_usd = 7.39
+assumed_live_balance_usd = 29.55
 
 [trader_cohort]
 leaderboard_window = "WEEK"

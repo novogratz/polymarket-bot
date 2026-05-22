@@ -1,13 +1,13 @@
 # auto_whale_entry_letrun — derived from whale_entry_detection
 # Hypothesis: whale_entry is 75% WR on n=4 — the signal works. Current tp_pct=0.25 likely caps the upside on real whale-followed moves. Lift tp to 0.45 and slightly tighten SL to 0.22 to bias toward winning trades running.
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 mode = "whale_entry_detection"
 
 [sizing]
-max_position_ceiling_usd = 15.0
+max_position_ceiling_usd = 22.16
 min_open_positions = 0
-starter_trade_usd = 5.0
+starter_trade_usd = 7.39
 
 [market_filters]
 min_liquidity_usd = 100.0
@@ -24,7 +24,7 @@ min_volume_24h_usd = 200.0
 min_price = 0.05
 max_price = 0.95
 max_spread = 0.05
-stake_usd = 5.0
+stake_usd = 7.39
 stake_pct = 0.15
 max_orders_per_tick = 5
 cash_floor_pct = 0.02

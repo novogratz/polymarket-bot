@@ -1,13 +1,13 @@
 # auto_extreme_consensus_fast_cut — derived from claude_extreme_consensus
 # Hypothesis: extreme_consensus_patient is -95% with 6 still-open bagholders; same 5+ wallet signal but cut at 6% SL / 10% TP within 1.5h to test whether consensus has any short-window edge before the 4h decay eats it
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 mode = "claude_extreme_consensus"
 
 [sizing]
-max_position_ceiling_usd = 3.5
+max_position_ceiling_usd = 5.17
 min_open_positions = 0
-starter_trade_usd = 2.0
+starter_trade_usd = 2.96
 
 [market_filters]
 min_liquidity_usd = 1200.0
@@ -24,7 +24,7 @@ min_volume_24h_usd = 4000.0
 min_price = 0.20
 max_price = 0.80
 max_spread = 0.02
-stake_usd = 2.0
+stake_usd = 2.96
 stake_pct = 0.10
 max_orders_per_tick = 2
 cash_floor_pct = 0.05

@@ -1,13 +1,13 @@
 # auto_mombreak_quickexit — derived from momentum_breakout_aggressive
 # Hypothesis: apply the quick_exit thesis (tight TP+SL, lock fast) to championdumonde_breakout. Parent has tp=0.50/sl=0.35 (let-run); cut tp→0.20, sl→0.18 to test whether defensive exits beat let-run on this mode the same way they beat baseline on smart_money.
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 mode = "championdumonde_breakout"
 
 [sizing]
-max_position_ceiling_usd = 15.0
+max_position_ceiling_usd = 22.16
 min_open_positions = 0
-starter_trade_usd = 5.0
+starter_trade_usd = 7.39
 
 [market_filters]
 min_liquidity_usd = 200.0
@@ -24,7 +24,7 @@ min_volume_24h_usd = 200.0
 min_price = 0.05
 max_price = 0.95
 max_spread = 0.05
-stake_usd = 8.0
+stake_usd = 11.82
 stake_pct = 0.25
 max_orders_per_tick = 5
 cash_floor_pct = 0.02

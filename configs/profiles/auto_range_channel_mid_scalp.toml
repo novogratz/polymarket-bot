@@ -1,13 +1,13 @@
 # auto_range_channel_mid_scalp — derived from auto_panic_fade_mid
 # Hypothesis: range_channel_trading mode untested in race; mid-band 0.42-0.58 with ultra-tight 1.5c spread + 4% TP captures range oscillation distinct from panic_fade (which fires only on shocks) — tests whether quiet markets have exploitable channel structure when panic_fade has nothing to fade
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 mode = "range_channel_trading"
 
 [sizing]
-max_position_ceiling_usd = 2.0
+max_position_ceiling_usd = 2.96
 min_open_positions = 0
-starter_trade_usd = 1.2
+starter_trade_usd = 1.77
 
 [market_filters]
 min_liquidity_usd = 1500.0
@@ -24,7 +24,7 @@ min_volume_24h_usd = 3500.0
 min_price = 0.42
 max_price = 0.58
 max_spread = 0.015
-stake_usd = 1.2
+stake_usd = 1.77
 stake_pct = 0.06
 max_orders_per_tick = 3
 cash_floor_pct = 0.05

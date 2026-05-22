@@ -1,13 +1,13 @@
 # auto_pmlepgm_whf_combo — derived from auto_pmlepgm_ultra_scalp
 # Hypothesis: pm_le_pgm_weak_holder_flush_inverse composite mode (top live strategy + top dry strategy, both per CLAUDE.md) is never deployed; if both edges are additive rather than redundant, a 1h race + tight 0.25-0.75 band + 6% TP / 4% SL should outperform either parent — tests the orthogonality assumption
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 mode = "pm_le_pgm_weak_holder_flush_inverse"
 
 [sizing]
-max_position_ceiling_usd = 2.5
+max_position_ceiling_usd = 3.69
 min_open_positions = 0
-starter_trade_usd = 1.5
+starter_trade_usd = 2.22
 
 [market_filters]
 min_liquidity_usd = 1200.0
@@ -24,7 +24,7 @@ min_volume_24h_usd = 3500.0
 min_price = 0.25
 max_price = 0.75
 max_spread = 0.02
-stake_usd = 1.5
+stake_usd = 2.22
 stake_pct = 0.07
 max_orders_per_tick = 3
 cash_floor_pct = 0.05

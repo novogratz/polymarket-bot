@@ -1,13 +1,13 @@
 # auto_buyer_fade_panic_wider — derived from auto_buyer_fade_microcut
 # Hypothesis: only positive strategy uses 1.5h/TP5/SL3 microcut — widen to 3h/TP8/SL6 to test whether the edge is the panic_fade lane itself vs. the microcut speed; if mean-reversion needs time, this beats the parent
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 mode = "panic_fade"
 
 [sizing]
-max_position_ceiling_usd = 2.5
+max_position_ceiling_usd = 3.69
 min_open_positions = 0
-starter_trade_usd = 1.5
+starter_trade_usd = 2.22
 
 [market_filters]
 min_liquidity_usd = 600.0
@@ -24,7 +24,7 @@ min_volume_24h_usd = 2000.0
 min_price = 0.15
 max_price = 0.80
 max_spread = 0.02
-stake_usd = 1.5
+stake_usd = 2.22
 stake_pct = 0.075
 max_orders_per_tick = 3
 cash_floor_pct = 0.05

@@ -1,13 +1,13 @@
 # auto_mean_reversion_fade_micro — derived from mean_reversion_fade
 # Hypothesis: aggressive_buyer_detection bleeds -87% systematically, which implies the inverse trade (fading aggressive buys via mean_reversion_fade — mode never auto-spawned) should capture the symmetric edge; micro size + tight 6/4 exits validate the inverse hypothesis without committing capital
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 mode = "mean_reversion_fade"
 
 [sizing]
-max_position_ceiling_usd = 2.0
+max_position_ceiling_usd = 2.96
 min_open_positions = 0
-starter_trade_usd = 1.0
+starter_trade_usd = 1.48
 
 [market_filters]
 min_liquidity_usd = 500.0
@@ -24,7 +24,7 @@ min_volume_24h_usd = 1800.0
 min_price = 0.20
 max_price = 0.80
 max_spread = 0.025
-stake_usd = 1.0
+stake_usd = 1.48
 stake_pct = 0.05
 max_orders_per_tick = 2
 cash_floor_pct = 0.05

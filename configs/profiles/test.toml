@@ -11,17 +11,17 @@
 # basée sur du signal, c'est du remplissage.
 
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 15.0
+max_position_ceiling_usd = 22.16
 max_position_ceiling_pct = 0.20
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.02
 min_open_positions = 12                   # élevé → pression d'achat constante
-starter_trade_usd = 5.0
+starter_trade_usd = 7.39
 assumed_live_balance_usd = 0.0
 
 [trader_cohort]
@@ -120,7 +120,7 @@ volatility_days = 7
 [noise_fallback]
 enabled = true                            # ← le coeur du profil
 max_trades_per_tick = 8                   # ouvre jusqu'à 8 positions par tick
-stake_usd = 5.0
+stake_usd = 7.39
 cash_pressure_threshold = 0.25            # active dès que cash > 25% de l'equity
 min_buy_price = 0.30                      # cible la zone la plus volatile
 max_buy_price = 0.70

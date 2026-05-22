@@ -6,17 +6,17 @@
 # "lucky wallet du mois". Sizing micro pour éviter de manger la cash trop vite.
 
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 4.0
+max_position_ceiling_usd = 5.91
 max_position_ceiling_pct = 0.20
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.20
 cash_floor_pct = 0.02
 min_open_positions = 8
-starter_trade_usd = 2.0
+starter_trade_usd = 2.96
 assumed_live_balance_usd = 0.0
 
 [trader_cohort]

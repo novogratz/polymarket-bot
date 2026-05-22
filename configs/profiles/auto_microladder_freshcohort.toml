@@ -1,18 +1,18 @@
 # auto_microladder_freshcohort — derived from auto_baseline_tight_microladder + auto_baseline_fresh_qe_combo
 # Hypothesis: stack the two winning edges — keep microladder's tight MONTH/top30/consensus=3 cohort + micro TP ladder, but swap to fresh 30min lookback. Tests whether signal freshness adds alpha on top of cohort quality.
 [run]
-starting_cash = 20.0
+starting_cash = 29.55
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 25.0
+max_position_ceiling_usd = 36.94
 max_position_ceiling_pct = 0.30
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 5
-starter_trade_usd = 5.0
-assumed_live_balance_usd = 20.0
+starter_trade_usd = 7.39
+assumed_live_balance_usd = 29.55
 
 [trader_cohort]
 leaderboard_window = "MONTH"
