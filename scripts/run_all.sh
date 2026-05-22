@@ -153,8 +153,17 @@ DRY_PROFILES=(
 )
 
 LAUNCHED=0
+MISSING_COUNT=0
 for name in "${DRY_PROFILES[@]}"; do
-    [ -f "configs/profiles/${name}.toml" ] || continue
+    if [ ! -f "configs/profiles/${name}.toml" ]; then
+        # Profile was archived by the dry-analyst (or never shipped).
+        # Loud-log so the user can see WHY the dry race has fewer bots
+        # than expected — silent skip used to hide the fact that 45 of
+        # 55 dry profiles had been auto-killed overnight.
+        echo "[run_all]   skip ${name}: profile archived or missing"
+        MISSING_COUNT=$((MISSING_COUNT + 1))
+        continue
+    fi
     # No skip for the live profile — running it in dry too gives a
     # direct apples-to-apples comparison line on the leaderboard. Live
     # and dry use separate state files (paper_state.json vs
@@ -163,7 +172,7 @@ for name in "${DRY_PROFILES[@]}"; do
     run_dry_bot "$name" "$name" "$prefix"
     LAUNCHED=$((LAUNCHED + 1))
 done
-echo "[run_all] dry race launched: $LAUNCHED bots, tick 10min"
+echo "[run_all] dry race launched: $LAUNCHED bots, tick 10min (${MISSING_COUNT} profiles skipped — archived or missing)"
 echo
 
 # ─── Step 4: Sidecars (analyst + leaderboard) ───────────────────────

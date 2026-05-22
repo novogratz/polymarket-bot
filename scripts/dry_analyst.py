@@ -188,10 +188,18 @@ def _starting_cash_for(name: str) -> float:
 
 
 def collect_metrics() -> list[StratMetrics]:
-    """Walk data/dry_runs/* and compute per-strategy metrics."""
+    """Walk data/dry_runs/* and compute per-strategy metrics.
+
+    Skips runs whose state.json is stale (default 30min) — the bot is
+    dead. Without this filter, archived/killed bots stay on the leaderboard
+    forever showing their last-known equity (the bug that made \"top 5\"
+    look frozen for a week).
+    """
     if not DRY_RUNS_DIR.exists():
         return []
     out: list[StratMetrics] = []
+    stale_minutes = int(os.environ.get("POLYMARKET_LEADERBOARD_STALE_MINUTES", "30"))
+    now_ts = time.time()
     for run_dir in sorted(DRY_RUNS_DIR.iterdir()):
         if not run_dir.is_dir():
             continue
@@ -199,6 +207,9 @@ def collect_metrics() -> list[StratMetrics]:
         state_file = run_dir / "state.json"
         journal_file = run_dir / "journal.jsonl"
         if not state_file.exists():
+            continue
+        # Staleness check: drop bots that haven't ticked recently.
+        if (now_ts - state_file.stat().st_mtime) > stale_minutes * 60:
             continue
         try:
             state = json.loads(state_file.read_text())

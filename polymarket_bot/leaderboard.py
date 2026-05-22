@@ -101,10 +101,17 @@ def _starting_cash_from_profile(base_dir: Path, run_name: str) -> float | None:
 def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
     """Read one dry-run directory and compute its standings.
 
-    Always returns a RunStats — if the run directory doesn't exist yet
-    (bot hasn't ticked), returns a stub seeded with the profile's
-    declared starting_cash so it still appears in the leaderboard with
-    the right baseline.
+    Returns None when the run looks stale — the bot is no longer
+    ticking (state.json mtime older than STALE_STATE_MINUTES, default
+    30). A running bot writes state every tick (default 10min), so a
+    state >30min old means the bot was killed (e.g. archived by the
+    analyst) but its state file lives on. Surfacing stale stats put
+    archived profiles in the leaderboard's \"top 5\" with frozen equity
+    from days ago — exactly the bug that made the user think \"top 5 is
+    always the same and positions haven't changed for a week\".
+
+    Returns a stub when the run dir doesn't exist (bot hasn't ticked
+    yet).
     """
     profile_cash = _starting_cash_from_profile(base_dir, run_name) or 100.0
     root = base_dir / "dry_runs" / run_name
@@ -127,6 +134,18 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
             biggest_loss_today=0.0,
             total_predictions=0,
         )
+
+    # Staleness filter. A running dry bot writes state.json every tick;
+    # the curated DRY_PROFILES tick interval is 600s (10min). Anything
+    # older than 30min means the bot is dead. Filter at the gather step
+    # so the leaderboard never displays a frozen snapshot.
+    state_path = root / "state.json"
+    if state_path.is_file():
+        import time as _t
+        stale_minutes = int(os.environ.get("POLYMARKET_LEADERBOARD_STALE_MINUTES", "30"))
+        age_seconds = _t.time() - state_path.stat().st_mtime
+        if age_seconds > stale_minutes * 60:
+            return None
 
     # Profile is the source of truth for starting_cash — stale metadata
     # from a prior run with a different bankroll would otherwise produce
