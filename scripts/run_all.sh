@@ -129,6 +129,9 @@ run_dry_bot() {
 }
 
 DRY_PROFILES=(
+    # NEW theses (different from cohort-copy which has been losing). Promoter
+    # picks any of these for live if they cross gates (≥10 closed + ROI > +5%).
+    favorite_lock mid_band_safe high_consensus_only
     # Baseline family
     baseline baseline_tight kzerlepgm_baseline
     claude_baseline_tight claude_baseline_fresh claude_baseline_persist
