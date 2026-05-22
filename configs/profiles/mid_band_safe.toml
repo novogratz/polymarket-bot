@@ -43,16 +43,16 @@ min_volume_usd = 3000.0
 
 [filters]
 # Mid-band only: 0.30-0.70. Excludes both lottery tickets and locked winners.
-min_consensus = 2
-fallback_consensus = 2
-min_copied_usdc = 100.0
+min_consensus = 1
+fallback_consensus = 1
+min_copied_usdc = 25.0
 min_trade_usd = 1.0
-max_chase_premium = 0.10
+max_chase_premium = 0.15
 price_min = 0.30
 price_max = 0.70
-max_absolute_spread = 0.05
-max_relative_spread = 0.15
-signal_staleness_seconds = 20
+max_absolute_spread = 0.08
+max_relative_spread = 0.25
+signal_staleness_seconds = 60
 min_hours_to_close = 0.5
 max_hours_to_close = 4.0
 max_orders_per_tick = 0
