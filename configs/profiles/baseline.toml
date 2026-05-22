@@ -48,25 +48,25 @@ min_liquidity_usd = 500.0
 min_volume_usd = 1000.0
 
 [filters]
-# LOOSENED 2026-05-22: live wasn't buying because 8000+ wallet trades scanned,
-# only 4 matched market pool, all 4 rejected for spread/staleness/price-band.
-# Widened to let edge-case signals through. Still 4h-only rule (memory: every
-# strategy must restrict to markets expiring ≤4h).
-min_consensus = 1
-fallback_consensus = 1
-min_copied_usdc = 1.0
-min_trade_usd = 0.5
-max_chase_premium = 0.30
-price_min = 0.02
-price_max = 0.98
-max_absolute_spread = 0.15
-max_relative_spread = 0.50
-signal_staleness_seconds = 60             # env var en min — was 10min, raised to 60min so cohort signals don't go stale between ticks
+# REVERTED 2026-05-22 (PM): loose filters bled live from \$29 → \$14 in 7h.
+# Hardened back. The thesis is broken in this regime — looser ≠ better, just
+# faster losses. Tight filters mean fewer trades; in a no-edge regime, fewer
+# trades is the only winning move. 4h-only rule kept.
+min_consensus = 2
+fallback_consensus = 2
+min_copied_usdc = 75.0
+min_trade_usd = 1.0
+max_chase_premium = 0.13
+price_min = 0.05
+price_max = 0.95
+max_absolute_spread = 0.08
+max_relative_spread = 0.30
+signal_staleness_seconds = 10
 min_hours_to_close = 0.5
 max_hours_to_close = 4.0
-max_orders_per_tick = 0                   # 0 = illimité (gouverné par cash floor)
-max_sports_positions = 3
-sports_score_penalty = 8.0
+max_orders_per_tick = 0
+max_sports_positions = 2
+sports_score_penalty = 10.0
 
 [crypto]
 min_buy_price = 0.70
@@ -103,8 +103,7 @@ min_age_minutes = 30
 min_wallets = 2
 
 [deep_fallback]
-enabled = true
-min_copied_usdc = 25.0                    # was 250 — too tight when 4 matched tokens have <250 USDC
+enabled = false                           # disabled with the loose-filter revert — deep fallback was also bleeding
 
 [reverse_lookup]
 enabled = true
@@ -126,10 +125,9 @@ min_hours_to_close = 0.5
 volatility_days = 7
 
 [noise_fallback]
-# ENABLED 2026-05-22: when smart-money fires 0 trades AND cash pressure is
-# high, take a small $1.50 micro-bet on the top-scored candidate. Capped at
-# 2 trades/tick. Won't fire when smart-money already produced a signal.
-enabled = true
+# DISABLED 2026-05-22 (PM): noise_fallback is a no-edge bet by definition.
+# In a regime where even smart-money loses, random bets lose faster.
+enabled = false
 max_trades_per_tick = 2
 stake_usd = 1.50
 cash_pressure_threshold = 0.35
