@@ -185,12 +185,20 @@ done
 echo "[run_all] dry race launched: $LAUNCHED bots, tick 10min (${MISSING_COUNT} profiles skipped — archived or missing)"
 echo
 
-# ─── Step 4: Sidecars (analyst + leaderboard) ───────────────────────
+# ─── Step 4: Sidecars (analyst + leaderboard + promoter) ────────────
 echo "[run_all] step 4/4: launching sidecars..."
 uv run python scripts/dry_analyst.py 2>&1 | sed -u 's/^/[analyst] /' &
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
     --auto-discover --interval 5 --telegram \
     2>&1 | sed -u 's/^/[board] /' &
+
+# Live profile auto-promoter: watches the dry leaderboard every 5min, writes
+# data/live_active_profile.json when a profile crosses promotion gates
+# (≥10 closed, ROI≥+5%, WR≥50%, 1h cooldown, ≤4 swaps/day). The live bot
+# reads that file each tick and hot-swaps profiles in-process — no restart
+# needed. If no profile qualifies, the promoter does nothing (correct
+# behavior — promoting losers loses real money).
+uv run python scripts/live_promoter.py 2>&1 | sed -u 's/^/[promoter] /' &
 
 # ─── Background: refresh the cache every 3 min (TTL is 10min) ───────
 # Aggressive refresh interval: even though the cache TTL is 10min, ~25%
@@ -214,6 +222,7 @@ echo "    1× live-analyst      (30min Telegram reports)"
 echo "    $LAUNCHED× DRY bots         (10min tick, simulated)"
 echo "    1× analyst           (15min reports, 1h spawn/kill)"
 echo "    1× leaderboard       (5min Telegram leaderboard)"
+echo "    1× promoter          (auto-swap live profile when dry winner found)"
 echo "    1× cache-refresher   (re-warms cache every 3min, TTL 10min)"
 echo
 echo "  Cache shared at: data/cache/http/"

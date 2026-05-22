@@ -2504,6 +2504,79 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
     return closed_records
 
 
+def _maybe_reload_active_profile(
+    settings: Settings, last_mtime: float
+) -> tuple[Settings | None, float]:
+    """Hot-swap the live profile when data/live_active_profile.json changes.
+
+    Returns (new_settings, new_mtime) if a swap happened, else (None, last_mtime).
+    Skipped in dry-run mode — only live bots hot-swap.
+
+    File format::
+        {"profile": "baseline", "reason": "...", "switched_at": "2026-..."}
+
+    A profile name resolves to ``configs/profiles/<name>.toml``. Reload uses
+    ``apply_profile_to_env(override=True)`` so the new TOML values overwrite
+    the previous ones, then rebuilds Settings from env. Tick logic picks up
+    the new settings on the next iteration.
+    """
+    if settings.dry_run:
+        return None, last_mtime
+    active_path = Path("data/live_active_profile.json")
+    if not active_path.is_file():
+        return None, last_mtime
+    mtime = active_path.stat().st_mtime
+    if mtime <= last_mtime:
+        return None, last_mtime
+    try:
+        payload = json.loads(active_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"[profile-swap] invalid JSON in {active_path}: {exc}", flush=True)
+        return None, mtime
+    profile_name = str(payload.get("profile") or "").strip()
+    if not profile_name:
+        return None, mtime
+    current = os.environ.get("POLYMARKET_PROFILE_LABEL", "")
+    if profile_name == current:
+        return None, mtime  # no actual change
+    profile_path = Path("configs/profiles") / f"{profile_name}.toml"
+    if not profile_path.is_file():
+        print(f"[profile-swap] profile not found: {profile_path}", flush=True)
+        return None, mtime
+    print(
+        f"\n🔄 PROFILE SWAP: {current or '(unknown)'} → {profile_name} "
+        f"(reason: {payload.get('reason', 'n/a')})\n",
+        flush=True,
+    )
+    try:
+        profile = load_profile(profile_path)
+        apply_profile_to_env(profile, override=True)
+        os.environ["POLYMARKET_PROFILE_LABEL"] = profile_name
+        # Rebuild Settings from the now-updated env. Preserve the dry_run flag
+        # (always false here) and live-trading toggle from the existing settings.
+        from dataclasses import replace as _replace
+
+        new_settings = Settings()
+        # Force live-trading + dry_run consistency with the previous Settings:
+        # the swap is config-only, not a mode change.
+        new_settings = _replace(
+            new_settings,
+            dry_run=settings.dry_run,
+            live_trading_enabled=settings.live_trading_enabled,
+            funder_address=settings.funder_address,
+            private_key=settings.private_key,
+            api_key=settings.api_key,
+            api_secret=settings.api_secret,
+            api_passphrase=settings.api_passphrase,
+            state_path=settings.state_path,
+            trade_journal_path=settings.trade_journal_path,
+        )
+        return new_settings, mtime
+    except Exception as exc:
+        print(f"[profile-swap] reload failed: {type(exc).__name__}: {exc}", flush=True)
+        return None, mtime
+
+
 def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
     last_heartbeat_ts: float = 0.0
     tick = 0
@@ -2533,9 +2606,24 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
     if watchdog_available:
         _signal.signal(_signal.SIGALRM, _handle_tick_alarm)
 
+    last_active_profile_mtime: float = 0.0
     while settings.auto_max_ticks <= 0 or tick < settings.auto_max_ticks:
         tick += 1
         started_at = utc_now()
+        # Dynamic profile hot-swap. Read data/live_active_profile.json each
+        # tick; if mtime changed, reload the profile in-process so the user
+        # doesn't have to restart the bot. Written by scripts/live_promoter.py
+        # when the dry race surfaces a winner. Hard-gated by the promoter
+        # (≥10 closed + ROI > +5% + 1h cooldown). Live-only: skipped in dry_run.
+        try:
+            new_settings, new_mtime = _maybe_reload_active_profile(
+                settings, last_active_profile_mtime
+            )
+            if new_settings is not None:
+                settings = new_settings
+                last_active_profile_mtime = new_mtime
+        except Exception as exc:
+            print(f"[profile-swap] failed: {type(exc).__name__}: {exc}", flush=True)
         # Universal sweep BEFORE the tick: closes positions at cached
         # price ≥ 0.97 (e.g. resolved markets no longer in Gamma scans).
         # Runs for every strategy mode — smart_money, race, edge, news.
