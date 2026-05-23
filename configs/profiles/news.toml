@@ -10,19 +10,19 @@ starting_cash = 20.0
 mode = "news"
 
 [sizing]
-max_position_ceiling_usd = 4.0
-min_open_positions = 3
-starter_trade_usd = 2.0
+max_position_ceiling_usd = 3.0
+min_open_positions = 4
+starter_trade_usd = 1.5
 assumed_live_balance_usd = 20.0
 
 position_pct = 0.10
-max_position_ceiling_pct = 0.20
+max_position_ceiling_pct = 0.15
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.20
 cash_floor_pct = 0.10
 [market_filters]
-min_liquidity_usd = 100.0
-min_volume_usd = 100.0
+min_liquidity_usd = 300.0
+min_volume_usd = 300.0
 
 [execution]
 pending_order_ttl_seconds = 60
@@ -49,29 +49,29 @@ max_hours = 48.0
 min_hours = 0.25
 min_price = 0.08
 max_price = 0.90
-max_spread = 0.05
+max_spread = 0.06
 max_relative_spread = 0.30
-min_liquidity_usd = 500.0
-min_volume_24h_usd = 300.0
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 150.0
 require_positive_momentum = true
-min_abs_momentum = 0.03
+min_abs_momentum = 0.02
 take_profit_pct = 0.25
 stop_loss_pct = 0.25
 stop_loss_min_age_minutes = 10
 near_expiry_min_profit = 0.0
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.97
-max_orders_per_tick = 2
-stake_usd = 2.0
+max_orders_per_tick = 3
+stake_usd = 1.5
 scan_limit = 500
 cash_floor_pct = 0.10
 partial_tp_fraction = 0.50              # vend 50% au TP, garde 50% en trailing
 trailing_arm_pct = 0.35                 # arm trailing dès +35% peak
 trailing_giveback_pct = 0.50            # exit si on rend 50% du peak
-max_stake_usd = 2.0
+max_stake_usd = 1.5
 min_stake_usd = 1.0
 smart_money_boost_enabled = true        # bonus si leaderboard wallets achètent ce token
-smart_money_min_flow_usd = 250.0        # seuil min pour le bonus
+smart_money_min_flow_usd = 150.0
 tight_stop_hours = 1.0                  # < 1h restante → SL serre
 tight_stop_pct = 0.15
 very_tight_stop_hours = 0.5             # < 30 min → SL très serré
@@ -87,10 +87,10 @@ soon_hours = 48
 
 [filters]
 max_hours_to_close = 48.0
-max_orders_per_tick = 2
+max_orders_per_tick = 3
 min_trade_usd = 1.0
-max_absolute_spread = 0.08
-max_relative_spread = 0.30
+max_absolute_spread = 0.06
+max_relative_spread = 0.35
 max_chase_premium = 0.12
 
 [crypto]
@@ -105,3 +105,18 @@ near_expiry_loser_minutes = 45
 
 [noise_fallback]
 enabled = false
+
+[race]
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 150.0
+max_spread = 0.06
+stake_usd = 1.5
+stake_pct = 0.075
+max_orders_per_tick = 3
+
+[edge]
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 150.0
+max_spread = 0.06
+max_position_pct = 0.075
+max_orders_per_tick = 3

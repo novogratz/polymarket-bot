@@ -9,13 +9,13 @@ starting_cash = 20.0
 
 [sizing]
 position_pct = 0.10
-max_position_ceiling_usd = 4.0
-max_position_ceiling_pct = 0.20
+max_position_ceiling_usd = 3.0
+max_position_ceiling_pct = 0.15
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.20
 cash_floor_pct = 0.10
-min_open_positions = 3
-starter_trade_usd = 2.0
+min_open_positions = 4
+starter_trade_usd = 1.5
 assumed_live_balance_usd = 20.0
 
 [trader_cohort]
@@ -34,23 +34,23 @@ fresh_signal_bonus = 8.0
 priority_category_bonus = 6.0
 
 [market_filters]
-min_liquidity_usd = 500.0
-min_volume_usd = 1000.0
+min_liquidity_usd = 300.0
+min_volume_usd = 300.0
 
 [filters]
 min_consensus = 2
 fallback_consensus = 2
-min_copied_usdc = 50.0
+min_copied_usdc = 35.0
 min_trade_usd = 1.0
 max_chase_premium = 0.12
 price_min = 0.03
 price_max = 0.96
-max_absolute_spread = 0.08
-max_relative_spread = 0.30
+max_absolute_spread = 0.06
+max_relative_spread = 0.35
 signal_staleness_seconds = 10
 min_hours_to_close = 0.25
 max_hours_to_close = 48.0
-max_orders_per_tick = 2
+max_orders_per_tick = 3
 max_sports_positions = 3
 sports_score_penalty = 8.0
 
@@ -92,7 +92,7 @@ min_wallets = 2
 
 [deep_fallback]
 enabled = true
-min_copied_usdc = 150.0
+min_copied_usdc = 100.0
 
 [reverse_lookup]
 enabled = true
@@ -123,7 +123,25 @@ auto_interval_seconds = 300
 stdout_heartbeat_minutes = 15
 
 [race]
-stake_usd = 2.0
-stake_pct = 0.10
-max_orders_per_tick = 2
+stake_usd = 1.5
+stake_pct = 0.075
+max_orders_per_tick = 3
 cash_floor_pct = 0.10
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 150.0
+max_spread = 0.06
+
+[news]
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 150.0
+max_spread = 0.06
+stake_usd = 1.5
+max_stake_usd = 1.5
+max_orders_per_tick = 3
+
+[edge]
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 150.0
+max_spread = 0.06
+max_position_pct = 0.075
+max_orders_per_tick = 3

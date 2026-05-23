@@ -14,19 +14,19 @@ starting_cash = 20.0
 mode = "edge"
 
 [sizing]
-max_position_ceiling_usd = 4.0
-min_open_positions = 3
-starter_trade_usd = 2.0
+max_position_ceiling_usd = 3.0
+min_open_positions = 4
+starter_trade_usd = 1.5
 assumed_live_balance_usd = 20.0
 
 position_pct = 0.10
-max_position_ceiling_pct = 0.20
+max_position_ceiling_pct = 0.15
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.20
 cash_floor_pct = 0.10
 [market_filters]
-min_liquidity_usd = 100.0
-min_volume_usd = 100.0
+min_liquidity_usd = 300.0
+min_volume_usd = 300.0
 
 [execution]
 pending_order_ttl_seconds = 60
@@ -39,16 +39,16 @@ enabled = false
 [edge]
 max_hours = 48.0
 scan_limit = 750
-min_liquidity_usd = 500.0
-min_volume_24h_usd = 300.0
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 150.0
 min_price = 0.08
 max_price = 0.92
-max_spread = 0.05
+max_spread = 0.06
 fee_pct = 0.02                          # estimation slippage + frais
-min_edge_pct = 0.08
+min_edge_pct = 0.06
 kelly_fraction = 0.25                   # 1/4 Kelly (sizing prudent)
-max_position_pct = 0.10
-max_orders_per_tick = 2
+max_position_pct = 0.075
+max_orders_per_tick = 3
 min_stake_usd = 1.0
 cash_floor_pct = 0.10
 daily_drawdown_pct = 0.15               # halt si -15% sur la journée (=$15 sur $100)
@@ -80,7 +80,7 @@ crypto_momentum_alpha = 4.0             # (legacy — only used if direction re-
 # Bumping min_bid from 0.55 → 0.80 concentrates the lane where math
 # actually produces positive edge after fees.
 near_cert_enabled = true
-near_cert_max_hours = 4.0
+near_cert_max_hours = 24.0
 near_cert_min_bid = 0.80                # was 0.55 — lane was negative-edge below 0.78
 near_cert_max_ask = 0.96                # was 0.98 — 0.97+ resolves via resolved_exit
 near_cert_bias_multiplier = 1.04        # was 1.06 — paired with min_bid bump
@@ -103,10 +103,10 @@ soon_hours = 48
 
 [filters]
 max_hours_to_close = 48.0
-max_orders_per_tick = 2
+max_orders_per_tick = 3
 min_trade_usd = 1.0
-max_absolute_spread = 0.08
-max_relative_spread = 0.30
+max_absolute_spread = 0.06
+max_relative_spread = 0.35
 max_chase_premium = 0.12
 
 [crypto]
@@ -121,3 +121,19 @@ near_expiry_loser_minutes = 45
 
 [noise_fallback]
 enabled = false
+
+[race]
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 150.0
+max_spread = 0.06
+stake_usd = 1.5
+stake_pct = 0.075
+max_orders_per_tick = 3
+
+[news]
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 150.0
+max_spread = 0.06
+stake_usd = 1.5
+max_stake_usd = 1.5
+max_orders_per_tick = 3

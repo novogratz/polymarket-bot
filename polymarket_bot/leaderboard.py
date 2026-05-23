@@ -19,11 +19,22 @@ from __future__ import annotations
 import json
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 from . import notifications
+
+
+@dataclass
+class PositionSummary:
+    """Compact display payload for an open or closed position."""
+
+    title: str
+    pnl: float
+    stake: float = 0.0
+    price: float = 0.0
+    reason: str = ""
 
 
 @dataclass
@@ -46,6 +57,9 @@ class RunStats:
     total_predictions: int = 0  # unique markets ever entered (closed + open)
     biggest_win_today: float = 0.0
     biggest_loss_today: float = 0.0
+    top_open: list[PositionSummary] = field(default_factory=list)
+    top_closed: list[PositionSummary] = field(default_factory=list)
+    worst_closed: list[PositionSummary] = field(default_factory=list)
 
     @property
     def total_pnl(self) -> float:
@@ -96,6 +110,21 @@ def _starting_cash_from_profile(base_dir: Path, run_name: str) -> float | None:
         return float(val)
     except (TypeError, ValueError):
         return None
+
+
+def _position_title(raw: dict) -> str:
+    for key in ("market", "question", "title", "event_title", "slug", "market_id", "token_id"):
+        value = raw.get(key)
+        if value:
+            return str(value)
+    return "?"
+
+
+def _float(raw: object, default: float = 0.0) -> float:
+    try:
+        return float(raw or default)
+    except (TypeError, ValueError):
+        return default
 
 
 def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
@@ -181,12 +210,27 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
     invested = sum(float(p.get("stake", 0) or 0) for p in open_positions)
     unrealized = sum(float(p.get("unrealized_pnl", 0) or 0) for p in open_positions)
     equity = cash + invested + unrealized
+    top_open = sorted(
+        (
+            PositionSummary(
+                title=_position_title(p),
+                pnl=_float(p.get("unrealized_pnl")),
+                stake=_float(p.get("stake")),
+                price=_float(p.get("current_price") or p.get("entry_price") or p.get("avg_price")),
+                reason=str(p.get("strategy") or p.get("reason") or ""),
+            )
+            for p in open_positions
+        ),
+        key=lambda p: p.pnl,
+        reverse=True,
+    )[:3]
 
     # Dedupe by market_id: each unique market = 1 "prediction" with its
     # aggregate realized_pnl as the W/L vote. If the bot trades the same
     # market multiple times (exit + re-entry), all those cycles count as
     # one prediction with summed PnL.
     market_pnl: dict[str, float] = {}
+    closed_positions: list[PositionSummary] = []
     realized_pnl = 0.0
     biggest_win_today = 0.0
     biggest_loss_today = 0.0
@@ -207,6 +251,15 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
                         pnl = float(rec.get("realized_pnl", 0) or 0)
                     except (TypeError, ValueError):
                         pnl = 0.0
+                    closed_positions.append(
+                        PositionSummary(
+                            title=_position_title(rec),
+                            pnl=pnl,
+                            stake=_float(rec.get("stake") or rec.get("entry_stake") or rec.get("cost_basis")),
+                            price=_float(rec.get("exit_price") or rec.get("closed_price") or rec.get("price")),
+                            reason=str(rec.get("exit_reason") or rec.get("reason") or ""),
+                        )
+                    )
                     realized_pnl += pnl
                     mid = str(rec.get("market_id") or "")
                     if mid:
@@ -233,6 +286,8 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
     # Total predictions = unique closed markets + currently open markets.
     open_market_ids = {str(p.get("market_id") or "") for p in open_positions if p.get("market_id")}
     total_predictions = len(set(market_pnl.keys()) | open_market_ids)
+    top_closed = sorted(closed_positions, key=lambda p: p.pnl, reverse=True)[:3]
+    worst_closed = sorted(closed_positions, key=lambda p: p.pnl)[:3]
 
     return RunStats(
         run_name=run_name,
@@ -251,6 +306,9 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
         biggest_win_today=biggest_win_today,
         biggest_loss_today=biggest_loss_today,
         total_predictions=total_predictions,
+        top_open=top_open,
+        top_closed=top_closed,
+        worst_closed=worst_closed,
     )
 
 
@@ -345,6 +403,20 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
     invested = sum(float(p.get("stake", 0) or 0) for p in open_positions)
     unrealized = sum(float(p.get("unrealized_pnl", 0) or 0) for p in open_positions)
     equity = cash + invested + unrealized
+    top_open = sorted(
+        (
+            PositionSummary(
+                title=_position_title(p),
+                pnl=_float(p.get("unrealized_pnl")),
+                stake=_float(p.get("stake")),
+                price=_float(p.get("current_price") or p.get("entry_price") or p.get("avg_price")),
+                reason=str(p.get("strategy") or p.get("reason") or ""),
+            )
+            for p in open_positions
+        ),
+        key=lambda p: p.pnl,
+        reverse=True,
+    )[:3]
 
     # Baseline at cost basis (cash + open stakes) instead of current mark so
     # existing unrealized PnL on positions held at snapshot time shows up as
@@ -353,6 +425,7 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
     starting_cash = _load_or_init_live_baseline(base_dir, cost_basis)
 
     market_pnl: dict[str, float] = {}
+    closed_positions: list[PositionSummary] = []
     realized_pnl = 0.0
     biggest_win_today = 0.0
     biggest_loss_today = 0.0
@@ -373,6 +446,15 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
                         pnl = float(rec.get("realized_pnl", 0) or 0)
                     except (TypeError, ValueError):
                         pnl = 0.0
+                    closed_positions.append(
+                        PositionSummary(
+                            title=_position_title(rec),
+                            pnl=pnl,
+                            stake=_float(rec.get("stake") or rec.get("entry_stake") or rec.get("cost_basis")),
+                            price=_float(rec.get("exit_price") or rec.get("closed_price") or rec.get("price")),
+                            reason=str(rec.get("exit_reason") or rec.get("reason") or ""),
+                        )
+                    )
                     realized_pnl += pnl
                     mid = str(rec.get("market_id") or "")
                     if mid:
@@ -396,6 +478,8 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
     losses = sum(1 for pnl in market_pnl.values() if pnl < 0)
     open_market_ids = {str(p.get("market_id") or "") for p in open_positions if p.get("market_id")}
     total_predictions = len(set(market_pnl.keys()) | open_market_ids)
+    top_closed = sorted(closed_positions, key=lambda p: p.pnl, reverse=True)[:3]
+    worst_closed = sorted(closed_positions, key=lambda p: p.pnl)[:3]
 
     return RunStats(
         run_name=_live_strategy_name(base_dir),
@@ -414,7 +498,49 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
         biggest_win_today=biggest_win_today,
         biggest_loss_today=biggest_loss_today,
         total_predictions=total_predictions,
+        top_open=top_open,
+        top_closed=top_closed,
+        worst_closed=worst_closed,
     )
+
+
+def _fmt_position(pos: PositionSummary, *, max_title: int = 56) -> str:
+    title = _short(pos.title.replace("\n", " "), max_title)
+    stake = f" stake ${pos.stake:.2f}" if pos.stake > 0 else ""
+    price = f" @ {pos.price:.2f}" if pos.price > 0 else ""
+    reason = f" [{_short(pos.reason, 18)}]" if pos.reason else ""
+    return f"{title}: {pos.pnl:+.2f}{stake}{price}{reason}"
+
+
+def _best_position_line(positions: list[PositionSummary]) -> str:
+    if not positions:
+        return "-"
+    return _short(_fmt_position(positions[0], max_title=38), 56)
+
+
+def _append_winner_details(lines: list[str], winner: RunStats) -> None:
+    lines.append(f"🏆 WINNER DETAIL — {winner.run_name}")
+    lines.append(
+        f"   Equity ${winner.equity:.2f} | PnL {winner.total_pnl:+.2f} | "
+        f"ROI {winner.roi_pct:+.1f}% | open {winner.open_positions} | closed {winner.closed_trades}"
+    )
+    if winner.top_open:
+        lines.append("   Top open:")
+        for pos in winner.top_open:
+            lines.append(f"     • {_fmt_position(pos)}")
+    else:
+        lines.append("   Top open: none")
+    if winner.top_closed:
+        lines.append("   Top closed wins:")
+        for pos in winner.top_closed:
+            lines.append(f"     • {_fmt_position(pos)}")
+    else:
+        lines.append("   Top closed wins: none")
+    if winner.worst_closed and any(pos.pnl < 0 for pos in winner.worst_closed):
+        lines.append("   Worst closed losses:")
+        for pos in winner.worst_closed:
+            if pos.pnl < 0:
+                lines.append(f"     • {_fmt_position(pos)}")
 
 
 def format_leaderboard(
@@ -438,16 +564,26 @@ def format_leaderboard(
     )
     now = now or datetime.now(timezone.utc)
     stamp = now.strftime("%H:%M:%S")
+    profitable = sum(1 for s in ranked if s.roi_pct > 0)
+    positioned = sum(1 for s in ranked if s.open_positions > 0)
+    total_open = sum(s.open_positions for s in ranked)
+    total_exposure = sum(s.invested for s in ranked)
+    avg_roi = (sum(s.roi_pct for s in ranked) / len(ranked)) if ranked else 0.0
 
-    bar = "═" * 92
+    bar = "═" * 128
     lines: list[str] = [
         bar,
         f"🏁 STRATEGY LEADERBOARD · {stamp} UTC",
+        (
+            f"Race health: {len(ranked)} active | {profitable} profitable | "
+            f"{positioned} with positions | {total_open} open bets | "
+            f"${total_exposure:.2f} deployed | avg ROI {avg_roi:+.1f}%"
+        ),
         bar,
         f" #  {'STRATEGY':<10} {'EQUITY':>10} {'PnL':>10} {'ROI':>8} "
         f"{'WIN%':>5} {'CLOSED':>7} {'POS':>4} "
-        f"{'BIG WIN':>9} {'BIG LOSS':>9} {'TICKS':>6}",
-        "─" * 92,
+        f"{'BIG WIN':>9} {'BIG LOSS':>9} {'TICKS':>6}  {'TOP OPEN':<56}  {'TOP CLOSED':<56}",
+        "─" * 128,
     ]
     for i, s in enumerate(ranked, 1):
         rank_label = f"{i:>2}."
@@ -465,9 +601,14 @@ def format_leaderboard(
             f"{s.open_positions:>4d} "
             f"{big_win_str:>9} "
             f"{big_loss_str:>9} "
-            f"{s.total_ticks:>6d}"
+            f"{s.total_ticks:>6d}  "
+            f"{_best_position_line(s.top_open):<56}  "
+            f"{_best_position_line(s.top_closed):<56}"
         )
     lines.append(bar)
+    if ranked:
+        _append_winner_details(lines, ranked[0])
+        lines.append(bar)
     if live is not None:
         hypo_rank = 1 + sum(1 for s in ranked if s.roi_pct > live.roi_pct)
         total = len(ranked) + 1
@@ -500,7 +641,11 @@ def format_leaderboard_telegram(
     """
     if not stats and live is None:
         return "🏁 *Leaderboard*: no runs found"
-    ranked = sorted(stats, key=lambda s: s.roi_pct, reverse=True)
+    ranked = sorted(
+        [s for s in stats if s.total_ticks > 0 or s.closed_trades > 0 or s.open_positions > 0],
+        key=lambda s: s.roi_pct,
+        reverse=True,
+    )
     now = now or datetime.now(timezone.utc)
     stamp = now.strftime("%H:%M")
 
@@ -524,7 +669,8 @@ def format_leaderboard_telegram(
         return (
             f"{i:>3}. {color} {s.run_name:<38s} "
             f"${s.equity:>7.2f}  {s.roi_pct:+6.1f}%  "
-            f"📦{s.open_positions}  {s.wins}W/{s.losses}L"
+            f"📦{s.open_positions}  {s.wins}W/{s.losses}L  "
+            f"open: {_best_position_line(s.top_open)}"
         )
 
     top = ranked[:top_n]
@@ -568,6 +714,15 @@ def format_leaderboard_telegram(
         )
         lines.append(f"   If listed: would rank #{hypo_rank} of {total}")
 
+    if ranked:
+        winner = ranked[0]
+        lines.append("")
+        lines.append(f"🏆 Winner detail: {winner.run_name}")
+        lines.append(f"Open: {_best_position_line(winner.top_open)}")
+        lines.append(f"Best closed: {_best_position_line(winner.top_closed)}")
+        if winner.worst_closed and winner.worst_closed[0].pnl < 0:
+            lines.append(f"Worst closed: {_best_position_line(winner.worst_closed)}")
+
     return "\n".join(lines)
 
 
@@ -597,7 +752,7 @@ def run_leaderboard_loop(
     def _rediscover() -> list[str]:
         if not dry_dir.exists():
             return []
-        return sorted(p.name for p in dry_dir.iterdir() if p.is_dir())
+        return sorted(p.name for p in dry_dir.iterdir() if p.is_dir() and not p.name.startswith("_"))
 
     if auto_discover:
         print(

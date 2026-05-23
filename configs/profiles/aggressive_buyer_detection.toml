@@ -5,19 +5,19 @@ starting_cash = 20.0
 mode = "aggressive_buyer_detection"
 
 [sizing]
-max_position_ceiling_usd = 4.0
-min_open_positions = 3
-starter_trade_usd = 2.0
+max_position_ceiling_usd = 3.0
+min_open_positions = 4
+starter_trade_usd = 1.5
 
 position_pct = 0.10
-max_position_ceiling_pct = 0.20
+max_position_ceiling_pct = 0.15
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.20
 cash_floor_pct = 0.10
 assumed_live_balance_usd = 20.0
 [market_filters]
-min_liquidity_usd = 100.0
-min_volume_usd = 100.0
+min_liquidity_usd = 300.0
+min_volume_usd = 300.0
 
 [persistence]
 enabled = false
@@ -25,14 +25,14 @@ enabled = false
 [race]
 max_hours = 48.0
 scan_limit = 750
-min_liquidity_usd = 500.0
-min_volume_24h_usd = 300.0
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 150.0
 min_price = 0.08
 max_price = 0.92
-max_spread = 0.05
-stake_usd = 2.0
-stake_pct = 0.10
-max_orders_per_tick = 2
+max_spread = 0.06
+stake_usd = 1.5
+stake_pct = 0.075
+max_orders_per_tick = 3
 cash_floor_pct = 0.10
 tp_pct = 0.25
 sl_pct = 0.25
@@ -50,10 +50,10 @@ soon_hours = 48
 
 [filters]
 max_hours_to_close = 48.0
-max_orders_per_tick = 2
+max_orders_per_tick = 3
 min_trade_usd = 1.0
-max_absolute_spread = 0.08
-max_relative_spread = 0.30
+max_absolute_spread = 0.06
+max_relative_spread = 0.35
 max_chase_premium = 0.12
 
 [crypto]
@@ -71,3 +71,18 @@ near_expiry_loser_minutes = 45
 
 [noise_fallback]
 enabled = false
+
+[news]
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 150.0
+max_spread = 0.06
+stake_usd = 1.5
+max_stake_usd = 1.5
+max_orders_per_tick = 3
+
+[edge]
+min_liquidity_usd = 300.0
+min_volume_24h_usd = 150.0
+max_spread = 0.06
+max_position_pct = 0.075
+max_orders_per_tick = 3
