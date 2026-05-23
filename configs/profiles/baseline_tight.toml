@@ -51,7 +51,7 @@ min_volume_usd = 300.0
 
 [filters]
 min_consensus = 2
-fallback_consensus = 2
+fallback_consensus = 1
 min_copied_usdc = 35.0
 min_trade_usd = 1.0
 max_chase_premium = 0.12
@@ -59,7 +59,7 @@ price_min = 0.03
 price_max = 0.97
 max_absolute_spread = 0.06
 max_relative_spread = 0.35
-signal_staleness_seconds = 10
+signal_staleness_seconds = 0
 min_hours_to_close = 0.25
 max_hours_to_close = 48.0
 max_orders_per_tick = 3
@@ -107,8 +107,8 @@ min_wallets = 2
 
 [deep_fallback]
 enabled = true
-min_copied_usdc = 100.0
-min_consensus = 2
+min_copied_usdc = 15.0
+min_consensus = 1
 
 [reverse_lookup]
 enabled = true

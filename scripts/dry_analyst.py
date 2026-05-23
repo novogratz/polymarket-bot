@@ -4,7 +4,8 @@
 Runs alongside the 62-bot dry race. Every 15 minutes:
   1. Reads per-strategy state + journal from data/dry_runs/
   2. Computes leaderboard (PnL, win-rate, sample size, avg win/loss)
-  3. Calls Claude CLI for a narrative + optional new-strategy proposal
+  3. Calls Codex CLI for a narrative + optional new-strategy proposal,
+     falling back to Ollama
   4. Spawns new dry-run bot if proposal accepted (TOML-only, additive)
   5. Kills auto-spawned bots that are clearly losing (≥KILL_MIN_TRADES
      closed, ROI ≤ KILL_ROI_THRESHOLD, win_rate ≤ KILL_WR_THRESHOLD)
@@ -21,9 +22,8 @@ Hard rules (see MEMORY.md feedback_autonomous_analyst_override.md):
 Kill switch: write `{"enabled": false}` to data/autonomous_state.json
 to halt new spawns. Existing auto bots keep running; reporting continues.
 
-Cost note: ~$0.05-0.30 per Claude call × 96 calls/day ≈ $5-30/day.
-Adjust CYCLE_SECONDS or set enabled=false in autonomous_state.json
-if cost matters.
+Adjust CYCLE_SECONDS or set enabled=false in autonomous_state.json to
+control report/proposal frequency.
 """
 from __future__ import annotations
 
@@ -38,6 +38,8 @@ import traceback
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+
+from analyst_llm import call_analyst_llm
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DRY_RUNS_DIR = REPO_ROOT / "data" / "dry_runs"
@@ -75,7 +77,7 @@ MAX_BOTS_TOTAL = int(os.environ.get("ANALYST_MAX_BOTS", "150"))
 MAX_SPAWNS_PER_CYCLE = int(os.environ.get("ANALYST_MAX_SPAWNS", "3"))   # was 1
 MAX_TUNES_PER_CYCLE = int(os.environ.get("ANALYST_MAX_TUNES", "2"))     # in-place reroll
 SPAWN_PREFIX = "auto_"
-CLAUDE_TIMEOUT_SECONDS = 240
+LLM_TIMEOUT_SECONDS = 240
 MIN_TRADES_TO_RATE = 1  # 1 trade is enough to appear on the leaderboard
 
 # Kill criteria. Two tiers:
@@ -326,7 +328,7 @@ def rank(metrics: list[StratMetrics]) -> tuple[list[StratMetrics], list[StratMet
 
 
 # ────────────────────────────────────────────────────────────────────
-# Claude CLI
+# Analyst LLM
 # ────────────────────────────────────────────────────────────────────
 
 
@@ -389,26 +391,8 @@ followed by a full new TOML block (same format as new strategy, with a DIFFERENT
 Output: narrative first, then TOML/tune blocks separated by blank lines. Be decisive."""
 
 
-def call_claude(prompt: str) -> str:
-    """Invoke `claude -p` in non-interactive mode. Returns stdout."""
-    try:
-        result = subprocess.run(
-            ["claude", "--dangerously-skip-permissions", "-p", prompt],
-            capture_output=True,
-            text=True,
-            timeout=CLAUDE_TIMEOUT_SECONDS,
-        )
-        if result.returncode != 0:
-            return f"[claude error rc={result.returncode}]\n{result.stderr[:500]}"
-        return result.stdout
-    except subprocess.TimeoutExpired:
-        return "[claude timeout]"
-    except Exception as exc:
-        return f"[claude exception: {type(exc).__name__}: {exc}]"
-
-
 def parse_response(text: str) -> tuple[str, list[dict]]:
-    """Parse Claude's response into a narrative + list of proposed actions.
+    """Parse the analyst LLM response into a narrative + proposed actions.
 
     Each action is: {'kind': 'spawn'|'tune', 'name': str, 'body': str,
                      'target': str | None}
@@ -1117,7 +1101,7 @@ def cycle_once() -> None:
             leaderboard_table=fmt_leaderboard(top + bottom or metrics[:10]),
             existing_auto_names=", ".join(existing_autos) or "(none yet)",
         )
-        response = call_claude(prompt)
+        response = call_analyst_llm(prompt, timeout=LLM_TIMEOUT_SECONDS, cwd=REPO_ROOT)
         narrative, actions = parse_response(response)
 
         if state.get("enabled", True):

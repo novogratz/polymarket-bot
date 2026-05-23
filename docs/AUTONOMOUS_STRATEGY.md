@@ -135,11 +135,11 @@ Auto-launched by `scripts/run_both_dry.sh`. Runs alongside the dry race.
 - **Report every 15 min** (`ANALYST_CYCLE_SECONDS=900`): full status to Telegram, including:
   - Profitable strategies (all of them, with `$start → $current`, +/-$, +/-%, WR, closed, open)
   - Top 5 by PnL + Bottom 3
-  - Claude CLI narrative (1–3 paragraphs analysing top + bottom)
+  - Codex CLI narrative with Ollama fallback (1–3 paragraphs analysing top + bottom)
   - 🎯 *Favorite for live*: a 4-tier recommendation (live-ready / best risk-adjusted / any-profitable / least-bad) with the favorite's top 3 closed trades + open positions appended
   - 🆕 Spawned / 🔧 Tuned / 💀 Killed events from the last action cycle
 - **Spawn/kill every 1 hour** (`ANALYST_SPAWN_KILL_INTERVAL_SECONDS=3600`):
-  - Spawns up to 3 new `auto_*` profiles per cycle, derived from current winners via `claude` CLI proposals
+  - Spawns up to 3 new `auto_*` profiles per cycle, derived from current winners via Codex/Ollama proposals
   - Tunes up to 2 existing `auto_*` profiles in place
   - Kills underperformers:
     - Catastrophic: ROI ≤ -50% (any sample size)

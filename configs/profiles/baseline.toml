@@ -53,7 +53,7 @@ min_volume_usd = 1000.0
 # faster losses. Tight filters mean fewer trades; in a no-edge regime, fewer
 # trades is the only winning move. 4h-only rule kept.
 min_consensus = 2
-fallback_consensus = 2
+fallback_consensus = 1
 min_copied_usdc = 75.0
 min_trade_usd = 1.0
 max_chase_premium = 0.13
@@ -61,7 +61,7 @@ price_min = 0.05
 price_max = 0.95
 max_absolute_spread = 0.08
 max_relative_spread = 0.30
-signal_staleness_seconds = 10
+signal_staleness_seconds = 0
 min_hours_to_close = 0.5
 max_hours_to_close = 4.0
 max_orders_per_tick = 0

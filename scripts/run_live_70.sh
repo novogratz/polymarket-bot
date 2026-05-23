@@ -42,7 +42,7 @@ export POLYMARKET_PROFILE_LABEL=baseline_tight
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
 # Every 30 min: reads paper_state + trade_journal, compares vs dry race
-# leaders, calls `claude` CLI for insights. NEVER touches the live bot;
+# leaders, calls Codex CLI with Ollama fallback. NEVER touches the live bot;
 # pure observability. Kill via Ctrl+C (same process group).
 cleanup() {
     kill 0 2>/dev/null || true

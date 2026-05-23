@@ -4,12 +4,12 @@
 Runs alongside the live bot. Every CYCLE_SECONDS minutes:
   1. Reads live state (paper_state.json + trade_journal.jsonl)
   2. Reads dry-race leaderboard for context comparison
-  3. Calls `claude` CLI for an insights report
+  3. Calls Codex CLI for an insights report, falling back to Ollama
   4. Posts to TELEGRAM_CHAT_ID_LIVE — Markdown report comparing
      the live profile to the top dry-race performers
 
 NEVER spawns new bots, NEVER modifies the live profile, NEVER kills
-anything. This is pure observability — if Claude recommends a profile
+anything. This is pure observability — if the analyst recommends a profile
 switch, you do it manually.
 
 The live runner only ever has ONE bot running, so there's no "race"
@@ -17,21 +17,21 @@ to autonomously manage in live. The analyst's value-add is the
 cross-comparison with the dry race ("dry winner up +$15, your live
 profile flat — consider switching to X").
 
-Cost: ~$0.05-0.30 per call × cycle frequency. Default 1800s (30 min)
-keeps daily cost under $15. Adjust LIVE_ANALYST_CYCLE_SECONDS.
+Adjust LIVE_ANALYST_CYCLE_SECONDS to control report frequency.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 import traceback
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+
+from analyst_llm import call_analyst_llm
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
@@ -59,7 +59,7 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))   # 30 min
-CLAUDE_TIMEOUT_SECONDS = 240
+LLM_TIMEOUT_SECONDS = 240
 
 
 @dataclass
@@ -213,21 +213,6 @@ def load_dry_top_n(n: int = 5) -> list[dict]:
         })
     rows.sort(key=lambda r: r["equity"], reverse=True)
     return [r for r in rows if r["closed"] >= 3][:n]
-
-
-def call_claude(prompt: str) -> str:
-    try:
-        result = subprocess.run(
-            ["claude", "--dangerously-skip-permissions", "-p", prompt],
-            capture_output=True, text=True, timeout=CLAUDE_TIMEOUT_SECONDS,
-        )
-        if result.returncode != 0:
-            return f"[claude error rc={result.returncode}]\n{result.stderr[:500]}"
-        return result.stdout
-    except subprocess.TimeoutExpired:
-        return "[claude timeout]"
-    except Exception as exc:
-        return f"[claude exception: {type(exc).__name__}: {exc}]"
 
 
 def telegram_post(text: str, *, live: bool = True) -> bool:
@@ -394,7 +379,7 @@ def cycle_once() -> None:
         win_rate=snap.win_rate, realized_pnl=snap.realized_pnl,
         dry_top=dry_table,
     )
-    narrative = call_claude(prompt)
+    narrative = call_analyst_llm(prompt, timeout=LLM_TIMEOUT_SECONDS, cwd=REPO_ROOT)
 
     stamp = time.strftime("%H:%M UTC", time.gmtime())
     sign = "+" if pnl_total >= 0 else ""
@@ -459,7 +444,7 @@ def cycle_once() -> None:
     parts.append("")
 
     parts.append("*🧠 Verdict*")
-    parts.append(narrative.strip()[:1000] or "(claude unavailable)")
+    parts.append(narrative.strip()[:1000] or "(analyst llm unavailable)")
 
     msg = "\n".join(parts)
     telegram_post(msg)

@@ -48,7 +48,7 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
 - Runs as a sidecar alongside `bash scripts/run_all.sh`
 - **Report every 15 min** to `TELEGRAM_CHAT_ID_DRY_RUN`: full leaderboard with $start → $current / +/- $ / ROI% / WR / closed / open per strategy, top 3 trades + open positions for the favorite, plus a tiered live-readiness recommendation.
 - **Spawn/kill every 1 hour** (decoupled from report rhythm).
-  - Spawns 1–3 new `auto_*` profiles per cycle via `claude` CLI, derived from current winners
+  - Spawns 1–3 new `auto_*` profiles per cycle via Codex CLI, falling back to Ollama, derived from current winners
   - Tunes (in-place reroll) up to 2 `auto_*` per cycle
   - Kills underperformers: ROI ≤ -10% AND wr ≤ 40% AND n ≥ 8 (auto) / n ≥ 20 (human)
   - Catastrophic halt: ROI ≤ -50% kills any bot regardless of trade count
@@ -58,7 +58,7 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
   - Force-close losers at `current_price ≤ 0.03`
   - Catches resolved markets that drop out of Gamma scans before per-strategy exit logic fires
 - **Telegram fallback:** `_default_transport` retries with `parse_mode` stripped on HTTP 400, so MarkdownV2 escape failures never silently swallow alerts.
-- **Live analyst (`scripts/live_analyst.py`)** — read-only sidecar wired into `run_all.sh` (and standalone `run_live_70.sh`); reads paper_state + dry leaderboard, calls `claude` CLI, posts executive-summary insights (open positions w/ entry→cur→PnL, top closed, dry-twin comparison) to `TELEGRAM_CHAT_ID_LIVE` every 30 min. Never spawns/modifies anything live.
+- **Live analyst (`scripts/live_analyst.py`)** — read-only sidecar wired into `run_all.sh` (and standalone `run_live_70.sh`); reads paper_state + dry leaderboard, calls Codex CLI with Ollama fallback, posts executive-summary insights (open positions w/ entry→cur→PnL, top closed, dry-twin comparison) to `TELEGRAM_CHAT_ID_LIVE` every 30 min. Never spawns/modifies anything live.
 
 **Universal exit/sizing rules** for race-style strategies:
 - `stake_pct ≈ 0.10–0.25`, `max_orders_per_tick = 5`, `cash_floor_pct = 0.02`, `max_hours = 4.0` (hard 4h-only rule)
@@ -125,7 +125,7 @@ The previous "all 195 profiles in dry" mode was retired because it crashed macOS
 - `scripts/run_all.sh` — preferred launcher: live + dry race + sidecars + HTTP cache pre-warm + 8min re-warm loop.
 - `scripts/run_live_70.sh` — live-only runner (loads `baseline_tight.toml`, $29 bankroll override).
 - `scripts/cache_warmer.py` — pre-fetches leaderboards + wallet trade histories into `data/cache/http/` so the bot swarm starts warm.
-- `scripts/dry_analyst.py` — autonomous analyst sidecar: 15min reports, 1h spawn/kill via `claude` CLI.
+- `scripts/dry_analyst.py` — autonomous analyst sidecar: 15min reports, 1h spawn/kill via Codex CLI with Ollama fallback.
 - `scripts/live_analyst.py` — read-only live analyst sidecar; 30min executive-summary Telegram reports.
 - `scripts/winner_consistency.py` — sliding-window analyzer (30min windows over 8h lookback).
 - `tests/test_strategy.py` — 52 tests covering scoring, sizing, exit plans, auto-tuner rules.
