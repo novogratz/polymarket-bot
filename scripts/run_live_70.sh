@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Lance le bot en LIVE avec le profil mid_band_safe (user-selected 2026-05-23).
-# Thèse: mid-band only (0.30-0.70), évite à la fois les lottery tickets
-# (sub-0.20) qui ont crushed le cohort hier et les locked winners (>0.85)
-# qui ont tail risk. Tight TP ladder.
-# Toute la config vit dans configs/profiles/mid_band_safe.toml.
+# Lance le bot en LIVE avec le profil baseline_tight (main live strategy).
+# Thèse: baseline smart-money, avec cap position strict et loser flush
+# near-expiry pour éviter les sweeps de positions perdantes à la résolution.
+# Toute la config vit dans configs/profiles/baseline_tight.toml.
 #
 # Ce script passe --yes : la confirmation interactive est skipée, donc aucun
 # besoin de TTY. Pour une exécution sans --yes (auto-loop --live tout court),
@@ -18,9 +17,9 @@ cd "$REPO_ROOT"
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
 # Live bankroll = $29 (actual Polymarket balance 2026-05-22).
-# mid_band_safe.toml has starting_cash=10 / assumed_live_balance_usd=10 (it's
-# also used as a dry profile). These env exports override the TOML so the
-# live bot uses the actual $29 bankroll, while dry race keeps $10.
+# baseline_tight.toml has starting_cash=20 / assumed_live_balance_usd=20.
+# These env exports override the TOML so the live bot uses the actual $29
+# bankroll, while dry race keeps its own per-profile bankroll.
 export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-29.0}
 export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-29.0}
 
@@ -39,7 +38,7 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
 # Profile label exported BEFORE the live_analyst spawns, so the
 # sidecar inherits it (else it logs "(unknown)" in reports).
-export POLYMARKET_PROFILE_LABEL=mid_band_safe
+export POLYMARKET_PROFILE_LABEL=baseline_tight
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
 # Every 30 min: reads paper_state + trade_journal, compares vs dry race
@@ -52,4 +51,4 @@ cleanup() {
 trap cleanup INT TERM EXIT
 python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
 
-uv run pmbot auto-loop --live --profile mid_band_safe --yes
+uv run pmbot auto-loop --live --profile baseline_tight --yes

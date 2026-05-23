@@ -119,6 +119,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "near_expiry_minutes_to_close": ("POLYMARKET_SMART_EXIT_MINUTES_TO_CLOSE", "int"),
         "near_expiry_exit_losers": ("POLYMARKET_SMART_NEAR_EXPIRY_EXIT_LOSERS", "bool"),
         "near_expiry_loser_minutes": ("POLYMARKET_SMART_NEAR_EXPIRY_LOSER_MINUTES", "int"),
+        "entry_cooldown_after_loss_minutes": ("POLYMARKET_SMART_ENTRY_COOLDOWN_AFTER_LOSS_MINUTES", "int"),
         "resolved_market_threshold": ("POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD", "float"),
     },
     "cohort_exit": {
@@ -130,6 +131,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
     "deep_fallback": {
         "enabled": ("POLYMARKET_SMART_DEEP_FALLBACK_ENABLED", "bool"),
         "min_copied_usdc": ("POLYMARKET_SMART_DEEP_FALLBACK_MIN_COPIED_USDC", "float"),
+        "min_consensus": ("POLYMARKET_SMART_DEEP_FALLBACK_MIN_CONSENSUS", "int"),
     },
     "reverse_lookup": {
         "enabled": ("POLYMARKET_SMART_REVERSE_LOOKUP_ENABLED", "bool"),

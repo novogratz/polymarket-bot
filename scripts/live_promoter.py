@@ -6,9 +6,12 @@ writes ``data/live_active_profile.json``. The live bot reads that file at the
 start of each tick and hot-swaps the active profile in-process (no restart).
 
 Hard gates (configurable via env):
-- closed_trades >= MIN_CLOSED (default 10)
-- roi_pct >= MIN_ROI_PCT (default +5.0)
-- win_rate_pct >= MIN_WR_PCT (default 50.0)
+- closed_trades >= MIN_CLOSED (default 30)
+- roi_pct >= MIN_ROI_PCT (default +10.0)
+- win_rate_pct >= MIN_WR_PCT (default 55.0)
+- realized_pnl > 0
+- biggest winning trade <= MAX_BIG_WIN_SHARE of realized_pnl
+- equity-curve max drawdown <= MAX_DRAWDOWN_PCT
 - no swap in last COOLDOWN_MINUTES (default 60)
 - no more than MAX_SWAPS_PER_DAY (default 4)
 - skip if the proposed profile == current active profile
@@ -39,9 +42,11 @@ ACTIVE_PATH = DATA_DIR / "live_active_profile.json"
 HISTORY_PATH = DATA_DIR / "live_active_profile_history.jsonl"
 
 CYCLE_SECONDS = int(os.environ.get("PROMOTER_CYCLE_SECONDS", "300"))
-MIN_CLOSED = int(os.environ.get("PROMOTER_MIN_CLOSED", "10"))
-MIN_ROI_PCT = float(os.environ.get("PROMOTER_MIN_ROI_PCT", "5.0"))
-MIN_WR_PCT = float(os.environ.get("PROMOTER_MIN_WR_PCT", "50.0"))
+MIN_CLOSED = int(os.environ.get("PROMOTER_MIN_CLOSED", "30"))
+MIN_ROI_PCT = float(os.environ.get("PROMOTER_MIN_ROI_PCT", "10.0"))
+MIN_WR_PCT = float(os.environ.get("PROMOTER_MIN_WR_PCT", "55.0"))
+MAX_BIG_WIN_SHARE = float(os.environ.get("PROMOTER_MAX_BIG_WIN_SHARE", "0.60"))
+MAX_DRAWDOWN_PCT = float(os.environ.get("PROMOTER_MAX_DRAWDOWN_PCT", "25.0"))
 COOLDOWN_MINUTES = int(os.environ.get("PROMOTER_COOLDOWN_MINUTES", "60"))
 MAX_SWAPS_PER_DAY = int(os.environ.get("PROMOTER_MAX_SWAPS_PER_DAY", "4"))
 DEFAULT_PROFILE = os.environ.get("PROMOTER_DEFAULT_PROFILE", "baseline")
@@ -87,6 +92,53 @@ def _seconds_since_last_swap() -> float:
     return time.time() - ACTIVE_PATH.stat().st_mtime
 
 
+def _journal_quality(run_name: str) -> tuple[float, float]:
+    journal = DATA_DIR / "dry_runs" / run_name / "journal.jsonl"
+    if not journal.is_file():
+        return 0.0, 0.0
+    realized = 0.0
+    big_win = 0.0
+    for line in journal.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if rec.get("event") != "position_closed" and not rec.get("closed_at"):
+            continue
+        try:
+            pnl = float(rec.get("realized_pnl_usd") or rec.get("realized_pnl") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        realized += pnl
+        if pnl > big_win:
+            big_win = pnl
+    return realized, big_win
+
+
+def _max_drawdown_pct(run_name: str) -> float:
+    curve = DATA_DIR / "dry_runs" / run_name / "equity_curve.jsonl"
+    if not curve.is_file():
+        return 0.0
+    peak = 0.0
+    max_dd = 0.0
+    for line in curve.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+            equity = float(rec.get("equity") or 0.0)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+        if equity <= 0:
+            continue
+        peak = max(peak, equity)
+        if peak > 0:
+            max_dd = max(max_dd, (peak - equity) / peak * 100.0)
+    return max_dd
+
+
 def _evaluate() -> dict | None:
     """Find the best dry profile that passes promotion gates. None if none qualify."""
     runs = _list_dry_runs()
@@ -101,6 +153,15 @@ def _evaluate() -> dict | None:
             continue
         if stats.win_rate_pct < MIN_WR_PCT:
             continue
+        realized_pnl, big_win = _journal_quality(run_name)
+        if realized_pnl <= 0:
+            continue
+        big_win_share = big_win / realized_pnl if realized_pnl > 0 else 1.0
+        if big_win_share > MAX_BIG_WIN_SHARE:
+            continue
+        max_drawdown_pct = _max_drawdown_pct(run_name)
+        if max_drawdown_pct > MAX_DRAWDOWN_PCT:
+            continue
         # Also require profile TOML exists (live bot loads it by name)
         if not (REPO_ROOT / "configs" / "profiles" / f"{run_name}.toml").is_file():
             continue
@@ -111,6 +172,9 @@ def _evaluate() -> dict | None:
                 "closed_trades": stats.closed_trades,
                 "win_rate_pct": round(stats.win_rate_pct, 1),
                 "equity": round(stats.equity, 2),
+                "realized_pnl": round(realized_pnl, 2),
+                "big_win_share": round(big_win_share, 3),
+                "max_drawdown_pct": round(max_drawdown_pct, 2),
             })
         )
     if not qualified:
@@ -184,7 +248,8 @@ def main() -> None:
         f"[promoter] starting — cycle={CYCLE_SECONDS}s, "
         f"min_closed={MIN_CLOSED}, min_roi={MIN_ROI_PCT}%, "
         f"min_wr={MIN_WR_PCT}%, cooldown={COOLDOWN_MINUTES}min, "
-        f"max_swaps/day={MAX_SWAPS_PER_DAY}",
+        f"max_big_win_share={MAX_BIG_WIN_SHARE:.2f}, "
+        f"max_drawdown={MAX_DRAWDOWN_PCT:.1f}%, max_swaps/day={MAX_SWAPS_PER_DAY}",
         flush=True,
     )
     while True:

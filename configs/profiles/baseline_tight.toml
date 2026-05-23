@@ -97,6 +97,7 @@ resolved_market_threshold = 0.97
 # don't ride into resolved_market_sweep_loss territory.
 near_expiry_exit_losers = true
 near_expiry_loser_minutes = 45
+entry_cooldown_after_loss_minutes = 180
 
 [cohort_exit]
 enabled = true
@@ -107,6 +108,7 @@ min_wallets = 2
 [deep_fallback]
 enabled = true
 min_copied_usdc = 100.0
+min_consensus = 2
 
 [reverse_lookup]
 enabled = true

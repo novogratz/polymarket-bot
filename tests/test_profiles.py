@@ -53,6 +53,12 @@ class LoadProfileTests(unittest.TestCase):
             [filters]
             min_consensus = 2
             min_copied_usdc = 75.0
+
+            [exits]
+            entry_cooldown_after_loss_minutes = 180
+
+            [deep_fallback]
+            min_consensus = 2
             """
         )
         profile = load_profile(path)
@@ -62,6 +68,8 @@ class LoadProfileTests(unittest.TestCase):
         self.assertEqual(profile.values["POLYMARKET_MIN_OPEN_POSITIONS"], "7")
         self.assertEqual(profile.values["POLYMARKET_SMART_MIN_CONSENSUS"], "2")
         self.assertEqual(profile.values["POLYMARKET_SMART_MIN_COPIED_USDC"], "75.0")
+        self.assertEqual(profile.values["POLYMARKET_SMART_ENTRY_COOLDOWN_AFTER_LOSS_MINUTES"], "180")
+        self.assertEqual(profile.values["POLYMARKET_SMART_DEEP_FALLBACK_MIN_CONSENSUS"], "2")
 
     def test_rejects_unknown_section(self):
         path = self._write_profile(

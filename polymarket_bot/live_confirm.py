@@ -12,8 +12,11 @@ the prompt (no network, no SDK).
 from __future__ import annotations
 
 import os
+import json
 import sys
 from typing import TextIO
+from datetime import datetime, timezone
+from pathlib import Path
 
 from polymarket_bot.config import Settings
 
@@ -106,6 +109,67 @@ def _env_or(name: str, fallback):
     return value
 
 
+def _parse_dt(raw) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _live_risk_lines(settings: Settings, profile_label: str) -> list[str]:
+    lines: list[str] = []
+    active_path = Path("data/live_active_profile.json")
+    if active_path.is_file():
+        try:
+            active = json.loads(active_path.read_text(encoding="utf-8"))
+            active_profile = str(active.get("profile") or "")
+        except Exception:
+            active_profile = ""
+        if active_profile and active_profile != profile_label.replace(".toml", ""):
+            lines.append(f"    hot_swap_profile     = {active_profile}")
+    state_path = Path(_env_or("POLYMARKET_STATE_PATH", str(settings.state_path)))
+    if not state_path.is_file():
+        lines.append("    open_exposure        = no ledger yet")
+        return lines
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception:
+        lines.append("    open_exposure        = ledger unreadable")
+        return lines
+    positions = state.get("positions") or []
+    open_positions = [p for p in positions if p.get("status") == "open"]
+    exposure = 0.0
+    by_category: dict[str, float] = {}
+    near_expiry_losers = 0
+    now = datetime.now(timezone.utc)
+    for position in open_positions:
+        try:
+            stake = float(position.get("stake") or position.get("cost_basis") or 0.0)
+        except (TypeError, ValueError):
+            stake = 0.0
+        exposure += stake
+        category = str(position.get("category") or "OTHER")
+        by_category[category] = by_category.get(category, 0.0) + stake
+        try:
+            entry = float(position.get("entry_price") or 0.0)
+            current = float(position.get("current_price") or entry)
+        except (TypeError, ValueError):
+            entry = current = 0.0
+        end_at = _parse_dt(position.get("end_date") or position.get("endDate"))
+        if end_at is not None and (end_at - now).total_seconds() <= 45 * 60 and current < entry:
+            near_expiry_losers += 1
+    leader = max(by_category.items(), key=lambda item: item[1])[0] if by_category else "none"
+    lines.append(f"    open_exposure        = ${exposure:.2f} across {len(open_positions)} position(s)")
+    lines.append(f"    largest_category     = {leader}")
+    lines.append(f"    near_expiry_losers   = {near_expiry_losers}")
+    return lines
+
+
 def build_live_recap(settings: Settings, *, profile_label: str) -> str:
     """Return the human-readable banner shown before the yes/no prompt."""
     bar = "═" * 62
@@ -144,6 +208,9 @@ def build_live_recap(settings: Settings, *, profile_label: str) -> str:
         f"    min_consensus         = {min_consensus}",
         f"    min_copied_usdc       = ${min_copied:g}",
         f"    max_chase_premium     = {max_chase}",
+        "",
+        "  Live risk snapshot:",
+        *_live_risk_lines(settings, profile_label),
         "",
         f"  stop_loss             = -{int(stop_loss_pct * 100)}% "
         f"after {stop_loss_min_age}min",

@@ -303,6 +303,58 @@ def btc_edge_once(settings: Settings) -> dict[str, object]:
     }
 
 
+_LOSS_COOLDOWN_EXIT_REASONS = {
+    "near_expiry_loser_flush",
+    "resolved_market_sweep_loss",
+    "stop_loss",
+}
+
+
+def _latest_position_exit(position: dict) -> dict:
+    exits = position.get("exits")
+    if isinstance(exits, list) and exits:
+        latest = exits[-1]
+        if isinstance(latest, dict):
+            return latest
+    return position
+
+
+def _token_in_loss_cooldown(
+    portfolio: Portfolio,
+    token_id: str,
+    settings: Settings,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    minutes = int(settings.smart_entry_cooldown_after_loss_minutes or 0)
+    if minutes <= 0 or not token_id:
+        return False
+    now = now or utc_now()
+    cutoff = now - timedelta(minutes=minutes)
+    for position in portfolio.positions:
+        if str(position.get("token_id") or "") != str(token_id):
+            continue
+        exit_info = _latest_position_exit(position)
+        reason = str(exit_info.get("reason") or position.get("exit_reason") or "")
+        if reason not in _LOSS_COOLDOWN_EXIT_REASONS:
+            continue
+        pnl_raw = exit_info.get("realized_pnl")
+        if pnl_raw is None:
+            pnl_raw = position.get("realized_pnl")
+        try:
+            if pnl_raw is not None and float(pnl_raw) > 0:
+                continue
+        except (TypeError, ValueError):
+            pass
+        closed_raw = exit_info.get("closed_at") or position.get("closed_at")
+        closed_at = parse_dt(closed_raw) if closed_raw else None
+        if closed_at is None:
+            continue
+        if closed_at >= cutoff:
+            return True
+    return False
+
+
 def smart_money_once(settings: Settings) -> dict[str, object]:
     print("▶  tick start", flush=True)
     auto_tune_info: dict[str, object] = {
@@ -482,7 +534,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             )
             deep_settings = replace(
                 settings,
-                smart_min_consensus=1,
+                smart_min_consensus=max(1, settings.smart_deep_fallback_min_consensus),
                 smart_min_buy_price=max(0.02, settings.smart_min_buy_price - 0.02),
                 smart_max_buy_price=min(0.98, settings.smart_max_buy_price + 0.03),
                 smart_max_relative_spread=max(0.40, settings.smart_max_relative_spread),
@@ -552,23 +604,15 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     }
                 )
                 continue
-            # Per-token cooldown after near_expiry_loser_flush. The flush
-            # exit is the right move (sell loser before it settles to $0),
-            # but the smart-money signal often stays valid for hours after
-            # the flush — re-entering the same token would just repeat the
-            # bleed. Lock out any token we've flushed in this process.
             _token_id = opportunity.candidate.token_id
-            if _token_id and any(
-                str(p.get("token_id")) == str(_token_id)
-                and p.get("exit_reason") == "near_expiry_loser_flush"
-                for p in portfolio.positions
-            ):
+            if _token_id and _token_in_loss_cooldown(portfolio, str(_token_id), settings):
                 rejected_signals.append(
                     {
                         "market_id": opportunity.candidate.market_id,
                         "question": opportunity.candidate.question,
                         "outcome": opportunity.candidate.outcome,
-                        "reason": "token_flushed_recently",
+                        "reason": "token_loss_cooldown",
+                        "cooldown_minutes": settings.smart_entry_cooldown_after_loss_minutes,
                         "selection_reason": opportunity.to_dict()["selection_reason"],
                     }
                 )
@@ -720,6 +764,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 if portfolio.has_open_token(candidate.token_id):
                     continue
                 if portfolio.has_pending_token(candidate.token_id):
+                    continue
+                if candidate.token_id and _token_in_loss_cooldown(portfolio, str(candidate.token_id), settings):
                     continue
                 if portfolio.has_open_event_position(candidate):
                     continue

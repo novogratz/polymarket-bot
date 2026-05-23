@@ -123,7 +123,7 @@ The previous "all 195 profiles in dry" mode was retired because it crashed macOS
 - `polymarket_bot/strategy.py` — candidate ranking from Gamma payloads.
 - `polymarket_bot/models.py` — shared dataclasses and parsing helpers.
 - `scripts/run_all.sh` — preferred launcher: live + dry race + sidecars + HTTP cache pre-warm + 8min re-warm loop.
-- `scripts/run_live_70.sh` — live-only runner (loads `whale_entry_detection.toml`, $45 bankroll).
+- `scripts/run_live_70.sh` — live-only runner (loads `baseline_tight.toml`, $29 bankroll override).
 - `scripts/cache_warmer.py` — pre-fetches leaderboards + wallet trade histories into `data/cache/http/` so the bot swarm starts warm.
 - `scripts/dry_analyst.py` — autonomous analyst sidecar: 15min reports, 1h spawn/kill via `claude` CLI.
 - `scripts/live_analyst.py` — read-only live analyst sidecar; 30min executive-summary Telegram reports.

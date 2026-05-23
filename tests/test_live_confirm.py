@@ -6,7 +6,10 @@ for _k in [k for k in os.environ if k.startswith("POLYMARKET_") and k != "POLYMA
     del os.environ[_k]
 
 import io
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from polymarket_bot.config import Settings
 from polymarket_bot.live_confirm import (
@@ -131,6 +134,32 @@ class BuildLiveRecapTests(unittest.TestCase):
         settings = Settings()
         text = build_live_recap(settings, profile_label="baseline.toml")
         self.assertIn("not configured", text.lower())
+
+    def test_recap_includes_live_risk_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "state.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "cash": 10.0,
+                        "positions": [
+                            {
+                                "status": "open",
+                                "stake": 3.0,
+                                "category": "SPORTS",
+                                "entry_price": 0.60,
+                                "current_price": 0.55,
+                                "end_date": "2026-05-23T00:30:00+00:00",
+                            }
+                        ],
+                    }
+                )
+            )
+            settings = Settings(state_path=state_path)
+            text = build_live_recap(settings, profile_label="baseline_tight.toml")
+        self.assertIn("Live risk snapshot", text)
+        self.assertIn("open_exposure", text)
+        self.assertIn("$3.00 across 1 position", text)
 
 
 if __name__ == "__main__":

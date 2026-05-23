@@ -159,6 +159,7 @@ class Settings:
     smart_max_relative_spread: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_MAX_RELATIVE_SPREAD", 0.30))
     smart_deep_fallback_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_DEEP_FALLBACK_ENABLED", True))
     smart_deep_fallback_min_copied_usdc: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_DEEP_FALLBACK_MIN_COPIED_USDC", 250.0))
+    smart_deep_fallback_min_consensus: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_DEEP_FALLBACK_MIN_CONSENSUS", 1))
     smart_reverse_lookup_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_REVERSE_LOOKUP_ENABLED", True))
     smart_reverse_lookup_max_tokens: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_REVERSE_LOOKUP_MAX_TOKENS", 30))
     smart_reverse_lookup_min_copied_usdc: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_REVERSE_LOOKUP_MIN_COPIED_USDC", 100.0))
@@ -198,6 +199,7 @@ class Settings:
     # were the biggest single bleed source.
     smart_near_expiry_exit_losers: bool = field(default_factory=lambda: os.getenv("POLYMARKET_SMART_NEAR_EXPIRY_EXIT_LOSERS", "0").lower() in {"1", "true", "yes"})
     smart_near_expiry_loser_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_NEAR_EXPIRY_LOSER_MINUTES", 30))
+    smart_entry_cooldown_after_loss_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_ENTRY_COOLDOWN_AFTER_LOSS_MINUTES", 0))
     smart_pending_order_ttl_seconds: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS", 45))
     live_position_min_value_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_LIVE_POSITION_MIN_VALUE_USD", 1.0))
     sync_live_positions: bool = field(default_factory=lambda: os.getenv("POLYMARKET_SYNC_LIVE_POSITIONS", "1").lower() in {"1", "true", "yes"})

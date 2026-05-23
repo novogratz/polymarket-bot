@@ -21,9 +21,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 # Live bankroll = $29 (actual Polymarket balance 2026-05-22).
-# Dry race overrides per-subshell to $10 (see run_dry_bot). Two-tier split
-# after baseline_tight live disaster: cap dry exposure low while keeping
-# live aligned with real on-chain pUSD balance.
+# Dry race overrides per-subshell to $10 (see run_dry_bot). Keep dry exposure
+# low while live stays aligned with real on-chain pUSD balance.
 export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-29.0}
 export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-29.0}
 
@@ -73,11 +72,11 @@ fi
 echo
 
 # ─── Step 2: LIVE bot (priority, fast tick, cache pre-populated) ────
-echo "[run_all] step 2/4: launching live bot (mid_band_safe)..."
+echo "[run_all] step 2/4: launching live bot (baseline_tight)..."
 
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 export POLYMARKET_AUTO_INTERVAL_SECONDS=10   # live tick = 10s
-export POLYMARKET_PROFILE_LABEL=mid_band_safe
+export POLYMARKET_PROFILE_LABEL=baseline_tight
 
 # Live Telegram alerts ON
 export TELEGRAM_ALERT_TRADES=1
@@ -92,7 +91,7 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
 
 # Live bot itself
-uv run pmbot auto-loop --live --profile mid_band_safe --yes \
+uv run pmbot auto-loop --live --profile baseline_tight --yes \
     2>&1 | sed -u 's/^/[LIVE] /' &
 LIVE_PID=$!
 echo "[run_all] live bot launched (pid=$LIVE_PID)"
@@ -129,40 +128,13 @@ run_dry_bot() {
 }
 
 DRY_PROFILES=(
-    # NEW theses (different from cohort-copy which has been losing). Promoter
-    # picks any of these for live if they cross gates (≥10 closed + ROI > +5%).
-    favorite_lock mid_band_safe high_consensus_only
-    # Baseline family
-    baseline baseline_tight kzerlepgm_baseline
-    claude_baseline_tight claude_baseline_fresh claude_baseline_persist
-    claude_baseline_quick_exit claude_baseline_let_run
-    # Smart-money + insider
-    smart_money_dry smart_money_loose
-    insider_whales insider_millionaires
-    # Race strategies (one per thesis)
-    aggressive_buyer_detection hybrid_smart_money smart_wallet_consensus
-    whale_entry_detection wallet_cluster_correlation auto_mombreak_locktight
-    early_momentum_detection mean_reversion_fade
-    pmlepgm_counter_panic_fade pm_le_pgm_weak_holder_flush_inverse
-    weak_holder_flush_inverse championdumonde_breakout
-    favorite contrarian
-    # Claude race batch
-    claude_anti_favorite claude_mid_dump_fade claude_resolution_sniper
-    claude_strong_breakout claude_frozen_favorite claude_mid_rebound
-    claude_oversold_bounce claude_late_pump claude_extreme_consensus
-    claude_balanced_mid claude_endgame_sweep claude_fade_extreme
-    claude_blue_chip claude_high_vol_quiet claude_high_vol_pop
-    # Momentum family
-    momentum_breakout_aggressive momentum_breakout_defensive
-    momentum_strong_continuation momentum_early_letrun
-    momentum_volume_spike_safe momentum_exhaustion_fade
-    momentum_panic_continuation momentum_high_vol_pop_micro
-    # Other
-    probability_drift liquidity_absorption momentum_exhaustion_reversal
-    micro_scalping multi_signal_consensus
-    kzerlepgm_ultimatestrategy
-    # Control
-    random
+    # Active shipped profiles only. Archived/nonexistent names stay out of
+    # the launcher so skipped-profile noise does not bury the useful dry race.
+    baseline baseline_tight
+    favorite_lock high_consensus_only smart_money_dry
+    aggressive_buyer_detection whale_entry_detection
+    pmlepgm_counter_panic_fade weak_holder_flush_inverse
+    edge news
 )
 
 LAUNCHED=0
@@ -197,7 +169,8 @@ POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
 
 # Live profile auto-promoter: watches the dry leaderboard every 5min, writes
 # data/live_active_profile.json when a profile crosses promotion gates
-# (≥10 closed, ROI≥+5%, WR≥50%, 1h cooldown, ≤4 swaps/day). The live bot
+# (≥30 closed, ROI≥+10%, WR≥55%, positive realized PnL, no one-trade
+# wonder, drawdown cap, 1h cooldown, ≤4 swaps/day). The live bot
 # reads that file each tick and hot-swaps profiles in-process — no restart
 # needed. If no profile qualifies, the promoter does nothing (correct
 # behavior — promoting losers loses real money).

@@ -96,6 +96,7 @@ KILL_WR_THRESHOLD = float(os.environ.get("ANALYST_KILL_WR", "40.0"))
 # analyst played whack-a-mole with baseline.toml every cycle.
 KILL_PROTECTED_PROFILES = {
     "baseline",
+    "baseline_tight",
     "edge",
     "news",
     "kzerlepgm_baseline",
@@ -116,6 +117,7 @@ KILL_EQUITY_FLOOR_PCT = float(os.environ.get("ANALYST_KILL_EQUITY_FLOOR_PCT", "5
 LIVE_READY_MIN_TRADES = int(os.environ.get("ANALYST_LIVE_READY_MIN_TRADES", "30"))
 LIVE_READY_MIN_ROI = float(os.environ.get("ANALYST_LIVE_READY_ROI", "10.0"))   # +10%
 LIVE_READY_MIN_WR = float(os.environ.get("ANALYST_LIVE_READY_WR", "55.0"))      # 55%
+LIVE_READY_MAX_BIG_WIN_SHARE = float(os.environ.get("ANALYST_LIVE_READY_MAX_BIG_WIN_SHARE", "0.60"))
 
 
 @dataclass
@@ -124,6 +126,7 @@ class StratMetrics:
     cash: float
     equity: float
     pnl: float
+    realized_pnl: float
     roi_pct: float
     open_positions: int
     closed: int
@@ -289,12 +292,14 @@ def collect_metrics() -> list[StratMetrics]:
                 pass
 
         decided = wins + losses
+        realized_pnl = sum(win_pnls) + sum(loss_pnls)
         out.append(
             StratMetrics(
                 name=name,
                 cash=cash,
                 equity=equity,
                 pnl=pnl,
+                realized_pnl=realized_pnl,
                 roi_pct=roi_pct,
                 open_positions=len(open_positions),
                 closed=closed,
@@ -976,6 +981,8 @@ def assess_live_readiness(metrics: list[StratMetrics]) -> tuple[list[StratMetric
       - closed >= LIVE_READY_MIN_TRADES (default 30, enough sample to dismiss variance)
       - roi_pct >= LIVE_READY_MIN_ROI (default +10%)
       - win_rate >= LIVE_READY_MIN_WR (default 55%)
+      - realized PnL > 0, so open mark-to-market alone cannot promote
+      - biggest win is not more than LIVE_READY_MAX_BIG_WIN_SHARE of realized PnL
 
     Also returns "close candidates" — those with ≥15 closed trades and
     ROI/wr in the right direction but not yet at threshold. These are
@@ -986,13 +993,17 @@ def assess_live_readiness(metrics: list[StratMetrics]) -> tuple[list[StratMetric
     ready: list[StratMetrics] = []
     close: list[StratMetrics] = []
     for m in metrics:
+        big_win_share = (m.big_win / m.realized_pnl) if m.realized_pnl > 0 else 1.0
         if (m.closed >= LIVE_READY_MIN_TRADES
                 and m.roi_pct >= LIVE_READY_MIN_ROI
-                and m.win_rate >= LIVE_READY_MIN_WR):
+                and m.win_rate >= LIVE_READY_MIN_WR
+                and m.realized_pnl > 0
+                and big_win_share <= LIVE_READY_MAX_BIG_WIN_SHARE):
             ready.append(m)
         elif (m.closed >= LIVE_READY_MIN_TRADES // 2
                 and m.roi_pct >= LIVE_READY_MIN_ROI / 2
-                and m.win_rate >= LIVE_READY_MIN_WR - 5):
+                and m.win_rate >= LIVE_READY_MIN_WR - 5
+                and m.realized_pnl > 0):
             close.append(m)
     ready.sort(key=lambda m: m.roi_pct, reverse=True)
     close.sort(key=lambda m: m.roi_pct, reverse=True)

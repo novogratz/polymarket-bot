@@ -8,7 +8,7 @@ os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 for _k in [k for k in os.environ if k.startswith("POLYMARKET_") and k != "POLYMARKET_SKIP_DOTENV"]:
     del os.environ[_k]
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import unittest
 
 from polymarket_bot.auto_tuner import compute_overrides
@@ -30,6 +30,7 @@ from polymarket_bot.main import (
     _max_trade_for_signal,
     _sell_plan,
     _smart_discovery_keywords,
+    _token_in_loss_cooldown,
     load_btc_candidates,
 )
 
@@ -1902,6 +1903,67 @@ class SettingsDryRunTests(unittest.TestCase):
         self.assertEqual(str(s.strategy_overrides_path), "/tmp/custom_over.json")
         self.assertEqual(str(s.tick_state_path), "/tmp/custom_tick.json")
         self.assertEqual(str(s.tick_history_path), "/tmp/custom_hist.jsonl")
+
+
+class LossCooldownTests(unittest.TestCase):
+    def test_token_in_loss_cooldown_reads_latest_exit_record(self):
+        now = datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc)
+        portfolio = Portfolio(
+            cash=10.0,
+            positions=[
+                {
+                    "status": "closed",
+                    "token_id": "tok-loss",
+                    "exits": [
+                        {
+                            "reason": "near_expiry_loser_flush",
+                            "realized_pnl": -0.05,
+                            "closed_at": (now - timedelta(minutes=30)).isoformat(),
+                        }
+                    ],
+                }
+            ],
+        )
+        settings = Settings(smart_entry_cooldown_after_loss_minutes=180)
+        self.assertTrue(_token_in_loss_cooldown(portfolio, "tok-loss", settings, now=now))
+
+    def test_token_loss_cooldown_expires_and_ignores_winners(self):
+        now = datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc)
+        settings = Settings(smart_entry_cooldown_after_loss_minutes=60)
+        old_loss = Portfolio(
+            cash=10.0,
+            positions=[
+                {
+                    "status": "closed",
+                    "token_id": "tok-old",
+                    "exits": [
+                        {
+                            "reason": "resolved_market_sweep_loss",
+                            "realized_pnl": -1.0,
+                            "closed_at": (now - timedelta(minutes=90)).isoformat(),
+                        }
+                    ],
+                }
+            ],
+        )
+        winner = Portfolio(
+            cash=10.0,
+            positions=[
+                {
+                    "status": "closed",
+                    "token_id": "tok-win",
+                    "exits": [
+                        {
+                            "reason": "resolved_market_sweep_loss",
+                            "realized_pnl": 1.0,
+                            "closed_at": (now - timedelta(minutes=10)).isoformat(),
+                        }
+                    ],
+                }
+            ],
+        )
+        self.assertFalse(_token_in_loss_cooldown(old_loss, "tok-old", settings, now=now))
+        self.assertFalse(_token_in_loss_cooldown(winner, "tok-win", settings, now=now))
 
 
 class TickStateLoopTests(unittest.TestCase):
