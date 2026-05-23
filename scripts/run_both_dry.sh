@@ -66,7 +66,7 @@ uv run python scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache]       /' || tru
 
 echo "[race] launching ${#profiles[@]} curated dry-run bots"
 echo "[race] dry only: no --live process will be started"
-echo "[race] bankroll: $20 per run | interval: ${POLYMARKET_DRY_RACE_INTERVAL_SECONDS:-300}s"
+echo "[race] bankroll: \$20 per run | interval: ${POLYMARKET_DRY_RACE_INTERVAL_SECONDS:-300}s"
 echo "[race] Ctrl+C stops the race"
 
 launched=0
