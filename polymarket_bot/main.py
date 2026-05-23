@@ -2520,7 +2520,11 @@ def _maybe_reload_active_profile(
     the previous ones, then rebuilds Settings from env. Tick logic picks up
     the new settings on the next iteration.
     """
-    if settings.dry_run:
+    # Live-only: skipped in dry_run AND when live trading isn't enabled. This
+    # also guards tests (which build Settings(live_trading_enabled=False) and
+    # would otherwise loop forever when this helper rebuilds Settings from env
+    # and loses test-injected auto_max_ticks).
+    if settings.dry_run or not settings.live_trading_enabled:
         return None, last_mtime
     active_path = Path("data/live_active_profile.json")
     if not active_path.is_file():

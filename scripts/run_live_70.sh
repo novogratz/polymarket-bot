@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# Lance le bot en LIVE avec le profil baseline.
-# Variante analyst-spawned de claude_baseline : MONTH top 30,
-# min_consensus=3, min_copied_usdc=\$150, microladder TP qui lock les
-# gains tôt. Dry race: +64% ROI sur 8 closed (50% wr) — meilleur
-# expected value du board (sample raisonnable + ratio PnL/trade élevé).
-# Sizing 10%/trade, cap 30% equity. assumed_live_balance_usd=\$29.90.
-# Toute la config vit dans configs/profiles/baseline.toml.
+# Lance le bot en LIVE avec le profil mid_band_safe (user-selected 2026-05-23).
+# Thèse: mid-band only (0.30-0.70), évite à la fois les lottery tickets
+# (sub-0.20) qui ont crushed le cohort hier et les locked winners (>0.85)
+# qui ont tail risk. Tight TP ladder.
+# Toute la config vit dans configs/profiles/mid_band_safe.toml.
 #
 # Ce script passe --yes : la confirmation interactive est skipée, donc aucun
 # besoin de TTY. Pour une exécution sans --yes (auto-loop --live tout court),
@@ -20,14 +18,13 @@ cd "$REPO_ROOT"
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
 # Live bankroll = $29 (actual Polymarket balance 2026-05-22).
-# baseline.toml also has starting_cash=29 / assumed_live_balance_usd=29 so
-# these exports are redundant in normal use — left explicit in case the
-# profile is swapped to one with a different default.
+# mid_band_safe.toml has starting_cash=10 / assumed_live_balance_usd=10 (it's
+# also used as a dry profile). These env exports override the TOML so the
+# live bot uses the actual $29 bankroll, while dry race keeps $10.
 export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-29.0}
 export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-29.0}
 
-# Live tick interval — fast (10s) even though kzerlepgm_baseline TOML
-# now uses 60s for the dry-race rate-limit fix. Env var override wins.
+# Live tick interval — fast (10s).
 export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
 
 # Telegram: tout pousser en live (override .env qui a TELEGRAM_ALERT_TRADES=0
@@ -42,7 +39,7 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
 # Profile label exported BEFORE the live_analyst spawns, so the
 # sidecar inherits it (else it logs "(unknown)" in reports).
-export POLYMARKET_PROFILE_LABEL=baseline
+export POLYMARKET_PROFILE_LABEL=mid_band_safe
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
 # Every 30 min: reads paper_state + trade_journal, compares vs dry race
@@ -55,4 +52,4 @@ cleanup() {
 trap cleanup INT TERM EXIT
 python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
 
-uv run pmbot auto-loop --live --profile baseline --yes
+uv run pmbot auto-loop --live --profile mid_band_safe --yes
