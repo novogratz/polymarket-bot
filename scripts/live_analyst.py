@@ -353,7 +353,7 @@ def cycle_once() -> None:
 
     # Compute starting balance from realized + (equity - invested - cash); approximate
     # Better: read assumed_live_balance_usd from profile TOML
-    starting = 29.90  # default; will refine below
+    starting = 20.0  # default; will refine below
     profile_file = REPO_ROOT / "configs" / "profiles" / f"{snap.profile}.toml"
     if profile_file.exists():
         try:

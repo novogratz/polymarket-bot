@@ -17,7 +17,7 @@ high_conviction_balance_fraction = 0.30
 cash_floor_pct = 0.05
 min_open_positions = 5
 starter_trade_usd = 7.39
-assumed_live_balance_usd = 29.55
+assumed_live_balance_usd = 20.0
 
 [trader_cohort]
 leaderboard_window = "MONTH"

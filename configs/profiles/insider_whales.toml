@@ -26,7 +26,7 @@ high_conviction_balance_fraction = 0.40
 cash_floor_pct = 0.02
 min_open_positions = 0                    # Don't force-fill — wait for real signal
 starter_trade_usd = 7.39
-assumed_live_balance_usd = 29.55
+assumed_live_balance_usd = 20.0
 
 [trader_cohort]
 leaderboard_window = "ALL"                # Lifetime PnL ranking

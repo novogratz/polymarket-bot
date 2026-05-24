@@ -14,12 +14,12 @@ cd "$REPO_ROOT"
 # Sync live positions (toggle hors schéma).
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
-# Live bankroll = $29 (actual Polymarket balance 2026-05-22).
+# Live bankroll baseline = $20.
 # smart_copy_live.toml has starting_cash=20 / assumed_live_balance_usd=20.
-# These env exports override the TOML so the live bot uses the actual $29
-# bankroll, while dry race keeps its own per-profile bankroll.
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-29.0}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-29.0}
+# These env exports keep live and dry-run sizing anchored to the same
+# $20 bankroll unless the operator explicitly overrides them.
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-20.0}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-20.0}
 
 # Live tick interval — fast (10s).
 export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}

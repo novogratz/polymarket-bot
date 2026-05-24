@@ -471,6 +471,44 @@ def select_whale_entry(
     return _dedupe_top_n(qualified, n)
 
 
+def select_elite_momentum_consensus(
+    eligible: list[tuple[Candidate, float]], n: int
+) -> list[Candidate]:
+    """Smart high-frequency strategy: momentum + volume + tight spreads in liquid markets.
+    
+    Thesis: Best edge is continuation in markets that are:
+    - Moving with purpose (momentum >= 2%)
+    - Backed by real volume (>= $1000)
+    - Not at extremes (price 0.15-0.85)
+    - Cheap to trade (spread <= 0.06)
+    - Near-term but not expiring (2-48h to close)
+    
+    Scores by momentum * volume * spread_efficiency to rank conviction.
+    Designed to fire regularly while maintaining quality filters.
+    """
+    qualified: list[tuple[Candidate, float]] = []
+    for c, mom in eligible:
+        bid, ask = c.best_bid or 0.0, c.best_ask or 1.0
+        spread = ask - bid
+        hours = c.hours_to_close or 99.0
+        
+        if mom < 0.02:
+            continue
+        if (c.volume or 0) < 1000.0:
+            continue
+        if not (0.15 <= ask <= 0.85):
+            continue
+        if spread > 0.06 or spread < 0:
+            continue
+        if not (2.0 <= hours <= 48.0):
+            continue
+        
+        score = mom * (c.volume or 1.0) * max(1.0 - spread, 0.5)
+        qualified.append((c, score))
+    
+    return _dedupe_top_n(qualified, n)
+
+
 def select_wallet_cluster(
     eligible: list[tuple[Candidate, float]], n: int
 ) -> list[Candidate]:
@@ -1530,6 +1568,9 @@ smart_wallet_consensus_once, smart_wallet_consensus_loop = _race_strategy(
 )
 whale_entry_once, whale_entry_loop = _race_strategy(
     "whale_entry_detection", select_whale_entry
+)
+elite_momentum_consensus_once, elite_momentum_consensus_loop = _race_strategy(
+    "elite_momentum_consensus", select_elite_momentum_consensus
 )
 wallet_cluster_once, wallet_cluster_loop = _race_strategy(
     "wallet_cluster_correlation", select_wallet_cluster

@@ -3284,6 +3284,10 @@ def cli_auto_loop(
         from . import race_strategies as race_module
 
         race_module.whale_entry_loop(settings)
+    elif mode == "elite_momentum_consensus":
+        from . import race_strategies as race_module
+
+        race_module.elite_momentum_consensus_loop(settings)
     elif mode == "wallet_cluster_correlation":
         from . import race_strategies as race_module
 
