@@ -42,17 +42,19 @@ run_bot() {
 }
 
 # Auto-discover all profiles in configs/profiles/ (except special ones).
+# macOS bash 3.2: no mapfile, use a loop.
 SKIP_PROFILES="copy-wallet live-90"
-mapfile -t profiles < <(
-    for f in configs/profiles/*.toml; do
-        name=$(basename "$f" .toml)
-        skip=0
-        for sp in $SKIP_PROFILES; do
-            if [ "$name" = "$sp" ]; then skip=1; break; fi
-        done
-        if [ "$skip" = "0" ]; then echo "$name"; fi
+profiles=()
+for f in configs/profiles/*.toml; do
+    name=$(basename "$f" .toml)
+    skip=0
+    for sp in $SKIP_PROFILES; do
+        if [ "$name" = "$sp" ]; then skip=1; break; fi
     done
-)
+    if [ "$skip" = "0" ]; then
+        profiles+=("$name")
+    fi
+done
 
 echo "[race] launching ${#profiles[@]} dry-run bots (auto-discovered)"
 echo "[race] dry only: no --live process will be started"

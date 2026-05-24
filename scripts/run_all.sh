@@ -129,18 +129,19 @@ run_dry_bot() {
 }
 
 # Auto-discover all profiles in configs/profiles/ (except special ones).
-# Restored from _archived/ for a fresh leaderboard start.
+# macOS bash 3.2: no mapfile, use a loop.
 SKIP_PROFILES="copy-wallet live-90"
-mapfile -t DRY_PROFILES < <(
-    for f in configs/profiles/*.toml; do
-        name=$(basename "$f" .toml)
-        skip=0
-        for sp in $SKIP_PROFILES; do
-            if [ "$name" = "$sp" ]; then skip=1; break; fi
-        done
-        if [ "$skip" = "0" ]; then echo "$name"; fi
+DRY_PROFILES=()
+for f in configs/profiles/*.toml; do
+    name=$(basename "$f" .toml)
+    skip=0
+    for sp in $SKIP_PROFILES; do
+        if [ "$name" = "$sp" ]; then skip=1; break; fi
     done
-)
+    if [ "$skip" = "0" ]; then
+        DRY_PROFILES+=("$name")
+    fi
+done
 
 LAUNCHED=0
 MISSING_COUNT=0
