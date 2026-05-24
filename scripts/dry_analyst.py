@@ -672,7 +672,11 @@ def build_main_message(narrative: str, top: list[StratMetrics],
         parts.append("")
 
     if top:
-        parts.append("*🏆 Top 5 by PnL*")
+        all_negative = all(m.pnl < 0 for m in top)
+        if all_negative:
+            parts.append("*📉 Top 5* (all rated strategies are losing — least-worst first)")
+        else:
+            parts.append("*🏆 Top 5 by PnL*")
         for i, m in enumerate(top, 1):
             parts.extend(_fmt_row(i, m))
         parts.append("")
@@ -696,7 +700,7 @@ def build_main_message(narrative: str, top: list[StratMetrics],
             parts.append(f"  • `{swap}`")
         parts.append("")
     if killed:
-        parts.append("*💀 Killed (underperformers — ROI ≤ -10% & wr ≤ 40%)*")
+        parts.append("*💀 Killed (underperformers)*")
         for name in killed:
             parts.append(f"  • `{name}`")
         parts.append("")

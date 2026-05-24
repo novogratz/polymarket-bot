@@ -8,8 +8,8 @@
 #   2. Launch live bot (10s tick, hits warm cache immediately)
 #   3. Launch dry race (auto-discovered profiles, 10min tick)
 #   4. Launch sidecars: analyst + live-analyst + leaderboard
-#   5. Background cache refresher loops every 8min to keep cache warm
-#      (TTL is 10min, so refresh at 8min ensures no gap)
+#   5. Background cache refresher loops every 3min to keep cache warm
+#      (TTL is 10min, so 3min window catches wallets that missed previous passes)
 #   6. Ctrl+C kill tout proprement (process group)
 
 # NOTE: no `set -u` — bash strict mode crashed on harmless unset vars
