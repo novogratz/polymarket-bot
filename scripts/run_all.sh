@@ -21,8 +21,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 # Live bankroll = $29 (actual Polymarket balance 2026-05-22).
-# Dry race overrides per-subshell to $10 (see run_dry_bot). Keep dry exposure
-# low while live stays aligned with real on-chain pUSD balance.
+# Dry race overrides per-subshell to $20 (see run_dry_bot). Keep dry
+# comparisons aligned across all strategies while live stays aligned with
+# real on-chain pUSD balance.
 export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-29.0}
 export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-29.0}
 
@@ -72,7 +73,7 @@ fi
 echo
 
 # ─── Step 2: LIVE bot (priority, fast tick, cache pre-populated) ────
-echo "[run_all] step 2/4: launching live bot (baseline_tight)..."
+echo "[run_all] step 2/4: launching live bot (baseline_tight capital guard)..."
 
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 export POLYMARKET_AUTO_INTERVAL_SECONDS=10   # live tick = 10s
@@ -108,11 +109,11 @@ run_dry_bot() {
     local run="$2"
     local prefix="$3"
     # Per-subshell env: dry bots silent on Telegram BUY/SELL (live keeps alerts).
-    # Force dry bankroll = $10 here (live runs at $29 from parent shell export).
+    # Force dry bankroll = $20 here (live runs at $29 from parent shell export).
     POLYMARKET_QUIET=1 \
         POLYMARKET_SUPPRESS_BUY_LOGS=1 \
-        POLYMARKET_PAPER_BALANCE_USD=10.0 \
-        POLYMARKET_ASSUME_LIVE_BALANCE_USD=10.0 \
+        POLYMARKET_PAPER_BALANCE_USD=20.0 \
+        POLYMARKET_ASSUME_LIVE_BALANCE_USD=20.0 \
         POLYMARKET_AUTO_INTERVAL_SECONDS=600 \
         TELEGRAM_ALERT_TRADES=0 \
         TELEGRAM_ALERT_TRADES_BUY=0 \

@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Lance le bot en LIVE avec le profil baseline_tight (main live strategy).
-# Thèse: baseline smart-money, avec cap position strict et loser flush
-# near-expiry pour éviter les sweeps de positions perdantes à la résolution.
+# Lance le bot en LIVE avec le profil capital-guard courant.
 # Toute la config vit dans configs/profiles/baseline_tight.toml.
 #
 # Ce script passe --yes : la confirmation interactive est skipée, donc aucun

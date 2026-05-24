@@ -867,7 +867,8 @@ def execute_live_sell(
     size = round(min(shares, available_shares), 6)
     if size <= 0:
         raise ValueError("no shares available to sell")
-    if size < settings.min_order_shares:
+    min_order_tolerance = max(0.001, settings.min_order_shares * 0.001)
+    if size < settings.min_order_shares - min_order_tolerance:
         raise ValueError(
             f"sell size {size} shares is below Polymarket minimum of {settings.min_order_shares} shares"
         )

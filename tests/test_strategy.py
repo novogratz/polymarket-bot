@@ -9,6 +9,7 @@ for _k in [k for k in os.environ if k.startswith("POLYMARKET_") and k != "POLYMA
     del os.environ[_k]
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 import unittest
 
 from polymarket_bot.auto_tuner import compute_overrides
@@ -33,9 +34,27 @@ from polymarket_bot.main import (
     _token_in_loss_cooldown,
     load_btc_candidates,
 )
+from polymarket_bot.profiles import load_profile
 
 
 class StrategyTests(unittest.TestCase):
+    def test_baseline_tight_profile_is_capital_guarded(self):
+        profile = load_profile(
+            Path(__file__).resolve().parent.parent
+            / "configs"
+            / "profiles"
+            / "baseline_tight.toml"
+        )
+
+        self.assertEqual(profile.starting_cash, 20.0)
+        self.assertEqual(profile.values["POLYMARKET_MIN_OPEN_POSITIONS"], "0")
+        self.assertEqual(profile.values["POLYMARKET_SMART_MIN_CONSENSUS"], "3")
+        self.assertEqual(profile.values["POLYMARKET_SMART_FALLBACK_CONSENSUS"], "3")
+        self.assertEqual(profile.values["POLYMARKET_SMART_MIN_COPIED_USDC"], "250.0")
+        self.assertEqual(profile.values["POLYMARKET_SMART_MAX_CHASE_PREMIUM"], "0.0")
+        self.assertEqual(profile.values["POLYMARKET_SMART_MAX_ORDERS_PER_TICK"], "1")
+        self.assertEqual(profile.values["POLYMARKET_SMART_DEEP_FALLBACK_ENABLED"], "0")
+
     def test_rank_markets_filters_and_scores_soon_markets(self):
         end_date = (utc_now() + timedelta(hours=12)).isoformat().replace("+00:00", "Z")
         markets = [
@@ -619,6 +638,58 @@ class StrategyTests(unittest.TestCase):
 
         self.assertEqual(result.order["price"], 0.99)
         self.assertEqual(position["exits"][0]["exit_price"], 0.99)
+
+    def test_live_sell_allows_tiny_share_rounding_below_minimum(self):
+        class FakeClient:
+            def live_share_balance(self, token_id):
+                return 4.9992
+
+            def place_live_order(self, *, candidate, price, size, side="BUY"):
+                return {"price": price, "size": size, "side": side}, {"success": True, "orderID": "sell-1"}
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.5,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.4,
+            best_ask=0.41,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        position = {
+            "status": "open",
+            "live": True,
+            "market_id": "1",
+            "outcome": "Yes",
+            "token_id": "token",
+            "entry_price": 0.4,
+            "stake": 2.0,
+            "shares": 4.9992,
+            "initial_shares": 4.9992,
+        }
+        portfolio = Portfolio(cash=0.0, positions=[position])
+
+        result = execute_live_sell(
+            FakeClient(),
+            Settings(min_order_shares=5.0, smart_min_sell_usd=1.0),
+            candidate,
+            portfolio,
+            position,
+            shares=4.9992,
+            reason="near_min_exit",
+        )
+
+        self.assertEqual(result.order["size"], 4.9992)
+        self.assertEqual(position["status"], "closed")
 
     def test_sell_plan_uses_profit_tiers_and_peak_protection(self):
         position = {
