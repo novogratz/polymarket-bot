@@ -16,9 +16,7 @@ DEFAULT_TIMEOUT_SECONDS = 240
 
 
 def _providers() -> list[str]:
-    raw = os.environ.get("ANALYST_LLM_PROVIDERS", "codex,ollama")
-    providers = [p.strip().lower() for p in raw.split(",") if p.strip()]
-    return providers or ["codex", "ollama"]
+    return ["ollama"]
 
 
 def _run_codex(prompt: str, *, timeout: int, cwd: Path) -> str:
@@ -72,7 +70,10 @@ def _run_codex(prompt: str, *, timeout: int, cwd: Path) -> str:
 def _run_ollama(prompt: str, *, timeout: int) -> str:
     if shutil.which("ollama") is None:
         raise RuntimeError("ollama CLI not found")
-    model = os.environ.get("ANALYST_OLLAMA_MODEL", "llama3.1").strip() or "llama3.1"
+    model = (
+        os.environ.get("ANALYST_OLLAMA_MODEL")
+        or "fredrezones55/qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"
+    ).strip()
     result = subprocess.run(
         ["ollama", "run", model],
         input=prompt,
