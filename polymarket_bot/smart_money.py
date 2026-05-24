@@ -70,6 +70,9 @@ class SmartMoneySignal:
     category_bonus: float = 0.0
     latest_trade_age_minutes: float | None = None
     fresh_bonus: float = 0.0
+    fresh_wallets: int = 0
+    largest_wallet_share: float = 0.0
+    flow_balance_bonus: float = 0.0
 
     @property
     def score(self) -> float:
@@ -83,6 +86,7 @@ class SmartMoneySignal:
             + value
             + self.category_bonus
             + self.fresh_bonus
+            + self.flow_balance_bonus
             - (self.candidate.best_ask or 0.0)
         )
 
@@ -106,6 +110,7 @@ class SmartMoneySignal:
             f"current ask {self.candidate.best_ask} has spread {self.spread:.4f}, "
             f"closes in {_format_hours(self.candidate.hours_to_close)}, "
             f"latest copied buy {_format_minutes(self.latest_trade_age_minutes)} ago{value_text}, "
+            f"fresh wallets {self.fresh_wallets}, largest wallet share {self.largest_wallet_share:.1%}, "
             f"and passed min consensus {self.min_consensus}, price band, spread, and duplicate checks."
         )
         return {
@@ -143,6 +148,9 @@ class SmartMoneySignal:
                     round(self.latest_trade_age_minutes, 2) if self.latest_trade_age_minutes is not None else None
                 ),
                 "fresh_bonus": round(self.fresh_bonus, 4),
+                "fresh_wallets": self.fresh_wallets,
+                "largest_wallet_share": round(self.largest_wallet_share, 4),
+                "flow_balance_score": round(self.flow_balance_bonus, 4),
             },
             "url": self.candidate.url,
         }
@@ -650,10 +658,34 @@ def smart_money_signals(
             rejected["signal_too_stale"] = rejected.get("signal_too_stale", 0) + 1
             continue
 
+        if settings.smart_min_wallet_flow_usdc > 0:
+            flow_by_wallet = _wallet_flow(token_trades)
+            token_trades = [
+                trade for trade in token_trades
+                if flow_by_wallet.get(trade.wallet, 0.0) >= settings.smart_min_wallet_flow_usdc
+            ]
+            wallets = sorted({trade.wallet for trade in token_trades})
+            if len(wallets) < min_consensus:
+                rejected["not_enough_wallet_flow"] = rejected.get("not_enough_wallet_flow", 0) + 1
+                continue
+
         total_trader_pnl = sum(pnl_by_wallet.get(w.lower(), 0.0) for w in wallets) if pnl_by_wallet else 0.0
         copied_usdc = round(sum(trade.usdc_size for trade in token_trades), 2)
         if copied_usdc < settings.smart_min_copied_usdc:
             rejected["copied_usdc_too_small"] = rejected.get("copied_usdc_too_small", 0) + 1
+            continue
+        wallet_flow = _wallet_flow(token_trades)
+        largest_wallet_share = max(wallet_flow.values(), default=0.0) / copied_usdc if copied_usdc > 0 else 0.0
+        if (
+            settings.smart_max_wallet_flow_share > 0
+            and len(wallets) > 1
+            and largest_wallet_share > settings.smart_max_wallet_flow_share
+        ):
+            rejected["wallet_flow_too_concentrated"] = rejected.get("wallet_flow_too_concentrated", 0) + 1
+            continue
+        fresh_wallets = _fresh_wallet_count(token_trades, now_ts, settings.smart_fresh_wallet_minutes)
+        if settings.smart_min_fresh_wallets > 0 and fresh_wallets < settings.smart_min_fresh_wallets:
+            rejected["not_enough_fresh_wallets"] = rejected.get("not_enough_fresh_wallets", 0) + 1
             continue
         total_size = sum(trade.size for trade in token_trades)
         avg_price = round(sum(trade.price * trade.size for trade in token_trades) / total_size, 4) if total_size else 0.0
@@ -679,6 +711,9 @@ def smart_money_signals(
                 category_bonus=_category_bonus(category, settings),
                 latest_trade_age_minutes=latest_trade_age_minutes,
                 fresh_bonus=_fresh_signal_bonus(latest_trade_age_minutes, settings),
+                fresh_wallets=fresh_wallets,
+                largest_wallet_share=largest_wallet_share,
+                flow_balance_bonus=_flow_balance_bonus(largest_wallet_share, len(wallets)),
             )
         )
     if include_details:
@@ -698,6 +733,26 @@ def _time_periods(settings: Settings) -> list[str]:
         if periods:
             return periods
     return [settings.smart_time_period.strip().upper() or "WEEK"]
+
+
+def _wallet_flow(trades: list[SmartTrade]) -> dict[str, float]:
+    flow: dict[str, float] = {}
+    for trade in trades:
+        flow[trade.wallet] = flow.get(trade.wallet, 0.0) + max(0.0, trade.usdc_size)
+    return flow
+
+
+def _fresh_wallet_count(trades: list[SmartTrade], now_ts: int, window_minutes: int) -> int:
+    if window_minutes <= 0:
+        return len({trade.wallet for trade in trades})
+    cutoff = now_ts - (window_minutes * 60)
+    return len({trade.wallet for trade in trades if trade.timestamp >= cutoff})
+
+
+def _flow_balance_bonus(largest_wallet_share: float, wallet_count: int) -> float:
+    if wallet_count < 2 or largest_wallet_share <= 0.0:
+        return 0.0
+    return max(0.0, 1.0 - largest_wallet_share) * min(wallet_count, 5) * 2.0
 
 
 def _top_traders(client: DataApiClient, settings: Settings) -> dict[str, list[SmartTrader]]:

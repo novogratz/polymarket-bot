@@ -1443,6 +1443,125 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(signals, [])
         self.assertEqual(details["rejected"]["copied_usdc_too_small"], 1)
 
+    def test_smart_money_rejects_low_per_wallet_flow(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will the quality market resolve Yes?",
+            slug="quality-market",
+            end_date=utc_now() + timedelta(hours=12),
+            hours_to_close=12,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.50,
+            token_id="quality-token",
+            score=10,
+            url="https://polymarket.com/event/quality-market",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "quality-token", "BUY", 0.50, 200, 100, 1, "Quality", "Yes", "quality"),
+            SmartTrade("0x2", "quality-token", "BUY", 0.50, 20, 10, 1, "Quality", "Yes", "quality"),
+        ]
+
+        signals, details = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(
+                smart_min_consensus=2,
+                smart_min_wallet_flow_usdc=25,
+                smart_min_copied_usdc=50,
+                smart_min_trade_usd=1,
+            ),
+            include_details=True,
+        )
+
+        self.assertEqual(signals, [])
+        self.assertEqual(details["rejected"]["not_enough_wallet_flow"], 1)
+
+    def test_smart_money_rejects_dominated_wallet_flow(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will the dominated market resolve Yes?",
+            slug="dominated-market",
+            end_date=utc_now() + timedelta(hours=12),
+            hours_to_close=12,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.50,
+            token_id="dominated-token",
+            score=10,
+            url="https://polymarket.com/event/dominated-market",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        trades = [
+            SmartTrade("0x1", "dominated-token", "BUY", 0.50, 900, 450, 1, "Dominated", "Yes", "dominated"),
+            SmartTrade("0x2", "dominated-token", "BUY", 0.50, 100, 50, 1, "Dominated", "Yes", "dominated"),
+        ]
+
+        signals, details = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(
+                smart_min_consensus=2,
+                smart_min_copied_usdc=50,
+                smart_max_wallet_flow_share=0.80,
+                smart_min_trade_usd=1,
+            ),
+            include_details=True,
+        )
+
+        self.assertEqual(signals, [])
+        self.assertEqual(details["rejected"]["wallet_flow_too_concentrated"], 1)
+
+    def test_smart_money_requires_fresh_wallet_consensus_when_configured(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Will the fresh market resolve Yes?",
+            slug="fresh-market",
+            end_date=utc_now() + timedelta(hours=12),
+            hours_to_close=12,
+            liquidity=10000,
+            volume=50000,
+            outcome="Yes",
+            price=0.50,
+            token_id="fresh-token",
+            score=10,
+            url="https://polymarket.com/event/fresh-market",
+            best_bid=0.49,
+            best_ask=0.50,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        trades = [
+            SmartTrade("0x1", "fresh-token", "BUY", 0.50, 200, 100, now_ts - 120, "Fresh", "Yes", "fresh"),
+            SmartTrade("0x2", "fresh-token", "BUY", 0.50, 200, 100, now_ts - 7200, "Fresh", "Yes", "fresh"),
+        ]
+
+        signals, details = smart_money_signals(
+            [candidate],
+            trades,
+            Settings(
+                smart_min_consensus=2,
+                smart_min_fresh_wallets=2,
+                smart_fresh_wallet_minutes=60,
+                smart_min_copied_usdc=50,
+                smart_min_trade_usd=1,
+            ),
+            include_details=True,
+        )
+
+        self.assertEqual(signals, [])
+        self.assertEqual(details["rejected"]["not_enough_fresh_wallets"], 1)
+
     def test_smart_money_rejects_high_chase_premium(self):
         candidate = Candidate(
             market_id="1",
