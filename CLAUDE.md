@@ -6,7 +6,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 ## Current state snapshot (2026-05-24)
 
-**Live strategy:** `baseline_tight` — fork of `baseline` with two targeted fixes from baseline's 65-trade audit (oversized position cap + loser flush near expiry). Fresh leaderboard restart: all 88 archived profiles restored, dry runs reset, 95 total profiles auto-discovered by `run_all.sh`.
+**Live strategy:** `claude_high_vol_panic` — high-volatility panic-fade strategy. Uses race mode to trade volatile binary markets. Fresh leaderboard restart: all 88 archived profiles restored, dry runs reset, 95 total profiles auto-discovered by `run_all.sh`.
 - Engine: `smart_money` (real copy-trade pipeline + multi-wallet consensus) — canonical config, no esoteric filters
 - Bankroll: **$20 USDC** baseline (fresh-start reset 2026-05-22)
 - Sizing: `position_pct=0.10` (~$2/trade base), `max_position_ceiling_usd=$25`, `max_position_ceiling_pct=0.30` (~$6 cap), `cash_floor_pct=0.02`, `min_open_positions=5`, `starter_trade_usd=5.0`, `assumed_live_balance_usd=20.0`
@@ -226,9 +226,9 @@ Or just the live bot alone (no dry race, no cache pre-warm — only do this if y
 bash scripts/run_live_70.sh
 ```
 
-Both scripts load `configs/profiles/baseline.toml` as the single source of truth for the live config. Current settings:
+Both scripts load `configs/profiles/claude_high_vol_panic.toml` as the single source of truth for the live config. Current settings:
 
-- Profile: `baseline` (canonical smart_money pipeline — no esoteric filters, the reference control strategy)
+- Profile: `claude_high_vol_panic` (race mode — buys volatile binary markets, panic-fade thesis)
 - `POLYMARKET_SYNC_LIVE_POSITIONS=1`, `POLYMARKET_AUTO_INTERVAL_SECONDS=10`
 - Sizing ($20 fresh-start baseline 2026-05-22): `starting_cash=20.0`, `assumed_live_balance_usd=20.0`, `position_pct=0.10` (~$2/trade), `max_position_ceiling_usd=25.0`, `max_position_ceiling_pct=0.30` (~$6 cap on $20 equity), `cash_floor_pct=0.02`, `min_open_positions=5`, `starter_trade_usd=5.0`
 - Cohort: WEEK top 100, `min_trader_pnl=$1k`, `min_trader_volume=$2k`, `min_trader_roi=3%`. No persistence filter (canonical baseline)
@@ -236,7 +236,7 @@ Both scripts load `configs/profiles/baseline.toml` as the single source of truth
 - Exits: 5-tier TP ladder (+25/+50/+100/+200/+300 with 15/25/50/25/15 partials), trailing arms +25% / 50% giveback, peak-protect arms +100% / exits +40%, stop_loss -40% (min-age 15min), max_hold 24h, cohort-sell, resolved at bid ≥0.97. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
 - Live analyst sidecar (`scripts/live_analyst.py`) launches alongside; posts read-only insights every 30 min to `TELEGRAM_CHAT_ID_LIVE`.
 - Universal sweep closes positions at price ≥0.97 OR ≤0.03 every tick across all strategy modes.
-- HTTP cache shared with the dry race at `data/cache/http/` (TTL 600s), refreshed every 8min by the background loop in `run_all.sh`.
+- HTTP cache shared with the dry race at `data/cache/http/` (TTL 600s), refreshed every 3min by the background loop in `run_all.sh`.
 
 Dashboard at `http://127.0.0.1:8765` by default.
 

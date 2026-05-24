@@ -73,11 +73,11 @@ fi
 echo
 
 # ─── Step 2: LIVE bot (priority, fast tick, cache pre-populated) ────
-echo "[run_all] step 2/4: launching live bot (baseline_tight capital guard)..."
+echo "[run_all] step 2/4: launching live bot (claude_high_vol_panic)..."
 
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 export POLYMARKET_AUTO_INTERVAL_SECONDS=10   # live tick = 10s
-export POLYMARKET_PROFILE_LABEL=baseline_tight
+export POLYMARKET_PROFILE_LABEL=claude_high_vol_panic
 
 # Live Telegram alerts ON
 export TELEGRAM_ALERT_TRADES=1
@@ -92,7 +92,7 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
 
 # Live bot itself
-uv run pmbot auto-loop --live --profile baseline_tight --yes \
+uv run pmbot auto-loop --live --profile claude_high_vol_panic --yes \
     2>&1 | sed -u 's/^/[LIVE] /' &
 LIVE_PID=$!
 echo "[run_all] live bot launched (pid=$LIVE_PID)"

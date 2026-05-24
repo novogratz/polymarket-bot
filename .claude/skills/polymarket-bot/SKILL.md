@@ -9,7 +9,7 @@ Use this skill when working in this repository: strategy code, filters, live com
 
 ## Current state (2026-05-24)
 
-**Live profile:** `baseline_tight` — fork of `baseline`. Fresh leaderboard restart: all 88 archived profiles restored, dry runs reset.
+**Live profile:** `claude_high_vol_panic` — high-volatility panic-fade race strategy. Fresh leaderboard restart: all 88 archived profiles restored, dry runs reset.
 
 **Bankroll:** $20 USDC.
 
