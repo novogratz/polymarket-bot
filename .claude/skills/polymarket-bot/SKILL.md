@@ -9,7 +9,7 @@ Use this skill when working in this repository: strategy code, filters, live com
 
 ## Current state (2026-05-24)
 
-**Live profile:** `claude_high_vol_panic` — high-volatility panic-fade race strategy. Fresh leaderboard restart: all 88 archived profiles restored, dry runs reset.
+**Live profile:** `claude_baseline_let_run` — smart-money copy-trading, let winners run (SL -50%, trailing arms at +50%, peak-protect at +200%).
 
 **Bankroll:** $20 USDC.
 

@@ -6,7 +6,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 ## Current state snapshot (2026-05-24)
 
-**Live strategy:** `claude_high_vol_panic` — high-volatility panic-fade strategy. Uses race mode to trade volatile binary markets. Fresh leaderboard restart: all 88 archived profiles restored, dry runs reset, 95 total profiles auto-discovered by `run_all.sh`.
+**Live strategy:** `claude_baseline_let_run` — smart-money copy-trading with wide exits (SL -50%, TP ladder +25/+50/+100/+200/+300, trailing arms at +50%, peak-protect armed at +200%). Thesis: big winners pay for the losers — let positions run.
 - Engine: `smart_money` (real copy-trade pipeline + multi-wallet consensus) — canonical config, no esoteric filters
 - Bankroll: **$20 USDC** baseline (fresh-start reset 2026-05-22)
 - Sizing: `position_pct=0.10` (~$2/trade base), `max_position_ceiling_usd=$25`, `max_position_ceiling_pct=0.30` (~$6 cap), `cash_floor_pct=0.02`, `min_open_positions=5`, `starter_trade_usd=5.0`, `assumed_live_balance_usd=20.0`
@@ -226,9 +226,9 @@ Or just the live bot alone (no dry race, no cache pre-warm — only do this if y
 bash scripts/run_live_70.sh
 ```
 
-Both scripts load `configs/profiles/claude_high_vol_panic.toml` as the single source of truth for the live config. Current settings:
+Both scripts load `configs/profiles/claude_baseline_let_run.toml` as the single source of truth for the live config. Current settings:
 
-- Profile: `claude_high_vol_panic` (race mode — buys volatile binary markets, panic-fade thesis)
+- Profile: `claude_baseline_let_run` (smart_money mode — copy-trading with wide exits, let winners run)
 - `POLYMARKET_SYNC_LIVE_POSITIONS=1`, `POLYMARKET_AUTO_INTERVAL_SECONDS=10`
 - Sizing ($20 fresh-start baseline 2026-05-22): `starting_cash=20.0`, `assumed_live_balance_usd=20.0`, `position_pct=0.10` (~$2/trade), `max_position_ceiling_usd=25.0`, `max_position_ceiling_pct=0.30` (~$6 cap on $20 equity), `cash_floor_pct=0.02`, `min_open_positions=5`, `starter_trade_usd=5.0`
 - Cohort: WEEK top 100, `min_trader_pnl=$1k`, `min_trader_volume=$2k`, `min_trader_roi=3%`. No persistence filter (canonical baseline)
