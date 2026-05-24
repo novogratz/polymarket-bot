@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Lance le bot en LIVE avec le profil whale_entry_detection courant.
-# Toute la config vit dans configs/profiles/whale_entry_detection.toml.
+# Lance le bot en LIVE avec le profil claude_high_vol_panic courant.
+# Toute la config vit dans configs/profiles/claude_high_vol_panic.toml.
 #
 # Ce script passe --yes : la confirmation interactive est skipée, donc aucun
 # besoin de TTY. Pour une exécution sans --yes (auto-loop --live tout court),
@@ -36,7 +36,7 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
 # Profile label exported BEFORE the live_analyst spawns, so the
 # sidecar inherits it (else it logs "(unknown)" in reports).
-export POLYMARKET_PROFILE_LABEL=whale_entry_detection
+export POLYMARKET_PROFILE_LABEL=claude_high_vol_panic
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
 # Every 30 min: reads paper_state + trade_journal, compares vs dry race
