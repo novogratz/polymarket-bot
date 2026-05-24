@@ -27,7 +27,7 @@ python3 -B -m polymarket_bot.main tune-strategy
 POLYMARKET_ENABLE_LIVE_TRADING=1 python3 -B -m polymarket_bot.main auto-loop
 ```
 
-Canonical live config: `bash scripts/run_live_70.sh` (~$90 bankroll).
+Canonical live config: `bash scripts/run_live_70.sh`. Dry race (95 profiles): `bash scripts/run_all.sh` or `bash scripts/run_both_dry.sh`.
 
 ## Architecture
 

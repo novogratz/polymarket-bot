@@ -2,13 +2,34 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-05-24
+
+Fresh leaderboard restart: restored all archived profiles, auto-discover launcher, bash 3.2 compat fix, lenient kill thresholds.
+
+### Added
+
+- Restored 88 previously-archived profiles from `configs/profiles/_archived/` back to active — 95 total profiles in the dry race.
+- `scripts/run_all.sh` and `scripts/run_both_dry.sh` now auto-discover all `configs/profiles/*.toml` instead of a hardcoded list of ~9–50. Skips special profiles (`copy-wallet`, `live-90`).
+- Bash 3.2 (macOS default) compatibility: replaced `mapfile` with POSIX `for` loop in both launcher scripts.
+
+### Changed
+
+- Analyst kill thresholds (`scripts/dry_analyst.py`) relaxed to let strategies build longer track records before being culled:
+  - `KILL_AUTO_MIN_TRADES`: 8 → 25, `KILL_HUMAN_MIN_TRADES`: 20 → 50
+  - `KILL_ROI_THRESHOLD`: -10% → -25%, `KILL_WR_THRESHOLD`: 40% → 30%
+  - `KILL_EQUITY_FLOOR_PCT`: 50% → 30%
+
+### Fixed
+
+- `scripts/run_all.sh` silently launched 0 dry bots on macOS because `mapfile` is a bash 4+ feature and macOS ships bash 3.2. Replaced with a POSIX-compatible array append loop.
+
 ## [1.3.0] - 2026-05-16
 
 Operational release: shared HTTP cache, unified live+dry launcher, live profile switched to `whale_entry_detection` on a $45 bankroll. No public-API breakage.
 
 ### Added
 
-- `scripts/run_all.sh` — single launcher that pre-warms the HTTP cache, boots the live bot (`whale_entry_detection`), launches ~50 curated dry profiles at a 10min tick, spawns the dry-analyst + live-analyst + leaderboard sidecars, and runs a background cache re-warmer every 8 min so live + dry never hit a cold cache.
+- `scripts/run_all.sh` — single launcher that pre-warms the HTTP cache, boots the live bot (`whale_entry_detection`), launches auto-discovered dry profiles (now 95 via glob, was ~50 curated) at a 10min tick, spawns the dry-analyst + live-analyst + leaderboard sidecars, and runs a background cache re-warmer every 8 min so live + dry never hit a cold cache.
 - `scripts/cache_warmer.py` — pre-fetches leaderboards (3 windows × 8 categories × 4 limits) and the top wallets' recent trade histories into `data/cache/http/`. Used both at startup and periodically by the re-warm loop.
 - Shared HTTP cache in `polymarket_bot/smart_money.py:_get_json` — sha1-keyed disk cache at `data/cache/http/` with a 600s TTL (override via `POLYMARKET_HTTP_CACHE_TTL_SECONDS`). Drops the API load of a 50-bot swarm from ~2,500 calls/min to ~33.
 - `scripts/winner_consistency.py` — sliding-window analyzer (30min windows over 8h lookback) for ranking strategies window-by-window.
@@ -18,7 +39,7 @@ Operational release: shared HTTP cache, unified live+dry launcher, live profile 
 
 - Live profile switched to `whale_entry_detection` (race mode, no leaderboard fetch — immune to data-api 429s).
 - Live bankroll = $45 USDC. Sizing: 10% per trade (~$4.50 base), max position $9, 3 min open positions, 5% cash floor, 4h hard cap. Exits: TP +25% / SL -25% / resolved at bid ≥0.97 / near-expiry flush at 5min.
-- Dry race trimmed from "all 195 profiles" to ~50 curated representatives covering every thesis family. The full enumeration crashed macOS and saturated the data-api beyond what the new cache could absorb.
+- Dry race trimmed from "all 195 profiles" to ~50 curated representatives covering every thesis family. (Replaced in 1.4.0 by auto-discover of all 95 restored profiles.)
 - Dry bots are silent on Telegram BUY/SELL alerts via per-subshell env vars in `run_dry_bot()` — only the live bot speaks.
 - Live analyst now exports `POLYMARKET_PROFILE_LABEL` BEFORE the sidecar spawns (it previously logged `(unknown)` in reports).
 - Dry-analyst `_pick_favorite` says "Top of N profitable strategies" when N > 1 (was always "Only profitable", which lied when several were positive).

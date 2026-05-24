@@ -7,17 +7,17 @@ description: Claude Code skill for the Polymarket smart-money copy-trading bot. 
 
 Use this skill when working in this repository: strategy code, filters, live commands, dashboard, trade journal, auto-tuner, BTC edge.
 
-## Current state (2026-05-15)
+## Current state (2026-05-24)
 
-**Live profile:** `pmlepgm_counter_panic_fade` (top dry performer at 66% wr / +$15.73 / 29 trades). Buys the winning side of any binary market with a ≥15¢ intraday move + ≥$3k volume, holds to TP +25% / SL -25% / resolved 0.97.
+**Live profile:** `baseline_tight` — fork of `baseline`. Fresh leaderboard restart: all 88 archived profiles restored, dry runs reset.
 
-**Bankroll:** $42.43 USDC.
+**Bankroll:** $20 USDC.
 
-**Live launcher:** `bash scripts/run_live_70.sh`.
+**Live launcher:** `bash scripts/run_live_70.sh` or `bash scripts/run_all.sh`.
 
-**Universal race rules:** `starting_cash=42.43`, `stake_pct=0.15`, `max_orders_per_tick=5`, `cash_floor_pct=0.02`, `max_hours=4.0`, `sl_min_age_minutes=3`, `resolved_exit_threshold=0.97`, **near-expiry flush removed**, **duplicates allowed**, **daily DD halt at -15%**.
+**Universal race rules:** `starting_cash=20.0`, `stake_pct=0.10`, `max_orders_per_tick=5`, `cash_floor_pct=0.02`, `max_hours=4.0`, `sl_min_age_minutes=15`, `resolved_exit_threshold=0.97`.
 
-**Dry race:** 52 strategies in `scripts/run_both_dry.sh`. Profile files in `configs/profiles/`. Top three historical performers: `weak_holder_flush_inverse`, `pmlepgm_counter_panic_fade`, `aggressive_buyer_detection`.
+**Dry race:** 95 profiles auto-discovered from `configs/profiles/*.toml` by both launcher scripts. Kill thresholds relaxed: min 25 trades (auto) / 50 (human), ROI ≤ -25%, WR ≤ 30%, equity floor 30%.
 
 ## Guardrails (non-negotiable)
 

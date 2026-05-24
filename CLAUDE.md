@@ -4,9 +4,9 @@ Claude Code entry point for the Polymarket bot. See also the structured skill in
 
 The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, see `.github/workflows/test.yml`).
 
-## Current state snapshot (2026-05-20)
+## Current state snapshot (2026-05-24)
 
-**Live strategy:** `baseline_tight` — fork of `baseline` with two targeted fixes from baseline's 65-trade audit (oversized position cap + loser flush near expiry). Switched from `auto_fresh_qe_persist_stack` on 2026-05-22 after a full hard reset (all dry profiles re-baselined to $20, all state files wiped + backed up to `data/backups/`). Chose baseline because every active dry bot had negative realized PnL — baseline had the smallest absolute loss (-$1.79 on 58 trades, 59% WR) and the closest-to-neutral asymmetry, making it the least-bad pick. Real verdict: the recent market regime is unfavorable for the cohort-copy thesis.
+**Live strategy:** `baseline_tight` — fork of `baseline` with two targeted fixes from baseline's 65-trade audit (oversized position cap + loser flush near expiry). Fresh leaderboard restart: all 88 archived profiles restored, dry runs reset, 95 total profiles auto-discovered by `run_all.sh`.
 - Engine: `smart_money` (real copy-trade pipeline + multi-wallet consensus) — canonical config, no esoteric filters
 - Bankroll: **$20 USDC** baseline (fresh-start reset 2026-05-22)
 - Sizing: `position_pct=0.10` (~$2/trade base), `max_position_ceiling_usd=$25`, `max_position_ceiling_pct=0.30` (~$6 cap), `cash_floor_pct=0.02`, `min_open_positions=5`, `starter_trade_usd=5.0`, `assumed_live_balance_usd=20.0`
@@ -15,7 +15,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - Filters: `min_consensus=2`, `min_copied_usdc=$75`, price 0.03–0.96, **4h hard cap** (`max_hours_to_close=4.0`)
 - Live tick interval: 10s. Heartbeat includes "live vs dry top 3" comparison block.
 
-**Bankroll:** $20 USDC starting on live + all dry (fresh-start reset 2026-05-22). State backups in `data/backups/full_state_<timestamp>.tar.gz`.
+**Bankroll:** $20 USDC starting on live + all dry (fresh-start reset 2026-05-24). State backups in `data/backups/full_state_<timestamp>.tar.gz`.
 
 ### Unified launcher — `scripts/run_all.sh`
 
@@ -28,7 +28,7 @@ bash scripts/run_all.sh
 Order of operations:
 1. **Pre-warm HTTP cache** (~60s) via `scripts/cache_warmer.py` — populates `data/cache/http/` with leaderboards (3 windows × 8 categories × 4 limits) + the top wallets' recent trade histories so the bot swarm starts with a warm cache and no first-tick 429 storm.
 2. **Live bot** (`baseline`, 10s tick) + `scripts/live_analyst.py` sidecar (30min Telegram report).
-3. **Dry race** — ~50 curated profiles (NOT all 195 — that crashed mac), each ticking at 10min (`POLYMARKET_AUTO_INTERVAL_SECONDS=600`) with Telegram BUY/SELL alerts silenced per-subshell so only the live bot speaks.
+3. **Dry race** — auto-discovers all 95 profiles from `configs/profiles/*.toml` (was ~50 curated, now includes every restored archive), each ticking at 10min (`POLYMARKET_AUTO_INTERVAL_SECONDS=600`) with Telegram BUY/SELL alerts silenced per-subshell so only the live bot speaks.
 4. **Sidecars** — `scripts/dry_analyst.py` (15min report / 1h spawn-kill) + `pmbot leaderboard --telegram` (5min summary).
 5. **Background re-warmer** — re-runs `cache_warmer.py` every 8 min (cache TTL is 10 min) to keep both live + dry continuously warm.
 
@@ -50,8 +50,8 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
 - **Spawn/kill every 1 hour** (decoupled from report rhythm).
   - Spawns 1–3 new `auto_*` profiles per cycle via Codex CLI, falling back to Ollama, derived from current winners
   - Tunes (in-place reroll) up to 2 `auto_*` per cycle
-  - Kills underperformers: ROI ≤ -10% AND wr ≤ 40% AND n ≥ 8 (auto) / n ≥ 20 (human)
-  - Catastrophic halt: ROI ≤ -50% kills any bot regardless of trade count
+  - Kills underperformers: ROI ≤ -25% AND wr ≤ 30% AND n ≥ 25 (auto) / n ≥ 50 (human)
+  - Catastrophic halt: ROI ≤ -30% kills any bot regardless of trade count (relaxed from -50% to give strategies more room)
   - Killed profile → `configs/profiles/_archived/<name>_<ts>.toml` (recoverable)
 - **Universal sweep** every tick across all strategies (live + dry):
   - Force-close winners at `current_price ≥ 0.97`
@@ -66,16 +66,7 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
 - Resolved exits at bid ≥ 0.97 (and now also ≤ 0.03 via universal sweep)
 - Daily DD halt at -15% of starting equity (race + edge)
 
-**Dry race composition (curated in `scripts/run_all.sh:DRY_PROFILES`):** ~50 representative strategies
-- Baseline family: `baseline`, `kzerlepgm_baseline`, `claude_baseline_*` (tight, fresh, persist, quick_exit, let_run)
-- Smart-money + insider: `smart_money_dry`, `smart_money_loose`, `insider_whales`, `insider_millionaires`
-- Race strategies (one per thesis): `aggressive_buyer_detection`, `hybrid_smart_money`, `smart_wallet_consensus`, `wallet_cluster_correlation`, `early_momentum_detection`, `mean_reversion_fade`, `pmlepgm_counter_panic_fade`, `weak_holder_flush_inverse`, etc.
-- Claude race batch: `claude_anti_favorite`, `claude_mid_dump_fade`, `claude_resolution_sniper`, etc.
-- Momentum family: 8 distinct exit/sizing combos
-- Control: `random`
-- The live profile (`baseline`) ALSO runs in the dry race for direct apples-to-apples comparison. Live and dry use separate state files (`paper_state.json` vs `data/dry_runs/<name>/state.json`) so they don't conflict.
-
-The previous "all 195 profiles in dry" mode was retired because it crashed macOS and the data-api couldn't keep up. The curated roster covers every thesis family without the bloat.
+**Dry race composition:** auto-discovered from `configs/profiles/*.toml` (95 profiles) by both `scripts/run_all.sh` and `scripts/run_both_dry.sh`. Skips special profiles `copy-wallet` and `live-90`. Covers every thesis family across the restored archive + the 7 always-active profiles. Live and dry use separate state files (`paper_state.json` vs `data/dry_runs/<name>/state.json`) so they don't conflict.
 
 **Recent code-level fixes (since 2026-05-15):**
 - HTTP cache layer in `smart_money.py:_get_json` (TTL 600s) + pre-warm via `scripts/cache_warmer.py`, re-warm loop every 8min in `run_all.sh`

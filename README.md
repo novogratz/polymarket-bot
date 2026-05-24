@@ -38,6 +38,8 @@ Preferred (live + dry race + sidecars + shared HTTP cache, all in one):
 bash scripts/run_all.sh
 ```
 
+Auto-discovers all 95 profiles in `configs/profiles/` for the dry race — includes every restored archive strategy.
+
 Or live alone (no dry race, no cache pre-warm):
 
 ```bash

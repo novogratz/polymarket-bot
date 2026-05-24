@@ -6,7 +6,7 @@
 #      leaderboards + wallet trade histories so BOTH live and dry start
 #      with a warm cache, no first-tick 429 storm
 #   2. Launch live bot (10s tick, hits warm cache immediately)
-#   3. Launch dry race (~50 curated profiles, 10min tick)
+#   3. Launch dry race (auto-discovered profiles, 10min tick)
 #   4. Launch sidecars: analyst + live-analyst + leaderboard
 #   5. Background cache refresher loops every 8min to keep cache warm
 #      (TTL is 10min, so refresh at 8min ensures no gap)
