@@ -9,7 +9,7 @@ Use this skill when working in this repository: strategy code, filters, live com
 
 ## Current state (2026-05-24)
 
-**Live profile:** `claude_baseline_let_run` — smart-money copy-trading, let winners run (SL -50%, trailing arms at +50%, peak-protect at +200%).
+**Live profile:** `whale_entry_detection` — race strategy that detects whale buy entries on Polymarket.
 
 **Bankroll:** $20 USDC.
 

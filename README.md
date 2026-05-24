@@ -46,7 +46,7 @@ Or live alone (no dry race, no cache pre-warm):
 bash scripts/run_live_70.sh
 ```
 
-Both scripts read `configs/profiles/claude_baseline_let_run.toml` as the live config. Run in the foreground; `Ctrl+C` to stop the whole process group.
+Both scripts read `configs/profiles/whale_entry_detection.toml` as the live config. Run in the foreground; `Ctrl+C` to stop the whole process group.
 
 ## CLI commands
 
@@ -315,7 +315,7 @@ POLYMARKET_AUTO_INTERVAL_SECONDS=10
 POLYMARKET_SYNC_LIVE_POSITIONS=1
 ```
 
-The complete list lives in `polymarket_bot/config.py`. The canonical source of truth for live config is `configs/profiles/claude_baseline_let_run.toml`, loaded by `scripts/run_live_70.sh` (or `scripts/run_all.sh`).
+The complete list lives in `polymarket_bot/config.py`. The canonical source of truth for live config is `configs/profiles/whale_entry_detection.toml`, loaded by `scripts/run_live_70.sh` (or `scripts/run_all.sh`).
 
 ## API credentials
 

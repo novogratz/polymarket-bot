@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Lance le bot en LIVE avec le profil claude_baseline_let_run courant.
-# Toute la config vit dans configs/profiles/claude_baseline_let_run.toml.
+# Lance le bot en LIVE avec le profil whale_entry_detection courant.
+# Toute la config vit dans configs/profiles/whale_entry_detection.toml.
 #
 # Ce script passe --yes : la confirmation interactive est skipée, donc aucun
 # besoin de TTY. Pour une exécution sans --yes (auto-loop --live tout court),
@@ -15,7 +15,7 @@ cd "$REPO_ROOT"
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
 # Live bankroll = $29 (actual Polymarket balance 2026-05-22).
-# claude_baseline_let_run.toml has starting_cash=20 / assumed_live_balance_usd=20.
+# whale_entry_detection.toml has starting_cash=20 / assumed_live_balance_usd=20.
 # These env exports override the TOML so the live bot uses the actual $29
 # bankroll, while dry race keeps its own per-profile bankroll.
 export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-29.0}
@@ -36,7 +36,7 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
 # Profile label exported BEFORE the live_analyst spawns, so the
 # sidecar inherits it (else it logs "(unknown)" in reports).
-export POLYMARKET_PROFILE_LABEL=claude_baseline_let_run
+export POLYMARKET_PROFILE_LABEL=whale_entry_detection
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
 # Every 30 min: reads paper_state + trade_journal, compares vs dry race
@@ -49,4 +49,4 @@ cleanup() {
 trap cleanup INT TERM EXIT
 python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
 
-uv run pmbot auto-loop --live --profile claude_baseline_let_run --yes
+uv run pmbot auto-loop --live --profile whale_entry_detection --yes
