@@ -1,0 +1,132 @@
+# Profil "insider_whales" — copy the TOP 10 lifetime-PnL wallets.
+#
+# Thesis: wallets with $1M+ lifetime PnL on Polymarket are most
+# likely operating on inside / asymmetric info (politically wired,
+# market-mover access, etc.). Their edge is qualitatively different
+# from a "good trader" — they don't just outperform, they're
+# repeatedly on the right side of news that hadn't broken yet.
+#
+# Mirror their trades 1:1 (consensus = 1, no multi-wallet requirement).
+# Filter for substantial bets only ($1k+ copied) to avoid copying
+# their test trades or dust positions.
+#
+# Sample size will be tiny — only fires when a top-10 lifetime
+# whale opens a fresh position matching market filters. Designed for
+# rare but high-conviction entries.
+
+[run]
+starting_cash = 29.55
+
+[sizing]
+position_pct = 0.20                       # 20%/trade — high conviction
+max_position_ceiling_usd = 22.16
+max_position_ceiling_pct = 0.40
+max_trade_usd = 0.0
+high_conviction_balance_fraction = 0.40
+cash_floor_pct = 0.02
+min_open_positions = 0                    # Don't force-fill — wait for real signal
+starter_trade_usd = 7.39
+assumed_live_balance_usd = 29.55
+
+[trader_cohort]
+leaderboard_window = "ALL"                # Lifetime PnL ranking
+top_n = 10                                # Only the top 10 by all-time PnL
+min_trader_pnl = 1000000.0                # ≥ $1M lifetime PnL (insider proxy)
+min_trader_volume = 100000.0              # ≥ $100k traded volume (not new accounts)
+min_trader_roi = 0.05                     # ≥ 5% ROI
+trade_fetch_concurrency = 16
+trade_lookback_minutes = 60               # Recent insider activity, last hour
+
+[discovery]
+scan_limit = 1000
+soon_hours = 72
+fresh_signal_bonus = 10.0                 # Boost freshness — insiders act before news
+priority_category_bonus = 6.0
+
+[market_filters]
+min_liquidity_usd = 500.0
+min_volume_usd = 500.0
+
+[filters]
+min_consensus = 1                         # Single whale's bet is enough
+fallback_consensus = 1
+min_copied_usdc = 1000.0                  # Filter out tiny test trades
+min_trade_usd = 1.0
+max_chase_premium = 0.25                  # Allow more chase — these guys MOVE markets
+price_min = 0.03
+price_max = 0.97
+max_absolute_spread = 0.12
+max_relative_spread = 0.50
+signal_staleness_seconds = 10
+min_hours_to_close = 0.25
+max_hours_to_close = 4.0                  # 4h hard rule
+max_orders_per_tick = 0
+max_sports_positions = 3
+sports_score_penalty = 0.0                # Don't penalize — insider bets are often sports/politics
+
+[crypto]
+min_buy_price = 0.50
+min_hours_to_close = 6.0
+max_hours_to_close = 4.0
+min_copied_usdc = 2000.0
+min_consensus = 1
+micro_min_consensus = 1
+micro_max_entry_slippage = 0.08
+micro_max_trade_usd = 5.0
+
+[execution]
+max_entry_slippage = 0.15
+pending_order_ttl_seconds = 30
+min_sell_usd = 1.0
+
+[exits]
+# Aggressive let-run exits — when an insider's bet pays, ride it hard.
+take_profit_ladder = "0.50:0.20,1.0:0.30,2.0:0.30,3.0:0.20"
+trailing_stop_arm_pct = 0.50
+trailing_stop_giveback = 0.30
+peak_protect_arm_pct = 2.0
+peak_protect_exit_pct = 0.80
+stop_loss_pct = 0.30                      # SL -30%, asymmetric to TP+50%
+stop_loss_min_age_minutes = 10
+max_hold_hours = 4.0
+near_expiry_min_profit = 0.05
+near_expiry_minutes_to_close = 20
+resolved_market_threshold = 0.97
+
+[cohort_exit]
+enabled = true                            # CRUCIAL: if whale sells, we sell
+lookback_minutes = 90
+min_age_minutes = 15
+min_wallets = 1
+
+[deep_fallback]
+enabled = false                           # No fallback — insider signal or nothing
+
+[reverse_lookup]
+enabled = true
+max_tokens = 50
+min_copied_usdc = 500.0
+min_liquidity_usd = 200.0
+min_volume_usd = 500.0
+
+[btc_edge]
+enabled = false
+
+[noise_fallback]
+enabled = false                           # Never trade without insider signal
+
+[auto_tune]
+enabled = true
+min_closed_trades = 20                    # Tune sooner, smaller cohort = fewer trades
+
+[persistence]
+enabled = true                            # Filter "lucky month" wallets
+window_days = 90                          # Wider window for ALL-time cohort
+cache_threshold = 0.50
+intersect_periods = "WEEK,MONTH,ALL"
+intersect_min = 2
+
+[telemetry]
+quiet = true
+auto_interval_seconds = 60
+stdout_heartbeat_minutes = 15

@@ -99,7 +99,7 @@ echo "[run_all] live bot launched (pid=$LIVE_PID)"
 echo
 
 # ─── Step 3: DRY race (slowed — every dry bot ticks at 10min) ───────
-echo "[run_all] step 3/4: launching dry race (50 curated, tick 10min)..."
+echo "[run_all] step 3/4: launching dry race (auto-discovered profiles, tick 10min)..."
 
 export ANALYST_CYCLE_SECONDS=${ANALYST_CYCLE_SECONDS:-900}
 export ANALYST_SPAWN_KILL_INTERVAL_SECONDS=${ANALYST_SPAWN_KILL_INTERVAL_SECONDS:-3600}
@@ -128,14 +128,18 @@ run_dry_bot() {
     sleep 0.5
 }
 
-DRY_PROFILES=(
-    # Active shipped profiles only. Archived/nonexistent names stay out of
-    # the launcher so skipped-profile noise does not bury the useful dry race.
-    baseline baseline_tight
-    favorite_lock high_consensus_only smart_money_dry
-    aggressive_buyer_detection whale_entry_detection
-    pmlepgm_counter_panic_fade weak_holder_flush_inverse
-    edge news
+# Auto-discover all profiles in configs/profiles/ (except special ones).
+# Restored from _archived/ for a fresh leaderboard start.
+SKIP_PROFILES="copy-wallet live-90"
+mapfile -t DRY_PROFILES < <(
+    for f in configs/profiles/*.toml; do
+        name=$(basename "$f" .toml)
+        skip=0
+        for sp in $SKIP_PROFILES; do
+            if [ "$name" = "$sp" ]; then skip=1; break; fi
+        done
+        if [ "$skip" = "0" ]; then echo "$name"; fi
+    done
 )
 
 LAUNCHED=0

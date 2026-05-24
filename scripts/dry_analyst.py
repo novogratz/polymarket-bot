@@ -86,10 +86,10 @@ MIN_TRADES_TO_RATE = 1  # 1 trade is enough to appear on the leaderboard
 # A strategy is killed when it has ≥min_trades closed AND ROI ≤ ROI_THRESHOLD
 # AND win_rate ≤ WR_THRESHOLD. Profile is moved to configs/profiles/_archived/
 # so it can be recovered manually.
-KILL_AUTO_MIN_TRADES = int(os.environ.get("ANALYST_KILL_MIN_TRADES", "8"))
-KILL_HUMAN_MIN_TRADES = int(os.environ.get("ANALYST_KILL_HUMAN_MIN_TRADES", "20"))
-KILL_ROI_THRESHOLD = float(os.environ.get("ANALYST_KILL_ROI", "-10.0"))
-KILL_WR_THRESHOLD = float(os.environ.get("ANALYST_KILL_WR", "40.0"))
+KILL_AUTO_MIN_TRADES = int(os.environ.get("ANALYST_KILL_MIN_TRADES", "25"))
+KILL_HUMAN_MIN_TRADES = int(os.environ.get("ANALYST_KILL_HUMAN_MIN_TRADES", "50"))
+KILL_ROI_THRESHOLD = float(os.environ.get("ANALYST_KILL_ROI", "-25.0"))
+KILL_WR_THRESHOLD = float(os.environ.get("ANALYST_KILL_WR", "30.0"))
 # Profiles the analyst is NEVER allowed to kill. These are reference /
 # control strategies (baseline = canonical fixture used by tests +
 # leaderboard delta computations, edge / news = thesis controls) and
@@ -112,7 +112,7 @@ KILL_PROTECTED_PROFILES = {
 # regardless of closed-trade count, so it catches bots like panic_fade
 # that bled $98/$100 entirely in unrealized losses (0W/0L closed but
 # positions worth pennies). Default: kill at equity <= 50% of start.
-KILL_EQUITY_FLOOR_PCT = float(os.environ.get("ANALYST_KILL_EQUITY_FLOOR_PCT", "50.0"))
+KILL_EQUITY_FLOOR_PCT = float(os.environ.get("ANALYST_KILL_EQUITY_FLOOR_PCT", "30.0"))
 
 # Live-readiness criteria (a strategy is "ready for live" when it has
 # accumulated enough sample to back-test confidence):

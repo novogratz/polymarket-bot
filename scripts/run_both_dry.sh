@@ -41,30 +41,20 @@ run_bot() {
     sleep "${POLYMARKET_DRY_RACE_LAUNCH_STAGGER_SECONDS:-2}"
 }
 
-profiles=(
-    pmlepgm_counter_panic_fade
-    weak_holder_flush_inverse
-    aggressive_buyer_detection
-    favorite_lock
-    high_consensus_only
-    baseline_tight
-    smart_money_dry
-    whale_entry_detection
-    news
-    edge
+# Auto-discover all profiles in configs/profiles/ (except special ones).
+SKIP_PROFILES="copy-wallet live-90"
+mapfile -t profiles < <(
+    for f in configs/profiles/*.toml; do
+        name=$(basename "$f" .toml)
+        skip=0
+        for sp in $SKIP_PROFILES; do
+            if [ "$name" = "$sp" ]; then skip=1; break; fi
+        done
+        if [ "$skip" = "0" ]; then echo "$name"; fi
+    done
 )
 
-for profile in "${profiles[@]}"; do
-    if [ ! -f "configs/profiles/${profile}.toml" ]; then
-        echo "[race] missing curated profile: ${profile}" >&2
-        exit 1
-    fi
-done
-
-echo "[race] pre-warming HTTP cache..."
-uv run python scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache]       /' || true
-
-echo "[race] launching ${#profiles[@]} curated dry-run bots"
+echo "[race] launching ${#profiles[@]} dry-run bots (auto-discovered)"
 echo "[race] dry only: no --live process will be started"
 echo "[race] bankroll: \$20 per run | interval: ${POLYMARKET_DRY_RACE_INTERVAL_SECONDS:-300}s"
 echo "[race] Ctrl+C stops the race"
