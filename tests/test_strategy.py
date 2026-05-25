@@ -2132,6 +2132,53 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(position["status"], "open")
         self.assertFalse(position.get("journaled"))
 
+    def test_race_sports_total_does_not_stop_loss_on_halftime_mark(self):
+        from polymarket_bot.race_strategies import _execute_race_exits
+
+        candidate = Candidate(
+            market_id="1",
+            question="CD Comerciantes Unidos vs. CD Garcilaso: O/U 4.5",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Under",
+            price=0.505,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.505,
+            best_ask=0.515,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=1.0, positions=[])
+        position = portfolio.record_live_position(candidate, 4.58, entry_price=0.91)
+        self.assertIsNotNone(position)
+        position["strategy"] = "grinder"
+        position["current_price"] = 0.505
+
+        exits = _execute_race_exits(
+            build_client(Settings(dry_run=True)),
+            Settings(
+                dry_run=True,
+                min_order_shares=5.0,
+                smart_min_sell_usd=1.0,
+                race_sl_pct=0.15,
+                race_tp_pct=0.06,
+                race_resolved_exit_threshold=0.99,
+                quiet=True,
+            ),
+            portfolio,
+            [candidate],
+            "grinder",
+        )
+
+        self.assertEqual(exits, [])
+        self.assertEqual(position["status"], "open")
+        self.assertFalse(position.get("journaled"))
+
 
 class MarketCategoryTests(unittest.TestCase):
     def test_inflation_is_not_sports(self):

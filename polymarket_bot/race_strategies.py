@@ -988,6 +988,19 @@ def _minutes_to_close(position: dict[str, Any]) -> float | None:
     return (end_dt - utc_now()).total_seconds() / 60.0
 
 
+def _is_sports_total_position(position: dict[str, Any]) -> bool:
+    question = str(position.get("question") or "").lower()
+    outcome = str(position.get("outcome") or "").lower()
+    return (
+        outcome in {"over", "under"}
+        and (
+            "o/u" in question
+            or "over/under" in question
+            or "total" in question
+        )
+    )
+
+
 def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings: Settings) -> dict[str, Any] | None:
     shares = float(position.get("shares", 0.0) or 0.0)
     if shares <= 0:
@@ -999,6 +1012,8 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
     if current_pnl_pct >= settings.race_tp_pct:
         return {"reason": "race_take_profit", "shares": shares}
     if current_pnl_pct <= -settings.race_sl_pct:
+        if _is_sports_total_position(position):
+            return None
         return {"reason": "race_stop_loss", "shares": shares}
     # Near-expiry flush removed: was selling positions at break-even
     # just because the market was about to resolve, leaving real upside
