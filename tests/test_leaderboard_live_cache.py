@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from polymarket_bot.leaderboard import RunStats, format_leaderboard, format_leaderboard_telegram, gather_live_stats
+from polymarket_bot.leaderboard import PositionSummary, RunStats, format_leaderboard, format_leaderboard_telegram, gather_live_stats
 
 
 class LiveLeaderboardCacheTests(unittest.TestCase):
@@ -71,11 +71,59 @@ class LiveLeaderboardCacheTests(unittest.TestCase):
             realized_pnl=1.1,
             started_at=None,
             total_ticks=0,
+            top_open=[
+                PositionSummary(
+                    title="Coritiba FBC vs. EC Bahia: O/U 4.5",
+                    pnl=-3.50,
+                    stake=4.55,
+                    price=0.60,
+                    reason="grinder",
+                    outcome="Under",
+                    end_date="2099-01-01T00:00:00+00:00",
+                    status="open",
+                )
+            ],
         )
         text = format_leaderboard([], live=live)
         self.assertIn("Closed: 3W/0L  Open: 1", text)
         telegram = format_leaderboard_telegram([], live=live)
+        self.assertIn("🔵 grinder LIVE is also running!", telegram)
         self.assertIn("Closed 3W/0L  Open 1", telegram)
+        self.assertIn("Ongoing:", telegram)
+
+    def test_open_position_line_shows_side_and_close_eta(self) -> None:
+        line = format_leaderboard(
+            [],
+            live=RunStats(
+                run_name="grinder",
+                starting_cash=6.0,
+                cash=2.0,
+                invested=4.0,
+                unrealized_pnl=0.0,
+                equity=6.0,
+                open_positions=1,
+                closed_trades=3,
+                wins=3,
+                losses=0,
+                realized_pnl=1.1,
+                started_at=None,
+                total_ticks=0,
+                top_open=[
+                    PositionSummary(
+                        title="Coritiba FBC vs. EC Bahia: O/U 4.5",
+                        pnl=-3.50,
+                        stake=4.55,
+                        price=0.60,
+                        reason="grinder",
+                        outcome="Under",
+                        end_date="2099-01-01T00:00:00+00:00",
+                        status="open",
+                    )
+                ],
+            ),
+        )
+        self.assertIn("Under Coritiba FBC vs. EC Bahia: O/U 4.5", line)
+        self.assertIn("in ", line)
 
 
 if __name__ == "__main__":

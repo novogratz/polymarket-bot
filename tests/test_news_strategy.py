@@ -178,12 +178,11 @@ class NewsSellPlanTests(unittest.TestCase):
         )
         self.assertIsNone(plan)
 
-    def test_stop_loss_fires_after_min_age(self):
+    def test_stop_loss_never_fires_after_min_age(self):
         plan = _news_sell_plan(
             self._position(age_min=10.0), current_pnl_pct=-0.60, settings=self.settings
         )
-        self.assertIsNotNone(plan)
-        self.assertEqual(plan["reason"], "news_stop_loss")
+        self.assertIsNone(plan)
 
     def test_near_expiry_positive_exit(self):
         plan = _news_sell_plan(
@@ -362,15 +361,14 @@ class PartialTakeProfitTests(unittest.TestCase):
         self.assertEqual(plan["reason"], "news_trailing_stop")
         self.assertEqual(plan["shares"], 10.0)
 
-    def test_adaptive_stop_fires_near_expiry(self):
-        # 20 min to expiry → very_tight_stop_pct = 0.10
+    def test_adaptive_stop_never_fires_near_expiry(self):
+        # Stop-loss is intentionally disabled for news exits now.
         plan = _news_sell_plan(
             self._position(end_min=20.0),
             current_pnl_pct=-0.12,
             settings=self.settings,
         )
-        self.assertIsNotNone(plan)
-        self.assertEqual(plan["reason"], "news_stop_loss")
+        self.assertIsNone(plan)
 
     def test_adaptive_stop_does_not_fire_at_base_with_time_left(self):
         # 3h left → base 25%; -12% should NOT fire.

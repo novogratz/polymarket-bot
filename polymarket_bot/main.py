@@ -1462,16 +1462,6 @@ def _sell_plan(position: dict[str, object], current_pnl_pct: float, settings: Se
     if current_shares <= 0:
         return None
     peak_pnl_pct = float(position.get("peak_pnl_pct", current_pnl_pct))
-    if (
-        settings.smart_stop_loss_pct > 0
-        and current_pnl_pct <= -abs(settings.smart_stop_loss_pct)
-        and peak_pnl_pct < settings.smart_peak_protect_trigger
-        and _position_age_minutes(position) >= settings.smart_stop_loss_min_age_minutes
-    ):
-        return {
-            "reason": "stop_loss",
-            "shares": current_shares,
-        }
     if peak_pnl_pct >= settings.smart_peak_protect_trigger and current_pnl_pct <= settings.smart_peak_protect_floor:
         return {
             "reason": "peak_profit_protection",

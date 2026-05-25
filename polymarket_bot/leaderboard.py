@@ -35,6 +35,9 @@ class PositionSummary:
     stake: float = 0.0
     price: float = 0.0
     reason: str = ""
+    outcome: str = ""
+    end_date: str | None = None
+    status: str = ""
 
 
 @dataclass
@@ -135,6 +138,26 @@ def _record_pnl(record: dict) -> float:
             except (TypeError, ValueError):
                 return 0.0
     return 0.0
+
+
+def _humanize_close_eta(end_date: str | None) -> str:
+    if not end_date:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(str(end_date).replace("Z", "+00:00"))
+    except Exception:
+        return ""
+    now = datetime.now(timezone.utc)
+    delta = (parsed - now).total_seconds()
+    if delta <= 0:
+        return "expired"
+    if delta < 60:
+        return f"in {int(delta)}s"
+    if delta < 3600:
+        return f"in {int(delta / 60)}m"
+    if delta < 86400:
+        return f"in {delta / 3600:.1f}h"
+    return f"in {delta / 86400:.1f}d"
 
 
 def _realized_key(record: dict) -> str:
@@ -261,6 +284,9 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
                 stake=_float(p.get("stake")),
                 price=_float(p.get("current_price") or p.get("entry_price") or p.get("avg_price")),
                 reason=str(p.get("strategy") or p.get("reason") or ""),
+                outcome=str(p.get("outcome") or ""),
+                end_date=str(p.get("end_date") or "") or None,
+                status=str(p.get("status") or ""),
             )
             for p in open_positions
         ),
@@ -503,6 +529,9 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
                 stake=_float(rec.get("stake") or rec.get("entry_stake") or rec.get("cost_basis")),
                 price=_float(rec.get("exit_price") or rec.get("closed_price") or rec.get("price")),
                 reason=str(rec.get("exit_reason") or rec.get("reason") or ""),
+                outcome=str(rec.get("outcome") or ""),
+                end_date=str(rec.get("end_date") or "") or None,
+                status="closed",
             )
         )
         realized_pnl += pnl
@@ -552,18 +581,35 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
     )
 
 
+def _run_color(wins: int, losses: int, roi_pct: float) -> str:
+    if wins > losses:
+        return "🟢"
+    if losses > wins:
+        return "🔴"
+    if roi_pct > 0:
+        return "🟢"
+    if roi_pct < 0:
+        return "🔴"
+    return "⚪"
+
+
 def _fmt_position(pos: PositionSummary, *, max_title: int = 56) -> str:
     title = _short(pos.title.replace("\n", " "), max_title)
     stake = f" stake ${pos.stake:.2f}" if pos.stake > 0 else ""
     price = f" @ {pos.price:.2f}" if pos.price > 0 else ""
     reason = f" [{_short(pos.reason, 18)}]" if pos.reason else ""
-    return f"{title}: {pos.pnl:+.2f}{stake}{price}{reason}"
+    outcome = f"{_short(pos.outcome, 8)} " if pos.outcome else ""
+    close_eta = ""
+    if pos.status == "open":
+        eta = _humanize_close_eta(pos.end_date)
+        close_eta = f" · {eta}" if eta else ""
+    return f"{outcome}{title}: {pos.pnl:+.2f}{stake}{price}{reason}{close_eta}"
 
 
 def _best_position_line(positions: list[PositionSummary]) -> str:
     if not positions:
         return "-"
-    return _short(_fmt_position(positions[0], max_title=38), 56)
+    return _short(_fmt_position(positions[0], max_title=38), 120)
 
 
 def _append_winner_details(lines: list[str], winner: RunStats) -> None:
@@ -612,7 +658,7 @@ def format_leaderboard(
     )
     now = now or datetime.now(timezone.utc)
     stamp = now.strftime("%H:%M:%S")
-    profitable = sum(1 for s in ranked if s.roi_pct > 0)
+    profitable = sum(1 for s in ranked if s.wins > s.losses or s.roi_pct > 0)
     positioned = sum(1 for s in ranked if s.open_positions > 0)
     total_open = sum(s.open_positions for s in ranked)
     total_exposure = sum(s.invested for s in ranked)
@@ -667,6 +713,8 @@ def format_leaderboard(
             f"Closed: {live.wins}W/{live.losses}L  Open: {live.open_positions}  "
             f"Closed trades: {live.closed_trades}"
         )
+        if live.top_open:
+            lines.append(f"   Ongoing: {_best_position_line(live.top_open)}")
         lines.append(f"   If ranked among dry strategies: #{hypo_rank} of {total}")
         lines.append(bar)
     return "\n".join(lines)
@@ -697,7 +745,7 @@ def format_leaderboard_telegram(
     now = now or datetime.now(timezone.utc)
     stamp = now.strftime("%H:%M")
 
-    profitable = sum(1 for s in ranked if s.roi_pct > 0)
+    profitable = sum(1 for s in ranked if s.wins > s.losses or s.roi_pct > 0)
     lines = [
         f"🏁 Leaderboard · {stamp} UTC · {len(ranked)} strategies "
         f"({profitable} profitable)",
@@ -708,12 +756,7 @@ def format_leaderboard_telegram(
         # Plain text rows — _post() retries with parse_mode stripped on
         # HTTP 400, so we keep formatting minimal to avoid MarkdownV2
         # escape headaches with strategy names full of underscores.
-        if s.roi_pct > 0:
-            color = "🟢"
-        elif s.roi_pct < 0:
-            color = "🔴"
-        else:
-            color = "⚪"
+        color = _run_color(s.wins, s.losses, s.roi_pct)
         return (
             f"{i:>3}. {color} {s.run_name:<38s} "
             f"${s.equity:>7.2f}  {s.roi_pct:+6.1f}%  "
@@ -743,12 +786,7 @@ def format_leaderboard_telegram(
     if live is not None:
         hypo_rank = 1 + sum(1 for s in ranked if s.roi_pct > live.roi_pct)
         total = len(ranked) + 1
-        if live.roi_pct > 0:
-            live_color = "🟢"
-        elif live.roi_pct < 0:
-            live_color = "🔴"
-        else:
-            live_color = "⚪"
+        live_color = _run_color(live.wins, live.losses, live.roi_pct)
         # Plain text — _post() auto-retries with parse_mode stripped on
         # HTTP 400, and we kept all rows above plain too. No MarkdownV2
         # escaping (was producing visible \. \- \! literals).
@@ -760,6 +798,8 @@ def format_leaderboard_telegram(
             f"{live.roi_pct:+.1f}%  PnL {live.total_pnl:+.2f}  "
             f"Closed {live.wins}W/{live.losses}L  Open {live.open_positions}"
         )
+        if live.top_open:
+            lines.append(f"   Ongoing: {_best_position_line(live.top_open)}")
         lines.append(f"   If listed: would rank #{hypo_rank} of {total}")
 
     if ranked:

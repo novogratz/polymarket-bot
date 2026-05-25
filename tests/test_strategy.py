@@ -760,7 +760,7 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(plan["reason"], "take_profit_50pct")
         self.assertEqual(plan["shares"], 25.0)
 
-    def test_sell_plan_stop_loss_triggers_after_min_age(self):
+    def test_sell_plan_no_stop_loss_even_when_below_threshold(self):
         old_open = (utc_now() - timedelta(hours=2)).isoformat()
         position = {
             "shares": 100.0,
@@ -772,8 +772,7 @@ class StrategyTests(unittest.TestCase):
         }
         settings = Settings(smart_stop_loss_pct=0.40, smart_stop_loss_min_age_minutes=15)
         plan = _sell_plan(position, -0.45, settings)
-        self.assertEqual(plan["reason"], "stop_loss")
-        self.assertEqual(plan["shares"], 100.0)
+        self.assertIsNone(plan)
 
     def test_sell_plan_stop_loss_skipped_for_fresh_positions(self):
         fresh_open = utc_now().isoformat()

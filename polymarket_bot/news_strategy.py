@@ -378,14 +378,13 @@ def _news_sell_plan(
     current_pnl_pct: float,
     settings: Settings,
 ) -> dict[str, Any] | None:
-    """Multi-tier exit plan: partial TP, trailing stop, adaptive SL.
+    """Multi-tier exit plan: partial TP, trailing stop, near-expiry flush.
 
     Order of checks:
     1. Partial take-profit at +TP% (sell half, mark tier hit).
     2. Trailing stop after partial TP arms (sell remainder if peak
        gives back ``trailing_giveback_pct`` while still > 0).
-    3. Adaptive stop-loss (tightens near expiry).
-    4. Near-expiry positive flush.
+    3. Near-expiry positive flush.
     """
     shares = float(position.get("shares", 0.0) or 0.0)
     if shares <= 0:
@@ -420,13 +419,7 @@ def _news_sell_plan(
                 "shares": shares,
             }
 
-    # 3. Adaptive stop-loss (universal min-hold already enforced above).
-    hours_left = _hours_to_close_from_position(position)
-    sl_pct = _adaptive_stop_pct(hours_left, settings)
-    if current_pnl_pct <= -sl_pct:
-        return {"reason": "news_stop_loss", "shares": shares}
-
-    # 4. Near-expiry positive flush: protect a gain right before close.
+    # 3. Near-expiry positive flush: protect a gain right before close.
     # Only fires when current PnL is strictly above the configured floor
     # (default 0%) so we never close a losing trade just because time is
     # short. Mirror of the smart-money near-expiry-positive-exit rule.
