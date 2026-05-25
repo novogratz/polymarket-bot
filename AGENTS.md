@@ -47,7 +47,7 @@ A `Makefile` is also provided: `make test`, `make lint`, `make run`, `make dashb
 - Prefer strategies with explicit entry criteria, sizing limits, spread limits, freshness checks, and duplicate-position checks.
 - The smart-money strategy copies recent BUY trades only when multiple profitable wallets bought the same token in the lookback window.
 - Sizing is conviction-weighted (0.55x to 2.5x), with a per-position absolute ceiling and an equity-percentage ceiling that scales with the bankroll.
-- The sell strategy runs before new entries: take-profit ladder, trailing stop, peak-protect, stop-loss, cohort-sell, near-expiry, max-hold-time.
+- The sell strategy runs before new entries: take-profit ladder, trailing stop, peak-protect, cohort-sell, near-expiry, max-hold-time. Current grinder/live flows do not use stop-loss exits.
 - Sync live Polymarket positions and live USDC balance into the local ledger every tick.
 - Treat crypto up/down micro markets more strictly than sports or longer-duration markets.
 - The integrated BTC edge strategy is opt-in (`POLYMARKET_BTC_EDGE_INTEGRATED=1`) and capped per trade.

@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Polymarket smart-money copy-trading bot with a local dashboard, persistent ledger, trade journal, defensive auto-tuner, and an optional BTC edge model. The default strategy watches recent buys from profitable leaderboard wallets, requires multi-wallet consensus on the same token, applies tight execution filters (absolute spread, relative spread, price band, freshness, chase premium), then sizes each trade as a percentage of the bankroll weighted by signal conviction. Exits run before each new entry: take-profit ladder, trailing stop, peak-protect, stop-loss, cohort-sell.
+Polymarket smart-money copy-trading bot with a local dashboard, persistent ledger, trade journal, defensive auto-tuner, and an optional BTC edge model. The default strategy watches recent buys from profitable leaderboard wallets, requires multi-wallet consensus on the same token, applies tight execution filters (absolute spread, relative spread, price band, freshness, chase premium), then sizes each trade as a percentage of the bankroll weighted by signal conviction. Exits run before each new entry: take-profit ladder, trailing stop, peak-protect, cohort-sell, resolved-market exit, max-hold-time. The current grinder/live stack does not use stop-loss exits.
 
 > ⚠️ **Financial disclaimer.** This bot places real-money trades when configured to do so. It is not financial advice and there is no guarantee of profit. The user assumes all risk. Read the [Disclaimer](#disclaimer) section before running it live.
 
@@ -129,7 +129,7 @@ Risks the strategy explicitly avoids:
 - **Bad execution** — paying the full spread erases the entire edge. Filtered by absolute spread, relative spread, max chase premium.
 - **Concentration** — six bets on the same event. Filtered by per-market dedupe and per-event-slug dedupe for sports.
 - **Round-trip to flat** — a winner that gives back to zero. Filtered by take-profit ladder + trailing stop + peak-protect.
-- **Drawdown without exit** — a loser that bleeds slowly. Filtered by stop-loss after a minimum hold age.
+- **Open drawdown** — a loser that bleeds slowly. The current grinder/live stack does not auto-liquidate with stop-loss; it relies on cohort, resolved, and max-hold exits.
 - **Cohort flip** — entry wallets actively selling. Filtered by cohort-sell detection (reads cohort SELL trades within the lookback window).
 
 ### Entry conditions
@@ -201,7 +201,7 @@ Paused below 30 closed trades to avoid overfitting. **Defensive only**: tightens
 - **Three-pass scan per tick** — strict, relaxed (consensus floor relaxed), deep fallback (consensus=1 with looser filters). One leaderboard+trades fetch shared across all three passes.
 - **Percentage sizing** — each trade = `cash * SMART_POSITION_PCT * conviction_multiplier`, with absolute ceiling, equity-pct ceiling, cash floor, and dynamic redistribution of remaining budget across remaining opportunities.
 - **Conviction multipliers** — weak 0.7x, mid 0.9x, strong-3-wallet 1.1–1.3x, high-4-wallet 1.6–2.0x, very-high-5-wallet+ 2.5x, crypto-micro 0.55x.
-- **Multi-level exits** — partial take-profit ladder (+25% / +50% / +100% / +200% / +300%), trailing stop (arms +25%, 50% giveback), peak-protect (+100% arm, exits below +40%), stop-loss -40% (after 15 min), resolved-market exit (bid ≥ 0.97), cohort-sell active SELL detection (120 min lookback), cohort-silent (no fresh BUY), near-expiry positive exit, max-hold 24h. When a SELL is rejected with "balance is not enough", the bot auto-cancels the resting CLOB order on that token and retries on the next tick.
+- **Multi-level exits** — partial take-profit ladder (+25% / +50% / +100% / +200% / +300%), trailing stop (arms +25%, 50% giveback), peak-protect (+100% arm, exits below +40%), resolved-market exit (bid ≥ 0.97), cohort-sell active SELL detection (120 min lookback), cohort-silent (no fresh BUY), near-expiry positive exit, max-hold 24h. When a SELL is rejected with "balance is not enough", the bot auto-cancels the resting CLOB order on that token and retries on the next tick.
 - **Trade journal** — every closed position writes a JSON line to `data/trade_journal.jsonl` with full entry signal metadata, exit reason, and realized PnL.
 - **Defensive auto-tuner** — every tick, reads the journal and applies bounded overrides to `data/strategy_overrides.json` when filters are too loose. Paused below 30 closed trades. Defensive only: tightens after losses, never loosens after wins.
 - **BTC edge integrated** — after every smart-money tick, the Black-Scholes-from-volatility model in `bitcoin.py` runs. If model edge over market price exceeds `BTC_MIN_EDGE` (default 8%), a small $5 trade is placed. Disciplined — not "buy 0.95 it's free money."

@@ -14,7 +14,7 @@ The bot monetises that signal by:
 - Sizing each trade as a percentage of the bankroll, weighted by signal conviction.
 - Refusing duplicate positions per market, per token, and per event-slug for sports.
 - Taking profits with partial SELL orders at staged thresholds rather than waiting for resolution.
-- Exiting losers proactively via stop-loss, trailing stop, cohort-sell, and max-hold-time caps.
+- Exiting losers proactively via trailing stop, cohort-sell, resolved-market exit, and max-hold-time caps. The current grinder/live stack does not use stop-loss exits.
 - Reconciling local ledger state from live Polymarket positions every tick.
 
 The strategy does not predict every market from scratch. It follows public smart-money activity, only when execution quality is acceptable.

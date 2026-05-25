@@ -36,7 +36,7 @@ Chaque tick exécute, dans cet ordre :
 2. **Scan Gamma** — récupère ~640 marchés actifs candidats.
 3. **Sync positions live** + refresh USDC (CLOB).
 4. **Exits cohorte** — détecte les SELL ou le silence de la cohorte d'entrée.
-5. **Exits techniques** — TP ladder, trailing, peak protect, stop-loss, near-expiry, max-hold, resolved market.
+5. **Exits techniques** — TP ladder, trailing, peak protect, near-expiry, max-hold, resolved market. Le stack grinder/live actuel n'utilise pas de stop-loss.
 6. **Smart-money — strict** (1ʳᵉ passe).
 7. **Smart-money — relaxed** (2ᵉ passe, si strict=0 et positions < min_open).
 8. **Smart-money — deep fallback** (3ᵉ passe, si relaxed=0 et toujours < min_open).
@@ -190,13 +190,11 @@ Sécurise les gains sans bloquer la course haussière. Tag : `trailing_stop`.
 
 Variante "haute conviction" du trailing. S'arme à `peak_protect_arm_pct` (typiquement +100%). Exit si PnL retombe à `peak_protect_exit_pct` (typiquement +40%). Donne plus d'espace que le trailing classique.
 
-Quand peak protect est armé, le **stop loss est désactivé** (la position a déjà prouvé qu'elle peut grimper). Tag : `peak_protect`.
+Quand peak protect est armé, la position continue à être gérée par TP / trailing / resolved / cohort / max-hold. Tag : `peak_protect`.
 
-### Exit 4 — Stop loss (totale)
+### Exit 4 — Stop loss (legacy)
 
-Si PnL < `-stop_loss_pct` (typiquement -40%) ET la position a plus de `stop_loss_min_age_minutes` (typiquement 15 min), exit. Le min-age évite la sortie sur bruit initial du carnet.
-
-Désactivé si peak protect armé. Tag : `stop_loss`.
+Le stop-loss est conservé comme paramètre de compatibilité dans certains profils, mais le stack grinder/live courant ne l'utilise pas.
 
 ### Exit 5 — Cohort sell
 
@@ -232,7 +230,7 @@ Tourne au début de chaque tick. Lit le journal des trades clos. Quand ≥ `auto
 
 | Condition observée | Ajustement |
 |---|---|
-| > 40% trades sortis en stop loss | `max_chase_premium ×= 0.80`, `max_relative_spread ×= 0.85` |
+| > 40% trades sortis via exits défensifs | `max_chase_premium ×= 0.80`, `max_relative_spread ×= 0.85` |
 | consensus=2 trades avg PnL < -$0.30 (n ≥ 20) | `min_consensus = 3` |
 | sports avg PnL < -$0.30 (n ≥ 15) | `sports_score_penalty ×= 1.5` |
 | Win rate < 30% | `min_copied_usdc ×= 1.5` |
@@ -252,7 +250,7 @@ Les overrides sont écrits dans `data/strategy_overrides.json` (ou `data/dry_run
 | **Bad execution** (paye le spread) | `max_absolute_spread`, `max_relative_spread`, `max_chase_premium` |
 | **Concentration** (6 paris sur 1 event) | dédup par market_id/token_id/event_slug, `max_sports_positions` |
 | **Round-trip to flat** (winner qui rend tout) | TP ladder, trailing stop, peak protect |
-| **Drawdown lent** (loser qui bleed) | stop loss après min-age, max-hold-time |
+| **Drawdown lent** (loser qui bleed) | cohort / resolved / max-hold-time |
 | **Cohort flip** (entrée vend) | cohort sell, cohort silent |
 | **Marché illiquide** | `min_liquidity_usd`, `min_volume_usd`, `accepts_orders` |
 | **Near-expiry illiquidity** | near-expiry positive exit, `min_hours_to_close` |

@@ -17,7 +17,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
   - `race_max_hours=1.0` (only the last 60 min)
   - `race_max_spread=0.02` (tight — paying 4¢ spread on a 6¢ TP wipes the edge)
   - `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
-- Exits: TP +6%, SL -15%, `sl_min_age_minutes=1` (markets close fast — can't wait 15 min), resolved at bid ≥ 0.97
+- Exits: TP +6%, resolved at bid ≥ 0.97, no stop-loss in the current grinder/live stack
 - Daily DD halt at -15% of starting equity (default — env override available via `POLYMARKET_RACE_DAILY_DRAWDOWN_PCT`)
 - Tick interval: 30s on live (`POLYMARKET_AUTO_INTERVAL_SECONDS=30` in `run_all.sh` / `run_live_70.sh`), 600s on dry (per-subshell override in `run_dry_bot`)
 - Selector ranking: `score = best_bid / max(hours_to_close, 1/60)` — closer to resolution and closer to 1.0 ranks higher
@@ -53,7 +53,7 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
 
 **Autonomous loop — see `scripts/dry_analyst.py`:**
 - Runs as a sidecar alongside `bash scripts/run_all.sh`
-- **Report every 15 min** to `TELEGRAM_CHAT_ID_DRY_RUN`: full leaderboard with $start → $current / +/- $ / ROI% / WR / closed / open per strategy, top 3 trades + open positions for the favorite, plus a tiered live-readiness recommendation.
+- **Report every 15 min** to `TELEGRAM_CHAT_ID_DRY_RUN`: full leaderboard with $start → $current / +/- $ / ROI% / WR / closed / open per strategy, top 3 trades + open positions for the favorite, plus a tiered live-readiness recommendation. Open-position lines now include the side and close ETA so the ongoing market is visible.
 - **Spawn/kill every 1 hour** (decoupled from report rhythm).
   - Spawns 1–3 new `auto_*` profiles per cycle via Codex CLI, falling back to Ollama, derived from current winners
   - Tunes (in-place reroll) up to 2 `auto_*` per cycle
@@ -255,7 +255,7 @@ Each tick prints structured progress to stdout, followed by a JSON summary. Orde
 3. Sync live Polymarket positions into the local ledger.
 4. Refresh live USDC cash from CLOB.
 5. Cohort-exit detection (active SELL by entry wallets, or no fresh BUYs).
-6. Sell strategy: take-profit ladder, trailing stop, peak-protect, stop-loss, cohort exits, near-expiry, max-hold-time.
+6. Sell strategy: take-profit ladder, trailing stop, peak-protect, cohort exits, near-expiry, max-hold-time. No stop-loss exits in the current grinder/live stack.
 7. Smart-money scan: strict → relaxed → deep fallback. One leaderboard+trades fetch shared across all three.
 8. Reverse-lookup high-flow tokens not in current candidates; merge into the eligible pool.
 9. Place trades from the opportunity list with dynamic per-slot sizing toward the cash floor.
@@ -278,7 +278,7 @@ Risks the strategy avoids:
 - **Bad execution** — paying the spread erases the edge. Filtered by absolute and relative spread, chase premium.
 - **Concentration** — six bets on the same event. Filtered by per-market and per-event-slug dedupe.
 - **Round-trip to flat** — a winner that gives back to zero. Filtered by take-profit ladder + trailing stop + peak-protect.
-- **Drawdown without exit** — a loser bleeding slowly. Filtered by stop-loss after min-age.
+- **Open drawdown** — a loser bleeding slowly. The current grinder/live stack relies on cohort, resolved, and max-hold exits rather than stop-loss.
 - **Cohort flip** — entry wallets selling. Filtered by active cohort-sell detection.
 
 ### Entry conditions

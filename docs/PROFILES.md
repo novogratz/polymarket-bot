@@ -130,8 +130,8 @@ Cible : `.env` ne contient que secrets (`PRIVATE_KEY`, `API_KEY`...), endpoints 
 | `trailing_stop_giveback` | float | Sortie si retour à `(1 - giveback) × peak` (typiquement giveback=0.50). |
 | `peak_protect_arm_pct` | float | Arme le peak protect quand peak atteint +X% (typiquement +100%). |
 | `peak_protect_exit_pct` | float | Sortie si retour à +X% après peak protect armé. |
-| `stop_loss_pct` | float | Stop loss : sortie si PnL < -X%. |
-| `stop_loss_min_age_minutes` | int | Le stop loss n'agit pas pendant les X premières minutes (évite la sortie sur bruit initial). |
+| `stop_loss_pct` | float | Legacy / compatibility field. The current grinder/live stack does not use stop-loss exits. |
+| `stop_loss_min_age_minutes` | int | Legacy / compatibility field kept for older profiles. No-op in the current grinder/live stack. |
 | `max_hold_hours` | float | Force-close à X heures de durée (par défaut 24h). |
 | `near_expiry_min_profit` | float | Exit profitable juste avant clôture si PnL ≥ +X%. |
 | `near_expiry_minutes_to_close` | int | Fenêtre du near-expiry exit (X minutes avant clôture). |
