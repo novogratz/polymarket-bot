@@ -2049,6 +2049,89 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(result.order["size"], 4.978723)
         self.assertEqual(position["status"], "closed")
 
+    def test_live_sell_allows_full_position_below_min_sell_usd(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.01,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.01,
+            best_ask=0.02,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=1.0, positions=[])
+        position = portfolio.record_live_position(candidate, 4.58, entry_price=0.91)
+        self.assertIsNotNone(position)
+
+        result = execute_live_sell(
+            build_client(Settings(dry_run=True)),
+            Settings(dry_run=True, min_order_shares=5.0, smart_min_sell_usd=1.0, quiet=True),
+            candidate,
+            portfolio,
+            position,
+            shares=5.032967,
+            reason="race_stop_loss",
+        )
+
+        self.assertEqual(result.order["size"], 5.032967)
+        self.assertEqual(position["status"], "closed")
+
+    def test_race_exit_uses_live_position_mark_over_bad_scan_quote(self):
+        from polymarket_bot.race_strategies import _execute_race_exits
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.01,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.01,
+            best_ask=0.02,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=1.0, positions=[])
+        position = portfolio.record_live_position(candidate, 4.58, entry_price=0.91)
+        self.assertIsNotNone(position)
+        position["strategy"] = "grinder"
+        position["current_price"] = 0.93
+
+        exits = _execute_race_exits(
+            build_client(Settings(dry_run=True)),
+            Settings(
+                dry_run=True,
+                min_order_shares=5.0,
+                smart_min_sell_usd=1.0,
+                race_sl_pct=0.15,
+                race_tp_pct=0.06,
+                race_resolved_exit_threshold=0.99,
+                quiet=True,
+            ),
+            portfolio,
+            [candidate],
+            "grinder",
+        )
+
+        self.assertEqual(exits, [])
+        self.assertEqual(position["status"], "open")
+        self.assertFalse(position.get("journaled"))
+
 
 class MarketCategoryTests(unittest.TestCase):
     def test_inflation_is_not_sports(self):

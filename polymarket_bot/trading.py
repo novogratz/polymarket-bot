@@ -874,7 +874,7 @@ def execute_live_sell(
             f"sell size {size} shares is below Polymarket minimum of {settings.min_order_shares} shares"
         )
     proceeds = round(size * sell_price, 2)
-    if proceeds < settings.smart_min_sell_usd:
+    if proceeds < settings.smart_min_sell_usd and not selling_all_available:
         raise ValueError(f"sell proceeds {proceeds} is below minimum ${settings.smart_min_sell_usd}")
 
     if settings.quiet:

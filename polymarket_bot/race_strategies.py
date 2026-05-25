@@ -1063,7 +1063,10 @@ def _execute_race_exits(
         entry_price = float(position.get("entry_price", 0.0) or 0.0)
         if entry_price <= 0:
             continue
-        current_pnl_pct = (candidate.best_bid - entry_price) / entry_price
+        decision_bid = max(float(candidate.best_bid or 0.0), position_price)
+        if decision_bid > float(candidate.best_bid or 0.0):
+            candidate = replace(candidate, best_bid=min(decision_bid, 0.99))
+        current_pnl_pct = (decision_bid - entry_price) / entry_price
         position["peak_pnl_pct"] = max(
             float(position.get("peak_pnl_pct", current_pnl_pct)), current_pnl_pct
         )
@@ -1164,6 +1167,15 @@ def _execute_race_exits(
                     f"'{position.get('question')}': {exc} — position NOT "
                     f"written off, will retry. Run `uv run pmbot "
                     f"bootstrap-creds` to refresh credentials if this persists.",
+                    flush=True,
+                )
+                continue
+
+            if "below minimum" in exc_msg:
+                print(
+                    f"⚠️  {strategy_name} SELL below local minimum on "
+                    f"'{position.get('question')}': {exc} — position NOT "
+                    f"written off, will retry or sync from live account.",
                     flush=True,
                 )
                 continue
