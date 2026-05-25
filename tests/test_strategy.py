@@ -2628,6 +2628,37 @@ class JournalStatsDrawdownTests(unittest.TestCase):
             stats = journal_stats(Settings(trade_journal_path=tmp_path))
             self.assertEqual(stats["max_drawdown"], -5.0)
 
+    def test_journal_stats_reads_realized_cache_and_dedupes_journal(self):
+        import tempfile
+        import json
+        from pathlib import Path
+        from polymarket_bot.main import journal_stats
+
+        with tempfile.TemporaryDirectory() as tmp:
+            journal = Path(tmp) / "journal.jsonl"
+            cache = Path(tmp) / "realized_trade_cache.jsonl"
+            fred = {
+                "closed_at": "2026-05-25T10:00:00+00:00",
+                "token_id": "fred",
+                "exit_reason": "race_take_profit",
+                "realized_pnl": 0.45,
+            }
+            btc = {
+                "closed_at": "2026-05-25T11:00:00+00:00",
+                "token_id": "btc",
+                "exit_reason": "race_big_win_resolved",
+                "realized_pnl": 0.25,
+            }
+            journal.write_text(json.dumps(fred) + "\n", encoding="utf-8")
+            cache.write_text(json.dumps(fred) + "\n" + json.dumps(btc) + "\n", encoding="utf-8")
+
+            stats = journal_stats(Settings(trade_journal_path=journal, realized_cache_path=cache))
+
+            self.assertEqual(stats["records"], 2)
+            self.assertEqual(stats["wins"], 2)
+            self.assertEqual(stats["losses"], 0)
+            self.assertEqual(stats["total_pnl"], 0.7)
+
 
 class JournalSuggestionsTests(unittest.TestCase):
     def _records(self, n, exit_reason="take_profit_50", pnl=1.0, **extra):

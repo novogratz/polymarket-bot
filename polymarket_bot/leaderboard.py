@@ -127,6 +127,49 @@ def _float(raw: object, default: float = 0.0) -> float:
         return default
 
 
+def _record_pnl(record: dict) -> float:
+    for key in ("realized_pnl", "realized_pnl_usd"):
+        if record.get(key) is not None:
+            try:
+                return float(record.get(key) or 0.0)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
+
+
+def _realized_key(record: dict) -> str:
+    return "|".join(
+        (
+            str(record.get("token_id") or ""),
+            str(record.get("closed_at") or ""),
+            str(record.get("exit_reason") or record.get("reason") or ""),
+            f"{_record_pnl(record):.4f}",
+        )
+    )
+
+
+def _read_realized_records(journal_path: Path) -> list[dict]:
+    cache_path = Path(os.environ.get("POLYMARKET_REALIZED_CACHE_PATH", str(journal_path.parent / "realized_trade_cache.jsonl")))
+    out: dict[str, dict] = {}
+    for path in (journal_path, cache_path):
+        if not path.is_file():
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(rec, dict):
+                out[_realized_key(rec)] = rec
+    return sorted(out.values(), key=lambda r: str(r.get("closed_at") or ""))
+
+
 def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
     """Read one dry-run directory and compute its standings.
 
@@ -431,47 +474,32 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
     biggest_loss_today = 0.0
     today = datetime.now(timezone.utc).date()
     journal_path = base_dir / "trade_journal.jsonl"
-    if journal_path.is_file():
-        try:
-            with journal_path.open("r", encoding="utf-8") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        rec = json.loads(line)
-                    except Exception:
-                        continue
-                    try:
-                        pnl = float(rec.get("realized_pnl", 0) or 0)
-                    except (TypeError, ValueError):
-                        pnl = 0.0
-                    closed_positions.append(
-                        PositionSummary(
-                            title=_position_title(rec),
-                            pnl=pnl,
-                            stake=_float(rec.get("stake") or rec.get("entry_stake") or rec.get("cost_basis")),
-                            price=_float(rec.get("exit_price") or rec.get("closed_price") or rec.get("price")),
-                            reason=str(rec.get("exit_reason") or rec.get("reason") or ""),
-                        )
-                    )
-                    realized_pnl += pnl
-                    mid = str(rec.get("market_id") or "")
-                    if mid:
-                        market_pnl[mid] = market_pnl.get(mid, 0.0) + pnl
-                    closed_at = rec.get("closed_at")
-                    if closed_at:
-                        try:
-                            closed_dt = datetime.fromisoformat(str(closed_at).replace("Z", "+00:00"))
-                        except (ValueError, TypeError):
-                            closed_dt = None
-                        if closed_dt is not None and closed_dt.date() == today:
-                            if pnl > biggest_win_today:
-                                biggest_win_today = pnl
-                            if pnl < biggest_loss_today:
-                                biggest_loss_today = pnl
-        except Exception:
-            pass
+    for rec in _read_realized_records(journal_path):
+        pnl = _record_pnl(rec)
+        closed_positions.append(
+            PositionSummary(
+                title=_position_title(rec),
+                pnl=pnl,
+                stake=_float(rec.get("stake") or rec.get("entry_stake") or rec.get("cost_basis")),
+                price=_float(rec.get("exit_price") or rec.get("closed_price") or rec.get("price")),
+                reason=str(rec.get("exit_reason") or rec.get("reason") or ""),
+            )
+        )
+        realized_pnl += pnl
+        mid = str(rec.get("market_id") or rec.get("token_id") or "")
+        if mid:
+            market_pnl[mid] = market_pnl.get(mid, 0.0) + pnl
+        closed_at = rec.get("closed_at")
+        if closed_at:
+            try:
+                closed_dt = datetime.fromisoformat(str(closed_at).replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                closed_dt = None
+            if closed_dt is not None and closed_dt.date() == today:
+                if pnl > biggest_win_today:
+                    biggest_win_today = pnl
+                if pnl < biggest_loss_today:
+                    biggest_loss_today = pnl
 
     closed_trades = len(market_pnl)
     wins = sum(1 for pnl in market_pnl.values() if pnl > 0)

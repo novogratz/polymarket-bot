@@ -1690,16 +1690,7 @@ def print_positions(settings: Settings) -> None:
 
 def journal_stats(settings: Settings) -> dict[str, object]:
     path = settings.trade_journal_path
-    records: list[dict[str, object]] = []
-    if path.exists():
-        for line in path.read_text().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                records.append(json.loads(line))
-            except Exception:
-                continue
+    records = _read_realized_records(path)
     if not records:
         return {
             "records": 0,
@@ -1709,10 +1700,7 @@ def journal_stats(settings: Settings) -> dict[str, object]:
         }
 
     def pnl(record: dict[str, object]) -> float:
-        try:
-            return float(record.get("realized_pnl") or 0)
-        except (TypeError, ValueError):
-            return 0.0
+        return _record_pnl(record)
 
     def bucket_stats(group: list[dict[str, object]]) -> dict[str, object]:
         if not group:
@@ -1913,48 +1901,108 @@ def _journal_stats_last_24h(
     """
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)
     trades: list[dict] = []
-    try:
-        with path.open(encoding="utf-8") as fp:
-            for line in fp:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                ts_raw = rec.get("closed_at") or rec.get("ts")
-                if not ts_raw:
-                    continue
-                try:
-                    ts = dt.datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
-                except ValueError:
-                    continue
-                if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=dt.timezone.utc)
-                if ts >= cutoff:
-                    trades.append(rec)
-    except (FileNotFoundError, OSError):
-        return 0, 0, 0, None, None, 0.0
+    for rec in _read_realized_records(path):
+        ts_raw = rec.get("closed_at") or rec.get("ts")
+        if not ts_raw:
+            continue
+        try:
+            ts = dt.datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=dt.timezone.utc)
+        if ts >= cutoff:
+            trades.append(rec)
 
     if not trades:
         return 0, 0, 0, None, None, 0.0
 
-    wins = sum(1 for r in trades if float(r.get("realized_pnl", 0)) > 0)
-    losses = sum(1 for r in trades if float(r.get("realized_pnl", 0)) < 0)
-    realized_total = sum(float(r.get("realized_pnl", 0) or 0) for r in trades)
-    top_w_rec = max(trades, key=lambda r: float(r.get("realized_pnl", 0)))
-    top_l_rec = min(trades, key=lambda r: float(r.get("realized_pnl", 0)))
+    wins = sum(1 for r in trades if _record_pnl(r) > 0)
+    losses = sum(1 for r in trades if _record_pnl(r) < 0)
+    realized_total = sum(_record_pnl(r) for r in trades)
+    top_w_rec = max(trades, key=_record_pnl)
+    top_l_rec = min(trades, key=_record_pnl)
 
     def _shape(r: dict) -> dict | None:
-        pnl = float(r.get("realized_pnl", 0))
+        pnl = _record_pnl(r)
         title = r.get("title") or r.get("market_title") or r.get("question") or ""
         return {"title": str(title), "pnl_usd": pnl}
 
-    top_w = _shape(top_w_rec) if float(top_w_rec.get("realized_pnl", 0)) > 0 else None
-    top_l = _shape(top_l_rec) if float(top_l_rec.get("realized_pnl", 0)) < 0 else None
+    top_w = _shape(top_w_rec) if _record_pnl(top_w_rec) > 0 else None
+    top_l = _shape(top_l_rec) if _record_pnl(top_l_rec) < 0 else None
 
     return len(trades), wins, losses, top_w, top_l, realized_total
+
+
+def _record_pnl(record: dict[str, object]) -> float:
+    for key in ("realized_pnl", "realized_pnl_usd"):
+        if record.get(key) is not None:
+            try:
+                return float(record.get(key) or 0)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
+
+
+def _realized_record_key(record: dict[str, object]) -> str:
+    token = str(record.get("token_id") or "")
+    closed_at = str(record.get("closed_at") or "")
+    reason = str(record.get("exit_reason") or record.get("reason") or "")
+    pnl = round(_record_pnl(record), 4)
+    if token or closed_at or reason:
+        return f"{token}|{closed_at}|{reason}|{pnl}"
+    return json.dumps(record, sort_keys=True)
+
+
+def _realized_cache_path_for_journal(journal_path: Path) -> Path:
+    return Path(os.getenv("POLYMARKET_REALIZED_CACHE_PATH", str(journal_path.parent / "realized_trade_cache.jsonl")))
+
+
+def _read_realized_records(journal_path: Path) -> list[dict[str, object]]:
+    records: dict[str, dict[str, object]] = {}
+    for path in (journal_path, _realized_cache_path_for_journal(journal_path)):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (FileNotFoundError, OSError):
+            continue
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            records[_realized_record_key(rec)] = rec
+    return sorted(records.values(), key=lambda r: str(r.get("closed_at") or ""))
+
+
+def _starting_equity_for_stats(settings: Settings) -> float:
+    baseline_path = settings.state_path.parent / "live_baseline.json"
+    if baseline_path.is_file():
+        try:
+            data = json.loads(baseline_path.read_text(encoding="utf-8"))
+            value = float(data.get("starting_cash") or 0.0)
+            if value > 0:
+                return value
+        except Exception:
+            pass
+    return max(float(settings.paper_balance_usd or 0.0), float(settings.assumed_live_balance_usd or 0.0), 1.0)
+
+
+def _append_realized_cache(settings: Settings, record: dict[str, object]) -> None:
+    path = settings.realized_cache_path
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        existing = {_realized_record_key(r) for r in _read_realized_records(path)}
+        if _realized_record_key(record) in existing:
+            return
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except Exception as exc:
+        print(f"⚠️  realized cache write failed: {type(exc).__name__}: {exc}")
 
 
 def _append_trade_journal(settings: Settings, position: dict[str, object], reason: str) -> None:
@@ -2014,10 +2062,11 @@ def _append_trade_journal(settings: Settings, position: dict[str, object], reaso
         "exit_count": len(exits),
     }
     try:
-        with path.open("a") as fh:
+        with path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record) + "\n")
     except Exception as exc:
         print(f"⚠️  trade journal write failed: {type(exc).__name__}: {exc}")
+    _append_realized_cache(settings, record)
 
 
 def _position_age_minutes(position: dict[str, object]) -> float:
@@ -2265,34 +2314,18 @@ def _all_time_realized_pnl(journal_path: Path) -> tuple[float, int, int, int]:
     Returns ``(realized_total, closed_count, wins, losses)``. Safe on
     missing/malformed files: returns zeros instead of raising.
     """
-    if not journal_path.is_file():
-        return 0.0, 0, 0, 0
     total = 0.0
     closed = 0
     wins = 0
     losses = 0
-    try:
-        with journal_path.open("r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except Exception:
-                    continue
-                closed += 1
-                try:
-                    pnl = float(rec.get("realized_pnl", 0) or 0)
-                except (TypeError, ValueError):
-                    pnl = 0.0
-                total += pnl
-                if pnl > 0:
-                    wins += 1
-                elif pnl < 0:
-                    losses += 1
-    except Exception:
-        return 0.0, 0, 0, 0
+    for rec in _read_realized_records(journal_path):
+        closed += 1
+        pnl = _record_pnl(rec)
+        total += pnl
+        if pnl > 0:
+            wins += 1
+        elif pnl < 0:
+            losses += 1
     return total, closed, wins, losses
 
 
@@ -2323,7 +2356,8 @@ def _print_stdout_heartbeat(
     realized_all, closed_all, wins_all, losses_all = _all_time_realized_pnl(
         settings.trade_journal_path
     )
-    net_since_start = realized_all + unrealized
+    starting_equity = _starting_equity_for_stats(settings)
+    net_since_start = equity - starting_equity
     decided_all = wins_all + losses_all
     win_rate_all = (wins_all / decided_all * 100.0) if decided_all > 0 else 0.0
     stamp = time.strftime("%H:%M:%S", time.localtime())
@@ -2789,6 +2823,16 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
             trades_24h, wins_24h, losses_24h, top_w, top_l, realized_24h = (
                 _journal_stats_last_24h(settings.trade_journal_path)
             )
+            realized_all, closed_all, wins_all, losses_all = _all_time_realized_pnl(
+                settings.trade_journal_path
+            )
+            starting_equity = _starting_equity_for_stats(settings)
+            all_time_total = equity_val - starting_equity
+            all_time_return_pct = (
+                all_time_total / starting_equity * 100.0
+                if starting_equity > 0
+                else 0.0
+            )
             notifications.notify_heartbeat(
                 {
                     "equity_usd": equity_val,
@@ -2801,6 +2845,11 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                     "realized_pnl_24h_usd": realized_24h,
                     "top_winner": top_w,
                     "top_loser": top_l,
+                    "all_time_pnl_usd": all_time_total,
+                    "all_time_return_pct": all_time_return_pct,
+                    "all_time_wins": wins_all,
+                    "all_time_losses": losses_all,
+                    "all_time_closed": closed_all,
                 }
             )
             # Daily summary now handled by scripts/dry_analyst.py

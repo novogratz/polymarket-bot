@@ -53,6 +53,7 @@ class Settings:
     clob_base_url: str = field(default_factory=lambda: os.getenv("POLYMARKET_CLOB_URL", "https://clob.polymarket.com"))
     state_path: Path = field(default_factory=lambda: Path(os.getenv("POLYMARKET_STATE_PATH", "data/paper_state.json")))
     trade_journal_path: Path = field(default_factory=lambda: Path(os.getenv("POLYMARKET_TRADE_JOURNAL_PATH", "data/trade_journal.jsonl")))
+    realized_cache_path: Path = field(default_factory=lambda: Path(os.getenv("POLYMARKET_REALIZED_CACHE_PATH", "data/realized_trade_cache.jsonl")))
     strategy_overrides_path: Path = field(default_factory=lambda: Path(os.getenv("POLYMARKET_STRATEGY_OVERRIDES_PATH", "data/strategy_overrides.json")))
     tick_state_path: Path = field(default_factory=lambda: Path(os.getenv("POLYMARKET_TICK_STATE_PATH", "data/last_tick.json")))
     tick_history_path: Path = field(default_factory=lambda: Path(os.getenv("POLYMARKET_TICK_HISTORY_PATH", "data/tick_history.jsonl")))
@@ -364,6 +365,7 @@ class Settings:
         swaps = (
             ("state_path", "data/paper_state.json", "data/dry_run_state.json"),
             ("trade_journal_path", "data/trade_journal.jsonl", "data/dry_run_journal.jsonl"),
+            ("realized_cache_path", "data/realized_trade_cache.jsonl", "data/dry_run_realized_trade_cache.jsonl"),
             ("strategy_overrides_path", "data/strategy_overrides.json", "data/dry_run_strategy_overrides.json"),
             ("tick_state_path", "data/last_tick.json", "data/dry_run_last_tick.json"),
             ("tick_history_path", "data/tick_history.jsonl", "data/dry_run_tick_history.jsonl"),

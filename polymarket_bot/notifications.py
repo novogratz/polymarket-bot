@@ -332,11 +332,17 @@ def _journal_stats() -> tuple[float, int, int]:
     Zero-PnL entries (rare; usually fee-only exits) count as neither.
     """
     path = Path(os.environ.get("POLYMARKET_TRADE_JOURNAL_PATH", "data/trade_journal.jsonl"))
+    cache_path = Path(os.environ.get("POLYMARKET_REALIZED_CACHE_PATH", str(path.parent / "realized_trade_cache.jsonl")))
     total = 0.0
     wins = 0
     losses = 0
-    try:
-        with path.open("r", encoding="utf-8") as fh:
+    seen: set[str] = set()
+    for source in (path, cache_path):
+        try:
+            fh = source.open("r", encoding="utf-8")
+        except (FileNotFoundError, OSError):
+            continue
+        with fh:
             for line in fh:
                 line = line.strip()
                 if not line:
@@ -351,22 +357,43 @@ def _journal_stats() -> tuple[float, int, int]:
                         entry_pnl += float(rec["realized_pnl"])
                     except (TypeError, ValueError):
                         pass
+                elif rec.get("realized_pnl_usd") is not None:
+                    try:
+                        entry_pnl += float(rec["realized_pnl_usd"])
+                    except (TypeError, ValueError):
+                        pass
                 for exit_rec in rec.get("exits") or []:
                     try:
                         entry_pnl += float(exit_rec.get("realized_pnl") or 0)
                     except (TypeError, ValueError):
                         pass
+                dedupe_key = "|".join(
+                    (
+                        str(rec.get("token_id") or ""),
+                        str(rec.get("closed_at") or ""),
+                        str(rec.get("exit_reason") or rec.get("reason") or ""),
+                        f"{entry_pnl:.4f}",
+                    )
+                )
+                if dedupe_key in seen:
+                    continue
+                seen.add(dedupe_key)
                 total += entry_pnl
                 if entry_pnl > 0.005:
                     wins += 1
                 elif entry_pnl < -0.005:
                     losses += 1
-    except (FileNotFoundError, OSError):
-        return 0.0, 0, 0
     return total, wins, losses
 
 
-def _fmt_all_time_line(unrealized: float = 0.0) -> str:
+def _fmt_all_time_line(
+    unrealized: float = 0.0,
+    *,
+    total_override: float | None = None,
+    return_pct: float | None = None,
+    wins_override: int | None = None,
+    losses_override: int | None = None,
+) -> str:
     """All-time PnL + win-rate, each color-coded.
 
     Layout: `✅ All-time: +$X.XX  •  🟢 W/L 67% (8W/4L)`.
@@ -376,7 +403,11 @@ def _fmt_all_time_line(unrealized: float = 0.0) -> str:
     currently-winning open position surfaces in the heartbeat line.
     """
     pnl, wins, losses = _journal_stats()
-    total = pnl + float(unrealized or 0.0)
+    total = float(total_override) if total_override is not None else pnl + float(unrealized or 0.0)
+    if wins_override is not None:
+        wins = int(wins_override)
+    if losses_override is not None:
+        losses = int(losses_override)
     # PnL color
     if total > 0.005:
         pnl_emoji, sign = "✅", "+"
@@ -385,7 +416,11 @@ def _fmt_all_time_line(unrealized: float = 0.0) -> str:
     else:
         pnl_emoji, sign = "⚪", ""
     amt = _fmt_amount(abs(total))  # "$X.XX"
-    pnl_part = f"{pnl_emoji} All\\-time: {_md_escape(sign + amt)}"
+    pct_part = ""
+    if return_pct is not None:
+        pct_sign = "+" if return_pct >= 0 else "-"
+        pct_part = _md_escape(f" ({pct_sign}{abs(return_pct):.1f}%)")
+    pnl_part = f"{pnl_emoji} All\\-time: {_md_escape(sign + amt)}{pct_part}"
 
     # Win-rate color
     decided = wins + losses
@@ -750,7 +785,31 @@ def notify_heartbeat(snapshot: dict[str, Any]) -> None:
     else:
         lines.append("📊 24h: aucun trade clôturé")
 
-    lines.append(_fmt_all_time_line(unrealized=unrealized))
+    lines.append(
+        _fmt_all_time_line(
+            unrealized=unrealized,
+            total_override=(
+                float(snapshot["all_time_pnl_usd"])
+                if snapshot.get("all_time_pnl_usd") is not None
+                else None
+            ),
+            return_pct=(
+                float(snapshot["all_time_return_pct"])
+                if snapshot.get("all_time_return_pct") is not None
+                else None
+            ),
+            wins_override=(
+                int(snapshot["all_time_wins"])
+                if snapshot.get("all_time_wins") is not None
+                else None
+            ),
+            losses_override=(
+                int(snapshot["all_time_losses"])
+                if snapshot.get("all_time_losses") is not None
+                else None
+            ),
+        )
+    )
 
     top_w_line = _heartbeat_top_line("🏆", snapshot.get("top_winner") or {})
     top_l_line = _heartbeat_top_line("💸", snapshot.get("top_loser") or {})
