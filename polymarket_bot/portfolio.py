@@ -19,7 +19,7 @@ from typing import Any
 from . import notifications
 from ._atomic_io import atomic_write_text
 from .config import Settings
-from .models import Candidate, utc_now
+from .models import Candidate, parse_dt, utc_now
 
 
 @dataclass
@@ -333,8 +333,10 @@ class Portfolio:
             if entry_price > 0:
                 pnl_pct = (mark_price - entry_price) / entry_price
                 position["peak_pnl_pct"] = max(float(position.get("peak_pnl_pct", pnl_pct)), pnl_pct)
-            if candidate.end_date and not position.get("end_date"):
-                position["end_date"] = candidate.end_date.isoformat()
+            if candidate.end_date:
+                current_end = parse_dt(str(position.get("end_date") or ""))
+                if current_end is None or candidate.end_date > current_end:
+                    position["end_date"] = candidate.end_date.isoformat()
 
     def summary(self) -> dict[str, Any]:
         open_positions = [position for position in self.positions if position.get("status") == "open"]

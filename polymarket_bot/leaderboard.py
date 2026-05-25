@@ -24,6 +24,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import notifications
+from .config import Settings
+from .portfolio import Portfolio
+from .pricing import ensure_open_positions_in_pool
 
 
 @dataclass
@@ -128,6 +131,26 @@ def _float(raw: object, default: float = 0.0) -> float:
         return float(raw or default)
     except (TypeError, ValueError):
         return default
+
+
+def _refresh_open_positions(
+    cash: float,
+    positions: list[dict],
+) -> tuple[float, list[dict]]:
+    """Refresh open positions with live quotes before we render stats.
+
+    The dry leaderboard and live row both read persisted ledgers. Without a
+    quote refresh those ledgers can keep stale current_price / end_date values
+    long after the market has moved, which is exactly how an ongoing 0.90 entry
+    can render as a frozen loss or expired position.
+    """
+    portfolio = Portfolio(cash=cash, positions=[dict(p) for p in positions], pending_orders=[])
+    try:
+        pricing_pool = ensure_open_positions_in_pool(Settings(quiet=True), portfolio, [])
+        portfolio.mark_to_market(pricing_pool)
+    except Exception as exc:
+        print(f"   leaderboard refresh failed: {type(exc).__name__}: {exc}")
+    return portfolio.cash, portfolio.positions
 
 
 def _record_pnl(record: dict) -> float:
@@ -271,6 +294,8 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
             positions = state.get("positions", []) or []
         except Exception:
             pass
+
+    cash, positions = _refresh_open_positions(cash, positions)
 
     open_positions = [p for p in positions if p.get("status") == "open"]
     invested = sum(float(p.get("stake", 0) or 0) for p in open_positions)
@@ -488,6 +513,7 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
 
     cash = float(state.get("cash", 0.0) or 0.0)
     positions = state.get("positions", []) or []
+    cash, positions = _refresh_open_positions(cash, positions)
     open_positions = [p for p in positions if p.get("status") == "open"]
     invested = sum(float(p.get("stake", 0) or 0) for p in open_positions)
     unrealized = sum(float(p.get("unrealized_pnl", 0) or 0) for p in open_positions)
@@ -500,6 +526,9 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
                 stake=_float(p.get("stake")),
                 price=_float(p.get("current_price") or p.get("entry_price") or p.get("avg_price")),
                 reason=str(p.get("strategy") or p.get("reason") or ""),
+                outcome=str(p.get("outcome") or ""),
+                end_date=str(p.get("end_date") or "") or None,
+                status=str(p.get("status") or ""),
             )
             for p in open_positions
         ),
