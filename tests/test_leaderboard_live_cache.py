@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from polymarket_bot.leaderboard import gather_live_stats
+from polymarket_bot.leaderboard import RunStats, format_leaderboard, format_leaderboard_telegram, gather_live_stats
 
 
 class LiveLeaderboardCacheTests(unittest.TestCase):
@@ -55,6 +55,27 @@ class LiveLeaderboardCacheTests(unittest.TestCase):
             self.assertAlmostEqual(stats.realized_pnl, 0.70)
             self.assertAlmostEqual(stats.total_pnl, 0.70)
             self.assertAlmostEqual(stats.roi_pct, 11.6667, places=3)
+
+    def test_live_row_separates_closed_and_open_positions(self) -> None:
+        live = RunStats(
+            run_name="grinder",
+            starting_cash=6.0,
+            cash=2.0,
+            invested=4.0,
+            unrealized_pnl=0.0,
+            equity=6.0,
+            open_positions=1,
+            closed_trades=3,
+            wins=3,
+            losses=0,
+            realized_pnl=1.1,
+            started_at=None,
+            total_ticks=0,
+        )
+        text = format_leaderboard([], live=live)
+        self.assertIn("Closed: 3W/0L  Open: 1", text)
+        telegram = format_leaderboard_telegram([], live=live)
+        self.assertIn("Closed 3W/0L  Open 1", telegram)
 
 
 if __name__ == "__main__":

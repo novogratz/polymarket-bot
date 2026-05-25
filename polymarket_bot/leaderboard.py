@@ -664,8 +664,8 @@ def format_leaderboard(
         lines.append(
             f"   Equity: ${live.equity:.2f}  PnL: {live.total_pnl:+.2f}  "
             f"ROI: {live.roi_pct:+.1f}%  "
-            f"{live.wins}W/{live.losses}L  Open: {live.open_positions}  "
-            f"Closed: {live.closed_trades}"
+            f"Closed: {live.wins}W/{live.losses}L  Open: {live.open_positions}  "
+            f"Closed trades: {live.closed_trades}"
         )
         lines.append(f"   If ranked among dry strategies: #{hypo_rank} of {total}")
         lines.append(bar)
@@ -758,7 +758,7 @@ def format_leaderboard_telegram(
         lines.append(
             f"   Current: {live_color} ${live.equity:.2f}  "
             f"{live.roi_pct:+.1f}%  PnL {live.total_pnl:+.2f}  "
-            f"{live.wins}W/{live.losses}L"
+            f"Closed {live.wins}W/{live.losses}L  Open {live.open_positions}"
         )
         lines.append(f"   If listed: would rank #{hypo_rank} of {total}")
 
