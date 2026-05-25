@@ -480,7 +480,8 @@ def notify_trade_sell(
     loss_thresh = _float_env("TELEGRAM_BIG_LOSS_USD", 5.0)
     thresholds_on = _flag("TELEGRAM_ALERT_THRESHOLDS")
     is_big_win = False
-    if thresholds_on and realized_pnl_usd >= win_thresh:
+    force_big_win = "big_win" in str(reason or "").lower()
+    if (thresholds_on and realized_pnl_usd >= win_thresh) or (force_big_win and realized_pnl_usd >= 0):
         emoji, label = "💰", "BIG WINZZZZ"
         is_big_win = True
     elif thresholds_on and realized_pnl_usd <= -loss_thresh:

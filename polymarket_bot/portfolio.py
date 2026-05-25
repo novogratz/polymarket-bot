@@ -211,7 +211,8 @@ class Portfolio:
         )
         side = position.get("outcome") or "?"
         strategy = position.get("strategy") or "?"
-        if realized_pnl >= big_win:
+        force_big_win = "big_win" in str(reason or "").lower()
+        if realized_pnl >= big_win or (force_big_win and realized_pnl >= 0):
             print(
                 f"🟢 BIG WIN [{strategy}] +${realized_pnl:.2f} on '{str(title)[:55]}' ({side})",
                 flush=True,

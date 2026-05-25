@@ -416,6 +416,25 @@ class TestTradeSellOneLine(NotificationsBaseTest):
         self.assertNotIn("🔴", text)
         self.assertNotIn("SELL", text)
 
+    def test_resolved_big_win_reason_replaces_sell_below_threshold(self) -> None:
+        sent = self._setup()
+        os.environ["TELEGRAM_BIG_WIN_USD"] = "10"
+        notifications.notify_trade_sell(
+            market_title="BTC range",
+            token_id="0xabc",
+            price=0.99,
+            size_usd=4.93,
+            realized_pnl_usd=0.25,
+            realized_pnl_pct=5.3,
+            reason="race_big_win_resolved",
+            held_seconds=900,
+        )
+        self.assertEqual(len(sent), 1, "un seul message, pas deux")
+        text = sent[0]["text"]
+        self.assertIn("💰", text)
+        self.assertIn("BIG WIN", text)
+        self.assertNotIn("SELL", text)
+
     def test_big_win_message_drips_green_and_money(self) -> None:
         sent = self._setup()
         os.environ["TELEGRAM_BIG_WIN_USD"] = "10"
