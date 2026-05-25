@@ -20,12 +20,11 @@ set -eo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Live bankroll = $29 (actual Polymarket balance 2026-05-22).
-# Dry race overrides per-subshell to $20 (see run_dry_bot). Keep dry
-# comparisons aligned across all strategies while live stays aligned with
-# real on-chain pUSD balance.
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-29.0}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-29.0}
+# Fresh-start bankroll = $6 (grinder reset 2026-05-25).
+# Same $6 baseline on live and dry so the only thing being tested is
+# the grinder strategy itself, not bankroll asymmetry.
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-6.0}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-6.0}
 
 CLEANED_UP=0
 cleanup() {
@@ -73,11 +72,11 @@ fi
 echo
 
 # ─── Step 2: LIVE bot (priority, fast tick, cache pre-populated) ────
-echo "[run_all] step 2/4: launching live bot (whale_entry_detection)..."
+echo "[run_all] step 2/4: launching live bot (grinder)..."
 
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
-export POLYMARKET_AUTO_INTERVAL_SECONDS=10   # live tick = 10s
-export POLYMARKET_PROFILE_LABEL=whale_entry_detection
+export POLYMARKET_AUTO_INTERVAL_SECONDS=30   # grinder tick = 30s
+export POLYMARKET_PROFILE_LABEL=grinder
 
 # Live Telegram alerts ON
 export TELEGRAM_ALERT_TRADES=1
@@ -92,7 +91,7 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
 
 # Live bot itself
-uv run pmbot auto-loop --live --profile whale_entry_detection --yes \
+uv run pmbot auto-loop --live --profile grinder --yes \
     2>&1 | sed -u 's/^/[LIVE] /' &
 LIVE_PID=$!
 echo "[run_all] live bot launched (pid=$LIVE_PID)"
@@ -109,11 +108,11 @@ run_dry_bot() {
     local run="$2"
     local prefix="$3"
     # Per-subshell env: dry bots silent on Telegram BUY/SELL (live keeps alerts).
-    # Force dry bankroll = $20 here (live runs at $29 from parent shell export).
+    # Force dry bankroll = $6 here (matches live for apples-to-apples).
     POLYMARKET_QUIET=1 \
         POLYMARKET_SUPPRESS_BUY_LOGS=1 \
-        POLYMARKET_PAPER_BALANCE_USD=20.0 \
-        POLYMARKET_ASSUME_LIVE_BALANCE_USD=20.0 \
+        POLYMARKET_PAPER_BALANCE_USD=6.0 \
+        POLYMARKET_ASSUME_LIVE_BALANCE_USD=6.0 \
         POLYMARKET_AUTO_INTERVAL_SECONDS=600 \
         TELEGRAM_ALERT_TRADES=0 \
         TELEGRAM_ALERT_TRADES_BUY=0 \

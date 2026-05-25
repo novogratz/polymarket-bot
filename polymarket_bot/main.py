@@ -3284,6 +3284,10 @@ def cli_auto_loop(
         from . import race_strategies as race_module
 
         race_module.whale_entry_loop(settings)
+    elif mode == "grinder":
+        from . import race_strategies as race_module
+
+        race_module.grinder_loop(settings)
     elif mode == "elite_momentum_consensus":
         from . import race_strategies as race_module
 

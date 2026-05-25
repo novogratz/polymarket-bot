@@ -4,18 +4,25 @@ Claude Code entry point for the Polymarket bot. See also the structured skill in
 
 The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, see `.github/workflows/test.yml`).
 
-## Current state snapshot (2026-05-24)
+## Current state snapshot (2026-05-25)
 
-**Live strategy:** `whale_entry_detection` — race strategy that detects whale buy entries on Polymarket and mirrors their flow with tight filters.
-- Engine: `smart_money` (real copy-trade pipeline + multi-wallet consensus) — canonical config, no esoteric filters
-- Bankroll: **$20 USDC** baseline (fresh-start reset 2026-05-22)
-- Sizing: `position_pct=0.10` (~$2/trade base), `max_position_ceiling_usd=$25`, `max_position_ceiling_pct=0.30` (~$6 cap), `cash_floor_pct=0.02`, `min_open_positions=5`, `starter_trade_usd=5.0`, `assumed_live_balance_usd=20.0`
-- Cohort: WEEK top 100, `min_trader_pnl=$1k`, `min_trader_volume=$2k`, `min_trader_roi=3%`. NO persistence filter (this is the canonical baseline — keep it simple)
-- Exits: 5-tier TP ladder (+25/+50/+100/+200/+300 with 15/25/50/25/15 partials), trailing +25%/50% giveback, peak-protect +100% → exit at +40%, stop_loss -40% (min-age 15min), max_hold 24h, cohort-sell, resolved at bid ≥0.97
-- Filters: `min_consensus=2`, `min_copied_usdc=$75`, price 0.03–0.96, **4h hard cap** (`max_hours_to_close=4.0`)
-- Live tick interval: 10s. Heartbeat includes "live vs dry top 3" comparison block.
+**Live strategy:** `grinder` — heavy-favorite, near-resolution scalp. Single source-of-truth profile at `configs/profiles/grinder.toml`. Every previous profile (active + archived) was deleted on 2026-05-25 — clean slate.
 
-**Bankroll:** $20 USDC starting on live + all dry (fresh-start reset 2026-05-24). State backups in `data/backups/full_state_<timestamp>.tar.gz`.
+- Engine: `race` (selector = `select_grinder` in `polymarket_bot/race_strategies.py`)
+- Thesis: a market sitting at bid ∈ [0.88, 0.95] with < 1h to close is pricing near-certainty. Pay the spread, take +6%, rotate. SL -15% caps the rare "favorite flips" case.
+- Bankroll: **$6 USDC** baseline (fresh-start reset 2026-05-25, applied to live + dry)
+- Sizing: `race_stake_pct=0.25` (~$1.50/trade on $6), `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=$1.5`, `max_orders_per_tick=3`, `cash_floor_pct=0.10`. At $6 / $1.50 stake / 3 slots = $4.50 deployed (75%), 4th trade naturally blocked when `cash_above_floor < $1`.
+- Entry filters (in `_build_eligible_candidates`):
+  - `race_min_price=0.88`, `race_max_price=0.95`
+  - `race_max_hours=1.0` (only the last 60 min)
+  - `race_max_spread=0.02` (tight — paying 4¢ spread on a 6¢ TP wipes the edge)
+  - `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
+- Exits: TP +6%, SL -15%, `sl_min_age_minutes=1` (markets close fast — can't wait 15 min), resolved at bid ≥ 0.97
+- Daily DD halt at -15% of starting equity (default — env override available via `POLYMARKET_RACE_DAILY_DRAWDOWN_PCT`)
+- Tick interval: 30s on live (`POLYMARKET_AUTO_INTERVAL_SECONDS=30` in `run_all.sh` / `run_live_70.sh`), 600s on dry (per-subshell override in `run_dry_bot`)
+- Selector ranking: `score = best_bid / max(hours_to_close, 1/60)` — closer to resolution and closer to 1.0 ranks higher
+
+**Bankroll:** $6 USDC starting on live + dry (fresh-start reset 2026-05-25, downsized from initial $20 plan after user opted to start smaller). State backups in `data/backups_full_<timestamp>_grinder_reset/`.
 
 ### Unified launcher — `scripts/run_all.sh`
 
@@ -27,8 +34,8 @@ bash scripts/run_all.sh
 
 Order of operations:
 1. **Pre-warm HTTP cache** (~60s) via `scripts/cache_warmer.py` — populates `data/cache/http/` with leaderboards (3 windows × 8 categories × 4 limits) + the top wallets' recent trade histories so the bot swarm starts with a warm cache and no first-tick 429 storm.
-2. **Live bot** (`baseline`, 10s tick) + `scripts/live_analyst.py` sidecar (30min Telegram report).
-3. **Dry race** — auto-discovers all 95 profiles from `configs/profiles/*.toml` (was ~50 curated, now includes every restored archive), each ticking at 10min (`POLYMARKET_AUTO_INTERVAL_SECONDS=600`) with Telegram BUY/SELL alerts silenced per-subshell so only the live bot speaks.
+2. **Live bot** (`grinder`, 30s tick) + `scripts/live_analyst.py` sidecar (30min Telegram report).
+3. **Dry race** — auto-discovers all profiles from `configs/profiles/*.toml`. Post-2026-05-25 reset there's only `grinder.toml`, so the dry race launches a single grinder dry-twin at `POLYMARKET_AUTO_INTERVAL_SECONDS=600`, Telegram BUY/SELL alerts silenced per-subshell so only the live bot speaks. If `dry_analyst.py` spawns `auto_*` variants over time the dry race expands accordingly.
 4. **Sidecars** — `scripts/dry_analyst.py` (15min report / 1h spawn-kill) + `pmbot leaderboard --telegram` (5min summary).
 5. **Background re-warmer** — re-runs `cache_warmer.py` every 8 min (cache TTL is 10 min) to keep both live + dry continuously warm.
 
@@ -226,14 +233,13 @@ Or just the live bot alone (no dry race, no cache pre-warm — only do this if y
 bash scripts/run_live_70.sh
 ```
 
-Both scripts load `configs/profiles/whale_entry_detection.toml` as the single source of truth for the live config. Current settings:
+Both scripts load `configs/profiles/grinder.toml` as the single source of truth for the live config. Current settings:
 
-- Profile: `whale_entry_detection` (race mode — detects whale buy entries, tight filters)
-- `POLYMARKET_SYNC_LIVE_POSITIONS=1`, `POLYMARKET_AUTO_INTERVAL_SECONDS=10`
-- Sizing ($20 fresh-start baseline 2026-05-22): `starting_cash=20.0`, `assumed_live_balance_usd=20.0`, `position_pct=0.10` (~$2/trade), `max_position_ceiling_usd=25.0`, `max_position_ceiling_pct=0.30` (~$6 cap on $20 equity), `cash_floor_pct=0.02`, `min_open_positions=5`, `starter_trade_usd=5.0`
-- Cohort: WEEK top 100, `min_trader_pnl=$1k`, `min_trader_volume=$2k`, `min_trader_roi=3%`. No persistence filter (canonical baseline)
-- Entry filters: `min_consensus=2`, `min_copied_usdc=$75`, `max_chase_premium=0.13`, price 0.03–0.96, **4h hard cap** (`max_hours_to_close=4.0`)
-- Exits: 5-tier TP ladder (+25/+50/+100/+200/+300 with 15/25/50/25/15 partials), trailing arms +25% / 50% giveback, peak-protect arms +100% / exits +40%, stop_loss -40% (min-age 15min), max_hold 24h, cohort-sell, resolved at bid ≥0.97. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
+- Profile: `grinder` (race mode — heavy-favorite near-resolution scalp)
+- `POLYMARKET_SYNC_LIVE_POSITIONS=1`, `POLYMARKET_AUTO_INTERVAL_SECONDS=30`
+- Sizing ($6 fresh-start baseline 2026-05-25): `starting_cash=6.0`, `assumed_live_balance_usd=6.0`, `race_stake_pct=0.25` (~$1.50/trade), `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=1.5`, `max_orders_per_tick=3`, `cash_floor_pct=0.10`
+- Entry filters: `race_min_price=0.88`, `race_max_price=0.95`, `race_max_hours=1.0`, `race_max_spread=0.02`, `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
+- Exits: TP +6%, SL -15%, `sl_min_age=1min`, resolved at bid ≥0.97. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
 - Live analyst sidecar (`scripts/live_analyst.py`) launches alongside; posts read-only insights every 30 min to `TELEGRAM_CHAT_ID_LIVE`.
 - Universal sweep closes positions at price ≥0.97 OR ≤0.03 every tick across all strategy modes.
 - HTTP cache shared with the dry race at `data/cache/http/` (TTL 600s), refreshed every 3min by the background loop in `run_all.sh`.

@@ -1196,6 +1196,33 @@ def _execute_race_exits(
     return out
 
 
+def select_grinder(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
+    """Grinder: heavy favorites very close to resolution.
+
+    Thesis: a market sitting at bid ≥ 0.88 with < 1h to close is pricing
+    near-certainty. Pay the spread, take a small TP, and rotate. The edge
+    isn't analytical — it's the implied-probability gap between bid and
+    the binary outcome resolving in the buyer's favor. Tight SL caps the
+    catastrophic "favorite flips" case.
+
+    Candidate band (price, spread, hours) is already enforced upstream in
+    `_build_eligible_candidates` via the TOML's race_* filters. This
+    selector just ranks the survivors by confidence × time-to-resolution.
+    """
+    qualified: list[tuple[Candidate, float]] = []
+    for candidate, _ in eligible:
+        bid = candidate.best_bid or 0.0
+        ask = candidate.best_ask or 1.0
+        hours = candidate.hours_to_close or 99.0
+        if bid <= 0.0 or ask <= 0.0:
+            continue
+        # Score = confidence per remaining hour. Closer to resolution and
+        # closer to 1.0 → higher rank.
+        score = bid / max(hours, 1.0 / 60.0)
+        qualified.append((candidate, score))
+    return _dedupe_top_n(qualified, n)
+
+
 # ---------------------------------------------------------------------------
 # Tick orchestrator (shared)
 # ---------------------------------------------------------------------------
@@ -1602,6 +1629,7 @@ weak_holder_flush_once, weak_holder_flush_loop = _race_strategy(
 weak_holder_flush_inverse_once, weak_holder_flush_inverse_loop = _race_strategy(
     "weak_holder_flush_inverse", select_weak_holder_flush_inverse
 )
+grinder_once, grinder_loop = _race_strategy("grinder", select_grinder)
 def select_claude_anti_favorite(eligible: list[tuple[Candidate, float]], n: int) -> list[Candidate]:
     """Buy outcomes with NEGATIVE momentum in mid range. Bet on reversal."""
     qualified = [
