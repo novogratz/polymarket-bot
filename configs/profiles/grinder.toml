@@ -74,7 +74,7 @@ tp_pct = 0.06
 sl_pct = 0.15
 sl_min_age_minutes = 1
 near_expiry_minutes = 5
-resolved_exit_threshold = 0.97
+resolved_exit_threshold = 0.99
 # Daily drawdown halt stays at the race default (-15%) — race profile
 # loader doesn't expose [race].daily_drawdown_pct. Override via env
 # POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0.10 if a tighter halt is desired.

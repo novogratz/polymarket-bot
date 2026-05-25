@@ -1922,6 +1922,133 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(len(portfolio.positions), 1)
         self.assertEqual(portfolio.positions[0]["shares"], 5.0)
 
+    def test_race_resolved_exit_ignores_min_age(self):
+        from polymarket_bot.race_strategies import _execute_race_exits
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.99,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.99,
+            best_ask=1.0,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=1.0, positions=[])
+        position = portfolio.record_live_position(candidate, 4.7, entry_price=0.94)
+        self.assertIsNotNone(position)
+        position["strategy"] = "grinder"
+
+        exits = _execute_race_exits(
+            build_client(Settings(dry_run=True)),
+            Settings(
+                dry_run=True,
+                min_order_shares=5.0,
+                race_resolved_exit_threshold=0.99,
+                race_sl_min_age_minutes=15,
+                quiet=True,
+            ),
+            portfolio,
+            [candidate],
+            "grinder",
+        )
+
+        self.assertEqual(len(exits), 1)
+        self.assertEqual(exits[0]["reason"], "race_big_win_resolved")
+        self.assertEqual(position["status"], "closed")
+        self.assertAlmostEqual(float(position["realized_pnl"]), 0.25)
+
+    def test_race_resolved_exit_uses_position_price_when_pool_quote_missing(self):
+        from polymarket_bot.race_strategies import _execute_race_exits
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.94,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.93,
+            best_ask=0.94,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=1.0, positions=[])
+        position = portfolio.record_live_position(candidate, 4.7, entry_price=0.94)
+        self.assertIsNotNone(position)
+        position["strategy"] = "grinder"
+        position["current_price"] = 1.0
+
+        exits = _execute_race_exits(
+            build_client(Settings(dry_run=True)),
+            Settings(
+                dry_run=True,
+                min_order_shares=5.0,
+                race_resolved_exit_threshold=0.99,
+                race_sl_min_age_minutes=15,
+                quiet=True,
+            ),
+            portfolio,
+            [],
+            "grinder",
+        )
+
+        self.assertEqual(len(exits), 1)
+        self.assertEqual(exits[0]["reason"], "race_big_win_resolved")
+        self.assertEqual(position["status"], "closed")
+        self.assertAlmostEqual(float(position["realized_pnl"]), 0.25)
+
+    def test_live_sell_allows_full_position_below_nominal_share_minimum(self):
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.99,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.99,
+            best_ask=1.0,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=1.0, positions=[])
+        position = portfolio.record_live_position(candidate, 4.68, entry_price=0.94)
+        self.assertIsNotNone(position)
+
+        result = execute_live_sell(
+            build_client(Settings(dry_run=True)),
+            Settings(dry_run=True, min_order_shares=5.0, quiet=True),
+            candidate,
+            portfolio,
+            position,
+            shares=5.0,
+            reason="race_big_win_resolved",
+        )
+
+        self.assertEqual(result.order["size"], 4.978723)
+        self.assertEqual(position["status"], "closed")
+
 
 class MarketCategoryTests(unittest.TestCase):
     def test_inflation_is_not_sports(self):

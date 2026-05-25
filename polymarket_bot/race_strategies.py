@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime as dt
 import random
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
@@ -1027,6 +1028,36 @@ def _execute_race_exits(
             continue
         token_id = position.get("token_id")
         candidate = by_token.get(token_id)
+        position_price = as_float(position.get("current_price"), default=0.0)
+        position_resolved = (
+            settings.race_resolved_exit_threshold > 0
+            and position_price >= settings.race_resolved_exit_threshold
+        )
+        if candidate is None and position_resolved and token_id:
+            candidate = Candidate(
+                market_id=str(position.get("market_id") or ""),
+                question=str(position.get("question") or ""),
+                slug=str(position.get("slug") or ""),
+                end_date=parse_dt(str(position.get("end_date") or "")) if position.get("end_date") else None,
+                hours_to_close=0.0,
+                liquidity=0.0,
+                volume=0.0,
+                outcome=str(position.get("outcome") or ""),
+                price=position_price,
+                token_id=str(token_id),
+                score=0.0,
+                url=str(position.get("url") or "https://polymarket.com"),
+                best_bid=min(position_price, 0.99),
+                best_ask=None,
+                tick_size=as_float(position.get("tick_size"), default=0.01),
+                neg_risk=bool(position.get("neg_risk")),
+                accepts_orders=True,
+                event_slug=str(position.get("event_slug") or ""),
+            )
+        elif candidate is not None and position_resolved and (
+            candidate.best_bid is None or candidate.best_bid < position_price
+        ):
+            candidate = replace(candidate, best_bid=min(position_price, 0.99))
         if candidate is None or candidate.best_bid is None or candidate.best_bid <= 0:
             continue
         entry_price = float(position.get("entry_price", 0.0) or 0.0)
@@ -1036,13 +1067,13 @@ def _execute_race_exits(
         position["peak_pnl_pct"] = max(
             float(position.get("peak_pnl_pct", current_pnl_pct)), current_pnl_pct
         )
-        plan = _simple_exit_plan(position, current_pnl_pct, settings)
-        if plan is None and (
+        if (
             settings.race_resolved_exit_threshold > 0
             and candidate.best_bid >= settings.race_resolved_exit_threshold
-            and _position_age_minutes(position) >= settings.race_sl_min_age_minutes
         ):
-            plan = {"reason": "race_resolved", "shares": float(position.get("shares", 0.0))}
+            plan = {"reason": "race_big_win_resolved", "shares": float(position.get("shares", 0.0))}
+        else:
+            plan = _simple_exit_plan(position, current_pnl_pct, settings)
         if plan is None:
             continue
         try:
