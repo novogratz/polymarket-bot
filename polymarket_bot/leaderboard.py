@@ -395,12 +395,32 @@ def _live_baseline_path(base_dir: Path) -> Path:
     return base_dir / "live_baseline.json"
 
 
+def _live_profile_starting_cash(base_dir: Path) -> float | None:
+    snap = base_dir / "live_config_snapshot.toml"
+    if not snap.is_file():
+        return None
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover
+        return None
+    try:
+        data = tomllib.loads(snap.read_text(encoding="utf-8"))
+        value = float((data.get("run") or {}).get("starting_cash") or 0.0)
+    except Exception:
+        return None
+    return value if value > 0 else None
+
+
 def _load_or_init_live_baseline(base_dir: Path, current_equity: float) -> float:
     """Read or snapshot the live starting_cash baseline.
 
-    First call after deletion snapshots ``current_equity`` so ROI starts
-    at 0% from that point. Subsequent calls reuse the stored value.
+    Prefer the active profile snapshot's starting_cash so live all-time stats
+    stay anchored to the strategy bankroll even if reset-ledger rewrites the
+    mutable baseline file from the current wallet value.
     """
+    profile_start = _live_profile_starting_cash(base_dir)
+    if profile_start is not None:
+        return profile_start
     path = _live_baseline_path(base_dir)
     if path.is_file():
         try:

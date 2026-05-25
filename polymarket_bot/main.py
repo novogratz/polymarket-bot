@@ -1979,7 +1979,26 @@ def _read_realized_records(journal_path: Path) -> list[dict[str, object]]:
     return sorted(records.values(), key=lambda r: str(r.get("closed_at") or ""))
 
 
+def _profile_starting_equity_for_stats(settings: Settings) -> float | None:
+    snap = settings.state_path.parent / "live_config_snapshot.toml"
+    if not snap.is_file():
+        return None
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover
+        return None
+    try:
+        data = tomllib.loads(snap.read_text(encoding="utf-8"))
+        value = float((data.get("run") or {}).get("starting_cash") or 0.0)
+    except Exception:
+        return None
+    return value if value > 0 else None
+
+
 def _starting_equity_for_stats(settings: Settings) -> float:
+    profile_start = _profile_starting_equity_for_stats(settings)
+    if profile_start is not None:
+        return profile_start
     baseline_path = settings.state_path.parent / "live_baseline.json"
     if baseline_path.is_file():
         try:

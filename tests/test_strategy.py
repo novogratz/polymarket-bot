@@ -2659,6 +2659,29 @@ class JournalStatsDrawdownTests(unittest.TestCase):
             self.assertEqual(stats["losses"], 0)
             self.assertEqual(stats["total_pnl"], 0.7)
 
+    def test_starting_equity_prefers_live_profile_snapshot(self):
+        import tempfile
+        from pathlib import Path
+        from polymarket_bot.main import _starting_equity_for_stats
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "live_baseline.json").write_text('{"starting_cash": 7.34}', encoding="utf-8")
+            (base / "live_config_snapshot.toml").write_text(
+                "[run]\nstarting_cash = 6.0\n",
+                encoding="utf-8",
+            )
+
+            value = _starting_equity_for_stats(
+                Settings(
+                    state_path=base / "paper_state.json",
+                    paper_balance_usd=1.0,
+                    assumed_live_balance_usd=1.0,
+                )
+            )
+
+            self.assertEqual(value, 6.0)
+
 
 class JournalSuggestionsTests(unittest.TestCase):
     def _records(self, n, exit_reason="take_profit_50", pnl=1.0, **extra):

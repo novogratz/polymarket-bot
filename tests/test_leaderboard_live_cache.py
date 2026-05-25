@@ -15,7 +15,11 @@ class LiveLeaderboardCacheTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (base / "live_baseline.json").write_text(
-                json.dumps({"starting_cash": 6.0}),
+                json.dumps({"starting_cash": 7.34}),
+                encoding="utf-8",
+            )
+            (base / "live_config_snapshot.toml").write_text(
+                "[run]\nstarting_cash = 6.0\nmode = \"grinder\"\n",
                 encoding="utf-8",
             )
             (base / "trade_journal.jsonl").write_text("", encoding="utf-8")
