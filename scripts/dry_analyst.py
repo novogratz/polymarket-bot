@@ -585,22 +585,34 @@ def telegram_post(text: str) -> bool:
         print(f"[analyst] telegram disabled (token/chat missing)\n{text}", flush=True)
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    # Telegram messages capped at 4096 chars
-    payload = json.dumps({
-        "chat_id": chat,
-        "text": text[:4000],
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": True,
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
+
+    # Telegram messages capped at 4096 chars.
+    def _send(use_markdown: bool) -> bool:
+        body = {
+            "chat_id": chat,
+            "text": text[:4000],
+            "disable_web_page_preview": True,
+        }
+        if use_markdown:
+            body["parse_mode"] = "Markdown"
+        req = urllib.request.Request(
+            url, data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         with urllib.request.urlopen(req, timeout=15) as resp:
             return 200 <= resp.status < 300
+
+    try:
+        return _send(True)
     except Exception as exc:
+        # 400 → Markdown parse error. Retry as plain text so the alert lands.
+        if getattr(exc, "code", None) == 400:
+            try:
+                return _send(False)
+            except Exception as exc2:
+                print(f"[analyst] telegram failed (plain retry): {exc2}", file=sys.stderr, flush=True)
+                return False
         print(f"[analyst] telegram failed: {exc}", file=sys.stderr, flush=True)
         return False
 
