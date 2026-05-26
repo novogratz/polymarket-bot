@@ -2201,10 +2201,13 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
             # No actual exit price available (the position is just gone from
             # the CLOB response). Approximate realized PnL from the last
             # known mark — best signal until a dedicated close-lookup exists.
+            shares = float(position.get("shares") or 0.0)
+            current_price = float(position.get("current_price") or 0.0)
+            proceeds = round(shares * current_price, 2)
+            cost_basis = float(position.get("stake") or 0.0)
             if not position.get("realized_pnl"):
-                position["realized_pnl"] = round(
-                    float(position.get("unrealized_pnl") or 0.0), 2
-                )
+                position["realized_pnl"] = round(proceeds - cost_basis, 2)
+            portfolio.cash = round(float(portfolio.cash or 0.0) + proceeds, 2)
             report.append({"action": "closed_stale_local_position", "token_id": token_id})
             _notify_and_journal_sync_close(settings, position)
 

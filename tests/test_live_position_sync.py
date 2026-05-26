@@ -7,6 +7,7 @@ import unittest
 from polymarket_bot.config import Settings
 from polymarket_bot.main import (
     _position_from_live_api,
+    _sync_live_positions,
     _update_position_from_live_api,
     smart_money_once,
 )
@@ -131,6 +132,51 @@ class SmartMoneyDrySyncTests(unittest.TestCase):
                 )
                 smart_money_once(settings)
             self.assertEqual(mock_sync.call_count, 1)
+
+
+class SyncLivePositionsTests(unittest.TestCase):
+    def test_sync_close_returns_proceeds_to_cash(self):
+        class FakeDataApiClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def positions(self, *, user: str, limit: int = 500):
+                return []
+
+        settings = Settings(
+            funder_address="0xabc",
+            dry_run=True,
+            sync_live_positions=True,
+            paper_balance_usd=6.0,
+            trade_journal_path=Path("/private/tmp/journal.jsonl"),
+        )
+        portfolio = Portfolio(
+            cash=1.45,
+            positions=[
+                {
+                    "status": "open",
+                    "live": True,
+                    "token_id": "tok-1",
+                    "market_id": "m1",
+                    "question": "Q",
+                    "outcome": "Yes",
+                    "stake": 4.55,
+                    "shares": 5.0,
+                    "current_price": 0.5,
+                    "unrealized_pnl": -2.05,
+                    "opened_at": "2026-05-25T00:00:00+00:00",
+                }
+            ],
+            pending_orders=[],
+        )
+
+        with mock.patch("polymarket_bot.main.DataApiClient", FakeDataApiClient):
+            report = _sync_live_positions(settings, portfolio)
+
+        self.assertEqual(report[0]["action"], "closed_stale_local_position")
+        self.assertEqual(portfolio.positions[0]["status"], "closed")
+        self.assertAlmostEqual(portfolio.cash, 3.95, places=2)
+        self.assertTrue(portfolio.positions[0]["sync_closed"])
 
 
 if __name__ == "__main__":
