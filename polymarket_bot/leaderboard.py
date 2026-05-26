@@ -173,7 +173,7 @@ def _humanize_close_eta(end_date: str | None) -> str:
     now = datetime.now(timezone.utc)
     delta = (parsed - now).total_seconds()
     if delta <= 0:
-        return "expired"
+        return "ongoing"
     if delta < 60:
         return f"in {int(delta)}s"
     if delta < 3600:
