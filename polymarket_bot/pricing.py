@@ -24,6 +24,7 @@ Architecture:
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
@@ -167,6 +168,38 @@ def _build_clob_candidates(
     return out
 
 
+def _merge_pricing_metadata(base: Candidate, fresh: Candidate | None) -> Candidate:
+    """Overlay fresher market metadata onto a pricing candidate.
+
+    The CLOB payload gives us the live mark, but not the full market
+    record. Gamma provides the title / end date / event metadata that
+    keeps the leaderboard from showing stale `expired` labels.
+    """
+    if fresh is None:
+        return base
+    return replace(
+        base,
+        market_id=fresh.market_id or base.market_id,
+        question=fresh.question or base.question,
+        slug=fresh.slug or base.slug,
+        end_date=fresh.end_date or base.end_date,
+        hours_to_close=fresh.hours_to_close if fresh.hours_to_close is not None else base.hours_to_close,
+        liquidity=fresh.liquidity or base.liquidity,
+        volume=fresh.volume or base.volume,
+        url=fresh.url or base.url,
+        event_slug=fresh.event_slug or base.event_slug,
+        accepts_orders=fresh.accepts_orders or base.accepts_orders,
+        score=base.score,
+        outcome=base.outcome or fresh.outcome,
+        price=base.price,
+        best_bid=base.best_bid,
+        best_ask=base.best_ask,
+        tick_size=base.tick_size if base.tick_size is not None else fresh.tick_size,
+        neg_risk=base.neg_risk or fresh.neg_risk,
+        token_id=base.token_id or fresh.token_id,
+    )
+
+
 def ensure_open_positions_in_pool(
     settings: Settings,
     portfolio: Portfolio,
@@ -196,16 +229,28 @@ def ensure_open_positions_in_pool(
     pricing = _build_clob_candidates(portfolio, midpoints, bid_ask, scan_by_token=scan_by_token)
     priced_tokens = {c.token_id for c in pricing if c.token_id}
 
+    # Gamma metadata for all open positions keeps the open-line title and
+    # end date fresh even when the position is no longer in the scan pool.
+    gamma_by_token: dict[str, Candidate] = {}
+    try:
+        extra_markets = GammaClient(settings.gamma_base_url).get_markets_by_clob_token_ids(open_tokens)
+        for cand in build_pricing_candidates(extra_markets):
+            if cand.token_id:
+                gamma_by_token[cand.token_id] = cand
+    except Exception as exc:
+        print(f"   pricing-refresh fallback failed: {type(exc).__name__}: {exc}")
+
+    if gamma_by_token:
+        pricing = [_merge_pricing_metadata(cand, gamma_by_token.get(cand.token_id or "")) for cand in pricing]
+
     # Fallback Gamma for tokens the CLOB couldn't price.
     missing = sorted(set(open_tokens) - priced_tokens)
     scan_tokens = {c.token_id for c in candidates if c.token_id}
     missing = [t for t in missing if t not in scan_tokens]
-    if missing:
-        try:
-            extra_markets = GammaClient(settings.gamma_base_url).get_markets_by_clob_token_ids(missing)
-            pricing.extend(build_pricing_candidates(extra_markets))
-        except Exception as exc:
-            print(f"   pricing-refresh fallback failed: {type(exc).__name__}: {exc}")
+    for token in missing:
+        cand = gamma_by_token.get(token)
+        if cand is not None:
+            pricing.append(cand)
 
     # Append AFTER the original candidates so by_token lookup wins on us
     # for held positions (CLOB live > Gamma scan cache).

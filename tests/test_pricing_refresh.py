@@ -66,6 +66,21 @@ class _FakeClobClient:
         return out
 
 
+class _FakeGammaClient:
+    def __init__(self, markets: list[dict] | None = None):
+        self._markets = markets or []
+
+    def __call__(self, base_url):
+        return self
+
+    def get_markets_by_clob_token_ids(self, token_ids):
+        token_set = {str(t) for t in token_ids}
+        return [
+            m for m in self._markets
+            if token_set.intersection({str(tok) for tok in (m.get("clobTokenIds") or [])})
+        ]
+
+
 class BuildPricingCandidatesTests(unittest.TestCase):
     def test_keeps_market_below_liquidity_and_volume_floor(self):
         market = {
@@ -312,6 +327,48 @@ class EnsureOpenPositionsInPoolTests(unittest.TestCase):
             mod.ClobClient = orig
 
         clob_cand = next(c for c in result if c.token_id == "tok-a" and c.score == 0.0)
+        self.assertIsNotNone(clob_cand.end_date)
+        assert clob_cand.end_date is not None
+        self.assertGreater(clob_cand.end_date, utc_now())
+
+    def test_clob_pricing_uses_gamma_metadata_for_expiry(self):
+        portfolio = Portfolio(
+            cash=100.0,
+            positions=[{
+                "status": "open", "token_id": "tok-a", "stake": 10.0,
+                "market_id": "m1", "outcome": "Yes",
+                "end_date": (utc_now() - timedelta(hours=1)).isoformat(),
+            }],
+            pending_orders=[],
+        )
+        fake_clob = _FakeClobClient(
+            midpoints={"tok-a": "0.55"},
+            prices={"tok-a": {"BUY": "0.54", "SELL": "0.56"}},
+        )
+        gamma_market = {
+            "id": "m1",
+            "question": "q",
+            "slug": "s",
+            "endDate": (utc_now() + timedelta(hours=5)).isoformat(),
+            "liquidity": "1000",
+            "volume": "2000",
+            "outcomes": ["Yes", "No"],
+            "outcomePrices": ["0.55", "0.45"],
+            "clobTokenIds": ["tok-a", "tok-b"],
+            "acceptingOrders": True,
+        }
+        fake_gamma = _FakeGammaClient([gamma_market])
+        mod, orig_clob = self._patch_clob(fake_clob)
+        import polymarket_bot.pricing as pricing_module
+        orig_gamma = pricing_module.GammaClient
+        pricing_module.GammaClient = fake_gamma
+        try:
+            result = ensure_open_positions_in_pool(self._settings(), portfolio, [])
+        finally:
+            mod.ClobClient = orig_clob
+            pricing_module.GammaClient = orig_gamma
+
+        clob_cand = next(c for c in result if c.token_id == "tok-a")
         self.assertIsNotNone(clob_cand.end_date)
         assert clob_cand.end_date is not None
         self.assertGreater(clob_cand.end_date, utc_now())
