@@ -1211,9 +1211,8 @@ def cycle_once() -> None:
 def main() -> int:
     print(f"[analyst] starting — cycle={CYCLE_SECONDS}s, max_bots={MAX_BOTS_TOTAL}",
           flush=True)
-    # Initial wait so bots can write some state. First REPORT fires in
-    # CYCLE_SECONDS (15min), first SPAWN/KILL cycle in SPAWN_KILL_INTERVAL
-    # (1h) once we have enough sample.
+    # Refresh immediately on startup so the dry Telegram channel is up to
+    # date as soon as the analyst comes online.
     print(
         f"[analyst] cycle={CYCLE_SECONDS}s reports, "
         f"spawn/kill every {SPAWN_KILL_INTERVAL}s",
@@ -1224,8 +1223,9 @@ def main() -> int:
     initial_state = load_autonomous_state()
     initial_state["last_action_ts"] = int(time.time())
     save_autonomous_state(initial_state)
-    print(f"[analyst] first report in 90s, first spawn/kill in {SPAWN_KILL_INTERVAL//60}min", flush=True)
-    time.sleep(90)
+    print(f"[analyst] first report now, first spawn/kill in {SPAWN_KILL_INTERVAL//60}min", flush=True)
+    cycle_once()
+    time.sleep(CYCLE_SECONDS)
     while True:
         try:
             cycle_once()

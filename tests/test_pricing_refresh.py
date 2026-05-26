@@ -283,6 +283,39 @@ class EnsureOpenPositionsInPoolTests(unittest.TestCase):
         clob_cand = next(c for c in result if c.token_id == "tok-a" and c.score == 0.0)
         self.assertTrue(clob_cand.neg_risk)
 
+    def test_clob_pricing_refreshes_end_date_from_scan(self):
+        portfolio = Portfolio(
+            cash=100.0,
+            positions=[{
+                "status": "open", "token_id": "tok-a", "stake": 10.0,
+                "market_id": "m1", "outcome": "Yes",
+                "end_date": (utc_now() - timedelta(hours=1)).isoformat(),
+            }],
+            pending_orders=[],
+        )
+        stale_scan = Candidate(
+            market_id="m1", question="q", slug="s",
+            end_date=utc_now() + timedelta(hours=5), hours_to_close=5.0,
+            liquidity=1000.0, volume=2000.0, outcome="Yes", price=0.50,
+            token_id="tok-a", score=1.0, url="https://polymarket.com",
+            best_bid=0.49, best_ask=0.50, tick_size=0.01, neg_risk=False,
+            accepts_orders=True, event_slug="",
+        )
+        fake = _FakeClobClient(
+            midpoints={"tok-a": "0.55"},
+            prices={"tok-a": {"BUY": "0.54", "SELL": "0.56"}},
+        )
+        mod, orig = self._patch_clob(fake)
+        try:
+            result = ensure_open_positions_in_pool(self._settings(), portfolio, [stale_scan])
+        finally:
+            mod.ClobClient = orig
+
+        clob_cand = next(c for c in result if c.token_id == "tok-a" and c.score == 0.0)
+        self.assertIsNotNone(clob_cand.end_date)
+        assert clob_cand.end_date is not None
+        self.assertGreater(clob_cand.end_date, utc_now())
+
     def test_falls_back_to_gamma_when_clob_has_no_data(self):
         portfolio = Portfolio(
             cash=100.0,

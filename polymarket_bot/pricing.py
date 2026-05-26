@@ -138,6 +138,8 @@ def _build_clob_candidates(
         bid, ask = bid_ask.get(tok_str, (None, None))
         end_date: datetime | None = parse_dt(str(position.get("end_date") or "")) if position.get("end_date") else None
         scan = scan_by_token.get(tok_str)
+        if scan and scan.end_date and (end_date is None or scan.end_date > end_date):
+            end_date = scan.end_date
         tick_size = _position_tick_size(position, scan)
         neg_risk = _position_neg_risk(position, scan)
         out.append(

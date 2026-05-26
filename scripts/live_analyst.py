@@ -453,7 +453,10 @@ def cycle_once() -> None:
 
 def main() -> int:
     print(f"[live-analyst] starting — cycle={CYCLE_SECONDS}s", flush=True)
-    time.sleep(60)  # wait for first live tick
+    # Refresh immediately when possible so the live Telegram channel gets a
+    # current snapshot on boot instead of waiting for the first interval.
+    cycle_once()
+    time.sleep(60)  # let the live bot write a first tick before the next cycle
     while True:
         try:
             cycle_once()
