@@ -4,9 +4,10 @@
 Runs alongside the live bot. Every CYCLE_SECONDS minutes:
   1. Reads live state (paper_state.json + trade_journal.jsonl)
   2. Reads dry-race leaderboard for context comparison
-  3. Calls Codex CLI for an insights report, falling back to Ollama
-  4. Posts to TELEGRAM_CHAT_ID_LIVE — Markdown report comparing
-     the live profile to the top dry-race performers
+  3. Posts to TELEGRAM_CHAT_ID_LIVE — a deterministic Markdown report
+     comparing the live profile to the top dry-race performers
+
+No LLM/AI anywhere — the report is built from the numbers directly.
 
 NEVER spawns new bots, NEVER modifies the live profile, NEVER kills
 anything. This is pure observability — if the analyst recommends a profile
@@ -30,8 +31,6 @@ import traceback
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-
-from analyst_llm import call_analyst_llm
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
@@ -118,7 +117,6 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))   # 30 min
-LLM_TIMEOUT_SECONDS = 240
 
 
 @dataclass
@@ -351,27 +349,6 @@ def load_top_closed_trades(n: int = 3) -> list[dict]:
     return rows[:n]
 
 
-PROMPT = """You're the live trading analyst. The user gets this report on Telegram every 30min. Give ONE concise paragraph (3-4 lines max).
-
-## LIVE
-profile: {profile}
-equity: ${equity:.2f} (was ${starting:.2f}, {roi:+.1f}%)
-positions: {open_positions} open, {closed} closed ({wins}W/{losses}L, {win_rate:.0f}% wr)
-realized: ${realized_pnl:+.2f}
-
-## DRY top 5
-{dry_top}
-
-## YOUR JOB
-
-Just 3-4 lines:
-1. Health check — is the bot healthy or stuck? Give specifics.
-2. Is live keeping up with the dry race leaders, or lagging? Give numbers.
-3. Verdict: "hold steady" / "investigate X" / one concrete action.
-
-No fluff. No "recommendation" headers. Just the lines."""
-
-
 def cycle_once() -> None:
     snap = load_live_snapshot()
     if snap is None:
@@ -406,20 +383,6 @@ def cycle_once() -> None:
             pass
     pnl_total = snap.equity - starting
     roi = (pnl_total / starting * 100) if starting > 0 else 0
-
-    dry_table = "\n".join(
-        f"  {i+1}. {r['name']:38s} ${r['equity']:.2f} ({r['win_rate']:.0f}% wr, {r['closed']} closed)"
-        for i, r in enumerate(dry_top)
-    ) or "  (no dry-race data yet)"
-
-    prompt = PROMPT.format(
-        profile=snap.profile, equity=snap.equity, starting=starting, roi=roi,
-        open_positions=snap.open_positions,
-        closed=snap.closed, wins=snap.wins, losses=snap.losses,
-        win_rate=snap.win_rate, realized_pnl=snap.realized_pnl,
-        dry_top=dry_table,
-    )
-    narrative = call_analyst_llm(prompt, timeout=LLM_TIMEOUT_SECONDS, cwd=REPO_ROOT)
 
     stamp = time.strftime("%H:%M UTC", time.gmtime())
     sign = "+" if pnl_total >= 0 else ""
@@ -481,10 +444,6 @@ def cycle_once() -> None:
         parts.append(
             f"  {marker} {r['name']:38s} {r_roi:+6.1f}% ({r['closed']} closed, {r['win_rate']:.0f}% wr)"
         )
-    parts.append("")
-
-    parts.append("*🧠 Verdict*")
-    parts.append(narrative.strip()[:1000] or "(analyst llm unavailable)")
 
     msg = "\n".join(parts)
     telegram_post(msg)

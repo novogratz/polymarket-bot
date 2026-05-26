@@ -11,7 +11,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - Engine: `race` (selector = `select_grinder` in `polymarket_bot/race_strategies.py`)
 - Thesis: a market sitting at bid ∈ [0.88, 0.95] with < 1h to close is pricing near-certainty. Pay the spread, take +6%, rotate. SL -15% caps the rare "favorite flips" case.
 - Bankroll: **$6 USDC** baseline (fresh-start reset 2026-05-25, applied to live + dry)
-- Sizing: `race_stake_pct=0.25` (~$1.50/trade on $6), `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=$1.5`, `max_orders_per_tick=3`, `cash_floor_pct=0.10`. At $6 / $1.50 stake / 3 slots = $4.50 deployed (75%), 4th trade naturally blocked when `cash_above_floor < $1`.
+- Sizing: **ALL-IN** (2026-05-26). `race_stake_pct=1.0` (whole equity per bet), `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=0` (cap disabled so the stake scales with balance), `max_orders_per_tick=1` (one bet at a time), `cash_floor_pct=0.0`. Each tick deploys the full available balance on the single top-ranked market; only the $1 CLOB minimum gates entry.
 - Entry filters (in `_build_eligible_candidates`):
   - `race_min_price=0.88`, `race_max_price=0.95`
   - `race_max_hours=1.0` (only the last 60 min)
@@ -51,12 +51,11 @@ Promotion threshold for moving a dry profile to live: **≥10 closed trades AND 
 
 The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies" when N > 1 — never lies about "only profitable strategy" when several are positive.
 
-**Autonomous loop — see `scripts/dry_analyst.py`:**
+**Autonomous loop — see `scripts/dry_analyst.py`:** (NO AI — deterministic only, 2026-05-26)
 - Runs as a sidecar alongside `bash scripts/run_all.sh`
-- **Report every 15 min** to `TELEGRAM_CHAT_ID_DRY_RUN`: full leaderboard with $start → $current / +/- $ / ROI% / WR / closed / open per strategy, top 3 trades + open positions for the favorite, plus a tiered live-readiness recommendation. Open-position lines now include the side and close ETA so the ongoing market is visible.
-- **Spawn/kill every 1 hour** (decoupled from report rhythm).
-  - Spawns 1–3 new `auto_*` profiles per cycle via Codex CLI, falling back to Ollama, derived from current winners
-  - Tunes (in-place reroll) up to 2 `auto_*` per cycle
+- **Report every 15 min** to `TELEGRAM_CHAT_ID_DRY_RUN`: full leaderboard with $start → $current / +/- $ / ROI% / WR / closed / open per strategy, top 3 trades + open positions for the favorite, plus a tiered live-readiness recommendation. The "Insights" narrative is built deterministically from the metrics — no LLM call. Open-position lines include the side and close ETA so the ongoing market is visible.
+- **Spawning/tuning removed.** The analyst no longer generates or rerolls strategies (that path was LLM-driven via Codex/Ollama and has been deleted). It only reports and prunes clear losers.
+- **Loser-kill pass every 1 hour** (deterministic thresholds, decoupled from report rhythm):
   - Kills underperformers: ROI ≤ -25% AND wr ≤ 30% AND n ≥ 25 (auto) / n ≥ 50 (human)
   - Catastrophic halt: ROI ≤ -30% kills any bot regardless of trade count (relaxed from -50% to give strategies more room)
   - Killed profile → `configs/profiles/_archived/<name>_<ts>.toml` (recoverable)
@@ -65,7 +64,7 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
   - Force-close losers at `current_price ≤ 0.03`
   - Catches resolved markets that drop out of Gamma scans before per-strategy exit logic fires
 - **Telegram fallback:** `_default_transport` retries with `parse_mode` stripped on HTTP 400, so MarkdownV2 escape failures never silently swallow alerts.
-- **Live analyst (`scripts/live_analyst.py`)** — read-only sidecar wired into `run_all.sh` (and standalone `run_live_70.sh`); reads paper_state + dry leaderboard, calls Codex CLI with Ollama fallback, posts executive-summary insights (open positions w/ entry→cur→PnL, top closed, dry-twin comparison) to `TELEGRAM_CHAT_ID_LIVE` every 30 min. Never spawns/modifies anything live.
+- **Live analyst (`scripts/live_analyst.py`)** — read-only sidecar wired into `run_all.sh` (and standalone `run_live_70.sh`); reads paper_state + dry leaderboard, posts a deterministic executive-summary (open positions w/ entry→cur→PnL, top closed, dry-twin comparison) to `TELEGRAM_CHAT_ID_LIVE` every 30 min. NO AI — the report is built straight from the numbers. Never spawns/modifies anything live.
 
 **Universal exit/sizing rules** for race-style strategies:
 - `stake_pct ≈ 0.10–0.25`, `max_orders_per_tick = 5`, `cash_floor_pct = 0.02`, `max_hours = 4.0` (hard 4h-only rule)
@@ -123,7 +122,7 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
 - `scripts/run_all.sh` — preferred launcher: live + dry race + sidecars + HTTP cache pre-warm + 8min re-warm loop.
 - `scripts/run_live_70.sh` — live-only runner (loads `baseline_tight.toml`, $29 bankroll override).
 - `scripts/cache_warmer.py` — pre-fetches leaderboards + wallet trade histories into `data/cache/http/` so the bot swarm starts warm.
-- `scripts/dry_analyst.py` — autonomous analyst sidecar: 15min reports, 1h spawn/kill via Codex CLI with Ollama fallback.
+- `scripts/dry_analyst.py` — autonomous analyst sidecar: 15min deterministic reports + 1h deterministic loser-kill pass. No AI/LLM (spawning/tuning removed 2026-05-26).
 - `scripts/live_analyst.py` — read-only live analyst sidecar; 30min executive-summary Telegram reports.
 - `scripts/winner_consistency.py` — sliding-window analyzer (30min windows over 8h lookback).
 - `tests/test_strategy.py` — 52 tests covering scoring, sizing, exit plans, auto-tuner rules.
@@ -237,7 +236,7 @@ Both scripts load `configs/profiles/grinder.toml` as the single source of truth 
 
 - Profile: `grinder` (race mode — heavy-favorite near-resolution scalp)
 - `POLYMARKET_SYNC_LIVE_POSITIONS=1`, `POLYMARKET_AUTO_INTERVAL_SECONDS=30`
-- Sizing ($6 fresh-start baseline 2026-05-25): `starting_cash=6.0`, `assumed_live_balance_usd=6.0`, `race_stake_pct=0.25` (~$1.50/trade), `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=1.5`, `max_orders_per_tick=3`, `cash_floor_pct=0.10`
+- Sizing (ALL-IN, 2026-05-26): `starting_cash=6.0`, `assumed_live_balance_usd=6.0`, `race_stake_pct=1.0` (full equity/bet), `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=0` (cap disabled → stake scales with balance), `max_orders_per_tick=1`, `cash_floor_pct=0.0`
 - Entry filters: `race_min_price=0.88`, `race_max_price=0.95`, `race_max_hours=1.0`, `race_max_spread=0.02`, `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
 - Exits: TP +6%, SL -15%, `sl_min_age=1min`, resolved at bid ≥0.97. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
 - Live analyst sidecar (`scripts/live_analyst.py`) launches alongside; posts read-only insights every 30 min to `TELEGRAM_CHAT_ID_LIVE`.

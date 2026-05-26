@@ -1,29 +1,29 @@
 #!/usr/bin/env python3
 """Autonomous dry-run analyst sidecar.
 
-Runs alongside the 62-bot dry race. Every 15 minutes:
+Runs alongside the dry race. Every 15 minutes:
   1. Reads per-strategy state + journal from data/dry_runs/
   2. Computes leaderboard (PnL, win-rate, sample size, avg win/loss)
-  3. Calls Codex CLI for a narrative + optional new-strategy proposal,
-     falling back to Ollama
-  4. Spawns new dry-run bot if proposal accepted (TOML-only, additive)
-  5. Kills auto-spawned bots that are clearly losing (≥KILL_MIN_TRADES
-     closed, ROI ≤ KILL_ROI_THRESHOLD, win_rate ≤ KILL_WR_THRESHOLD)
-  6. Posts a Markdown leaderboard + commentary to Telegram
+  3. Posts a deterministic Markdown leaderboard + summary to Telegram
+  4. On the slower spawn/kill tick, kills auto-spawned bots that are
+     clearly losing (≥KILL_MIN_TRADES closed, ROI ≤ KILL_ROI_THRESHOLD,
+     win_rate ≤ KILL_WR_THRESHOLD)
 
-Hard rules (see MEMORY.md feedback_autonomous_analyst_override.md):
+No LLM/AI anywhere — reports and the summary narrative are built directly
+from the numbers. The analyst no longer spawns or tunes strategies (that
+path was LLM-driven and has been removed); it only reports and prunes
+clear losers via deterministic thresholds.
+
+Hard rules:
   - Dry-run only. Never touches live profiles or live ledger.
-  - Kill scope: ONLY auto_* strategies the analyst itself spawned.
-    NEVER kills or modifies the 62 human-curated bots.
-  - TOML-only spawning: new strategies must reuse an existing mode.
-  - Hard caps: 1 spawn/cycle, MAX_BOTS_TOTAL ceiling, kill-switch.
-  - All spawned profile names prefixed `auto_` for traceability.
+  - Kill scope: ONLY auto_* strategies (legacy spawns). NEVER kills or
+    modifies the human-curated bots.
 
 Kill switch: write `{"enabled": false}` to data/autonomous_state.json
-to halt new spawns. Existing auto bots keep running; reporting continues.
+to halt kills. Reporting continues.
 
 Adjust CYCLE_SECONDS or set enabled=false in autonomous_state.json to
-control report/proposal frequency.
+control report frequency.
 """
 from __future__ import annotations
 
@@ -38,8 +38,6 @@ import traceback
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-
-from analyst_llm import call_analyst_llm
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DRY_RUNS_DIR = REPO_ROOT / "data" / "dry_runs"
@@ -72,12 +70,8 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 CYCLE_SECONDS = int(os.environ.get("ANALYST_CYCLE_SECONDS", "900"))   # 15min reports
-SPAWN_KILL_INTERVAL = int(os.environ.get("ANALYST_SPAWN_KILL_INTERVAL_SECONDS", "3600"))  # 1h — spawn/kill less frequently than reports
-MAX_BOTS_TOTAL = int(os.environ.get("ANALYST_MAX_BOTS", "150"))
-MAX_SPAWNS_PER_CYCLE = int(os.environ.get("ANALYST_MAX_SPAWNS", "3"))   # was 1
-MAX_TUNES_PER_CYCLE = int(os.environ.get("ANALYST_MAX_TUNES", "2"))     # in-place reroll
+SPAWN_KILL_INTERVAL = int(os.environ.get("ANALYST_SPAWN_KILL_INTERVAL_SECONDS", "3600"))  # 1h — run loser-kills less frequently than reports
 SPAWN_PREFIX = "auto_"
-LLM_TIMEOUT_SECONDS = 240
 MIN_TRADES_TO_RATE = 1  # 1 trade is enough to appear on the leaderboard
 
 # Kill criteria. Two tiers:
@@ -328,189 +322,8 @@ def rank(metrics: list[StratMetrics]) -> tuple[list[StratMetrics], list[StratMet
 
 
 # ────────────────────────────────────────────────────────────────────
-# Analyst LLM
+# Kill helpers (deterministic — no AI)
 # ────────────────────────────────────────────────────────────────────
-
-
-PROMPT_TEMPLATE = """You are running a fully autonomous Polymarket strategy race. {n_total} strategies running, {n_rated} rated (≥{min_trades} closed trades). Your job is to GENERATE new strategies aggressively and keep the race exploring.
-
-## Per-strategy metrics (sorted by PnL)
-{leaderboard_table}
-
-## Existing auto-spawned strategies (don't dupe these)
-{existing_auto_names}
-
-## YOUR JOB — REQUIRED ACTIONS
-
-1. **Narrative (3-6 lines).** What's working? What's not? Be specific about parameter combinations (cohort tightness, momentum thresholds, exit timing). No generic statements.
-
-2. **Propose 1-3 new strategies — DERIVED FROM CURRENT WINNERS.** ALWAYS propose at least 1. Required priority:
-   a. PRIMARY: parameter variants of the TOP 3 profitable strategies (shift ONE knob — TP, SL, stake, lookback, consensus)
-   b. SECONDARY: combinations of features from two profitable strategies
-   c. TERTIARY: inverse/contrarian versions of clear losers
-   d. Last resort: aggressive variants when winners are slow
-   The bot is now auto-killing losers, so don't propose new bottom-tier theses.
-
-3. **Optionally tune existing auto_ strategies** that have ≥{min_trades} trades but ROI between -10% and 0% (borderline). Propose a parameter shift to test.
-
-## OUTPUT FORMAT — strict
-
-For each new strategy, emit a TOML fenced block:
-```toml
-# auto_<short_name> — derived from <parent>
-# Hypothesis: <one sentence — what specific param/combo change you're testing>
-[run]
-starting_cash = 20.0
-mode = "<existing mode name, copy from parent>"
-
-[sizing]
-...
-[race]
-max_hours = 4.0
-...
-[telemetry]
-quiet = true
-auto_interval_seconds = <staggered 30-180>
-stdout_heartbeat_minutes = 15
-```
-
-For each tune action, emit:
-```tune
-target: auto_<existing_name>
-hypothesis: <why this change>
-```
-followed by a full new TOML block (same format as new strategy, with a DIFFERENT auto_ name).
-
-## HARD CONSTRAINTS — your output is rejected if violated
-- New profile name MUST start with `auto_` and be unique (not in existing list above).
-- `mode` MUST be one of: smart_money (default — leave unset), edge, news, mirror, hybrid_smart_money, smart_wallet_consensus, whale_entry_detection, wallet_cluster_correlation, early_momentum_detection, liquidity_vacuum_breakout, mean_reversion_fade, range_channel_trading, aggressive_buyer_detection, orderbook_imbalance, late_momentum_chase, weak_holder_flush, weak_holder_flush_inverse, pmlepgm_counter_panic_fade, pm_le_pgm_weak_holder_flush_inverse, championdumonde_breakout, late_favorite, panic_fade, underdog, favorite, contrarian, random, multi_signal_consensus, claude_resolution_sniper, claude_endgame_sweep, claude_blue_chip, claude_balanced_mid, claude_late_pump, claude_strong_breakout, claude_extreme_consensus, claude_resolution_clock, probability_drift, resolution_compression, liquidity_absorption, momentum_exhaustion_reversal, micro_scalping, kzerlepgm_ultimatestrategy.
-- ONLY parameter variants. No new TOML sections, no Python in TOML.
-- starting_cash MUST be 20.0.
-- 4h-only rule: max_hours = 4.0 in [race], max_hours_to_close = 4.0 in [filters] for smart_money mode.
-
-Output: narrative first, then TOML/tune blocks separated by blank lines. Be decisive."""
-
-
-def parse_response(text: str) -> tuple[str, list[dict]]:
-    """Parse the analyst LLM response into a narrative + proposed actions.
-
-    Each action is: {'kind': 'spawn'|'tune', 'name': str, 'body': str,
-                     'target': str | None}
-    """
-    actions: list[dict] = []
-    # Pull all toml blocks
-    for m in re.finditer(r"```toml\s*(.*?)```", text, re.S):
-        body = m.group(1).strip()
-        name_match = re.search(r"^#\s*(auto_[a-z0-9_]+)", body, re.M)
-        if not name_match:
-            continue
-        actions.append({"kind": "spawn", "name": name_match.group(1),
-                        "body": body, "target": None, "span": m.span()})
-    # Pull all tune blocks (each followed by a toml block)
-    for m in re.finditer(r"```tune\s*(.*?)```", text, re.S):
-        tune_body = m.group(1)
-        target_match = re.search(r"target:\s*(auto_[a-z0-9_]+)", tune_body)
-        if not target_match:
-            continue
-        # Find the next toml block after this tune block
-        after = text[m.end():]
-        toml_match = re.search(r"```toml\s*(.*?)```", after, re.S)
-        if not toml_match:
-            continue
-        body = toml_match.group(1).strip()
-        name_match = re.search(r"^#\s*(auto_[a-z0-9_]+)", body, re.M)
-        if not name_match:
-            continue
-        # Mark this toml as part of a tune (not a separate spawn)
-        for a in actions:
-            if a["name"] == name_match.group(1):
-                a["kind"] = "tune"
-                a["target"] = target_match.group(1)
-                break
-    # Narrative = everything outside the code blocks
-    narrative = re.sub(r"```(?:toml|tune).*?```", "", text, flags=re.S).strip()
-    return narrative, actions
-
-
-def validate_proposal(name: str, toml_body: str) -> str | None:
-    """Return error string if invalid, None if OK."""
-    if not name.startswith(SPAWN_PREFIX):
-        return f"name must start with `{SPAWN_PREFIX}`"
-    if (PROFILES_DIR / f"{name}.toml").exists():
-        return f"profile {name} already exists"
-    if "starting_cash" not in toml_body or "starting_cash = 20" not in toml_body:
-        return "starting_cash must be 20.0"
-    # Reject anything that looks like Python (defensive). Match only at
-    # start-of-line so the words "from"/"import" in comments are fine.
-    if re.search(r"^\s*(import|from|def|class)\s+\w+", toml_body, re.M):
-        return "contains Python-like syntax"
-    # Quick TOML parse check
-    try:
-        import tomllib
-        tomllib.loads(toml_body)
-    except Exception as exc:
-        return f"TOML parse error: {exc}"
-    # Full schema validation: load_profile catches unknown keys/sections.
-    # Write to a temp path, validate, delete — if invalid, the analyst
-    # never publishes a broken profile.
-    import tempfile
-    try:
-        from polymarket_bot.profiles import load_profile  # type: ignore
-    except Exception:
-        # If we can't import the validator, fall back to TOML-parse-only.
-        return None
-    with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as tmp:
-        tmp.write(toml_body)
-        tmp_path = tmp.name
-    try:
-        load_profile(Path(tmp_path))
-    except Exception as exc:
-        return f"schema validation: {exc}"
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-    return None
-
-
-# ────────────────────────────────────────────────────────────────────
-# Spawning
-# ────────────────────────────────────────────────────────────────────
-
-
-def write_profile(name: str, body: str) -> Path:
-    path = PROFILES_DIR / f"{name}.toml"
-    path.write_text(body)
-    return path
-
-
-def spawn_bot(name: str) -> int | None:
-    """Launch a dry-run bot in the background. Returns PID.
-
-    NOTE: We deliberately keep the child in the parent's process group
-    (no start_new_session/setsid) so Ctrl+C on the main race script
-    propagates and kills these too. No orphan bots after shutdown.
-    """
-    env = os.environ.copy()
-    env["POLYMARKET_QUIET"] = "1"
-    env["POLYMARKET_SUPPRESS_BUY_LOGS"] = "1"
-    # Tee output into the same logs dir so the user can see it
-    log_dir = REPO_ROOT / "data" / "dry_runs" / name
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / "spawn_stdout.log"
-    log_fh = log_path.open("ab", buffering=0)
-    proc = subprocess.Popen(
-        [
-            "uv", "run", "pmbot", "auto-loop",
-            "--dry-run", "--profile", name, "--run", name,
-        ],
-        cwd=REPO_ROOT,
-        env=env,
-        stdout=log_fh,
-        stderr=subprocess.STDOUT,
-    )
-    return proc.pid
 
 
 def find_bot_pid_by_name(profile_name: str) -> int | None:
@@ -908,17 +721,6 @@ def _pick_favorite(metrics: list[StratMetrics]) -> tuple["StratMetrics | None", 
 # ────────────────────────────────────────────────────────────────────
 
 
-def existing_auto_strategies() -> list[str]:
-    return sorted(p.stem for p in PROFILES_DIR.glob(f"{SPAWN_PREFIX}*.toml"))
-
-
-def total_running_bots() -> int:
-    """Count dry_runs subdirs as a rough proxy for running bots."""
-    if not DRY_RUNS_DIR.exists():
-        return 0
-    return sum(1 for p in DRY_RUNS_DIR.iterdir() if p.is_dir())
-
-
 def ensure_leaderboard_auto_discover() -> bool:
     """Self-heal: if the leaderboard sidecar is running with the OLD
     fixed --runs argument (pre auto-discover patch), kill it and start
@@ -1108,83 +910,11 @@ def cycle_once() -> None:
         mins_until = max(0, (SPAWN_KILL_INTERVAL - (now_ts - last_action_ts)) // 60)
         print(f"[analyst] spawn/kill skipped — next action in {mins_until}min", flush=True)
 
-    if action_due and (top or bottom or n_total >= 5):
-        existing_autos = existing_auto_strategies()
-        prompt = PROMPT_TEMPLATE.format(
-            n_total=n_total,
-            n_rated=len(top) + len(bottom),
-            min_trades=MIN_TRADES_TO_RATE,
-            leaderboard_table=fmt_leaderboard(top + bottom or metrics[:10]),
-            existing_auto_names=", ".join(existing_autos) or "(none yet)",
-        )
-        response = call_analyst_llm(prompt, timeout=LLM_TIMEOUT_SECONDS, cwd=REPO_ROOT)
-        narrative, actions = parse_response(response)
-
-        if state.get("enabled", True):
-            spawn_count = tune_count = 0
-            for action in actions:
-                if total_running_bots() >= MAX_BOTS_TOTAL:
-                    narrative += f"\n\n⚠ bot cap {MAX_BOTS_TOTAL} reached; stopping spawns"
-                    break
-                if action["kind"] == "spawn" and spawn_count >= MAX_SPAWNS_PER_CYCLE:
-                    continue
-                if action["kind"] == "tune" and tune_count >= MAX_TUNES_PER_CYCLE:
-                    continue
-                err = validate_proposal(action["name"], action["body"])
-                if err:
-                    narrative += f"\n⚠ {action['name']} rejected: {err}"
-                    continue
-                # For tune: kill the target auto_ bot first
-                if action["kind"] == "tune" and action["target"]:
-                    target_record = next(
-                        (r for r in state.get("spawned", [])
-                         if r["name"] == action["target"] and not r.get("killed_at")),
-                        None,
-                    )
-                    if target_record:
-                        kill_bot(target_record.get("pid"), action["target"])
-                        archive_profile(action["target"])
-                        target_record["killed_at"] = int(time.time())
-                        target_record["killed_reason"] = f"tuned → {action['name']}"
-                # Spawn the new one
-                write_profile(action["name"], action["body"])
-                pid = spawn_bot(action["name"])
-                rec = {"name": action["name"], "pid": pid, "ts": int(time.time())}
-                if action["kind"] == "tune":
-                    rec["tuned_from"] = action["target"]
-                    tuned.append(f"{action['target']}→{action['name']}")
-                    tune_count += 1
-                else:
-                    spawned.append(action["name"])
-                    spawn_count += 1
-                state.setdefault("spawned", []).append(rec)
-                save_autonomous_state(state)
-                # Loud banner in the main race stdout (visible via
-                # the run_both_dry.sh `[analyst]` pipe-prefix).
-                alive = sum(1 for r in state.get("spawned", []) if not r.get("killed_at"))
-                emoji = "🔧" if action["kind"] == "tune" else "🆕"
-                if action["kind"] == "tune":
-                    print(
-                        f"\n{'='*70}\n"
-                        f"[analyst] {emoji}{emoji}{emoji} TUNED  {action['target']:32s} → {action['name']}\n"
-                        f"[analyst]     (pid={pid}, now {alive} live auto bots)\n"
-                        f"{'='*70}\n",
-                        flush=True,
-                    )
-                else:
-                    print(
-                        f"\n{'='*70}\n"
-                        f"[analyst] {emoji}{emoji}{emoji} SPAWNED {action['name']}\n"
-                        f"[analyst]     (pid={pid}, now {alive} live auto bots, +{spawn_count}/{MAX_SPAWNS_PER_CYCLE} this cycle)\n"
-                        f"{'='*70}\n",
-                        flush=True,
-                    )
-    elif not metrics:
+    # Deterministic summary narrative — built straight from the metrics.
+    # No LLM, no spawning/tuning (those paths were AI-driven and removed).
+    if not metrics:
         narrative = "No dry-run state yet — waiting for the race to start writing journals."
     else:
-        # Off-cycle report (claude is only called on the 1h spawn/kill
-        # tick). Build a deterministic summary from the metrics we
-        # already computed instead of a stale "none rated" placeholder.
         rated = [m for m in metrics if m.closed >= MIN_TRADES_TO_RATE]
         if not rated:
             narrative = (
@@ -1203,12 +933,11 @@ def cycle_once() -> None:
                 f"{len(rated)}/{n_total} strategies have ≥{MIN_TRADES_TO_RATE} closed trade(s): "
                 f"{len(winners)} profitable, {len(losers)} losing. "
                 f"Top: {top_txt}. "
-                f"Worst: `{worst.name}` ({worst.roi_pct:+.0f}% / {worst.closed}c). "
-                f"Next claude analysis on the 1h spawn/kill tick."
+                f"Worst: `{worst.name}` ({worst.roi_pct:+.0f}% / {worst.closed}c)."
             )
 
     state["last_cycle_ts"] = int(time.time())
-    if action_due and (killed or spawned or tuned):
+    if action_due and killed:
         state["last_action_ts"] = int(time.time())
     save_autonomous_state(state)
 
@@ -1221,21 +950,21 @@ def cycle_once() -> None:
 
 
 def main() -> int:
-    print(f"[analyst] starting — cycle={CYCLE_SECONDS}s, max_bots={MAX_BOTS_TOTAL}",
+    print(f"[analyst] starting — cycle={CYCLE_SECONDS}s (deterministic, no AI)",
           flush=True)
     # Refresh immediately on startup so the dry Telegram channel is up to
     # date as soon as the analyst comes online.
     print(
         f"[analyst] cycle={CYCLE_SECONDS}s reports, "
-        f"spawn/kill every {SPAWN_KILL_INTERVAL}s",
+        f"loser-kills every {SPAWN_KILL_INTERVAL}s",
         flush=True,
     )
-    # Stamp last_action_ts to now so the first spawn/kill waits a full
+    # Stamp last_action_ts to now so the first kill pass waits a full
     # SPAWN_KILL_INTERVAL — gives bots time to accumulate sample.
     initial_state = load_autonomous_state()
     initial_state["last_action_ts"] = int(time.time())
     save_autonomous_state(initial_state)
-    print(f"[analyst] first report now, first spawn/kill in {SPAWN_KILL_INTERVAL//60}min", flush=True)
+    print(f"[analyst] first report now, first kill pass in {SPAWN_KILL_INTERVAL//60}min", flush=True)
     cycle_once()
     time.sleep(CYCLE_SECONDS)
     while True:

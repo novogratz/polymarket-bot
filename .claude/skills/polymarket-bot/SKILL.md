@@ -7,17 +7,19 @@ description: Claude Code skill for the Polymarket smart-money copy-trading bot. 
 
 Use this skill when working in this repository: strategy code, filters, live commands, dashboard, trade journal, auto-tuner, BTC edge.
 
-## Current state (2026-05-24)
+## Current state (2026-05-26)
 
-**Live profile:** `whale_entry_detection` — race strategy that detects whale buy entries on Polymarket.
+**Live profile:** `grinder` — heavy-favorite near-resolution scalp (race mode).
 
-**Bankroll:** $20 USDC.
+**Bankroll:** $6 USDC.
+
+**Sizing:** ALL-IN — each bet uses the full available balance, one position at a time (`race_stake_pct=1.0`, `max_position_ceiling_usd=0`, `max_orders_per_tick=1`, `cash_floor_pct=0.0`). Bet size scales with the bankroll automatically; only the $1 CLOB minimum gates entry.
 
 **Live launcher:** `bash scripts/run_live_70.sh` or `bash scripts/run_all.sh`.
 
-**Universal race rules:** `starting_cash=20.0`, `stake_pct=0.10`, `max_orders_per_tick=5`, `cash_floor_pct=0.02`, `max_hours=4.0`, `sl_min_age_minutes=15`, `resolved_exit_threshold=0.97`.
+**Dry race:** profiles auto-discovered from `configs/profiles/*.toml` by both launcher scripts.
 
-**Dry race:** 95 profiles auto-discovered from `configs/profiles/*.toml` by both launcher scripts. Kill thresholds relaxed: min 25 trades (auto) / 50 (human), ROI ≤ -25%, WR ≤ 30%, equity floor 30%.
+**Analysts (dry + live) are AI-free (2026-05-26):** `dry_analyst.py` and `live_analyst.py` post deterministic reports built straight from the metrics. No LLM/Codex/Ollama call anywhere; the dry analyst no longer spawns or tunes strategies (only reports + deterministic loser-kills).
 
 ## Guardrails (non-negotiable)
 
