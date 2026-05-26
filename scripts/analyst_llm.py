@@ -6,6 +6,7 @@ not be part of the market scan or live trade-selection path.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -13,6 +14,37 @@ from pathlib import Path
 
 
 DEFAULT_TIMEOUT_SECONDS = 240
+
+# Terminal control sequences emitted by `ollama run`'s live renderer.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+# Reasoning-model chain-of-thought wrapped in <think>...</think>.
+_THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _sanitize_llm_output(text: str) -> str:
+    """Strip terminal control codes and reasoning-model 'thinking' so only the
+    final answer reaches the report.
+
+    qwen3-style models emit a chain-of-thought — sometimes as <think>...</think>,
+    sometimes as a plain 'Thinking...' block — plus ANSI cursor codes. Returning
+    empty signals the caller to fall back to its own placeholder.
+    """
+    if not text:
+        return ""
+    text = _ANSI_RE.sub("", text).replace("\x1b", "").replace("\r", "")
+    text = _THINK_TAG_RE.sub("", text)
+    # Keep only what follows the last closing think tag, if any.
+    low = text.lower()
+    if "</think>" in low:
+        text = text[low.rfind("</think>") + len("</think>"):]
+    elif "<think>" in low:
+        text = text[: low.find("<think>")]
+    stripped = text.strip()
+    # A plain-text 'Thinking...' preamble with no answer can't be salvaged.
+    head = stripped.lower()
+    if head.startswith("thinking...") or head.startswith("here's a thinking process"):
+        return ""
+    return stripped
 
 
 def _providers() -> list[str]:
@@ -74,9 +106,10 @@ def _run_ollama(prompt: str, *, timeout: int) -> str:
         os.environ.get("ANALYST_OLLAMA_MODEL")
         or "fredrezones55/qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"
     ).strip()
+    # `/no_think` disables qwen3's chain-of-thought so we get just the answer.
     result = subprocess.run(
         ["ollama", "run", model],
-        input=prompt,
+        input=f"{prompt}\n\n/no_think",
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -102,9 +135,9 @@ def call_analyst_llm(
     for provider in _providers():
         try:
             if provider == "codex":
-                return _run_codex(prompt, timeout=timeout, cwd=cwd)
+                return _sanitize_llm_output(_run_codex(prompt, timeout=timeout, cwd=cwd)) or "(verdict unavailable)"
             if provider == "ollama":
-                return _run_ollama(prompt, timeout=timeout)
+                return _sanitize_llm_output(_run_ollama(prompt, timeout=timeout)) or "(verdict unavailable)"
             errors.append(f"{provider}: unknown provider")
         except subprocess.TimeoutExpired:
             errors.append(f"{provider}: timeout")
