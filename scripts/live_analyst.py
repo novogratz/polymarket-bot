@@ -38,6 +38,65 @@ DATA_DIR = REPO_ROOT / "data"
 DRY_RUNS_DIR = DATA_DIR / "dry_runs"
 
 
+def _record_pnl(record: dict) -> float:
+    for key in ("realized_pnl", "realized_pnl_usd"):
+        if record.get(key) is not None:
+            try:
+                return float(record.get(key) or 0.0)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
+
+
+def _realized_record_key(record: dict) -> str:
+    token = str(record.get("token_id") or "")
+    closed_at = str(record.get("closed_at") or "")
+    reason = str(record.get("exit_reason") or record.get("reason") or "")
+    pnl = round(_record_pnl(record), 4)
+    if token or closed_at or reason:
+        return f"{token}|{closed_at}|{reason}|{pnl}"
+    return json.dumps(record, sort_keys=True)
+
+
+def _realized_cache_path_for_journal(journal_path: Path) -> Path:
+    return Path(
+        os.environ.get(
+            "POLYMARKET_REALIZED_CACHE_PATH",
+            str(journal_path.parent / "realized_trade_cache.jsonl"),
+        )
+    )
+
+
+def _is_realized_record(record: dict) -> bool:
+    return bool(
+        record.get("event") == "position_closed"
+        or record.get("closed_at")
+        or record.get("realized_pnl") is not None
+        or record.get("realized_pnl_usd") is not None
+    )
+
+
+def _read_realized_records(journal_path: Path) -> list[dict]:
+    records: dict[str, dict] = {}
+    for path in (journal_path, _realized_cache_path_for_journal(journal_path)):
+        if not path.is_file():
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(record, dict) and _is_realized_record(record):
+                records[_realized_record_key(record)] = record
+    return sorted(records.values(), key=lambda r: str(r.get("closed_at") or ""))
+
+
 def _load_dotenv() -> None:
     env_file = REPO_ROOT / ".env"
     if not env_file.exists():
@@ -112,27 +171,15 @@ def load_live_snapshot() -> LiveSnapshot | None:
     win_pnls: list[float] = []
     loss_pnls: list[float] = []
     journal = DATA_DIR / "trade_journal.jsonl"
-    if journal.exists():
-        try:
-            for line in journal.read_text().splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if entry.get("event") != "position_closed":
-                    continue
-                pnl = float(entry.get("realized_pnl_usd") or 0.0)
-                closed += 1
-                if pnl > 0:
-                    wins += 1
-                    win_pnls.append(pnl)
-                elif pnl < 0:
-                    losses += 1
-                    loss_pnls.append(pnl)
-        except Exception:
-            pass
+    for entry in _read_realized_records(journal):
+        pnl = _record_pnl(entry)
+        closed += 1
+        if pnl > 0:
+            wins += 1
+            win_pnls.append(pnl)
+        elif pnl < 0:
+            losses += 1
+            loss_pnls.append(pnl)
     decided = wins + losses
     ticks = 0
     th = DATA_DIR / "tick_history.jsonl"
@@ -184,25 +231,13 @@ def load_dry_top_n(n: int = 5) -> list[dict]:
         )
         equity = cash + invested
         closed = wins = losses = 0
-        if journal_file.exists():
-            try:
-                for line in journal_file.read_text().splitlines():
-                    if not line.strip():
-                        continue
-                    try:
-                        entry = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if entry.get("event") != "position_closed":
-                        continue
-                    pnl = float(entry.get("realized_pnl_usd") or 0.0)
-                    closed += 1
-                    if pnl > 0:
-                        wins += 1
-                    elif pnl < 0:
-                        losses += 1
-            except Exception:
-                pass
+        for entry in _read_realized_records(journal_file):
+            pnl = _record_pnl(entry)
+            closed += 1
+            if pnl > 0:
+                wins += 1
+            elif pnl < 0:
+                losses += 1
         # starting cash default 20, but we don't need exact — rank on equity
         decided = wins + losses
         rows.append({
@@ -291,20 +326,12 @@ def load_open_positions() -> list[dict]:
 def load_top_closed_trades(n: int = 3) -> list[dict]:
     """Pull top N closed trades by realized PnL from the live journal."""
     journal = DATA_DIR / "trade_journal.jsonl"
-    if not journal.exists():
+    if not journal.exists() and not _realized_cache_path_for_journal(journal).exists():
         return []
     rows = []
     try:
-        for line in journal.read_text().splitlines():
-            if not line.strip():
-                continue
-            try:
-                e = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not (e.get("event") == "position_closed" or e.get("closed_at")):
-                continue
-            pnl = float(e.get("realized_pnl_usd") or e.get("realized_pnl") or 0.0)
+        for e in _read_realized_records(journal):
+            pnl = _record_pnl(e)
             pct_raw = e.get("realized_pnl_pct") or e.get("pnl_pct")
             if pct_raw is not None:
                 pct = float(pct_raw) * 100 if abs(float(pct_raw)) < 1 else float(pct_raw)
