@@ -1,11 +1,16 @@
 """Tests for the live-position sync helpers in polymarket_bot.main."""
 
+from pathlib import Path
+from unittest import mock
 import unittest
 
+from polymarket_bot.config import Settings
 from polymarket_bot.main import (
     _position_from_live_api,
     _update_position_from_live_api,
+    smart_money_once,
 )
+from polymarket_bot.portfolio import Portfolio
 
 
 def _live_item(**overrides):
@@ -87,6 +92,45 @@ class UpdatePositionUrlTests(unittest.TestCase):
             position["url"],
             "https://polymarket.com/event/my-market-slug",
         )
+
+
+class SmartMoneyDrySyncTests(unittest.TestCase):
+    def test_dry_run_reconciles_live_positions_when_enabled(self):
+        with self.assertRaisesRegex(RuntimeError, "sync-stop"):
+            with mock.patch("polymarket_bot.main.maybe_tune", return_value=({}, 0)), \
+                mock.patch("polymarket_bot.main.load_smart_candidates", return_value=[]), \
+                mock.patch(
+                    "polymarket_bot.main.Portfolio.load",
+                    return_value=Portfolio(cash=6.0, positions=[]),
+                ), \
+                mock.patch(
+                    "polymarket_bot.main._sync_live_positions",
+                    side_effect=RuntimeError("sync-stop"),
+                ) as mock_sync, \
+                mock.patch("polymarket_bot.main.ensure_open_positions_in_pool", return_value=[]), \
+                mock.patch("polymarket_bot.main.build_client"), \
+                mock.patch("polymarket_bot.main._cancel_stale_pending_orders", return_value=[]), \
+                mock.patch("polymarket_bot.main._detect_cohort_exits", return_value=(set(), [])), \
+                mock.patch("polymarket_bot.main.require_saved_api_creds"), \
+                mock.patch("polymarket_bot.main._execute_sell_strategy", return_value=[]), \
+                mock.patch("polymarket_bot.main.fetch_smart_money_data", return_value={}), \
+                mock.patch("polymarket_bot.main.analyze_smart_money_with_data") as mock_analyze:
+                mock_analyze.return_value = mock.Mock(
+                    opportunities=[],
+                    selected=None,
+                    to_dict=lambda: {},
+                )
+                settings = Settings(
+                    dry_run=True,
+                    sync_live_positions=True,
+                    funder_address="0xabc",
+                    quiet=True,
+                    state_path=Path("/private/tmp/state.json"),
+                    trade_journal_path=Path("/private/tmp/journal.jsonl"),
+                    paper_balance_usd=6.0,
+                )
+                smart_money_once(settings)
+            self.assertEqual(mock_sync.call_count, 1)
 
 
 if __name__ == "__main__":

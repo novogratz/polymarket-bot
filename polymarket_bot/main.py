@@ -388,13 +388,13 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         "candidates_total": len(candidates),
     }
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
-    if settings.dry_run:
-        _step(settings, "   [DRY-RUN] skipping live-position sync (using simulated ledger only)")
-        sync_report = []
-    elif settings.sync_live_positions:
+    if settings.sync_live_positions and settings.funder_address:
         _step(settings, "   syncing live positions...")
         sync_report = _sync_live_positions(settings, portfolio)
-        _step(settings, f"   sync actions: {len(sync_report)}")
+        if settings.dry_run:
+            _step(settings, "   [DRY-RUN] live-position sync enabled for reconciliation")
+        else:
+            _step(settings, f"   sync actions: {len(sync_report)}")
     else:
         sync_report = []
     pricing_pool = ensure_open_positions_in_pool(settings, portfolio, candidates)
