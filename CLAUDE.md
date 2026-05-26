@@ -220,15 +220,17 @@ POLYMARKET_QUIET=1 uv run pmbot auto-loop --dry-run --profile baseline
 
 ## Recommended live command
 
-**LIVE ONLY (2026-05-26).** The dry race is retired. Use `run_live_70.sh`:
+**LIVE (2026-05-26).** The 95-profile dry race is retired. Use `run_live_70.sh`:
 
 ```bash
 bash scripts/run_live_70.sh
 ```
 
-It boots: the live grinder bot + the live analyst (30min, live-only) + the live-only leaderboard sidecar (5min Telegram). No dry race, no AI.
+It boots: the live grinder bot + the live analyst (30min, live-only) + the live-only leaderboard sidecar (5min Telegram) + **a single dry grinder twin** (paper, same `grinder.toml`, 10min tick) + the autonomous report (`dry_analyst.py`, 15min, deterministic). No AI anywhere.
 
-**IMPORTANT — do NOT use `run_all.sh` for live trading:** it runs `pmbot reset-ledger` on startup (step 1.5), which rotates `data/trade_journal.jsonl` and wipes `paper_state.json`/`live_baseline.json`, AND it launches the full dry race. `run_live_70.sh` does neither — it preserves the ledger, journal, and the durable W/L in `data/realized_trade_cache.jsonl`.
+**IMPORTANT — do NOT use `run_all.sh` for live trading:** it runs `pmbot reset-ledger` on startup (step 1.5), which rotates `data/trade_journal.jsonl` and wipes `paper_state.json`/`live_baseline.json`, AND it launches the full 95-profile dry race. `run_live_70.sh` does neither — it preserves the ledger, journal, and the durable W/L in `data/realized_trade_cache.jsonl`.
+
+**PnL is deposit-proof (2026-05-26):** all reports (heartbeat, leaderboard, live analyst) compute trading PnL as `realized + unrealized`, NOT `equity − starting_cash` — a $37 top-up was showing up as +$37 / +619% "profit". For a deposit-free ledger the two are identical, so dry runs are unchanged. ROI% denominator = the profile baseline ($43 via the snapshot, rewritten on each live start).
 
 `run_live_70.sh` loads `configs/profiles/grinder.toml` as the single source of truth. Current settings:
 

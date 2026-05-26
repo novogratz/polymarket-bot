@@ -67,5 +67,23 @@ python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$
 uv run pmbot leaderboard --live-only --interval 5 --telegram \
     2>&1 | sed -u 's/^/[board] /' | tee -a "$RUN_LOG" &
 
+# ─── Dry grinder twin (paper, mirrors the live config for safe compare) ─
+# Same grinder.toml ($43, all-in) but simulated — never spends real money,
+# writes to data/dry_runs/grinder/. Telegram BUY/SELL silenced so only the
+# live bot speaks. Ticks slower (10min) to keep API load down.
+POLYMARKET_QUIET=1 \
+    POLYMARKET_SUPPRESS_BUY_LOGS=1 \
+    POLYMARKET_AUTO_INTERVAL_SECONDS=600 \
+    TELEGRAM_ALERT_TRADES=0 TELEGRAM_ALERT_TRADES_BUY=0 TELEGRAM_ALERT_TRADES_SELL=0 \
+    TELEGRAM_ALERT_ERRORS=0 TELEGRAM_ALERT_THRESHOLDS=0 TELEGRAM_ALERT_HEARTBEAT=0 \
+    TELEGRAM_ALERT_PORTFOLIO_UPDATES=0 TELEGRAM_ALERT_DAILY_SUMMARY=0 \
+    uv run pmbot auto-loop --dry-run --profile grinder --run grinder \
+    2>&1 | sed -u 's/^/[dry-grinder] /' | tee -a "$RUN_LOG" &
+
+# ─── Autonomous report sidecar (deterministic — NO codex/claude/ollama) ─
+# Reports on the dry grinder (and any other dry runs) every 15 min to
+# TELEGRAM_CHAT_ID_DRY_RUN. No AI: narrative built straight from metrics.
+uv run python scripts/dry_analyst.py 2>&1 | sed -u 's/^/[analyst] /' | tee -a "$RUN_LOG" &
+
 uv run pmbot auto-loop --live --profile grinder --yes \
     2>&1 | sed -u 's/^/[LIVE] /' | tee -a "$LIVE_LOG" "$RUN_LOG"

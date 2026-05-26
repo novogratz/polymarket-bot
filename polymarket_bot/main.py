@@ -2839,7 +2839,10 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
                 settings.trade_journal_path
             )
             starting_equity = _starting_equity_for_stats(settings)
-            all_time_total = equity_val - starting_equity
+            # Trading PnL = realized (all-time, from journal) + current
+            # unrealized. Using equity - starting counts a deposit as profit
+            # (a $37 top-up showed up as +$37 / +619%). Deposit-proof.
+            all_time_total = realized_all + unrealized_val
             all_time_return_pct = (
                 all_time_total / starting_equity * 100.0
                 if starting_equity > 0

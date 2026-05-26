@@ -69,7 +69,12 @@ class RunStats:
 
     @property
     def total_pnl(self) -> float:
-        return self.equity - self.starting_cash
+        # Trading PnL = realized + unrealized, NOT equity - starting_cash.
+        # The latter counts deposits/withdrawals as profit — a $37 top-up
+        # showed up as +$37 "PnL". For a deposit-free ledger the two are
+        # identical (equity - starting == realized + unrealized), so dry
+        # runs are unaffected; only live (which gets funded) is corrected.
+        return self.realized_pnl + self.unrealized_pnl
 
     @property
     def roi_pct(self) -> float:
@@ -772,19 +777,21 @@ def format_leaderboard_telegram(
         # entry with full winner detail (open / best / worst closed).
         stamp = now.strftime("%H:%M")
         color = _run_color(live.wins, live.losses, live.roi_pct)
+        banner = ("🟢 IN PROFIT 🤑" if live.total_pnl > 0
+                  else "🔴 DOWN" if live.total_pnl < 0 else "⚪ FLAT")
         lines = [
-            f"🏁 Leaderboard · {stamp} UTC · LIVE only",
+            f"🏁 Leaderboard · {stamp} UTC · LIVE only · {banner}",
             "",
-            f"🔵 {live.run_name}  {color} ${live.equity:.2f}  {live.roi_pct:+.1f}%  "
-            f"PnL {live.total_pnl:+.2f}  📦{live.open_positions}  "
-            f"{live.wins}W/{live.losses}L",
+            f"🔵 {live.run_name}  {color} PnL {live.total_pnl:+.2f}  "
+            f"{live.roi_pct:+.1f}%   equity ${live.equity:.2f}  📦{live.open_positions}  "
+            f"🟢 {live.wins}W / 🔴 {live.losses}L",
         ]
         if live.top_open:
             lines.append(f"Open: {_best_position_line(live.top_open)}")
         if live.top_closed:
-            lines.append(f"Best closed: {_best_position_line(live.top_closed)}")
+            lines.append(f"🟢 Best closed: {_best_position_line(live.top_closed)}")
         if live.worst_closed and live.worst_closed[0].pnl < 0:
-            lines.append(f"Worst closed: {_best_position_line(live.worst_closed)}")
+            lines.append(f"🔴 Worst closed: {_best_position_line(live.worst_closed)}")
         return "\n".join(lines)
     ranked = sorted(
         [s for s in stats if s.total_ticks > 0 or s.closed_trades > 0 or s.open_positions > 0],

@@ -15,11 +15,13 @@ Use this skill when working in this repository: strategy code, filters, live com
 
 **Sizing:** ALL-IN — each bet uses the full available balance, one position at a time (`race_stake_pct=1.0`, `max_position_ceiling_usd=0`, `max_orders_per_tick=1`, `cash_floor_pct=0.0`). Bet size scales with the bankroll automatically; only the $1 CLOB minimum gates entry.
 
-**Live launcher:** `bash scripts/run_live_70.sh` (canonical, live only — does NOT reset the ledger/journal). Do NOT use `run_all.sh` for live: it runs `reset-ledger` on startup and launches the retired dry race.
+**Live launcher:** `bash scripts/run_live_70.sh` (canonical — does NOT reset the ledger/journal). Boots: live grinder + live analyst + live-only leaderboard + one dry grinder twin (paper) + autonomous report. Do NOT use `run_all.sh` for live: it runs `reset-ledger` on startup and launches the retired 95-profile dry race.
 
 **Stats persistence:** the live W/L record is durable in `data/realized_trade_cache.jsonl` (survives `trade_journal.jsonl` rotation). Never delete it unless the user asks for a reset.
 
-**Analysts are AI-free + live-only (2026-05-26):** `live_analyst.py` posts a deterministic live-only summary; `pmbot leaderboard --live-only` posts a live-only board. No LLM/Codex/Ollama anywhere; `dry_analyst.py` spawning/tuning was removed.
+**Deposit-proof PnL (2026-05-26):** `RunStats.total_pnl`, the heartbeat all-time PnL, and the live analyst headline all use `realized + unrealized` (NOT `equity − starting_cash`), so deposits aren't counted as profit. Identical to the old formula on a deposit-free ledger.
+
+**Analysts are AI-free (2026-05-26):** `live_analyst.py` posts a deterministic live-only summary; `pmbot leaderboard --live-only` posts a live-only board; `dry_analyst.py` posts a deterministic autonomous report (spawning/tuning removed). No LLM/Codex/Ollama anywhere — the `select_claude_*` race selectors are just deterministic Python named after Claude, not AI calls.
 
 ## Guardrails (non-negotiable)
 

@@ -21,18 +21,15 @@ SPEC.loader.exec_module(live_analyst)
 class LiveAnalystStatsTests(unittest.TestCase):
     def setUp(self):
         self._orig_data_dir = live_analyst.DATA_DIR
-        self._orig_dry_runs_dir = live_analyst.DRY_RUNS_DIR
 
     def tearDown(self):
         live_analyst.DATA_DIR = self._orig_data_dir
-        live_analyst.DRY_RUNS_DIR = self._orig_dry_runs_dir
 
     def test_live_snapshot_counts_realized_pnl_rows_and_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "data"
             data_dir.mkdir()
             live_analyst.DATA_DIR = data_dir
-            live_analyst.DRY_RUNS_DIR = data_dir / "dry_runs"
             (data_dir / "paper_state.json").write_text(
                 json.dumps({
                     "cash": 3.0,

@@ -171,10 +171,16 @@ class LiveLeaderboardCacheTests(unittest.TestCase):
         )
         text = format_leaderboard([], live=live)
         self.assertIn("Closed: 3W/0L  Open: 1", text)
+        # Telegram: with no dry runs, the live bot IS the board (live-only).
+        # The closed W/L (3W/0L) must stay separate from the open position's
+        # unrealized PnL — the open shows on its own "Open:" line, never
+        # folded into the W/L count.
         telegram = format_leaderboard_telegram([], live=live)
-        self.assertIn("🔵 grinder LIVE is also running!", telegram)
-        self.assertIn("Closed 3W/0L  Open 1", telegram)
-        self.assertIn("Ongoing:", telegram)
+        self.assertIn("LIVE only", telegram)
+        self.assertIn("🔵 grinder", telegram)
+        self.assertIn("3W", telegram)
+        self.assertIn("0L", telegram)
+        self.assertIn("Open:", telegram)
 
     def test_live_stats_refreshes_open_position_quotes_before_rendering(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

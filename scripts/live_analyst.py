@@ -323,19 +323,25 @@ def cycle_once() -> None:
                 starting = float(m.group(1))
         except Exception:
             pass
-    pnl_total = snap.equity - starting
+    # Trading PnL = realized (all-time) + unrealized (open). Deposit-proof:
+    # equity - starting would count a top-up as profit (the $37 deposit bug).
+    unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
+    pnl_total = snap.realized_pnl + unrealized
     roi = (pnl_total / starting * 100) if starting > 0 else 0
 
     stamp = time.strftime("%H:%M UTC", time.gmtime())
     sign = "+" if pnl_total >= 0 else ""
+    mood = "🟢" if pnl_total >= 0 else "🔴"
+    banner = ("🟢 *IN PROFIT* 🤑" if pnl_total > 0
+              else "🔴 *DOWN*" if pnl_total < 0 else "⚪ *FLAT*")
 
     parts = [
         f"🔵 *LIVE EXECUTIVE SUMMARY* · {stamp}",
-        f"_strategy:_ `{snap.profile}`",
+        f"_strategy:_ `{snap.profile}`  ·  {banner}",
         "",
-        f"💰 *${starting:.2f} → ${snap.equity:.2f}*  {sign}${pnl_total:.2f}  ({roi:+.1f}%)",
-        f"   cash ${snap.cash:.2f}  •  invested ${snap.invested:.2f}  •  realized ${snap.realized_pnl:+.2f}",
-        f"   {snap.closed} closed  •  {snap.wins}W/{snap.losses}L  •  {snap.win_rate:.0f}% wr  •  {snap.open_positions} open",
+        f"{mood} *PnL {sign}${pnl_total:.2f}  ({roi:+.1f}%)*   equity ${snap.equity:.2f}",
+        f"   cash ${snap.cash:.2f}  •  invested ${snap.invested:.2f}  •  realized 🟢 ${snap.realized_pnl:+.2f}",
+        f"   {snap.closed} closed  •  🟢 {snap.wins}W / 🔴 {snap.losses}L  •  {snap.win_rate:.0f}% wr  •  {snap.open_positions} open",
         "",
     ]
 
