@@ -11,15 +11,15 @@ Use this skill when working in this repository: strategy code, filters, live com
 
 **Live profile:** `grinder` — heavy-favorite near-resolution scalp (race mode).
 
-**Bankroll:** $6 USDC.
+**Bankroll:** $43 USDC (2026-05-26 deposit). Live only — dry race retired.
 
 **Sizing:** ALL-IN — each bet uses the full available balance, one position at a time (`race_stake_pct=1.0`, `max_position_ceiling_usd=0`, `max_orders_per_tick=1`, `cash_floor_pct=0.0`). Bet size scales with the bankroll automatically; only the $1 CLOB minimum gates entry.
 
-**Live launcher:** `bash scripts/run_live_70.sh` or `bash scripts/run_all.sh`.
+**Live launcher:** `bash scripts/run_live_70.sh` (canonical, live only — does NOT reset the ledger/journal). Do NOT use `run_all.sh` for live: it runs `reset-ledger` on startup and launches the retired dry race.
 
-**Dry race:** profiles auto-discovered from `configs/profiles/*.toml` by both launcher scripts.
+**Stats persistence:** the live W/L record is durable in `data/realized_trade_cache.jsonl` (survives `trade_journal.jsonl` rotation). Never delete it unless the user asks for a reset.
 
-**Analysts (dry + live) are AI-free (2026-05-26):** `dry_analyst.py` and `live_analyst.py` post deterministic reports built straight from the metrics. No LLM/Codex/Ollama call anywhere; the dry analyst no longer spawns or tunes strategies (only reports + deterministic loser-kills).
+**Analysts are AI-free + live-only (2026-05-26):** `live_analyst.py` posts a deterministic live-only summary; `pmbot leaderboard --live-only` posts a live-only board. No LLM/Codex/Ollama anywhere; `dry_analyst.py` spawning/tuning was removed.
 
 ## Guardrails (non-negotiable)
 

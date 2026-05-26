@@ -2,21 +2,15 @@
 """Live-mode analyst sidecar — READ-ONLY.
 
 Runs alongside the live bot. Every CYCLE_SECONDS minutes:
-  1. Reads live state (paper_state.json + trade_journal.jsonl)
-  2. Reads dry-race leaderboard for context comparison
-  3. Posts to TELEGRAM_CHAT_ID_LIVE — a deterministic Markdown report
-     comparing the live profile to the top dry-race performers
+  1. Reads live state (paper_state.json + realized_trade_cache.jsonl)
+  2. Posts to TELEGRAM_CHAT_ID_LIVE — a deterministic Markdown report
+     of the live bot only (equity/ROI, open positions, top closed trades)
 
-No LLM/AI anywhere — the report is built from the numbers directly.
+LIVE ONLY (2026-05-26) — no dry-race comparison. No LLM/AI anywhere; the
+report is built from the numbers directly.
 
 NEVER spawns new bots, NEVER modifies the live profile, NEVER kills
-anything. This is pure observability — if the analyst recommends a profile
-switch, you do it manually.
-
-The live runner only ever has ONE bot running, so there's no "race"
-to autonomously manage in live. The analyst's value-add is the
-cross-comparison with the dry race ("dry winner up +$15, your live
-profile flat — consider switching to X").
+anything. Pure observability.
 
 Adjust LIVE_ANALYST_CYCLE_SECONDS to control report frequency.
 """
@@ -34,7 +28,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
-DRY_RUNS_DIR = DATA_DIR / "dry_runs"
 
 
 def _record_pnl(record: dict) -> float:
@@ -204,48 +197,6 @@ def load_live_snapshot() -> LiveSnapshot | None:
     )
 
 
-def load_dry_top_n(n: int = 5) -> list[dict]:
-    """Read dry_runs/* and return top n by realized PnL."""
-    if not DRY_RUNS_DIR.exists():
-        return []
-    rows: list[dict] = []
-    for run_dir in DRY_RUNS_DIR.iterdir():
-        if not run_dir.is_dir():
-            continue
-        state_file = run_dir / "state.json"
-        journal_file = run_dir / "journal.jsonl"
-        if not state_file.exists():
-            continue
-        try:
-            state = json.loads(state_file.read_text())
-        except Exception:
-            continue
-        cash = float(state.get("cash") or 0.0)
-        positions = state.get("positions", []) or []
-        open_positions = [p for p in positions if p.get("status") == "open"]
-        invested = sum(
-            float(p.get("size_usd") or p.get("notional_usd") or 0.0)
-            for p in open_positions
-        )
-        equity = cash + invested
-        closed = wins = losses = 0
-        for entry in _read_realized_records(journal_file):
-            pnl = _record_pnl(entry)
-            closed += 1
-            if pnl > 0:
-                wins += 1
-            elif pnl < 0:
-                losses += 1
-        # starting cash default 20, but we don't need exact — rank on equity
-        decided = wins + losses
-        rows.append({
-            "name": run_dir.name,
-            "equity": equity,
-            "closed": closed,
-            "win_rate": (wins / decided * 100.0) if decided > 0 else 0.0,
-        })
-    rows.sort(key=lambda r: r["equity"], reverse=True)
-    return [r for r in rows if r["closed"] >= 3][:n]
 
 
 def telegram_post(text: str, *, live: bool = True) -> bool:
@@ -359,18 +310,9 @@ def cycle_once() -> None:
 
     open_pos = load_open_positions()
     top_closed = load_top_closed_trades(3)
-    dry_top = load_dry_top_n(5)
 
-    # Find live's dry twin for direct comparison
-    twin = next((r for r in dry_top if r["name"] == snap.profile), None)
-    if not twin:
-        # Profile not in top 5 — search the full set
-        all_dry = load_dry_top_n(200)
-        twin = next((r for r in all_dry if r["name"] == snap.profile), None)
-
-    # Compute starting balance from realized + (equity - invested - cash); approximate
-    # Better: read assumed_live_balance_usd from profile TOML
-    starting = 20.0  # default; will refine below
+    # Starting balance / ROI baseline from the profile's assumed_live_balance_usd.
+    starting = 43.0  # default; refined from the profile TOML below
     profile_file = REPO_ROOT / "configs" / "profiles" / f"{snap.profile}.toml"
     if profile_file.exists():
         try:
@@ -425,25 +367,6 @@ def cycle_once() -> None:
     elif snap.closed == 0:
         parts.append("_📊 No closed trades yet._")
         parts.append("")
-
-    if twin:
-        twin_starting = 20.0  # dry race default
-        twin_roi = ((twin["equity"] - twin_starting) / twin_starting * 100) if twin_starting else 0
-        delta = roi - twin_roi
-        compare = (f"🏃 *vs dry twin:* live {roi:+.1f}%  |  dry "
-                   f"{twin_roi:+.1f}% ({twin['closed']} closed)  |  "
-                   f"Δ {delta:+.1f}pp")
-        parts.append(compare)
-        parts.append("")
-
-    parts.append("*🏆 Dry race top 5*")
-    for r in dry_top[:5]:
-        dry_starting = 20.0
-        r_roi = ((r["equity"] - dry_starting) / dry_starting * 100) if dry_starting else 0
-        marker = "★" if r["name"] == snap.profile else " "
-        parts.append(
-            f"  {marker} {r['name']:38s} {r_roi:+6.1f}% ({r['closed']} closed, {r['win_rate']:.0f}% wr)"
-        )
 
     msg = "\n".join(parts)
     telegram_post(msg)

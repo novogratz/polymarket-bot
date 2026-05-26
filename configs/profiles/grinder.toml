@@ -6,11 +6,12 @@
 # actually resolving in the buyer's favor; the -15% SL caps the rare
 # "favorite flips" case.
 #
-# Designed for $6 live bankroll, ALL-IN stake/trade (full balance), one
-# position at a time. Bet size scales with the bankroll automatically.
+# Designed for a $43 live bankroll (2026-05-26 deposit), ALL-IN
+# stake/trade (full balance), one position at a time. Bet size scales
+# with the bankroll automatically — top up and it bets more, no edit needed.
 
 [run]
-starting_cash = 6.0
+starting_cash = 43.0
 mode = "grinder"
 
 [sizing]
@@ -26,7 +27,7 @@ cash_floor_pct = 0.0
 position_pct = 1.0
 min_open_positions = 0
 starter_trade_usd = 1.5
-assumed_live_balance_usd = 6.0
+assumed_live_balance_usd = 43.0
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 1.0
 

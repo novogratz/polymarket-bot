@@ -766,6 +766,26 @@ def format_leaderboard_telegram(
     """
     if not stats and live is None:
         return "🏁 *Leaderboard*: no runs found"
+    now = now or datetime.now(timezone.utc)
+    if not stats and live is not None:
+        # Live-only mode: the live bot IS the board. Render it as the sole
+        # entry with full winner detail (open / best / worst closed).
+        stamp = now.strftime("%H:%M")
+        color = _run_color(live.wins, live.losses, live.roi_pct)
+        lines = [
+            f"🏁 Leaderboard · {stamp} UTC · LIVE only",
+            "",
+            f"🔵 {live.run_name}  {color} ${live.equity:.2f}  {live.roi_pct:+.1f}%  "
+            f"PnL {live.total_pnl:+.2f}  📦{live.open_positions}  "
+            f"{live.wins}W/{live.losses}L",
+        ]
+        if live.top_open:
+            lines.append(f"Open: {_best_position_line(live.top_open)}")
+        if live.top_closed:
+            lines.append(f"Best closed: {_best_position_line(live.top_closed)}")
+        if live.worst_closed and live.worst_closed[0].pnl < 0:
+            lines.append(f"Worst closed: {_best_position_line(live.worst_closed)}")
+        return "\n".join(lines)
     ranked = sorted(
         [s for s in stats if s.total_ticks > 0 or s.closed_trades > 0 or s.open_positions > 0],
         key=lambda s: s.roi_pct,

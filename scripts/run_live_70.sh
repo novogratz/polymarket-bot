@@ -21,12 +21,13 @@ echo "[run_live] logging to $RUN_LOG (live also -> $LIVE_LOG)"
 # Sync live positions (toggle hors schéma).
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
-# Live bankroll baseline = $6.
-# grinder.toml has starting_cash=6 / assumed_live_balance_usd=6.
-# These env exports keep live and dry-run sizing anchored to the same
-# $6 bankroll unless the operator explicitly overrides them.
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-6.0}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-6.0}
+# Live bankroll baseline = $43 (2026-05-26 deposit).
+# grinder.toml has starting_cash=43 / assumed_live_balance_usd=43.
+# These exports are the RPC-failure fallback cap — the bot reads the real
+# USDC balance from CLOB each tick, but if that read fails it must not
+# clamp down to a stale low number. Override only if you change bankroll.
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-43.0}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-43.0}
 
 # Live tick interval — grinder default is 30s (the profile sets it via
 # [telemetry].auto_interval_seconds). Keep the env override as 30 here too
@@ -48,15 +49,23 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 export POLYMARKET_PROFILE_LABEL=grinder
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
-# Every 30 min: reads paper_state + trade_journal, compares vs dry race
-# leaders, calls Codex CLI with Ollama fallback. NEVER touches the live bot;
-# pure observability. Kill via Ctrl+C (same process group).
+# Every 30 min: reads paper_state + realized_trade_cache and posts a
+# LIVE-ONLY deterministic report (equity/ROI, open positions, top closed).
+# No AI, no dry-race comparison. NEVER touches the live bot. Ctrl+C kills
+# the whole process group.
 cleanup() {
     kill 0 2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup INT TERM EXIT
 python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
+
+# ─── Live-only leaderboard sidecar (Telegram every 5 min) ──────────────
+# --live-only: renders the LIVE bot as the whole board (no dry runs), with
+# winner detail (open / best closed / worst closed). W/L comes from the
+# durable data/realized_trade_cache.jsonl, so it survives journal rotation.
+uv run pmbot leaderboard --live-only --interval 5 --telegram \
+    2>&1 | sed -u 's/^/[board] /' | tee -a "$RUN_LOG" &
 
 uv run pmbot auto-loop --live --profile grinder --yes \
     2>&1 | sed -u 's/^/[LIVE] /' | tee -a "$LIVE_LOG" "$RUN_LOG"

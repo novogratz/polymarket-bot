@@ -10,7 +10,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 - Engine: `race` (selector = `select_grinder` in `polymarket_bot/race_strategies.py`)
 - Thesis: a market sitting at bid ∈ [0.88, 0.95] with < 1h to close is pricing near-certainty. Pay the spread, take +6%, rotate. SL -15% caps the rare "favorite flips" case.
-- Bankroll: **$6 USDC** baseline (fresh-start reset 2026-05-25, applied to live + dry)
+- Bankroll: **$43 USDC** (2026-05-26 deposit, up from the $6 fresh-start). Live only — dry race retired.
 - Sizing: **ALL-IN** (2026-05-26). `race_stake_pct=1.0` (whole equity per bet), `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=0` (cap disabled so the stake scales with balance), `max_orders_per_tick=1` (one bet at a time), `cash_floor_pct=0.0`. Each tick deploys the full available balance on the single top-ranked market; only the $1 CLOB minimum gates entry.
 - Entry filters (in `_build_eligible_candidates`):
   - `race_min_price=0.88`, `race_max_price=0.95`
@@ -22,7 +22,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - Tick interval: 30s on live (`POLYMARKET_AUTO_INTERVAL_SECONDS=30` in `run_all.sh` / `run_live_70.sh`), 600s on dry (per-subshell override in `run_dry_bot`)
 - Selector ranking: `score = best_bid / max(hours_to_close, 1/60)` — closer to resolution and closer to 1.0 ranks higher
 
-**Bankroll:** $6 USDC starting on live + dry (fresh-start reset 2026-05-25, downsized from initial $20 plan after user opted to start smaller). State backups in `data/backups_full_<timestamp>_grinder_reset/`.
+**Bankroll:** $43 USDC live (2026-05-26 deposit, up from the $6 fresh-start of 2026-05-25). Dry race retired — live only. State backups in `data/backups_full_<timestamp>_grinder_reset/`.
 
 ### Unified launcher — `scripts/run_all.sh`
 
@@ -64,7 +64,7 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
   - Force-close losers at `current_price ≤ 0.03`
   - Catches resolved markets that drop out of Gamma scans before per-strategy exit logic fires
 - **Telegram fallback:** `_default_transport` retries with `parse_mode` stripped on HTTP 400, so MarkdownV2 escape failures never silently swallow alerts.
-- **Live analyst (`scripts/live_analyst.py`)** — read-only sidecar wired into `run_all.sh` (and standalone `run_live_70.sh`); reads paper_state + dry leaderboard, posts a deterministic executive-summary (open positions w/ entry→cur→PnL, top closed, dry-twin comparison) to `TELEGRAM_CHAT_ID_LIVE` every 30 min. NO AI — the report is built straight from the numbers. Never spawns/modifies anything live.
+- **Live analyst (`scripts/live_analyst.py`)** — read-only sidecar in `run_live_70.sh`; reads paper_state + realized_trade_cache, posts a deterministic LIVE-ONLY executive-summary (open positions w/ entry→cur→PnL, top closed) to `TELEGRAM_CHAT_ID_LIVE` every 30 min. NO AI, no dry comparison. Never spawns/modifies anything live.
 
 **Universal exit/sizing rules** for race-style strategies:
 - `stake_pct ≈ 0.10–0.25`, `max_orders_per_tick = 5`, `cash_floor_pct = 0.02`, `max_hours = 4.0` (hard 4h-only rule)
@@ -119,8 +119,8 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
 - `polymarket_bot/gamma.py` — Gamma client (market scan + reverse-lookup by clob_token_ids).
 - `polymarket_bot/strategy.py` — candidate ranking from Gamma payloads.
 - `polymarket_bot/models.py` — shared dataclasses and parsing helpers.
-- `scripts/run_all.sh` — preferred launcher: live + dry race + sidecars + HTTP cache pre-warm + 8min re-warm loop.
-- `scripts/run_live_70.sh` — live-only runner (loads `baseline_tight.toml`, $29 bankroll override).
+- `scripts/run_live_70.sh` — **canonical launcher (live only)**: live grinder bot + live analyst + live-only leaderboard. Loads `configs/profiles/grinder.toml`, $43 bankroll. Does NOT reset the ledger/journal.
+- `scripts/run_all.sh` — legacy live+dry launcher. **Do not use for live** — it resets the ledger on startup and runs the retired dry race.
 - `scripts/cache_warmer.py` — pre-fetches leaderboards + wallet trade histories into `data/cache/http/` so the bot swarm starts warm.
 - `scripts/dry_analyst.py` — autonomous analyst sidecar: 15min deterministic reports + 1h deterministic loser-kill pass. No AI/LLM (spawning/tuning removed 2026-05-26).
 - `scripts/live_analyst.py` — read-only live analyst sidecar; 30min executive-summary Telegram reports.
@@ -220,28 +220,26 @@ POLYMARKET_QUIET=1 uv run pmbot auto-loop --dry-run --profile baseline
 
 ## Recommended live command
 
-Use `run_all.sh` (preferred — boots live + dry race + sidecars + cache pre-warm):
-
-```bash
-bash scripts/run_all.sh
-```
-
-Or just the live bot alone (no dry race, no cache pre-warm — only do this if you don't want the cache benefit):
+**LIVE ONLY (2026-05-26).** The dry race is retired. Use `run_live_70.sh`:
 
 ```bash
 bash scripts/run_live_70.sh
 ```
 
-Both scripts load `configs/profiles/grinder.toml` as the single source of truth for the live config. Current settings:
+It boots: the live grinder bot + the live analyst (30min, live-only) + the live-only leaderboard sidecar (5min Telegram). No dry race, no AI.
+
+**IMPORTANT — do NOT use `run_all.sh` for live trading:** it runs `pmbot reset-ledger` on startup (step 1.5), which rotates `data/trade_journal.jsonl` and wipes `paper_state.json`/`live_baseline.json`, AND it launches the full dry race. `run_live_70.sh` does neither — it preserves the ledger, journal, and the durable W/L in `data/realized_trade_cache.jsonl`.
+
+`run_live_70.sh` loads `configs/profiles/grinder.toml` as the single source of truth. Current settings:
 
 - Profile: `grinder` (race mode — heavy-favorite near-resolution scalp)
 - `POLYMARKET_SYNC_LIVE_POSITIONS=1`, `POLYMARKET_AUTO_INTERVAL_SECONDS=30`
-- Sizing (ALL-IN, 2026-05-26): `starting_cash=6.0`, `assumed_live_balance_usd=6.0`, `race_stake_pct=1.0` (full equity/bet), `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=0` (cap disabled → stake scales with balance), `max_orders_per_tick=1`, `cash_floor_pct=0.0`
-- Entry filters: `race_min_price=0.88`, `race_max_price=0.95`, `race_max_hours=1.0`, `race_max_spread=0.02`, `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
+- Bankroll: **$43** (2026-05-26 deposit). `starting_cash=43.0`, `assumed_live_balance_usd=43.0` (RPC-failure fallback cap; the bot reads real USDC from CLOB each tick).
+- Sizing (ALL-IN): `race_stake_pct=1.0` (full equity/bet), `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=0` (cap disabled → stake scales with balance), `max_orders_per_tick=1`, `cash_floor_pct=0.0`
+- Entry filters: `race_min_price=0.88`, `race_max_price=0.95`, `race_max_hours=3.0`, `race_max_spread=0.02`, `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
 - Exits: TP +6%, SL -15%, `sl_min_age=1min`, resolved at bid ≥0.97. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
-- Live analyst sidecar (`scripts/live_analyst.py`) launches alongside; posts read-only insights every 30 min to `TELEGRAM_CHAT_ID_LIVE`.
+- Live analyst sidecar (`scripts/live_analyst.py`) + live-only leaderboard (`pmbot leaderboard --live-only`) launch alongside; both post to the live Telegram channel, both deterministic (no AI), no dry comparison.
 - Universal sweep closes positions at price ≥0.97 OR ≤0.03 every tick across all strategy modes.
-- HTTP cache shared with the dry race at `data/cache/http/` (TTL 600s), refreshed every 3min by the background loop in `run_all.sh`.
 
 Dashboard at `http://127.0.0.1:8765` by default.
 

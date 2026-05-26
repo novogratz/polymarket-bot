@@ -3565,6 +3565,11 @@ def cli_leaderboard(
         "--auto-discover",
         help="Include every dry_runs/* subdir (picks up bots spawned at runtime, e.g. by the autonomous analyst).",
     ),
+    live_only: bool = typer.Option(
+        False,
+        "--live-only",
+        help="Show only the LIVE bot (no dry runs). Renders the live bot as the whole board with winner detail.",
+    ),
     interval: int = typer.Option(
         15,
         "--interval",
@@ -3606,7 +3611,11 @@ def cli_leaderboard(
             return []
         return sorted(p.name for p in d.iterdir() if p.is_dir())
 
-    if auto_discover:
+    if live_only:
+        # Live-only: no dry runs. The loop builds stats=[] and renders the
+        # live bot as the whole board (format_leaderboard_telegram handles it).
+        run_names = []
+    elif auto_discover:
         run_names = _discover()
         if not run_names:
             typer.echo("--auto-discover: data/dry_runs/ is empty", err=True)
