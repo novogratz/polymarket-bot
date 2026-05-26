@@ -1024,6 +1024,13 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
     return None
 
 
+# Minutes past a market's close time before we force-close a position that
+# is stuck in limbo (closed off-chain, not yet resolved on-chain). The grace
+# lets a quick on-chain resolution settle to 0/1 first; after that we realize
+# the position at the best price we have so capital rotates.
+RACE_EXPIRY_GRACE_MIN = 10
+
+
 def _execute_race_exits(
     client: Any,
     settings: Settings,
@@ -1046,6 +1053,95 @@ def _execute_race_exits(
         token_id = position.get("token_id")
         candidate = by_token.get(token_id)
         position_price = as_float(position.get("current_price"), default=0.0)
+
+        # ── Past-expiry force-close ──────────────────────────────────────
+        # A position whose market is comfortably past its close time has
+        # effectively resolved off-chain but can linger in limbo: it drops out
+        # of the scan (no fresh candidate) and sits priced mid-band (below the
+        # resolved threshold), so it slips through TP/SL/resolved/near-expiry
+        # and stays open forever — the "5 stale open positions" bug. Realize
+        # it at the best price we have so the ledger reflects reality.
+        mtc = _minutes_to_close(position)
+        if mtc is not None and mtc <= -RACE_EXPIRY_GRACE_MIN:
+            exit_candidate = by_token.get(token_id)
+            salvage = max(
+                position_price,
+                float((exit_candidate.best_bid or 0.0) if exit_candidate else 0.0),
+                0.0,
+            )
+            if exit_candidate is None and token_id:
+                exit_candidate = Candidate(
+                    market_id=str(position.get("market_id") or ""),
+                    question=str(position.get("question") or ""),
+                    slug=str(position.get("slug") or ""),
+                    end_date=parse_dt(str(position.get("end_date") or "")) if position.get("end_date") else None,
+                    hours_to_close=0.0,
+                    liquidity=0.0,
+                    volume=0.0,
+                    outcome=str(position.get("outcome") or ""),
+                    price=salvage,
+                    token_id=str(token_id),
+                    score=0.0,
+                    url=str(position.get("url") or "https://polymarket.com"),
+                    best_bid=min(salvage, 0.99),
+                    best_ask=None,
+                    tick_size=as_float(position.get("tick_size"), default=0.01),
+                    neg_risk=bool(position.get("neg_risk")),
+                    accepts_orders=True,
+                    event_slug=str(position.get("event_slug") or ""),
+                )
+            shares = float(position.get("shares", 0.0) or 0.0)
+            if exit_candidate is None or shares <= 0:
+                continue
+            try:
+                result = execute_live_sell(
+                    client, settings, exit_candidate, portfolio, position,
+                    shares=shares, reason="race_expired_close",
+                )
+                portfolio.save(settings.state_path)
+                if position.get("status") == "closed":
+                    from .main import _append_trade_journal
+                    _append_trade_journal(settings, position, "race_expired_close")
+                out.append({
+                    "market_id": position.get("market_id"),
+                    "question": position.get("question"),
+                    "action": "sell",
+                    "reason": "race_expired_close",
+                    "order": result.order,
+                    "response": result.response,
+                })
+                print(
+                    f"⏳ {strategy_name} closed expired '{position.get('question')}' "
+                    f"@ {salvage:.3f} ({-mtc:.0f}min past close)",
+                    flush=True,
+                )
+            except Exception as exc:
+                # Market closed → live SELL likely rejected. Write off locally
+                # at the salvage price so it stops lingering.
+                portfolio.record_live_exit(
+                    position, shares=shares, exit_price=salvage, order_id=None,
+                    order_response={"writeoff": True, "reason": f"expired:{exc}"},
+                    reason="race_expired_close",
+                )
+                portfolio.save(settings.state_path)
+                if position.get("status") == "closed":
+                    from .main import _append_trade_journal
+                    _append_trade_journal(settings, position, "race_expired_close")
+                out.append({
+                    "market_id": position.get("market_id"),
+                    "question": position.get("question"),
+                    "action": "writeoff",
+                    "reason": "race_expired_close",
+                    "exit_price": salvage,
+                })
+                print(
+                    f"⏳ {strategy_name} wrote off expired '{position.get('question')}' "
+                    f"@ {salvage:.3f} (SELL blocked: {exc})",
+                    flush=True,
+                )
+            continue
+        # ─────────────────────────────────────────────────────────────────
+
         position_resolved = (
             settings.race_resolved_exit_threshold > 0
             and position_price >= settings.race_resolved_exit_threshold
