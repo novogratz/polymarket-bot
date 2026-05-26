@@ -11,6 +11,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Daily logs: tee everything to a dated file under data/logs/ for debugging.
+LOG_DIR="$REPO_ROOT/data/logs"
+mkdir -p "$LOG_DIR"
+RUN_LOG="$LOG_DIR/run_live_$(date +%Y-%m-%d).log"
+LIVE_LOG="$LOG_DIR/live_$(date +%Y-%m-%d).log"
+echo "[run_live] logging to $RUN_LOG (live also -> $LIVE_LOG)"
+
 # Sync live positions (toggle hors schéma).
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
@@ -49,6 +56,7 @@ cleanup() {
     wait 2>/dev/null || true
 }
 trap cleanup INT TERM EXIT
-python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
+python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
-uv run pmbot auto-loop --live --profile grinder --yes
+uv run pmbot auto-loop --live --profile grinder --yes \
+    2>&1 | sed -u 's/^/[LIVE] /' | tee -a "$LIVE_LOG" "$RUN_LOG"

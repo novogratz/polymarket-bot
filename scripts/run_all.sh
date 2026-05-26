@@ -26,6 +26,19 @@ cd "$REPO_ROOT"
 export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-6.0}
 export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-6.0}
 
+# Dry → live grinder mirror: when the dry grinder twin opens a fresh BUY, the
+# live grinder takes it on its next tick (re-validated against the live quote).
+# Exported here so BOTH the live bot and the dry subshells inherit it.
+export POLYMARKET_LIVE_MIRROR_DRY=${POLYMARKET_LIVE_MIRROR_DRY:-1}
+
+# Daily logs: everything that scrolls on screen is also appended to a dated
+# file under data/logs/ so we can grep [LIVE]/[analyst]/etc. when debugging.
+LOG_DIR="$REPO_ROOT/data/logs"
+mkdir -p "$LOG_DIR"
+RUN_LOG="$LOG_DIR/run_all_$(date +%Y-%m-%d).log"
+LIVE_LOG="$LOG_DIR/live_$(date +%Y-%m-%d).log"
+echo "[run_all] logging to $RUN_LOG (live also -> $LIVE_LOG)"
+
 CLEANED_UP=0
 cleanup() {
     # Idempotent: trap fires on multiple signals + EXIT; only do this once
@@ -49,7 +62,7 @@ echo
 # Populates data/cache/http/ so live + dry both find the data cached
 # on their very first tick. No 429 storm.
 echo "[run_all] step 1/4: pre-warming HTTP cache (~60s)..."
-uv run python scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache] /' || true
+uv run python scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache] /' | tee -a "$RUN_LOG" || true
 echo
 
 # ─── Step 1.5: Rebuild live ledger from Polymarket reality ──────────
@@ -67,7 +80,7 @@ if [ "${POLYMARKET_SKIP_LEDGER_RESET:-0}" = "1" ]; then
     echo "[run_all] step 1.5/4: skipped (POLYMARKET_SKIP_LEDGER_RESET=1 — preserving existing ledger/journal/baseline)"
 else
     echo "[run_all] step 1.5/4: rebuilding live ledger from Polymarket..."
-    uv run pmbot reset-ledger 2>&1 | sed -u 's/^/[reset] /' || true
+    uv run pmbot reset-ledger 2>&1 | sed -u 's/^/[reset] /' | tee -a "$RUN_LOG" || true
 fi
 echo
 
@@ -88,11 +101,11 @@ export TELEGRAM_ALERT_PORTFOLIO_UPDATES=1
 export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
 # Live analyst sidecar (read-only Telegram every 30min)
-uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' &
+uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
 # Live bot itself
 uv run pmbot auto-loop --live --profile grinder --yes \
-    2>&1 | sed -u 's/^/[LIVE] /' &
+    2>&1 | sed -u 's/^/[LIVE] /' | tee -a "$LIVE_LOG" "$RUN_LOG" &
 LIVE_PID=$!
 echo "[run_all] live bot launched (pid=$LIVE_PID)"
 echo
@@ -123,7 +136,7 @@ run_dry_bot() {
         TELEGRAM_ALERT_PORTFOLIO_UPDATES=0 \
         TELEGRAM_ALERT_DAILY_SUMMARY=0 \
         uv run pmbot auto-loop --dry-run --profile "$profile" --run "$run" \
-        2>&1 | sed -u "s/^/[${prefix}] /" &
+        2>&1 | sed -u "s/^/[${prefix}] /" | tee -a "$RUN_LOG" &
     sleep 0.5
 }
 
@@ -167,10 +180,10 @@ echo
 
 # ─── Step 4: Sidecars (analyst + leaderboard + promoter) ────────────
 echo "[run_all] step 4/4: launching sidecars..."
-uv run python scripts/dry_analyst.py 2>&1 | sed -u 's/^/[analyst] /' &
+uv run python scripts/dry_analyst.py 2>&1 | sed -u 's/^/[analyst] /' | tee -a "$RUN_LOG" &
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
     --auto-discover --interval 5 --telegram \
-    2>&1 | sed -u 's/^/[board] /' &
+    2>&1 | sed -u 's/^/[board] /' | tee -a "$RUN_LOG" &
 
 # Live profile auto-promoter: watches the dry leaderboard every 5min, writes
 # data/live_active_profile.json when a profile crosses promotion gates
@@ -179,7 +192,7 @@ POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
 # reads that file each tick and hot-swaps profiles in-process — no restart
 # needed. If no profile qualifies, the promoter does nothing (correct
 # behavior — promoting losers loses real money).
-uv run python scripts/live_promoter.py 2>&1 | sed -u 's/^/[promoter] /' &
+uv run python scripts/live_promoter.py 2>&1 | sed -u 's/^/[promoter] /' | tee -a "$RUN_LOG" &
 
 # ─── Background: refresh the cache every 3 min (TTL is 10min) ───────
 # Aggressive refresh interval: even though the cache TTL is 10min, ~25%
@@ -191,7 +204,7 @@ uv run python scripts/live_promoter.py 2>&1 | sed -u 's/^/[promoter] /' &
 (
     while true; do
         sleep 180  # 3 min
-        uv run python scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache-refresh] /' || true
+        uv run python scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache-refresh] /' | tee -a "$RUN_LOG" || true
     done
 ) &
 CACHE_REFRESHER_PID=$!

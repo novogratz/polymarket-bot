@@ -18,6 +18,8 @@ benchmark in the dry-run race.
 from __future__ import annotations
 
 import datetime as dt
+import json
+import os
 import random
 from dataclasses import replace
 from datetime import timedelta
@@ -1301,6 +1303,176 @@ def _open_asset_keys(portfolio: Portfolio) -> set[str]:
     return keys
 
 
+# ---------------------------------------------------------------------------
+# Dry → live grinder mirror
+#
+# The live and dry grinder twins run identical filters but tick on different
+# phases (live 30s, dry 600s), so a market that sits in the tight grinder band
+# for only a brief window can be caught by one and missed by the other. When
+# enabled (POLYMARKET_LIVE_MIRROR_DRY=1), the dry grinder writes each fresh BUY
+# to a shared signal file and the live grinder takes it on its next tick — but
+# ONLY after re-validating against the live scan's current quote. A market that
+# has resolved, stopped accepting orders, drifted far out of band, or moved past
+# resolution is silently skipped, so this can never resurrect a stale position.
+# ---------------------------------------------------------------------------
+
+MIRROR_ENV_FLAG = "POLYMARKET_LIVE_MIRROR_DRY"
+MIRROR_SIGNAL_PATH = os.path.join("data", "signals", "grinder_mirror.jsonl")
+MIRROR_STALENESS_SEC = 900  # accept dry signals up to 15 min old (dry ticks 600s)
+MIRROR_PRICE_TOLERANCE = 0.03  # relax the price band slightly on the mirror path
+MIRROR_MAX_ASK = 0.99  # never chase a market already priced at near-certainty
+MIRROR_SPREAD_MULT = 2.0  # relaxed (but still bounded) spread cap
+
+
+def _mirror_enabled() -> bool:
+    return os.environ.get(MIRROR_ENV_FLAG, "0") == "1"
+
+
+def _emit_mirror_signal(candidate: Candidate, strategy_name: str) -> None:
+    """Dry grinder records a fresh BUY for the live bot to mirror."""
+    try:
+        os.makedirs(os.path.dirname(MIRROR_SIGNAL_PATH), exist_ok=True)
+        record = {
+            "ts": utc_now().isoformat(),
+            "strategy": strategy_name,
+            "market_id": candidate.market_id,
+            "token_id": candidate.token_id,
+            "outcome": candidate.outcome,
+            "slug": candidate.slug,
+            "question": candidate.question,
+            "best_bid": candidate.best_bid,
+            "best_ask": candidate.best_ask,
+            "end_date": candidate.end_date.isoformat() if candidate.end_date else None,
+        }
+        with open(MIRROR_SIGNAL_PATH, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except Exception as exc:
+        print(f"   mirror-emit failed: {type(exc).__name__}: {exc}", flush=True)
+
+
+def _load_mirror_candidates(
+    markets: list[dict[str, Any]],
+    settings: Settings,
+    eligible: list[tuple[Candidate, float]],
+    portfolio: Portfolio,
+) -> list[tuple[Candidate, float]]:
+    """Live grinder: pull fresh dry-grinder BUY signals it would otherwise miss.
+
+    Each signalled market is re-validated against the live scan's *current*
+    quote (accepting orders, near-resolution, in a relaxed-but-bounded band).
+    Anything that fails — resolved, dropped from the scan, drifted, or past
+    resolution — is skipped, so a stale dry position is never resurrected.
+    """
+    if not os.path.exists(MIRROR_SIGNAL_PATH):
+        return []
+    now = utc_now()
+    cutoff = now - timedelta(seconds=MIRROR_STALENESS_SEC)
+    wanted: dict[str, dict[str, Any]] = {}
+    try:
+        with open(MIRROR_SIGNAL_PATH, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                ts = parse_dt(rec.get("ts"))
+                if ts is None or ts < cutoff:
+                    continue
+                token = str(rec.get("token_id") or "")
+                if token:
+                    wanted[token] = rec  # newest signal per token wins
+    except Exception:
+        return []
+    if not wanted:
+        return []
+
+    # Skip tokens live's own scan already caught, or that we already hold.
+    have = {c.token_id for c, _ in eligible if c.token_id}
+    open_tokens = {
+        str(p.get("token_id"))
+        for p in portfolio.positions
+        if p.get("status") == "open" and p.get("token_id")
+    }
+    markets_by_id = {str(m.get("id") or ""): m for m in markets}
+    earliest = now + timedelta(minutes=1)
+    horizon = now + timedelta(hours=settings.race_max_hours)
+
+    extra: list[tuple[Candidate, float]] = []
+    for token, rec in wanted.items():
+        if token in have or token in open_tokens:
+            continue
+        market = markets_by_id.get(str(rec.get("market_id") or ""))
+        if market is None:
+            continue  # dropped from the live scan -> likely resolved
+        if not bool(market.get("acceptingOrders")):
+            continue
+        end_date = parse_dt(market.get("endDate"))
+        if end_date is None or end_date < earliest or end_date > horizon:
+            continue
+        token_ids = [str(t) for t in parse_json_list(market.get("clobTokenIds"))]
+        if token not in token_ids:
+            continue
+        index = token_ids.index(token)
+        outcomes = [str(o) for o in parse_json_list(market.get("outcomes"))]
+        if len(outcomes) != 2:
+            continue
+        market_best_bid = as_float(market.get("bestBid"), default=None)
+        market_best_ask = as_float(market.get("bestAsk"), default=None)
+        tick_raw = market.get("orderPriceMinTickSize")
+        tick_size = as_float(tick_raw, default=None) if tick_raw is not None else None
+        if market_best_bid is None or market_best_ask is None or not tick_size or tick_size <= 0:
+            continue
+        best_bid, best_ask = _quote_for_outcome(index, 2, market_best_bid, market_best_ask)
+        if best_bid is None or best_ask is None:
+            continue
+        # Relaxed-but-bounded band: honour "live takes what dry took" even if
+        # the price drifted slightly, but never chase past MIRROR_MAX_ASK and
+        # keep the spread bounded.
+        if best_ask < settings.race_min_price - MIRROR_PRICE_TOLERANCE:
+            continue
+        if best_ask > min(settings.race_max_price + MIRROR_PRICE_TOLERANCE, MIRROR_MAX_ASK):
+            continue
+        spread = best_ask - best_bid
+        if spread < 0 or spread > settings.race_max_spread * MIRROR_SPREAD_MULT:
+            continue
+
+        hours_to_close = max((end_date - now).total_seconds() / 3600.0, 0.0)
+        prices = [as_float(p, -1.0) for p in parse_json_list(market.get("outcomePrices"))]
+        price = prices[index] if 0 <= index < len(prices) and prices[index] > 0 else best_ask
+        event_slug = _event_slug(market)
+        slug = str(market.get("slug") or market.get("id") or "")
+        candidate = Candidate(
+            market_id=str(market.get("id") or ""),
+            question=str(market.get("question") or ""),
+            slug=slug,
+            end_date=end_date,
+            hours_to_close=hours_to_close,
+            liquidity=as_float(market.get("liquidity") or market.get("liquidityNum")),
+            volume=as_float(market.get("volume") or market.get("volumeNum")),
+            outcome=outcomes[index],
+            price=price,
+            token_id=token,
+            score=0.0,
+            url=f"https://polymarket.com/event/{event_slug or slug}" if (event_slug or slug) else "https://polymarket.com",
+            best_bid=best_bid,
+            best_ask=best_ask,
+            tick_size=tick_size,
+            neg_risk=bool(market.get("negRisk")),
+            accepts_orders=True,
+            event_slug=event_slug,
+        )
+        extra.append((candidate, 0.0))
+        print(
+            f"   ↪ mirror: taking dry grinder signal {candidate.outcome} "
+            f"ask={best_ask:.3f} h2c={hours_to_close:.2f} ({candidate.question[:50]})",
+            flush=True,
+        )
+    return extra
+
+
 def _run_race_tick(
     settings: Settings,
     strategy_name: str,
@@ -1357,6 +1529,14 @@ def _run_race_tick(
                 "realized_today_usd": realized_today,
                 "drawdown_limit_usd": dd_limit,
             }
+
+    # Dry → live grinder mirror: live picks up fresh dry-grinder signals it
+    # missed due to tick-phase, re-validated against the current live quote.
+    if _mirror_enabled() and not settings.dry_run and strategy_name == "grinder":
+        mirror_extra = _load_mirror_candidates(markets, settings, eligible, portfolio)
+        if mirror_extra:
+            eligible = eligible + mirror_extra
+            _step(settings, f"   eligible (+{len(mirror_extra)} mirror): {len(eligible)}")
 
     picks = select_fn(eligible)
 
@@ -1457,6 +1637,9 @@ def _run_race_tick(
             if ev_slug:
                 event_exposure[ev_slug] = event_exposure.get(ev_slug, 0) + 1
             portfolio.save(settings.state_path)
+            # Dry grinder publishes its fresh BUY for the live bot to mirror.
+            if _mirror_enabled() and settings.dry_run and strategy_name == "grinder":
+                _emit_mirror_signal(candidate, strategy_name)
         except Exception as exc:
             rejected.append({"question": candidate.question, "reason": f"{type(exc).__name__}: {exc}"})
 
