@@ -332,16 +332,24 @@ def cycle_once() -> None:
     stamp = time.strftime("%H:%M UTC", time.gmtime())
     sign = "+" if pnl_total >= 0 else ""
     mood = "🟢" if pnl_total >= 0 else "🔴"
-    banner = ("🟢 *IN PROFIT* 🤑" if pnl_total > 0
-              else "🔴 *DOWN*" if pnl_total < 0 else "⚪ *FLAT*")
+    status_word = "IN PROFIT 🤑" if pnl_total > 0 else "DOWN 📉" if pnl_total < 0 else "FLAT"
+    unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
+    divider = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     parts = [
-        f"🔵 *LIVE EXECUTIVE SUMMARY* · {stamp}",
-        f"_strategy:_ `{snap.profile}`  ·  {banner}",
+        f"🔵 *LIVE BOT* · {stamp} · `{snap.profile}`",
         "",
-        f"{mood} *PnL {sign}${pnl_total:.2f}  ({roi:+.1f}%)*   equity ${snap.equity:.2f}",
-        f"   cash ${snap.cash:.2f}  •  invested ${snap.invested:.2f}  •  realized 🟢 ${snap.realized_pnl:+.2f}",
-        f"   {snap.closed} closed  •  🟢 {snap.wins}W / 🔴 {snap.losses}L  •  {snap.win_rate:.0f}% wr  •  {snap.open_positions} open",
+        divider,
+        f"{mood} *OVERALL PnL: {sign}${pnl_total:.2f}  ({roi:+.1f}%)*",
+        f"💵 *EQUITY: ${snap.equity:.2f}*",
+        divider,
+        "",
+        f"{mood} *{status_word}*",
+        f"   realized: {'+' if snap.realized_pnl >= 0 else ''}${snap.realized_pnl:.2f}  •  "
+        f"unrealized: {'+' if unrealized >= 0 else ''}${unrealized:.2f}",
+        f"   cash ${snap.cash:.2f}  •  deployed ${snap.invested:.2f}",
+        "",
+        f"📊 {snap.closed} closed  •  🟢 {snap.wins}W / 🔴 {snap.losses}L  •  {snap.win_rate:.0f}% wr  •  {snap.open_positions} open",
         "",
     ]
 

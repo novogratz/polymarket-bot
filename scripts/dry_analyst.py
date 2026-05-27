@@ -97,6 +97,7 @@ KILL_PROTECTED_PROFILES = {
     "news",
     "kzerlepgm_baseline",
     "random",
+    "grinder",                  # active live profile (2026-05-26)
     "claude_baseline_persist",  # active live profile (2026-05-20)
     "auto_mombreak_locktight",  # recent live, kept for comparison
     "whale_entry_detection",    # recent live, kept for comparison
@@ -193,122 +194,152 @@ def collect_metrics() -> list[StratMetrics]:
     dead. Without this filter, archived/killed bots stay on the leaderboard
     forever showing their last-known equity (the bug that made \"top 5\"
     look frozen for a week).
+
+    Also includes the live paper-trading bot (data/paper_state.json)
+    if it exists and is fresh.
     """
-    if not DRY_RUNS_DIR.exists():
-        return []
     out: list[StratMetrics] = []
     stale_minutes = int(os.environ.get("POLYMARKET_LEADERBOARD_STALE_MINUTES", "30"))
     now_ts = time.time()
-    for run_dir in sorted(DRY_RUNS_DIR.iterdir()):
-        if not run_dir.is_dir():
-            continue
-        name = run_dir.name
-        state_file = run_dir / "state.json"
-        journal_file = run_dir / "journal.jsonl"
-        if not state_file.exists():
-            continue
-        # Staleness check: drop bots that haven't ticked recently.
-        if (now_ts - state_file.stat().st_mtime) > stale_minutes * 60:
-            continue
+
+    # 1. LIVE bot (priority)
+    live_state = REPO_ROOT / "data" / "paper_state.json"
+    if live_state.exists() and (now_ts - live_state.stat().st_mtime) < stale_minutes * 60:
         try:
-            state = json.loads(state_file.read_text())
-        except Exception:
-            continue
-        cash = float(state.get("cash") or 0.0)
-        positions = state.get("positions", []) or []
-        open_positions = [p for p in positions if p.get("status") == "open"]
-        # Mark-to-market: use current_price × shares (NOT cost basis).
-        # Cost basis would hide unrealized losses and show fake +PnL
-        # when prices have moved against the position.
-        invested_mtm = 0.0
-        for p in open_positions:
-            cur = p.get("current_price")
-            shares = p.get("shares") or 0
-            if cur is not None and shares:
-                try:
-                    invested_mtm += float(cur) * float(shares)
-                    continue
-                except (TypeError, ValueError):
-                    pass
-            # Fallback to cost basis if no current_price
-            invested_mtm += float(
-                p.get("size_usd") or p.get("stake") or
-                p.get("notional_usd") or 0.0
-            )
-        equity = cash + invested_mtm
-        starting = _starting_cash_for(name)
-        pnl = equity - starting
-        roi_pct = (pnl / starting * 100.0) if starting > 0 else 0.0
+            from polymarket_bot.leaderboard import gather_live_stats
+            lstats = gather_live_stats(REPO_ROOT / "data")
+            if lstats:
+                # Map RunStats to StratMetrics for report consistency.
+                out.append(StratMetrics(
+                    name=f"🔵 {lstats.run_name} (LIVE)",
+                    cash=lstats.cash,
+                    equity=lstats.equity,
+                    pnl=lstats.total_pnl,
+                    realized_pnl=lstats.realized_pnl,
+                    roi_pct=lstats.roi_pct,
+                    open_positions=lstats.open_positions,
+                    closed=lstats.closed_trades,
+                    wins=lstats.wins,
+                    losses=lstats.losses,
+                    win_rate=lstats.win_rate_pct,
+                    avg_win=0.0, avg_loss=0.0, big_win=0.0, big_loss=0.0, # not tracked here
+                    ticks=0
+                ))
+        except Exception as exc:
+            print(f"[analyst] live metrics fetch failed: {exc}", file=sys.stderr, flush=True)
 
-        wins = losses = closed = 0
-        win_pnls: list[float] = []
-        loss_pnls: list[float] = []
-        if journal_file.exists():
+    # 2. DRY bots
+    if DRY_RUNS_DIR.exists():
+        for run_dir in sorted(DRY_RUNS_DIR.iterdir()):
+            if not run_dir.is_dir():
+                continue
+            name = run_dir.name
+            state_file = run_dir / "state.json"
+            journal_file = run_dir / "journal.jsonl"
+            if not state_file.exists():
+                continue
+            # Staleness check: drop bots that haven't ticked recently.
+            if (now_ts - state_file.stat().st_mtime) > stale_minutes * 60:
+                continue
             try:
-                for line in journal_file.read_text().splitlines():
-                    if not line.strip():
-                        continue
+                state = json.loads(state_file.read_text())
+            except Exception:
+                continue
+            cash = float(state.get("cash") or 0.0)
+            positions = state.get("positions", []) or []
+            open_positions = [p for p in positions if p.get("status") == "open"]
+            # Mark-to-market: use current_price × shares (NOT cost basis).
+            # Cost basis would hide unrealized losses and show fake +PnL
+            # when prices have moved against the position.
+            invested_mtm = 0.0
+            for p in open_positions:
+                cur = p.get("current_price")
+                shares = p.get("shares") or 0
+                if cur is not None and shares:
                     try:
-                        entry = json.loads(line)
-                    except json.JSONDecodeError:
+                        invested_mtm += float(cur) * float(shares)
                         continue
-                    # Accept either:
-                    #   - explicit event=position_closed (my sweep entries)
-                    #   - any entry with closed_at (race / smart_money /
-                    #     news strategies don't set event field but always
-                    #     include closed_at when they realize a position)
-                    if (entry.get("event") != "position_closed"
-                            and not entry.get("closed_at")):
-                        continue
-                    # Journal entries from different code paths use
-                    # different field names. Sweep-close (my new code)
-                    # writes realized_pnl_usd; smart_money / race / news
-                    # write realized_pnl. Read both, prefer _usd if present.
-                    pnl_t = float(
-                        entry.get("realized_pnl_usd")
-                        or entry.get("realized_pnl")
-                        or 0.0
-                    )
-                    closed += 1
-                    if pnl_t > 0:
-                        wins += 1
-                        win_pnls.append(pnl_t)
-                    elif pnl_t < 0:
-                        losses += 1
-                        loss_pnls.append(pnl_t)
-            except Exception:
-                pass
+                    except (TypeError, ValueError):
+                        pass
+                # Fallback to cost basis if no current_price
+                invested_mtm += float(
+                    p.get("size_usd") or p.get("stake") or
+                    p.get("notional_usd") or 0.0
+                )
+            equity = cash + invested_mtm
+            starting = _starting_cash_for(name)
+            pnl = equity - starting
+            roi_pct = (pnl / starting * 100.0) if starting > 0 else 0.0
 
-        ticks = 0
-        tick_file = run_dir / "tick_history.jsonl"
-        if tick_file.exists():
-            try:
-                ticks = sum(1 for _ in tick_file.open())
-            except Exception:
-                pass
+            wins = losses = closed = 0
+            win_pnls: list[float] = []
+            loss_pnls: list[float] = []
+            if journal_file.exists():
+                try:
+                    for line in journal_file.read_text().splitlines():
+                        if not line.strip():
+                            continue
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        # Accept either:
+                        #   - explicit event=position_closed (my sweep entries)
+                        #   - any entry with closed_at (race / smart_money /
+                        #     news strategies don't set event field but always
+                        #     include closed_at when they realize a position)
+                        if (entry.get("event") != "position_closed"
+                                and not entry.get("closed_at")):
+                            continue
+                        # Journal entries from different code paths use
+                        # different field names. Sweep-close (my new code)
+                        # writes realized_pnl_usd; smart_money / race / news
+                        # write realized_pnl. Read both, prefer _usd if present.
+                        pnl_t = float(
+                            entry.get("realized_pnl_usd")
+                            or entry.get("realized_pnl")
+                            or 0.0
+                        )
+                        closed += 1
+                        if pnl_t > 0:
+                            wins += 1
+                            win_pnls.append(pnl_t)
+                        elif pnl_t < 0:
+                            losses += 1
+                            loss_pnls.append(pnl_t)
+                except Exception:
+                    pass
 
-        decided = wins + losses
-        realized_pnl = sum(win_pnls) + sum(loss_pnls)
-        out.append(
-            StratMetrics(
-                name=name,
-                cash=cash,
-                equity=equity,
-                pnl=pnl,
-                realized_pnl=realized_pnl,
-                roi_pct=roi_pct,
-                open_positions=len(open_positions),
-                closed=closed,
-                wins=wins,
-                losses=losses,
-                win_rate=(wins / decided * 100.0) if decided > 0 else 0.0,
-                avg_win=sum(win_pnls) / len(win_pnls) if win_pnls else 0.0,
-                avg_loss=sum(loss_pnls) / len(loss_pnls) if loss_pnls else 0.0,
-                big_win=max(win_pnls, default=0.0),
-                big_loss=min(loss_pnls, default=0.0),
-                ticks=ticks,
+            ticks = 0
+            tick_file = run_dir / "tick_history.jsonl"
+            if tick_file.exists():
+                try:
+                    ticks = sum(1 for _ in tick_file.open())
+                except Exception:
+                    pass
+
+            decided = wins + losses
+            realized_pnl = sum(win_pnls) + sum(loss_pnls)
+            out.append(
+                StratMetrics(
+                    name=name,
+                    cash=cash,
+                    equity=equity,
+                    pnl=pnl,
+                    realized_pnl=realized_pnl,
+                    roi_pct=roi_pct,
+                    open_positions=len(open_positions),
+                    closed=closed,
+                    wins=wins,
+                    losses=losses,
+                    win_rate=(wins / decided * 100.0) if decided > 0 else 0.0,
+                    avg_win=sum(win_pnls) / len(win_pnls) if win_pnls else 0.0,
+                    avg_loss=sum(loss_pnls) / len(loss_pnls) if loss_pnls else 0.0,
+                    big_win=max(win_pnls, default=0.0),
+                    big_loss=min(loss_pnls, default=0.0),
+                    ticks=ticks,
+                )
             )
-        )
     return out
 
 

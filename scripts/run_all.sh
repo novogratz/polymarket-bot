@@ -20,11 +20,12 @@ set -eo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Fresh-start bankroll = $6 (grinder reset 2026-05-25).
-# Same $6 baseline on live and dry so the only thing being tested is
-# the grinder strategy itself, not bankroll asymmetry.
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-6.0}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-6.0}
+# Fresh-start bankroll baseline.
+# By default, bots use the starting_cash defined in their TOML profiles.
+# Set these env vars to override the bankroll for BOTH live and dry
+# if you want to test a specific global baseline.
+# export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-43.0}
+# export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-43.0}
 
 # Dry → live grinder mirror: when the dry grinder twin opens a fresh BUY, the
 # live grinder takes it on its next tick (re-validated against the live quote).
@@ -120,13 +121,18 @@ run_dry_bot() {
     local profile="$1"
     local run="$2"
     local prefix="$3"
+
+    # Use a faster interval for the dry twin of the live profile (matching live speed)
+    # to provide a real-time comparison. Others stay at 10min to save resources/API.
+    local interval=600
+    if [ "$profile" = "$POLYMARKET_PROFILE_LABEL" ]; then
+        interval=30
+    fi
+
     # Per-subshell env: dry bots silent on Telegram BUY/SELL (live keeps alerts).
-    # Force dry bankroll = $6 here (matches live for apples-to-apples).
     POLYMARKET_QUIET=1 \
         POLYMARKET_SUPPRESS_BUY_LOGS=1 \
-        POLYMARKET_PAPER_BALANCE_USD=6.0 \
-        POLYMARKET_ASSUME_LIVE_BALANCE_USD=6.0 \
-        POLYMARKET_AUTO_INTERVAL_SECONDS=600 \
+        POLYMARKET_AUTO_INTERVAL_SECONDS=$interval \
         TELEGRAM_ALERT_TRADES=0 \
         TELEGRAM_ALERT_TRADES_BUY=0 \
         TELEGRAM_ALERT_TRADES_SELL=0 \
@@ -182,7 +188,7 @@ echo
 echo "[run_all] step 4/4: launching sidecars..."
 uv run python scripts/dry_analyst.py 2>&1 | sed -u 's/^/[analyst] /' | tee -a "$RUN_LOG" &
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
-    --auto-discover --interval 5 --telegram \
+    --auto-discover --interval 10 --telegram \
     2>&1 | sed -u 's/^/[board] /' | tee -a "$RUN_LOG" &
 
 # Live profile auto-promoter: watches the dry leaderboard every 5min, writes

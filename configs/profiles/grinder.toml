@@ -6,30 +6,32 @@
 # actually resolving in the buyer's favor; the -15% SL caps the rare
 # "favorite flips" case.
 #
-# Designed for a $43 live bankroll (2026-05-26 deposit), ALL-IN
-# stake/trade (full balance), one position at a time. Bet size scales
-# with the bankroll automatically — top up and it bets more, no edit needed.
+# Designed for a $43 live bankroll (2026-05-26 deposit).
+# SIZING (2026-05-27 update): 50% per trade (was all-in). Allows up to 2
+# concurrent positions so capital stays deployed while the first trade rides.
+# Max loss per trade = 7.5% of bankroll (was 15%). Bet size scales with
+# bankroll automatically — top up and it bets more, no edit needed.
 
 [run]
 starting_cash = 43.0
 mode = "grinder"
 
 [sizing]
-# ALL-IN sizing (2026-05-26): each bet uses the full available balance.
-# race_stake_pct = 1.0 targets 100% of equity; the position ceiling is
-# disabled (0 = no cap) so the stake scales with the bankroll — a $6
-# balance bets ~$6, a $50 balance bets ~$50. cash_floor_pct = 0 leaves
-# no cash idle; only the $1 CLOB minimum gates the trade. One position
-# at a time (max_orders_per_tick = 1) so the whole balance rides one bet.
+# 50% per trade (2026-05-27): each bet uses half the available balance.
+# Allows up to 2 concurrent positions — after the first 50% bet lands,
+# the remaining 50% deploys on the next tick if a second eligible market
+# exists. Max loss per trade = 7.5% of bankroll (vs 15% all-in).
+# ceiling disabled (0 = no cap) so stake scales with balance as it grows.
+# cash_floor_pct = 0.05 keeps 5% idle as a fee/slippage buffer.
 max_position_ceiling_usd = 0.0
-max_position_ceiling_pct = 1.0
-cash_floor_pct = 0.0
-position_pct = 1.0
+max_position_ceiling_pct = 0.55
+cash_floor_pct = 0.05
+position_pct = 0.50
 min_open_positions = 0
 starter_trade_usd = 1.5
 assumed_live_balance_usd = 43.0
 max_trade_usd = 0.0
-high_conviction_balance_fraction = 1.0
+high_conviction_balance_fraction = 0.50
 
 [market_filters]
 min_liquidity_usd = 500.0
@@ -59,15 +61,16 @@ max_price = 0.95
 # the edge. 2¢ max keeps the round-trip viable.
 max_spread = 0.02
 
-# ALL-IN per-trade stake: equity × 100%. stake_usd is the absolute
-# floor that clears the $1 CLOB minimum; with the ceiling disabled the
-# stake is just (all cash above floor), so the bet scales with balance.
+# 50% per-trade stake: equity × 50%. stake_usd is the absolute floor
+# that clears the $1 CLOB minimum; with the ceiling disabled the stake
+# is (50% of equity above the 5% cash floor).
 stake_usd = 1.0
-stake_pct = 1.0
+stake_pct = 0.50
 
-# One all-in BUY per tick — the full balance rides a single bet.
+# One BUY per tick. With 50% stake, a second position can open on the
+# next tick once the first one is running (different token required).
 max_orders_per_tick = 1
-cash_floor_pct = 0.0
+cash_floor_pct = 0.05
 
 # Grinder exits — the whole strategy hinges on these.
 #   TP +6%: small but enough to clear the spread + fees on this band.
@@ -95,8 +98,8 @@ max_orders_per_tick = 1
 max_hours_to_close = 3.0
 min_trade_usd = 1.0
 max_absolute_spread = 0.02
-max_relative_spread = 0.10
-max_chase_premium = 0.04
+max_relative_spread = 0.08
+max_chase_premium = 0.03
 
 [noise_fallback]
 enabled = false
