@@ -52,17 +52,24 @@ def parse_json_list(value: Any) -> list[Any]:
     return parsed if isinstance(parsed, list) else []
 
 
-_EXCLUDED_QUESTION_SUBSTRINGS = ("up or down",)
+_EXCLUDED_QUESTION_SUBSTRINGS = (
+    "up or down",
+    # Temperature/weather threshold markets: "Will the highest temperature in
+    # London be 29°C?" looks like 94% near-certainty but weather prediction
+    # at a specific degree value fails often — 0% win rate in grinder band.
+    "temperature",
+    "°c",
+)
 _EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down")
 
 
 def is_excluded_market(market: dict[str, Any]) -> bool:
-    """True for crypto Up/Down binaries — blocked across every strategy.
+    """True for market types blanket-excluded from every strategy.
 
-    Why: these short-dated coin micros (`eth-updown-15m`, `Bitcoin Up or
-    Down…`) have visible spreads but no real book depth, so FOK orders
-    bounce and any fills that land bleed out before exit. Blanket-excluded
-    at the Candidate level so no profile can pick them.
+    Blocked categories:
+    - Crypto Up/Down binaries: no real book depth, FOK orders bounce.
+    - Temperature/weather threshold markets: "Will London be 29°C?" is not
+      near-certainty even at 0.94 — specific-degree weather fails constantly.
     """
     q = str(market.get("question") or "").lower()
     if any(pat in q for pat in _EXCLUDED_QUESTION_SUBSTRINGS):

@@ -11,13 +11,14 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - Engine: `race` (selector = `select_grinder` in `polymarket_bot/race_strategies.py`)
 - Thesis: a market sitting at bid ∈ [0.88, 0.95] with < 1h to close is pricing near-certainty. Pay the spread, take +6%, rotate. SL -15% caps the rare "favorite flips" case.
 - Bankroll: **$43 USDC** (2026-05-26 deposit, up from the $6 fresh-start). Live only — dry race retired.
-- Sizing: **ALL-IN** (2026-05-26). `race_stake_pct=1.0` (whole equity per bet), `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=0` (cap disabled so the stake scales with balance), `max_orders_per_tick=1` (one bet at a time), `cash_floor_pct=0.0`. Each tick deploys the full available balance on the single top-ranked market; only the $1 CLOB minimum gates entry.
+- Sizing: 50% per trade (2026-05-27). `race_stake_pct=0.50`, `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=0` (cap disabled so stake scales with balance), `max_orders_per_tick=2` (2026-05-28 — deploys both 50% slots in one tick), `cash_floor_pct=0.05`. Up to 2 simultaneous positions; stake scales automatically with bankroll.
 - Entry filters (in `_build_eligible_candidates`):
-  - `race_min_price=0.88`, `race_max_price=0.95`
-  - `race_max_hours=1.0` (only the last 60 min)
-  - `race_max_spread=0.02` (tight — paying 4¢ spread on a 6¢ TP wipes the edge)
+  - `race_min_price=0.91`, `race_max_price=0.95` (floor raised from 0.88 after esports/weather SL losses)
+  - `race_max_hours=4.0` (≤4h to close — the 4h-only rule limit)
+  - `race_max_spread=0.02` (tight — paying 4¢ spread on a 7¢ TP wipes the edge)
   - `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
-- Exits: TP +6%, resolved at bid ≥ 0.97, no stop-loss in the current grinder/live stack
+- Global exclusions (`models.py:is_excluded_market`): crypto Up/Down binaries + any market with "temperature" or "°c" in the question (weather exact-threshold markets, 0% win rate in the grinder band)
+- Exits: TP +7%, SL -15% (after 1 min), resolved_exit at bid ≥ 0.97, max-hold 4.5h
 - Daily DD halt at -15% of starting equity (default — env override available via `POLYMARKET_RACE_DAILY_DRAWDOWN_PCT`)
 - Tick interval: 30s on live (`POLYMARKET_AUTO_INTERVAL_SECONDS=30` in `run_all.sh` / `run_live_70.sh`), 600s on dry (per-subshell override in `run_dry_bot`)
 - Selector ranking: `score = best_bid / max(hours_to_close, 1/60)` — closer to resolution and closer to 1.0 ranks higher
@@ -239,7 +240,7 @@ It boots: the live grinder bot + the live analyst (30min, live-only) + the live-
 - Bankroll: **$43** (2026-05-26 deposit). `starting_cash=43.0`, `assumed_live_balance_usd=43.0` (RPC-failure fallback cap; the bot reads real USDC from CLOB each tick).
 - Sizing (ALL-IN): `race_stake_pct=1.0` (full equity/bet), `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=0` (cap disabled → stake scales with balance), `max_orders_per_tick=1`, `cash_floor_pct=0.0`
 - Entry filters: `race_min_price=0.88`, `race_max_price=0.95`, `race_max_hours=3.0`, `race_max_spread=0.02`, `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
-- Exits: TP +6%, SL -15%, `sl_min_age=1min`, resolved at bid ≥0.97. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
+- Exits: TP +7%, SL -15%, `sl_min_age=1min`, resolved_exit at bid ≥0.97, max-hold 4.5h. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
 - Live analyst sidecar (`scripts/live_analyst.py`) + live-only leaderboard (`pmbot leaderboard --live-only`) launch alongside; both post to the live Telegram channel, both deterministic (no AI), no dry comparison.
 - Universal sweep closes positions at price ≥0.97 OR ≤0.03 every tick across all strategy modes.
 

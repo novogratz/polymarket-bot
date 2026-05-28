@@ -19,7 +19,7 @@ The maintainer will acknowledge the report within a reasonable time and coordina
 This project handles real-money trading credentials. The following are considered in-scope security concerns:
 
 - Code paths that could leak `POLYMARKET_PRIVATE_KEY`, `POLYMARKET_API_SECRET`, `POLYMARKET_API_PASSPHRASE`, or any wallet seed.
-- Code paths that could place orders without `POLYMARKET_ENABLE_LIVE_TRADING=1` set.
+- Code paths that could place orders without the `--live` flag (or the equivalent `POLYMARKET_ENABLE_LIVE_TRADING=1` env var used internally by scripts).
 - Code paths that could place orders without going through the documented consensus / spread / dedupe filters.
 - Dependency vulnerabilities that affect the runtime trading path.
 

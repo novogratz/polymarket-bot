@@ -5,109 +5,46 @@ description: Claude Code skill for the Polymarket smart-money copy-trading bot. 
 
 # Polymarket Bot Skill
 
-Use this skill when working in this repository: strategy code, filters, live commands, dashboard, trade journal, auto-tuner, BTC edge.
+## Current state (2026-05-28)
 
-## Current state (2026-05-26)
+- **Live strategy:** `grinder` — race mode, heavy-favorite near-resolution scalp.
+- **Config:** `configs/profiles/grinder.toml` (single source of truth).
+- **Launcher:** `bash scripts/run_live_70.sh` — preserves ledger/journal. Do NOT use `run_all.sh` for live (it resets the ledger).
+- **Bankroll:** $43 USDC. **Sizing:** 50%/trade, `max_orders_per_tick=2` (up to 2 simultaneous positions).
+- **Entry:** bid ∈ [0.88, 0.95], ≤4h to close, spread ≤2¢, liq ≥$500, vol ≥$300.
+- **Exits:** TP +7%, SL −15% (after 1 min), resolved_exit at bid ≥0.97, max-hold 4.5h.
+- **W/L record:** `data/realized_trade_cache.jsonl` (survives `reset-ledger` journal rotation).
+- **Analysts:** all deterministic — no AI, no LLM, no Codex anywhere.
 
-**Live profile:** `grinder` — heavy-favorite near-resolution scalp (race mode).
+## Guardrails
 
-**Bankroll:** $43 USDC (2026-05-26 deposit). Live only — dry race retired.
+- No `.env` values, private keys, or passphrases in output or commits.
+- Live trading requires `--live` flag on `pmbot auto-loop`; `--yes` is for script automation only.
+- No LLM call in the scanning or trade-selection path.
+- No random trade entry beyond bounded `noise_fallback` (disabled on grinder).
+- Never delete `data/paper_state.json`, `data/trade_journal.jsonl`, or `data/realized_trade_cache.jsonl` unless the user explicitly asks for a reset.
+- The bot must not gain the capability to commit or push source code.
 
-**Sizing:** ALL-IN — each bet uses the full available balance, one position at a time (`race_stake_pct=1.0`, `max_position_ceiling_usd=0`, `max_orders_per_tick=1`, `cash_floor_pct=0.0`). Bet size scales with the bankroll automatically; only the $1 CLOB minimum gates entry.
-
-**Live launcher:** `bash scripts/run_live_70.sh` (canonical — does NOT reset the ledger/journal). Boots: live grinder + live analyst + live-only leaderboard + one dry grinder twin (paper) + autonomous report. Do NOT use `run_all.sh` for live: it runs `reset-ledger` on startup and launches the retired 95-profile dry race.
-
-**Stats persistence:** the live W/L record is durable in `data/realized_trade_cache.jsonl` (survives `trade_journal.jsonl` rotation). Never delete it unless the user asks for a reset.
-
-**Deposit-proof PnL (2026-05-26):** `RunStats.total_pnl`, the heartbeat all-time PnL, and the live analyst headline all use `realized + unrealized` (NOT `equity − starting_cash`), so deposits aren't counted as profit. Identical to the old formula on a deposit-free ledger.
-
-**Analysts are AI-free (2026-05-26):** `live_analyst.py` posts a deterministic live-only summary; `pmbot leaderboard --live-only` posts a live-only board; `dry_analyst.py` posts a deterministic autonomous report (spawning/tuning removed). No LLM/Codex/Ollama anywhere — the `select_claude_*` race selectors are just deterministic Python named after Claude, not AI calls.
-
-## Guardrails (non-negotiable)
-
-- Never print or commit `.env` values, private keys, API secrets, or passphrases.
-- Live trading requires `--live` flag on `pmbot auto-loop`. The `--yes` flag exists only for script automation (e.g., `run_live_70.sh`).
-- `POLYMARKET_DRY_RUN` and `POLYMARKET_ENABLE_LIVE_TRADING` env vars are deprecated — use the CLI flags.
-- No random trade entry beyond the bounded `noise_fallback` ($10/trade, 4/tick) — currently disabled on most profiles.
-- Any new live strategy must define explicit entry criteria, spread filters, sizing caps.
-- Update tests when strategy behavior changes.
-- No LLM call (Claude, Codex, anything else) in the scanning or trade-selection path. The scanner stays deterministic Python over Polymarket APIs.
-- The bot must not have the capability to write or push source code on its own.
-
-## Useful commands
+## Commands
 
 ```bash
 uv run python -B -m unittest discover -s tests
-uv run pmbot --version
-uv run pmbot status                                  # snapshot rapide (mode, équité, positions, journal)
-uv run pmbot positions                               # table CLI des positions ouvertes, triées par PnL desc
-uv run pmbot dashboard
-uv run pmbot doctor
+uv run pmbot status
+uv run pmbot positions
 uv run pmbot journal-stats
-uv run pmbot tune-strategy
-POLYMARKET_ENABLE_LIVE_TRADING=1 uv run pmbot auto-loop
-POLYMARKET_DRY_RUN=1 uv run pmbot auto-loop          # simulated, no SDK calls, separate ledger
+bash scripts/run_live_70.sh
 ```
 
-Canonical live config: `bash scripts/run_live_70.sh` (~$90 bankroll).
+## Key files
 
-CLI surface: 9 Typer commands (`auto-loop`, `dashboard`, `doctor`, `status`, `positions`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`) plus the global `--version` / `-V` option. The Typer app is exposed as the `pmbot` console script via `[project.scripts]`; `python -m polymarket_bot.main <cmd>` continues to work as a fallback. `status` and `positions` are read-only — no SDK calls, no network — and automatically pick up the dry-run ledger when `POLYMARKET_DRY_RUN=1` is set. ANSI colors auto-disable when stdout is not a TTY (or when `NO_COLOR=1`); set `POLYMARKET_FORCE_COLOR=1` to keep them through pipes.
-
-## Architecture
-
-- `polymarket_bot/main.py` — tick orchestration, sizing, journal, CLI.
-- `polymarket_bot/smart_money.py` — leaderboards, parallel trade fetching (ThreadPoolExecutor), token grouping, scoring, chunked reverse-lookup.
-- `polymarket_bot/auto_tuner.py` — bounded overrides from the trade journal (defensive only, gated on 30 trades).
-- `polymarket_bot/bitcoin.py` — BTC threshold edge with retry + Coinbase v2 fallback.
-- `polymarket_bot/trading.py` — live BUY/SELL order placement and final stake.
-- `polymarket_bot/portfolio.py` — local ledger + exit history.
-- `polymarket_bot/gamma.py` — Gamma client + reverse-lookup by clob_token_ids.
-- `polymarket_bot/strategy.py` — candidate ranking.
-
-## Default strategy
-
-Smart-money copy-trading:
-
-1. Load active Polymarket markets (Gamma scan + keyword scan + reverse-lookup of high-flow tokens).
-2. Pull monthly-leaderboard wallets that pass PnL / volume / ROI floors.
-3. Inspect their recent BUYs in parallel.
-4. Require multi-wallet consensus on the same token, sufficient copied USDC, tight spreads (absolute and relative), price band, freshness.
-5. Three passes: strict → relaxed (consensus floor relaxed) → deep fallback (consensus=1, looser filters). One leaderboard+trades fetch shared across all three.
-6. Conviction-weighted sizing (0.55x to 2.5x), dynamic per-slot redistribution toward `SMART_CASH_FLOOR_PCT` (5%).
-7. Per-position ceiling: `max(SMART_MAX_POSITION_CEILING_USD, equity × SMART_MAX_POSITION_CEILING_PCT)`.
-8. Multi-level exits (run before every entry): take-profit ladder +50/+100/+200/+300, trailing stop, peak-protect, stop-loss, cohort-sell, cohort-silent, near-expiry, max-hold-time (24h).
-9. No duplicate per market_id, per token, or per event-slug (sports). Per-category cap on sports.
-10. BTC edge integrated after the smart-money tick (cap $5, edge ≥ 8%).
-11. Noise fallback (cap $10, max 4 per tick) when 0 smart-money signal qualifies AND (positions below min OR cash above 35% of equity).
-
-## Defensive auto-tuner
-
-Reads `data/trade_journal.jsonl` each tick. Active from 30 closed trades. Bounded rules:
-
-- Stop-loss > 40% of trades: tighten `MAX_CHASE_PREMIUM` ×0.80, `MAX_RELATIVE_SPREAD` ×0.85.
-- Consensus=2 trades avg PnL < -$0.30 (≥20 sample): raise `MIN_CONSENSUS` to 3.
-- Sports avg PnL < -$0.30 (≥15 sample): bump `SPORTS_SCORE_PENALTY` ×1.5.
-- Win rate < 30%: raise `MIN_COPIED_USDC` ×1.5.
-- Avg PnL < -$0.20: reduce `POSITION_PCT` ×0.75.
-
-Defensive only: tightens after losses, never loosens after wins. Overrides written to `data/strategy_overrides.json` (auditable).
-
-## Logic
-
-- One wallet alone = noise.
-- Several profitable wallets buying the same token in a short window = stronger collective signal.
-- A good signal can still be a bad trade if execution is poor (spread, chase, fill).
-- No-signal / no-trade is a valid decision.
-- Quiet hours stay quiet.
-
-Hierarchy to preserve in any strategy edit: **consensus first, execution quality second, sizing discipline third.** Never replace this with random market selection.
+- `polymarket_bot/race_strategies.py` — grinder entry/exit engine (`select_grinder`, `_build_eligible_candidates`, `_check_race_exits`).
+- `polymarket_bot/main.py` — tick orchestration, sizing, journal.
+- `polymarket_bot/config.py` — all `Settings` fields and env-var names.
+- `scripts/run_live_70.sh` — canonical live launcher (update when config changes).
 
 ## Editing workflow
 
-1. Read the relevant code (`smart_money.py`, `main.py`, `auto_tuner.py`).
-2. Modify while preserving the hierarchy above.
-3. Update tests in `tests/test_strategy.py`.
-4. Run `uv run python -B -m unittest discover -s tests`.
-5. If the change affects the live command, update `scripts/run_live_70.sh`.
-6. Update `CHANGELOG.md`, `README.md`, `CLAUDE.md`, `CODEX.md`, and the SKILL files when user-visible.
-7. Commit and push.
+1. Read `race_strategies.py` + `main.py` for the grinder path.
+2. Strategy/filter changes go in `configs/profiles/grinder.toml`.
+3. Update tests if behavior changes (`tests/test_strategy.py`).
+4. Update `CHANGELOG.md`, `README.md`, `CLAUDE.md`, and this SKILL.md when user-visible.

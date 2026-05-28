@@ -1,16 +1,19 @@
 # Profile "grinder" — heavy-favorite, near-resolution scalp.
 #
-# Thesis: a market sitting at bid ∈ [0.88, 0.95] with < 3h to close is
-# pricing near-certainty. Pay the spread, take +6%, rotate. The edge is
+# Thesis: a market sitting at bid ∈ [0.88, 0.95] with ≤4h to close is
+# pricing near-certainty. Pay the spread, take +7%, rotate. The edge is
 # the implied-probability gap between the bid and the binary outcome
 # actually resolving in the buyer's favor; the -15% SL caps the rare
 # "favorite flips" case.
 #
 # Designed for a $43 live bankroll (2026-05-26 deposit).
-# SIZING (2026-05-27 update): 50% per trade (was all-in). Allows up to 2
-# concurrent positions so capital stays deployed while the first trade rides.
-# Max loss per trade = 7.5% of bankroll (was 15%). Bet size scales with
-# bankroll automatically — top up and it bets more, no edit needed.
+# SIZING (2026-05-27): 50% per trade. Allows up to 2 concurrent positions
+# so capital stays deployed while the first trade rides. Max loss per
+# trade = 7.5% of bankroll. Bet size scales with bankroll automatically.
+# 2026-05-28: max_orders_per_tick=2 to deploy both 50% slots in one tick
+# when two eligible markets exist; max_hours widened to 4.0 (4h-only limit);
+# resolved_exit_threshold lowered to 0.97 (was 0.99 — caused race_expired_close
+# when markets closed without ever reaching 0.99); tp_pct raised to 0.07.
 
 [run]
 starting_cash = 43.0
@@ -41,10 +44,10 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Time-to-close gate — grinder trades the last 3h before close. Widened
-# from 1h (2026-05-26) so the bot finds an eligible market most hours of
-# the day instead of sitting idle; still well inside the 4h-only rule.
-max_hours = 3.0
+# Time-to-close gate — grinder trades up to 4h before close (the hard
+# 4h-only rule limit). Widened from 3h (2026-05-28) for more eligible
+# markets per tick, especially during low-activity windows.
+max_hours = 4.0
 scan_limit = 750
 
 # Liquidity / volume floors. Heavy-favorite markets resolving in <1h
@@ -52,13 +55,16 @@ scan_limit = 750
 min_liquidity_usd = 500.0
 min_volume_24h_usd = 300.0
 
-# Heavy-favorite band: 0.88 floor avoids mid-range coinflips; 0.95
-# ceiling preserves room above (6% to TP, 2% to resolved_exit at 0.97).
-min_price = 0.88
+# Heavy-favorite band: 0.91 floor raised from 0.88 (2026-05-28) after
+# esports map-winner and weather markets at 0.88-0.90 caused the two
+# biggest SL losses ($3.89 + $3.45). Entries at 0.91+ imply ≥91%
+# probability; the 4¢ band still clears the 7% TP for entries ≤ 0.906,
+# rest ride to the resolved_exit at 0.97.
+min_price = 0.91
 max_price = 0.95
 
-# Tight spread is non-negotiable — paying 4¢ spread on a 6¢ TP wipes
-# the edge. 2¢ max keeps the round-trip viable.
+# Tight spread is non-negotiable — paying 4¢ spread on a 7¢ TP wipes
+# most of the edge. 2¢ max keeps the round-trip viable.
 max_spread = 0.02
 
 # 50% per-trade stake: equity × 50%. stake_usd is the absolute floor
@@ -67,23 +73,25 @@ max_spread = 0.02
 stake_usd = 1.0
 stake_pct = 0.50
 
-# One BUY per tick. With 50% stake, a second position can open on the
-# next tick once the first one is running (different token required).
-max_orders_per_tick = 1
+# 2 BUYs per tick. With 50% stake each, both 50% slots deploy in one
+# tick when two eligible markets exist simultaneously — twice as fast
+# as waiting for consecutive ticks.
+max_orders_per_tick = 2
 cash_floor_pct = 0.05
 
 # Grinder exits — the whole strategy hinges on these.
-#   TP +6%: small but enough to clear the spread + fees on this band.
+#   TP +7%: raised from 6% (2026-05-28). For entries ≤ 0.906 the TP fires
+#     first; entries above ride to the resolved_exit at 0.97 instead.
 #   SL -15%: catastrophic-flip guard. Buying at 0.90, this exits at 0.765.
-#   sl_min_age = 1 min: markets close in <1h, can't wait the 15 min the
-#     other race profiles use.
-#   resolved at bid ≥ 0.97: any position whose price ran toward 1.0
-#     gets force-closed at the universal sweep threshold.
-tp_pct = 0.06
+#   sl_min_age = 1 min: markets close in <4h, can't wait 15 min.
+#   resolved at bid ≥ 0.97: lowered from 0.99 (2026-05-28). The old 0.99
+#     threshold was causing race_expired_close on markets that closed
+#     without ever printing 0.99 — exiting at 0.97 captures the move.
+tp_pct = 0.07
 sl_pct = 0.15
 sl_min_age_minutes = 1
 near_expiry_minutes = 5
-resolved_exit_threshold = 0.99
+resolved_exit_threshold = 0.97
 # Daily drawdown halt stays at the race default (-15%) — race profile
 # loader doesn't expose [race].daily_drawdown_pct. Override via env
 # POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0.10 if a tighter halt is desired.
@@ -94,8 +102,8 @@ auto_interval_seconds = 30
 stdout_heartbeat_minutes = 15
 
 [filters]
-max_orders_per_tick = 1
-max_hours_to_close = 3.0
+max_orders_per_tick = 2
+max_hours_to_close = 4.0
 min_trade_usd = 1.0
 max_absolute_spread = 0.02
 max_relative_spread = 0.08
@@ -116,8 +124,8 @@ max_entry_slippage = 0.02
 [exits]
 stop_loss_pct = 0.15
 stop_loss_min_age_minutes = 1
-# Hold long enough for a position bought near the 3h entry edge to reach
-# its +6% TP or resolution before the max-hold backstop flushes it.
-max_hold_hours = 3.5
+# Hold long enough for a position bought near the 4h entry edge to reach
+# its +7% TP or resolution before the max-hold backstop flushes it.
+max_hold_hours = 4.5
 near_expiry_exit_losers = true
 near_expiry_loser_minutes = 5

@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-05-28
+
+Grinder strategy tuning: faster exits, bigger wins per trade, more opportunities per tick.
+
+### Changed
+
+- `resolved_exit_threshold` 0.99 → **0.97** — exits positions as the market trends toward resolution, eliminating `race_expired_close` outcomes on markets that close without ever printing 0.99.
+- `tp_pct` 0.06 → **0.07** — larger take-profit for entries in the lower band (≤ 0.906) where the TP fires before the resolved exit.
+- `max_orders_per_tick` 1 → **2** — deploys both 50%-stake slots in a single tick when two eligible markets exist simultaneously.
+- `max_hours` 3.0 → **4.0** — pushes the time-to-close window to the 4h-only rule limit for more eligible markets per tick.
+- `max_hold_hours` 3.5 → **4.5** — backstop aligned with the widened entry window.
+- Docs overhaul: README, STRATEGIES.md, AGENTS.md, SECURITY.md, CONTRIBUTING.md, and both SKILL files updated to reflect the grinder-only live stack and current config values.
+
 ## [1.4.0] - 2026-05-24
 
 Fresh leaderboard restart: restored all archived profiles, auto-discover launcher, bash 3.2 compat fix, lenient kill thresholds.

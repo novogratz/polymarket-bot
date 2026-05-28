@@ -5,7 +5,7 @@ Thanks for your interest in contributing.
 ## Ground rules
 
 - The trading scan path stays deterministic Python over Polymarket APIs. **No LLM call** is permitted in the scanning or trade-selection code.
-- Live trading must remain gated by `POLYMARKET_ENABLE_LIVE_TRADING=1`.
+- Live trading requires the `--live` flag on `pmbot auto-loop`. The `--yes` flag is for script automation only.
 - Random or unfiltered live trade entry is not accepted. Any new live strategy must define explicit entry criteria, spread filters, sizing caps, and duplicate-position checks.
 - Strategy adjustments at runtime are data files (`data/strategy_overrides.json`), never code rewrites. The bot must not gain the capability to commit or push source code.
 - Every change to strategy behavior must be covered by a unit test in `tests/test_strategy.py`.
