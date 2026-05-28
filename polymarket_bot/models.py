@@ -54,13 +54,18 @@ def parse_json_list(value: Any) -> list[Any]:
 
 _EXCLUDED_QUESTION_SUBSTRINGS = (
     "up or down",
-    # Temperature/weather threshold markets: "Will the highest temperature in
-    # London be 29°C?" looks like 94% near-certainty but weather prediction
-    # at a specific degree value fails often — 0% win rate in grinder band.
+    # Temperature/weather threshold markets: specific-degree weather fails
+    # constantly even at 0.94 — 0% win rate in grinder band. Both °C and °F.
     "temperature",
     "°c",
+    "°f",
+    # Exact-score live sports: "No" at 0.94 gaps to 0.44 in one tick when a
+    # goal is scored — the -15% SL cannot catch the gap. -$8.73 in one trade.
+    "exact score",
+    # O/U 0.5 (any-goal) soccer: one-event binary, same gap risk as exact score.
+    "o/u 0.5",
 )
-_EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down")
+_EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down", "exact-score")
 
 
 def is_excluded_market(market: dict[str, Any]) -> bool:
@@ -68,8 +73,10 @@ def is_excluded_market(market: dict[str, Any]) -> bool:
 
     Blocked categories:
     - Crypto Up/Down binaries: no real book depth, FOK orders bounce.
-    - Temperature/weather threshold markets: "Will London be 29°C?" is not
-      near-certainty even at 0.94 — specific-degree weather fails constantly.
+    - Temperature/weather threshold markets (°C and °F): specific-degree
+      weather fails constantly even at 0.94.
+    - Exact-score live sports: gaps on goals, SL can't catch them.
+    - O/U 0.5 soccer: any-goal binary, same gap risk.
     """
     q = str(market.get("question") or "").lower()
     if any(pat in q for pat in _EXCLUDED_QUESTION_SUBSTRINGS):
