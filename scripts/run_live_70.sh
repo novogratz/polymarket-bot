@@ -79,7 +79,9 @@ POLYMARKET_QUIET=1 \
 # ─── Autonomous report sidecar (deterministic — NO codex/claude/ollama) ─
 # Reports on the dry grinder (and any other dry runs) every 15 min to
 # TELEGRAM_CHAT_ID_DRY_RUN. No AI: narrative built straight from metrics.
-uv run python scripts/dry_analyst.py 2>&1 | sed -u 's/^/[analyst] /' | tee -a "$RUN_LOG" &
+# Dry-run Telegram silenced — live-only mode. Remove the override to re-enable.
+TELEGRAM_CHAT_ID_DRY_RUN="" \
+    uv run python scripts/dry_analyst.py 2>&1 | sed -u 's/^/[analyst] /' | tee -a "$RUN_LOG" &
 
 uv run pmbot auto-loop --live --profile grinder --yes \
     2>&1 | sed -u 's/^/[LIVE] /' | tee -a "$LIVE_LOG" "$RUN_LOG"
