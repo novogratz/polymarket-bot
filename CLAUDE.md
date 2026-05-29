@@ -9,7 +9,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 **Live strategy:** `grinder` — heavy-favorite, ride-to-resolution. Single source-of-truth profile at `configs/profiles/grinder.toml`.
 
 - Engine: `race` (selector = `select_grinder` in `polymarket_bot/race_strategies.py`)
-- Thesis: buy a binary outcome at bid 0.89–0.94 within 4h of close, hold until bid ≥ 0.99. The edge is the implied-probability gap between the current bid and the binary outcome resolving at 1.0. No stop-loss — the exclusion filters and price-stability gate are the risk controls.
+- Thesis: buy a binary outcome at bid 0.87–0.95 within 4h of close, hold until bid ≥ 0.99. The edge is the implied-probability gap between the current bid and the binary outcome resolving at 1.0. No stop-loss — the exclusion filters, price-stability gate, and momentum filter are the risk controls.
 - Bankroll: **$123 USDC** (2026-05-29 deposit — $100 top-up to prior ~$23 balance).
 - Sizing: **50% per trade**, up to 2 concurrent positions. `race_stake_pct=0.50`, `max_orders_per_tick=2`, `cash_floor_pct=0.05`. Each win = +4.4% on account; 2 wins/day ≈ 9%. Stake scales automatically with bankroll.
 - Entry filters (in `_build_eligible_candidates`):
@@ -18,6 +18,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
   - `race_max_spread=0.02`
   - `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
   - `race_max_day_change_pct=0.10` — price-stability gate: skip markets that moved >10% today (live-game gap risk)
+  - `race_min_outcome_momentum=-0.05` — momentum filter: skip outcomes that fell >5% today (trending away from resolution)
 - Global exclusions (`models.py:is_excluded_market`): crypto Up/Down binaries, temperature/weather (°C + °F), exact score, O/U 0.5, O/U 5.5/6.5/7.5
 - Exits: resolved_exit at bid ≥ 0.99, universal sweep at bid ≤ 0.03, max-hold 4.5h. No TP ladder, no SL.
 - Daily DD halt at -15% of starting equity (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT`)
@@ -26,9 +27,13 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 **Bankroll:** $123 USDC. State backups in `data/backups_reset_<timestamp>/`.
 
-**Why no stop-loss:** SL can't catch gap moves (a soccer exact-score "No" at 0.94 can gap to 0.44 in one 30 s tick when a goal is scored — the SL fires at 0.80 but execution is at 0.44). The exclusion filters prevent entering these market types entirely. For markets that do pass the filters, catastrophic flips are rare enough that no SL is the correct policy.
+**Why no stop-loss:** SL can't catch gap moves (a soccer exact-score "No" at 0.94 can gap to 0.44 in one tick when a goal is scored — the SL fires at 0.80 but execution is at 0.44). The exclusion filters prevent entering these market types entirely. For markets that do pass the filters, catastrophic flips are rare enough that no SL is the correct policy.
 
-**Why 40% stake, not all-in:** at 95% stake, one bad outcome wipes the account. At 40% stake, a single loss is painful (-40%) but survivable.
+**Why 50% stake, not all-in:** at 95% stake, one bad outcome wipes the account. At 50% stake, a single loss hurts but one follow-up win recovers most of it.
+
+**Momentum filter:** `race_min_outcome_momentum=-0.05` blocks outcomes falling >5% today. A market at 0.91 that was 0.96 this morning is moving *away* from resolution — worse edge than one sitting stably at 0.91. The stability gate (abs 10%) wasn't catching directional decline within that range.
+
+**Binary arb scanner:** every tick a second pass scans all markets for `YES_ask + NO_ask < 0.97` using actual CLOB ask prices (BUY side). When found, both legs are opened — guaranteed 3%+ profit regardless of outcome. Previous bug was using SELL-side (bid) prices which created false signals; now fixed. Arb positions are tagged `is_arb=True`, skip TP/SL, and ride to resolution. Capped at $5/leg.
 
 **Realistic performance:** 5–7%/day on active days. With 50% stake and wider band, 2 wins = ~9%, 3 wins = ~13%. Weekly target 20–30%. 10%+ days happen often on active markets; the constraint is finding 2–3 qualifying markets per day, not the per-trade math.
 

@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (bid 0.89–0.94) within 4 hours of resolution, holds until the market prints near-final value (bid ≥ 0.99), and rotates capital into the next opportunity.
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (bid 0.87–0.95) within 4 hours of resolution, holds until the market prints near-final value (bid ≥ 0.99), and rotates capital into the next opportunity. Includes a binary arbitrage scanner that books risk-free profit whenever YES + NO combined cost drops below $1.
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -29,7 +29,7 @@ pip install -e ".[dev]"
 bash scripts/run_live_70.sh
 ```
 
-Starts the live grinder (30 s tick) alongside a dry paper twin (10 min tick), a live analyst sidecar (Telegram summary every 30 min), and an autonomous dry analyst (15 min report). All logic is deterministic — no AI anywhere.
+Starts the live grinder (**10 s tick**) alongside a dry paper twin (10 min tick), a live analyst sidecar (Telegram summary every 30 min), and an autonomous dry analyst (15 min report). All logic is deterministic — no AI anywhere.
 
 > **Do not use `run_all.sh` for live trading.** It resets the ledger on startup and launches a retired 95-profile dry race.
 
@@ -37,7 +37,7 @@ Starts the live grinder (30 s tick) alongside a dry paper twin (10 min tick), a 
 
 ## Strategy
 
-**Thesis.** A binary market at bid 0.89–0.94 within 4 hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0.
+**Thesis.** A binary market at bid 0.87–0.95 within 4 hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0. A secondary arb pass each tick books risk-free profit when YES + NO combined ask < $1.
 
 ### Entry filters
 
@@ -49,8 +49,9 @@ Starts the live grinder (30 s tick) alongside a dry paper twin (10 min tick), a 
 | Min liquidity | $500 |
 | Min 24 h volume | $300 |
 | Max one-day price change | 10 % |
+| Min outcome momentum | −5 % |
 
-The **price-stability gate** (max day change 10 %) blocks markets that moved significantly today — a live-game "No" sitting at 0.93 can collapse to 0.40 in a single 30 s tick when a goal is scored.
+The **price-stability gate** (max day change 10 %) blocks markets that moved significantly today — a live-game "No" sitting at 0.93 can collapse to 0.40 in a single tick when a goal is scored. The **momentum filter** (min −5 %) additionally skips outcomes that are actively falling today: a market at 0.91 that was at 0.96 this morning is trending *away* from resolution, not toward it.
 
 ### Excluded market types
 
@@ -89,7 +90,11 @@ Each win at 50 % stake = **+4.4 % on the account**. Two wins = ~9 %. Three wins 
 | Hold ≥ 4.5 h | `race_expired_close` — backstop |
 | Bid ≤ 0.03 (universal sweep) | `resolved_market_sweep_loss` |
 
-No take-profit ladder. No stop-loss. The exclusion filters and price-stability gate are the primary risk controls.
+No take-profit ladder. No stop-loss. The exclusion filters, price-stability gate, and momentum filter are the primary risk controls.
+
+### Binary arbitrage
+
+A second pass runs every tick scanning all markets for `YES_ask + NO_ask < 0.97`. When found, the bot buys both tokens — one will resolve to $1, the other to $0, guaranteeing at least 3 % profit regardless of the outcome. Arb positions skip TP/SL and ride to resolution. Capped at $5 per leg so it never crowds out the main grinder trades.
 
 ---
 
@@ -127,7 +132,7 @@ POLYMARKET_API_PASSPHRASE=...
 
 ```bash
 POLYMARKET_SYNC_LIVE_POSITIONS=1         # sync live CLOB positions each tick
-POLYMARKET_AUTO_INTERVAL_SECONDS=30      # tick interval (set by run_live_70.sh)
+POLYMARKET_AUTO_INTERVAL_SECONDS=10      # tick interval (set by run_live_70.sh)
 POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0.15  # daily DD halt threshold
 POLYMARKET_HTTP_CACHE_TTL_SECONDS=600    # shared HTTP cache TTL
 ```
