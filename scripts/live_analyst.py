@@ -374,7 +374,7 @@ def daily_report_once() -> None:
 
     parts = [
         f"📋 *DAILY QUANT REPORT — {date_str}*",
-        f"_Polymarket Bot kzer\\_ai_",
+        f"_Polymarket Bot_ `kzer_ai` _· Grinder_",
         divider,
         "",
         "*PROFIT & LOSS:*",
@@ -405,7 +405,7 @@ def daily_report_once() -> None:
         f"  📈 All-time Trades:  {snap.closed}  ({snap.wins}W / {snap.losses}L)",
         f"  💰 Current Balance:  ${balance:.2f}",
         "",
-        "_Polymarket Bot kzer\\_ai_",
+        "_Polymarket Bot_ `kzer_ai` _· Grinder_",
     ]
 
     msg = "\n".join(parts)
@@ -458,7 +458,7 @@ def cycle_once() -> None:
 
     divider = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     parts = [
-        f"🔵 *Polymarket Bot kzer\\_ai* · {stamp}",
+        f"🔵 *Polymarket Bot* `kzer_ai` · Grinder · {stamp}",
         "",
         divider,
         f"{r_mood} *Realized PnL: {r_sign}${realized:.2f}  ({realized_roi:+.1f}%)*",
