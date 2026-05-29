@@ -123,6 +123,7 @@ class LiveSnapshot:
     closed: int
     wins: int
     losses: int
+    flats: int
     win_rate: float
     realized_pnl: float
     avg_win: float
@@ -175,6 +176,7 @@ def load_live_snapshot() -> LiveSnapshot | None:
         elif pnl < 0:
             losses += 1
             loss_pnls.append(pnl)
+    flats = closed - wins - losses  # zero-PnL exits (expired at cost, arb sweeps)
     decided = wins + losses
     ticks = 0
     th = DATA_DIR / "tick_history.jsonl"
@@ -193,6 +195,7 @@ def load_live_snapshot() -> LiveSnapshot | None:
         closed=closed,
         wins=wins,
         losses=losses,
+        flats=flats,
         win_rate=(wins / decided * 100.0) if decided > 0 else 0.0,
         realized_pnl=sum(win_pnls) + sum(loss_pnls),
         avg_win=sum(win_pnls) / len(win_pnls) if win_pnls else 0.0,
@@ -467,7 +470,9 @@ def cycle_once() -> None:
         f"unrealized: {unr_sign}${unrealized:.2f}",
         f"   cash ${snap.cash:.2f}  •  deployed ${snap.invested:.2f}",
         "",
-        f"📊 {snap.closed} closed  •  🟢 {snap.wins}W / 🔴 {snap.losses}L  •  {snap.win_rate:.0f}% wr  •  {snap.open_positions} open",
+        f"📊 {snap.closed} closed  •  🟢 {snap.wins}W / 🔴 {snap.losses}L"
+        + (f" / {snap.flats} flat" if snap.flats else "")
+        + f"  •  {snap.win_rate:.0f}% wr  •  {snap.open_positions} open",
         "",
     ]
 

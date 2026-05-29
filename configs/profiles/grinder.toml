@@ -75,9 +75,10 @@ sl_min_age_minutes = 1
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.99
 
-# Binary arb: buy YES+NO when combined ask cost < 0.97 → guaranteed 3%+ profit.
-# Fixed: now uses BUY-side price (ask) not SELL-side (bid). $5/leg cap.
-arb_threshold = 0.97
+# Binary arb disabled — needs equal-share sizing fix before re-enabling.
+# Current bug: uses equal dollar stakes (not equal shares), creating net
+# directional exposure. Equal shares needed for true risk-free arb.
+arb_threshold = 0.0
 arb_max_stake_usd = 5.0
 
 [telemetry]
