@@ -1,25 +1,22 @@
 # Contributing
 
-Thanks for your interest in contributing.
-
 ## Ground rules
 
-- The trading scan path stays deterministic Python over Polymarket APIs. **No LLM call** is permitted in the scanning or trade-selection code.
+- The trading scan path stays deterministic Python over Polymarket APIs. **No LLM call** in scanning or trade-selection code.
 - Live trading requires the `--live` flag on `pmbot auto-loop`. The `--yes` flag is for script automation only.
-- Random or unfiltered live trade entry is not accepted. Any new live strategy must define explicit entry criteria, spread filters, sizing caps, and duplicate-position checks.
-- Strategy adjustments at runtime are data files (`data/strategy_overrides.json`), never code rewrites. The bot must not gain the capability to commit or push source code.
-- Every change to strategy behavior must be covered by a unit test in `tests/test_strategy.py`.
+- No random or unfiltered live trade entry. Any new strategy must define explicit entry criteria, spread filters, sizing caps, and duplicate-position guards.
+- Every change to strategy behavior must be covered by a unit test.
 
 ## Development setup
 
 ```bash
-python3 -m pip install -e ".[dev]"
+pip install -e ".[dev]"   # or: uv sync
 ```
 
 Run tests:
 
 ```bash
-python3 -B -m unittest discover -s tests
+uv run python -B -m unittest discover -s tests
 ```
 
 Run lint:
@@ -28,34 +25,33 @@ Run lint:
 ruff check polymarket_bot tests
 ```
 
-CI runs the same commands on Python 3.11 / 3.12 against every push.
+CI runs the same commands on Python 3.11 / 3.12 for every push.
 
 ## Pull request checklist
 
 - [ ] Tests added or updated for any strategy change.
-- [ ] `python3 -B -m unittest discover -s tests` passes locally.
+- [ ] `uv run python -B -m unittest discover -s tests` passes locally.
 - [ ] `ruff check polymarket_bot tests` is clean.
-- [ ] If the change is user-visible (CLI, env var, behavior), `CHANGELOG.md` is updated.
-- [ ] If the change touches the live config, `scripts/run_live_70.sh` and the docs (`README.md`, `CLAUDE.md`, `CODEX.md`, the SKILL files) are updated to match.
-- [ ] No secrets, private keys, or `.env` content in commits, code, or commit messages.
+- [ ] User-visible changes have a `CHANGELOG.md` entry.
+- [ ] Live config changes update `README.md`, `CLAUDE.md`, `CODEX.md`, and the SKILL files.
+- [ ] No secrets, private keys, or `.env` content in commits or commit messages.
 
 ## Commit style
 
-- Imperative mood (`Add X`, `Fix Y`, not `Added X`).
+- Imperative mood: `Add X`, `Fix Y` — not `Added X`.
 - First line ≤ 72 characters.
-- Body explains *why* the change is needed, not just *what* changed.
-- Reference the related issue or commit when relevant.
+- Body explains *why*, not just *what*.
 
 ## Versioning
 
-The project follows [Semantic Versioning](https://semver.org/). User-visible behavior changes require a CHANGELOG entry. Tag a release on `main` once a version is ready: `git tag -a vX.Y.Z -m "..."`.
+Follows [Semantic Versioning](https://semver.org/). User-visible changes require a `CHANGELOG.md` entry. Tag releases on `main`: `git tag -a vX.Y.Z -m "..."`.
 
 ## Reporting issues
 
 Open an issue at <https://github.com/novogratz/polymarket-bot/issues> with:
 
-- A description of the expected vs actual behavior.
-- The environment variables and CLI command that reproduce the issue (with secrets redacted).
+- Expected vs actual behavior.
+- CLI command and relevant environment variables (secrets redacted).
 - Relevant log output.
 
-For security-sensitive issues, see `SECURITY.md` instead.
+For security-sensitive issues, see `SECURITY.md`.

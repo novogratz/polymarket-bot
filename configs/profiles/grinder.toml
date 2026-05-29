@@ -1,26 +1,29 @@
 # Profile "grinder" — heavy-favorite, ride-to-resolution.
 #
-# Thesis: buy at 0.89–0.94, hold until bid ≥ 0.99 (full resolution).
-# No stop-loss — these are high-probability near-certainty bets.
-# All-in sizing: 95% of cash per trade, one position at a time.
-# Exclusion filters block gap-risk markets (exact scores, weather, O/U 0.5/5.5+).
-# Price-stability filter blocks markets that moved >10% today (live-game flux).
+# Thesis: buy near-certainty binary outcomes at 0.89–0.94 within 4h of close,
+# hold until bid ≥ 0.99. No stop-loss. Sizing at 40% per trade with up to 2
+# concurrent positions — one bad outcome costs 40% of balance, not everything.
+#
+# 10%/day target: each win returns ~8.8% on stake. 3 wins × 40% stake ≈ 10.6%.
+# Exclusion filters block all known gap-risk categories (exact scores, weather,
+# O/U 0.5/5.5+). Price-stability filter blocks live-game flux (>10% day change).
 
 [run]
 starting_cash = 123.0
 mode = "grinder"
 
 [sizing]
-# 95% of cash per trade — one big bet at a time. The 5% floor covers fees.
+# 40% per trade — leaves room to survive a loss and run 2 positions at once.
+# ceiling disabled (0) so stake scales with bankroll automatically.
 max_position_ceiling_usd = 0.0
-max_position_ceiling_pct = 0.99
+max_position_ceiling_pct = 0.44
 cash_floor_pct = 0.05
-position_pct = 0.95
+position_pct = 0.40
 min_open_positions = 0
 starter_trade_usd = 1.5
 assumed_live_balance_usd = 123.0
 max_trade_usd = 0.0
-high_conviction_balance_fraction = 0.95
+high_conviction_balance_fraction = 0.40
 
 [market_filters]
 min_liquidity_usd = 500.0
@@ -36,35 +39,37 @@ scan_limit = 750
 min_liquidity_usd = 500.0
 min_volume_24h_usd = 300.0
 
-# Entry band: 0.89–0.94. Wide enough to find trades, tight enough to
-# only touch near-certainty markets. With no SL, we need strong conviction.
+# Entry band 0.89–0.94. Below 0.89 the implied probability isn't strong enough
+# without a stop-loss. Above 0.94 the remaining upside to 0.99 is too thin.
 min_price = 0.89
 max_price = 0.94
 
-# Price stability: skip markets that moved >10% today.
+# Price-stability gate: skip any market that moved >10% today.
+# A live-game "No" on an exact score sits at 0.93 but can gap to 0.40 in one
+# tick when a goal is scored. Stable-for-days is the real near-certainty play.
 max_day_change_pct = 0.10
 
-# Tight spread — 2¢ max.
+# Tight spread — 2¢ max keeps the round-trip viable.
 max_spread = 0.02
 
-# 95% all-in per trade, one at a time.
+# 40% stake, up to 2 concurrent positions.
 stake_usd = 1.0
-stake_pct = 0.95
-max_orders_per_tick = 1
+stake_pct = 0.40
+max_orders_per_tick = 2
 cash_floor_pct = 0.05
 
-# Exits:
-#   tp_pct = 1.0 → effectively disabled (100% gain never happens here).
-#   sl_pct = 1.0 → effectively disabled (only fires if price hits 0).
-#   resolved_exit at bid ≥ 0.99 → hold until full resolution, collect max value.
-#   max_hold_hours = 4.5 → backstop so nothing lingers past expiry.
+# Exit rules:
+#   tp_pct = 1.0      → TP disabled; don't exit early, ride to resolution.
+#   sl_pct = 1.0      → SL disabled; no stop-loss on near-certainty bets.
+#   resolved at 0.99  → exit when the market prints near-final resolution value.
+#   max_hold 4.5h     → backstop so nothing lingers after expiry.
 tp_pct = 1.0
 sl_pct = 1.0
 sl_min_age_minutes = 1
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.99
 
-# Arb disabled — CLOB bid/ask sides need audit before re-enabling.
+# Binary arb scanner disabled — CLOB bid/ask side needs audit before re-enabling.
 arb_threshold = 0.0
 arb_max_stake_usd = 5.0
 
@@ -74,7 +79,7 @@ auto_interval_seconds = 30
 stdout_heartbeat_minutes = 15
 
 [filters]
-max_orders_per_tick = 1
+max_orders_per_tick = 2
 max_hours_to_close = 4.0
 min_trade_usd = 1.0
 max_absolute_spread = 0.02

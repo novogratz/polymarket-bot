@@ -4,18 +4,20 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Polymarket grinder bot: buys heavily-favored binary outcomes (bid 0.88–0.95) within 4 hours of resolution, exits at +7% or when the market trends toward resolution at bid ≥ 0.97, and immediately rotates capital into the next opportunity. Includes a persistent ledger, trade journal, local dashboard, deterministic analyst sidecars, and Telegram reporting.
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (bid 0.89–0.94) within 4 hours of resolution, holds until the market prints near-final value (bid ≥ 0.99), and rotates capital into the next opportunity.
 
-> **Financial disclaimer.** This software places real-money trades when configured to do so. It is not financial advice. There is no guarantee of profit — losses are possible. You are solely responsible for all trading decisions and committed funds. See the [full disclaimer](#disclaimer) and use only what you can afford to lose entirely.
+> **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
+
+---
 
 ## Install
 
 ```bash
-pip install -e .          # or: uv sync
-cp .env.example .env      # fill in wallet and CLOB API credentials
+pip install -e .       # or: uv sync
+cp .env.example .env   # add wallet + CLOB credentials
 ```
 
-With dev tools (ruff):
+Dev tools (linter):
 
 ```bash
 pip install -e ".[dev]"
@@ -27,73 +29,83 @@ pip install -e ".[dev]"
 bash scripts/run_live_70.sh
 ```
 
-Boots the live grinder (30s tick) + live analyst sidecar (30min Telegram report) + live-only leaderboard (5min summary) + a dry grinder twin (paper, 10min tick) + the autonomous dry analyst (15min report). All deterministic — no AI anywhere.
+Starts the live grinder (30 s tick) alongside a dry paper twin (10 min tick), a live analyst sidecar (Telegram summary every 30 min), and an autonomous dry analyst (15 min report). All logic is deterministic — no AI anywhere.
 
-> **Do not use `run_all.sh` for live trading.** It runs `pmbot reset-ledger` on startup (wipes `paper_state.json` and rotates the journal) and launches the retired 95-profile dry race.
+> **Do not use `run_all.sh` for live trading.** It resets the ledger on startup and launches a retired 95-profile dry race.
+
+---
+
+## Strategy
+
+**Thesis.** A binary market at bid 0.89–0.94 within 4 hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0.
+
+### Entry filters
+
+| Parameter | Value |
+|---|---|
+| Bid band | 0.89 – 0.94 |
+| Time to close | ≤ 4 hours |
+| Max spread | 2¢ |
+| Min liquidity | $500 |
+| Min 24 h volume | $300 |
+| Max one-day price change | 10 % |
+
+The **price-stability gate** (max day change 10 %) blocks markets that moved significantly today — a live-game "No" sitting at 0.93 can collapse to 0.40 in a single 30 s tick when a goal is scored.
+
+### Excluded market types
+
+These categories are blocked globally because a stop-loss cannot protect against gap moves:
+
+| Pattern | Reason |
+|---|---|
+| `exact score` | Soccer exact-score collapses instantly on a goal |
+| `o/u 0.5` | Any-goal binary — same gap risk |
+| `o/u 5.5 / 6.5 / 7.5` | High-line soccer, catastrophic if 6+ goals scored |
+| `temperature`, `°c`, `°f` | Specific-degree weather, near-zero win rate in band |
+| `up or down`, slug `updown` | Crypto Up/Down binaries, no real book depth |
+
+### Sizing
+
+**40 % of balance per trade, up to 2 concurrent positions.**
+
+One bad trade costs 40 % of the account — painful but survivable. At 95 % stake a single loss would wipe the account. The daily target math at $123:
+
+| Outcome | Per trade | Per day (3 trades) |
+|---|---|---|
+| Win (0.91 → 0.99) | +$4.31 (+3.5 %) | **+$12.93 (+10.5 %)** |
+| Loss (position → 0) | −$49.20 (−40 %) | covered by 2 wins |
+
+### Exits
+
+| Condition | Code |
+|---|---|
+| Bid ≥ 0.99 | `race_big_win_resolved` — primary exit |
+| Hold ≥ 4.5 h | `race_expired_close` — backstop |
+| Bid ≤ 0.03 (universal sweep) | `resolved_market_sweep_loss` |
+
+No take-profit ladder. No stop-loss. The exclusion filters and price-stability gate are the primary risk controls.
+
+---
 
 ## CLI
 
 ```bash
-uv run pmbot --version
-uv run pmbot status              # mode, equity, open positions, journal count
-uv run pmbot positions           # open positions table, sorted by PnL desc
-uv run pmbot dashboard           # local dashboard at http://127.0.0.1:8765
-uv run pmbot doctor              # health check (.env, auth, endpoints, local state)
-uv run pmbot journal-stats       # P&L breakdown by exit reason, category, entry price
-uv run pmbot tune-strategy       # run the auto-tuner manually
-uv run pmbot reset-ledger        # rebuild ledger from live state (use with caution)
+uv run pmbot status          # equity, open positions, journal count
+uv run pmbot positions        # open positions sorted by PnL
+uv run pmbot dashboard        # live dashboard at http://127.0.0.1:8765
+uv run pmbot journal-stats    # P&L breakdown by exit reason
+uv run pmbot doctor           # health check (env, auth, endpoints)
+uv run pmbot tune-strategy    # run auto-tuner manually
+uv run pmbot reset-ledger     # rebuild ledger from live CLOB state
 ```
 
-`status` and `positions` are read-only — no network calls. Output is colorized on a TTY; `NO_COLOR=1` disables ANSI codes, `POLYMARKET_FORCE_COLOR=1` forces them through pipes.
+`status` and `positions` are read-only — no network calls. Output is colorized on a TTY; disable with `NO_COLOR=1`.
 
-## Strategy
-
-**Thesis.** A market at bid 0.88–0.95 within 4 hours of close is pricing near-certainty. The bot pays the spread, targets +7%, and rotates. The edge is the implied-probability gap between the current bid and the binary outcome resolving at 1.0.
-
-**Entry filters** (`configs/profiles/grinder.toml`):
-
-| Parameter | Value |
-|---|---|
-| Price band | bid ∈ [0.88, 0.95] |
-| Time to close | ≤ 4 hours |
-| Max spread | 2¢ |
-| Min liquidity | $500 |
-| Min 24h volume | $300 |
-
-**Sizing.** 50% of available balance per trade, up to 2 simultaneous positions (`max_orders_per_tick=2`). Bet size scales automatically with the bankroll — no config edit required after a top-up. The $1 CLOB minimum gates the entry floor.
-
-**Exits:**
-
-| Condition | Reason code |
-|---|---|
-| Price ≥ entry × 1.07 | `race_take_profit` (+7%) |
-| Bid ≥ 0.97 | `race_big_win_resolved` (trending to resolution) |
-| Price ≤ entry × 0.85 after 1 min | `race_stop_loss` (−15%) |
-| Hold ≥ 4.5h | `race_expired_close` (max-hold backstop) |
-| Near expiry (5 min) + losing | `race_expired_close` (loser flush) |
-
-**Selector ranking.** `score = best_bid / max(hours_to_close, 1/60)` — highest score = closest to resolution and closest to certainty. The top-ranked eligible market gets the trade.
-
-**Daily DD halt** at −15% of starting equity. Override via `POLYMARKET_RACE_DAILY_DRAWDOWN_PCT`.
-
-## Development
-
-```bash
-# Run tests
-uv run python -B -m unittest discover -s tests
-
-# Lint
-ruff check polymarket_bot tests
-
-# Dry-run simulation (no real money, separate ledger at data/dry_runs/grinder/)
-uv run pmbot auto-loop --dry-run --profile grinder
-```
-
-CI runs tests + lint on Python 3.11 / 3.12 for every push (see `.github/workflows/test.yml`).
+---
 
 ## Configuration
 
-`configs/profiles/grinder.toml` is the single source of truth for live strategy. Environment variables override profile values at runtime — see `polymarket_bot/config.py` for the full list.
+`configs/profiles/grinder.toml` is the single source of truth. Environment variables override profile values at runtime — see `polymarket_bot/config.py` for the full list.
 
 **Required credentials (live trading only):**
 
@@ -108,59 +120,68 @@ POLYMARKET_API_PASSPHRASE=...
 **Key runtime vars:**
 
 ```bash
-POLYMARKET_SYNC_LIVE_POSITIONS=1         # sync live positions every tick
+POLYMARKET_SYNC_LIVE_POSITIONS=1         # sync live CLOB positions each tick
 POLYMARKET_AUTO_INTERVAL_SECONDS=30      # tick interval (set by run_live_70.sh)
-POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0.15  # DD halt threshold (default 15%)
+POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0.15  # daily DD halt threshold
 POLYMARKET_HTTP_CACHE_TTL_SECONDS=600    # shared HTTP cache TTL
 ```
 
-## Dashboard
+---
+
+## Development
 
 ```bash
-uv run pmbot dashboard
-# → http://127.0.0.1:8765
+# Tests
+uv run python -B -m unittest discover -s tests
+
+# Lint
+ruff check polymarket_bot tests
+
+# Dry-run (no real orders, separate ledger under data/dry_runs/grinder/)
+uv run pmbot auto-loop --dry-run --profile grinder
 ```
 
-Refreshes every 5 seconds: equity curve, open positions, recent closed trades, scanner candidates, last-tick rejection reasons.
+CI runs tests + lint on Python 3.11 / 3.12 for every push.
 
-## Trade journal
-
-Every closed position writes a JSON line to `data/trade_journal.jsonl` with full entry metadata, exit reason, and realized PnL. The durable W/L record lives in `data/realized_trade_cache.jsonl` and survives `reset-ledger` rotations.
-
-```bash
-uv run pmbot journal-stats    # win rate, P&L by bucket, suggested tightenings
-```
+---
 
 ## Project structure
 
 ```
-configs/profiles/grinder.toml     live strategy config (single source of truth)
-data/paper_state.json             live ledger (positions, cash, equity)
-data/realized_trade_cache.jsonl   durable W/L record
-data/trade_journal.jsonl          per-trade metadata + exit reasons
+configs/profiles/grinder.toml       live strategy — single source of truth
+data/paper_state.json               live ledger (positions, cash)
+data/realized_trade_cache.jsonl     durable W/L record (survives resets)
+data/trade_journal.jsonl            per-trade metadata + exit reasons
 polymarket_bot/
-  main.py          CLI, tick orchestration, sizing, journal
-  race_strategies.py  grinder entry/exit logic
-  smart_money.py   leaderboard fetch, signal scoring, reverse-lookup
-  trading.py       live CLOB order placement
-  portfolio.py     local ledger
-  gamma.py         Gamma market scan + reverse-lookup
+  main.py              CLI, tick orchestration, sizing, journal writer
+  race_strategies.py   grinder entry/exit engine + arb scanner
+  portfolio.py         local ledger and position accounting
+  trading.py           live CLOB order placement
+  gamma.py             Gamma market scan
+  models.py            shared dataclasses, exclusion filters
+  smart_money.py       leaderboard fetch and signal scoring
 scripts/
-  run_live_70.sh   canonical live launcher
-  live_analyst.py  read-only 30min Telegram sidecar
-  dry_analyst.py   autonomous 15min report + loser-kill pass
-  cache_warmer.py  HTTP cache pre-warm
+  run_live_70.sh       canonical live launcher
+  live_analyst.py      30 min Telegram sidecar (read-only)
+  dry_analyst.py       15 min deterministic report + loser-kill
+docs/
+  PROFILES.md          TOML key reference
+  STRATEGIES.md        entry lanes and exit conditions
 ```
+
+---
 
 ## Contributing and security
 
-- Contributions: see `CONTRIBUTING.md`.
-- Security disclosures: see `SECURITY.md`.
-- Agent entry points: `CLAUDE.md` (Claude Code), `CODEX.md` (Codex), `AGENTS.md` (generic).
+- Contributions: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- Security disclosures: see [`SECURITY.md`](SECURITY.md).
+- Agent entry points: [`CLAUDE.md`](CLAUDE.md), [`CODEX.md`](CODEX.md), [`AGENTS.md`](AGENTS.md).
 
 ## License
 
-MIT. See `LICENSE`.
+MIT — see [`LICENSE`](LICENSE).
+
+---
 
 ## Disclaimer
 
@@ -170,6 +191,6 @@ MIT. See `LICENSE`.
 - There is no guarantee of profit. Losses are possible and likely over some time horizons.
 - You are solely responsible for all trading decisions and committed funds.
 - You are responsible for complying with applicable laws and Polymarket's terms of service in your jurisdiction.
-- The author and contributors disclaim all liability for losses or damages arising from the use of this software.
+- The author and contributors disclaim all liability for losses or damages arising from use of this software.
 
-Before the first live run, exercise the bot in dry-run mode, verify the filters, and limit the initial bankroll to an amount you can afford to lose entirely.
+Exercise the bot in dry-run mode first. Limit the initial bankroll to an amount you can afford to lose entirely.

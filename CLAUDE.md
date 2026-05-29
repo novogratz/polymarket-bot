@@ -4,26 +4,31 @@ Claude Code entry point for the Polymarket bot. See also the structured skill in
 
 The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, see `.github/workflows/test.yml`).
 
-## Current state snapshot (2026-05-25)
+## Current state snapshot (2026-05-29)
 
-**Live strategy:** `grinder` — heavy-favorite, near-resolution scalp. Single source-of-truth profile at `configs/profiles/grinder.toml`. Every previous profile (active + archived) was deleted on 2026-05-25 — clean slate.
+**Live strategy:** `grinder` — heavy-favorite, ride-to-resolution. Single source-of-truth profile at `configs/profiles/grinder.toml`.
 
 - Engine: `race` (selector = `select_grinder` in `polymarket_bot/race_strategies.py`)
-- Thesis: a market sitting at bid ∈ [0.88, 0.95] with < 1h to close is pricing near-certainty. Pay the spread, take +6%, rotate. SL -15% caps the rare "favorite flips" case.
-- Bankroll: **$43 USDC** (2026-05-26 deposit, up from the $6 fresh-start). Live only — dry race retired.
-- Sizing: 50% per trade (2026-05-27). `race_stake_pct=0.50`, `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=0` (cap disabled so stake scales with balance), `max_orders_per_tick=2` (2026-05-28 — deploys both 50% slots in one tick), `cash_floor_pct=0.05`. Up to 2 simultaneous positions; stake scales automatically with bankroll.
+- Thesis: buy a binary outcome at bid 0.89–0.94 within 4h of close, hold until bid ≥ 0.99. The edge is the implied-probability gap between the current bid and the binary outcome resolving at 1.0. No stop-loss — the exclusion filters and price-stability gate are the risk controls.
+- Bankroll: **$123 USDC** (2026-05-29 deposit — $100 top-up to prior ~$23 balance).
+- Sizing: **40% per trade**, up to 2 concurrent positions. `race_stake_pct=0.40`, `max_orders_per_tick=2`, `cash_floor_pct=0.05`. One bad trade costs 40% of balance (survivable). Stake scales automatically with bankroll.
 - Entry filters (in `_build_eligible_candidates`):
-  - `race_min_price=0.91`, `race_max_price=0.95` (floor raised from 0.88 after esports/weather SL losses)
-  - `race_max_hours=4.0` (≤4h to close — the 4h-only rule limit)
-  - `race_max_spread=0.02` (tight — paying 4¢ spread on a 7¢ TP wipes the edge)
+  - `race_min_price=0.89`, `race_max_price=0.94`
+  - `race_max_hours=4.0`
+  - `race_max_spread=0.02`
   - `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
-- Global exclusions (`models.py:is_excluded_market`): crypto Up/Down binaries + any market with "temperature" or "°c" in the question (weather exact-threshold markets, 0% win rate in the grinder band)
-- Exits: TP +7%, SL -15% (after 1 min), resolved_exit at bid ≥ 0.97, max-hold 4.5h
-- Daily DD halt at -15% of starting equity (default — env override available via `POLYMARKET_RACE_DAILY_DRAWDOWN_PCT`)
-- Tick interval: 30s on live (`POLYMARKET_AUTO_INTERVAL_SECONDS=30` in `run_all.sh` / `run_live_70.sh`), 600s on dry (per-subshell override in `run_dry_bot`)
-- Selector ranking: `score = best_bid / max(hours_to_close, 1/60)` — closer to resolution and closer to 1.0 ranks higher
+  - `race_max_day_change_pct=0.10` — price-stability gate: skip markets that moved >10% today (live-game gap risk)
+- Global exclusions (`models.py:is_excluded_market`): crypto Up/Down binaries, temperature/weather (°C + °F), exact score, O/U 0.5, O/U 5.5/6.5/7.5
+- Exits: resolved_exit at bid ≥ 0.99, universal sweep at bid ≤ 0.03, max-hold 4.5h. No TP ladder, no SL.
+- Daily DD halt at -15% of starting equity (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT`)
+- Tick interval: 30s on live, 600s on dry twin
+- Selector ranking: `score = best_bid / max(hours_to_close, 1/60)`
 
-**Bankroll:** $43 USDC live (2026-05-26 deposit, up from the $6 fresh-start of 2026-05-25). Dry race retired — live only. State backups in `data/backups_full_<timestamp>_grinder_reset/`.
+**Bankroll:** $123 USDC. State backups in `data/backups_reset_<timestamp>/`.
+
+**Why no stop-loss:** SL can't catch gap moves (a soccer exact-score "No" at 0.94 can gap to 0.44 in one 30 s tick when a goal is scored — the SL fires at 0.80 but execution is at 0.44). The exclusion filters prevent entering these market types entirely. For markets that do pass the filters, catastrophic flips are rare enough that no SL is the correct policy.
+
+**Why 40% stake, not all-in:** at 95% stake, one bad outcome wipes the account. At 40% stake, a single loss is painful (-40%) but survivable, and 3 winning trades per day still hits the 10%/day target.
 
 ### Unified launcher — `scripts/run_all.sh`
 
@@ -120,7 +125,7 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
 - `polymarket_bot/gamma.py` — Gamma client (market scan + reverse-lookup by clob_token_ids).
 - `polymarket_bot/strategy.py` — candidate ranking from Gamma payloads.
 - `polymarket_bot/models.py` — shared dataclasses and parsing helpers.
-- `scripts/run_live_70.sh` — **canonical launcher (live only)**: live grinder bot + live analyst + live-only leaderboard. Loads `configs/profiles/grinder.toml`, $43 bankroll. Does NOT reset the ledger/journal.
+- `scripts/run_live_70.sh` — **canonical launcher (live only)**: live grinder bot + live analyst + live-only leaderboard. Loads `configs/profiles/grinder.toml`, $123 bankroll. Does NOT reset the ledger/journal.
 - `scripts/run_all.sh` — legacy live+dry launcher. **Do not use for live** — it resets the ledger on startup and runs the retired dry race.
 - `scripts/cache_warmer.py` — pre-fetches leaderboards + wallet trade histories into `data/cache/http/` so the bot swarm starts warm.
 - `scripts/dry_analyst.py` — autonomous analyst sidecar: 15min deterministic reports + 1h deterministic loser-kill pass. No AI/LLM (spawning/tuning removed 2026-05-26).
@@ -221,30 +226,24 @@ POLYMARKET_QUIET=1 uv run pmbot auto-loop --dry-run --profile baseline
 
 ## Recommended live command
 
-**LIVE (2026-05-26).** The 95-profile dry race is retired. Use `run_live_70.sh`:
-
 ```bash
 bash scripts/run_live_70.sh
 ```
 
-It boots: the live grinder bot + the live analyst (30min, live-only) + the live-only leaderboard sidecar (5min Telegram) + **a single dry grinder twin** (paper, same `grinder.toml`, 10min tick) + the autonomous report (`dry_analyst.py`, 15min, deterministic). No AI anywhere.
+Boots: live grinder (30 s tick) + live analyst sidecar (30 min Telegram) + live-only leaderboard (5 min Telegram) + dry grinder twin (paper, 10 min tick, Telegram silenced) + autonomous dry analyst (15 min report, deterministic). No AI anywhere.
 
-**IMPORTANT — do NOT use `run_all.sh` for live trading:** it runs `pmbot reset-ledger` on startup (step 1.5), which rotates `data/trade_journal.jsonl` and wipes `paper_state.json`/`live_baseline.json`, AND it launches the full 95-profile dry race. `run_live_70.sh` does neither — it preserves the ledger, journal, and the durable W/L in `data/realized_trade_cache.jsonl`.
+**Do NOT use `run_all.sh` for live trading** — it resets the ledger on startup and launches the retired 95-profile dry race.
 
-**PnL is deposit-proof (2026-05-26):** all reports (heartbeat, leaderboard, live analyst) compute trading PnL as `realized + unrealized`, NOT `equity − starting_cash` — a $37 top-up was showing up as +$37 / +619% "profit". For a deposit-free ledger the two are identical, so dry runs are unchanged. ROI% denominator = the profile baseline ($43 via the snapshot, rewritten on each live start).
+`run_live_70.sh` loads `configs/profiles/grinder.toml`. Current settings:
 
-`run_live_70.sh` loads `configs/profiles/grinder.toml` as the single source of truth. Current settings:
-
-- Profile: `grinder` (race mode — heavy-favorite near-resolution scalp)
 - `POLYMARKET_SYNC_LIVE_POSITIONS=1`, `POLYMARKET_AUTO_INTERVAL_SECONDS=30`
-- Bankroll: **$43** (2026-05-26 deposit). `starting_cash=43.0`, `assumed_live_balance_usd=43.0` (RPC-failure fallback cap; the bot reads real USDC from CLOB each tick).
-- Sizing (ALL-IN): `race_stake_pct=1.0` (full equity/bet), `race_stake_usd=1.0` (CLOB floor), `max_position_ceiling_usd=0` (cap disabled → stake scales with balance), `max_orders_per_tick=1`, `cash_floor_pct=0.0`
-- Entry filters: `race_min_price=0.88`, `race_max_price=0.95`, `race_max_hours=3.0`, `race_max_spread=0.02`, `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
-- Exits: TP +7%, SL -15%, `sl_min_age=1min`, resolved_exit at bid ≥0.97, max-hold 4.5h. SELLs rejected with "balance is not enough" trigger an automatic cancel of the resting CLOB order on that token and retry on the next tick.
-- Live analyst sidecar (`scripts/live_analyst.py`) + live-only leaderboard (`pmbot leaderboard --live-only`) launch alongside; both post to the live Telegram channel, both deterministic (no AI), no dry comparison.
-- Universal sweep closes positions at price ≥0.97 OR ≤0.03 every tick across all strategy modes.
+- Bankroll: **$123** (2026-05-29). `starting_cash=123.0`, `assumed_live_balance_usd=123.0`.
+- Sizing: `race_stake_pct=0.40`, `max_orders_per_tick=2`, `cash_floor_pct=0.05`
+- Entry: `race_min_price=0.89`, `race_max_price=0.94`, `race_max_hours=4.0`, `race_max_spread=0.02`, `race_max_day_change_pct=0.10`
+- Exits: resolved_exit at bid ≥0.99, universal sweep at ≤0.03, max-hold 4.5h. No TP, no SL.
+- Universal sweep closes positions at price ≥0.97 OR ≤0.03 every tick.
 
-Dashboard at `http://127.0.0.1:8765` by default.
+Dashboard at `http://127.0.0.1:8765`.
 
 ## Tick sequence
 
