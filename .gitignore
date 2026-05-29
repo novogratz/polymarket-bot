@@ -38,6 +38,9 @@ env/
 # Local runtime state
 data/
 
+# Bot logs
+*.log
+
 # Worktrees and brainstorm session artefacts
 .worktree/
 .superpowers/

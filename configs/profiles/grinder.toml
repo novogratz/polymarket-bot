@@ -7,7 +7,7 @@
 # Price-stability filter blocks markets that moved >10% today (live-game flux).
 
 [run]
-starting_cash = 28.0
+starting_cash = 123.0
 mode = "grinder"
 
 [sizing]
@@ -18,7 +18,7 @@ cash_floor_pct = 0.05
 position_pct = 0.95
 min_open_positions = 0
 starter_trade_usd = 1.5
-assumed_live_balance_usd = 28.0
+assumed_live_balance_usd = 123.0
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.95
 
