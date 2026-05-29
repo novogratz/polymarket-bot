@@ -462,7 +462,7 @@ def cycle_once() -> None:
         divider,
         f"{r_mood} *Realized PnL: {r_sign}${realized:.2f}  ({realized_roi:+.1f}%)*",
         f"{daily_mood} *Daily P&L:    {daily_sign}${daily_pnl:.2f}  ({daily_sign}{daily_pct:.1f}%)*",
-        f"💵 *EQUITY: ${snap.equity:.2f}*  ({unr_mood} {unr_sign}${unrealized:.2f} open)",
+        f"💵 *EQUITY: ${snap.equity:.2f}*  ({r_mood} {r_sign}${realized:.2f} all-time)",
         divider,
         "",
         f"{r_mood} *{status_word}*",
