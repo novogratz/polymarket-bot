@@ -28,7 +28,9 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 **Why no stop-loss:** SL can't catch gap moves (a soccer exact-score "No" at 0.94 can gap to 0.44 in one 30 s tick when a goal is scored — the SL fires at 0.80 but execution is at 0.44). The exclusion filters prevent entering these market types entirely. For markets that do pass the filters, catastrophic flips are rare enough that no SL is the correct policy.
 
-**Why 40% stake, not all-in:** at 95% stake, one bad outcome wipes the account. At 40% stake, a single loss is painful (-40%) but survivable, and 3 winning trades per day still hits the 10%/day target.
+**Why 40% stake, not all-in:** at 95% stake, one bad outcome wipes the account. At 40% stake, a single loss is painful (-40%) but survivable.
+
+**Realistic performance:** 10%/day is not consistently achievable — it requires 3 qualifying markets all winning on the same day. The honest expectation is 2–4%/day on active days, 0% on quiet days, occasional losses. A realistic weekly target is 15–25%. That still compounds to extraordinary annual returns; the math just doesn't support 10%/day indefinitely.
 
 ### Unified launcher — `scripts/run_all.sh`
 

@@ -68,12 +68,18 @@ These categories are blocked globally because a stop-loss cannot protect against
 
 **40 % of balance per trade, up to 2 concurrent positions.**
 
-One bad trade costs 40 % of the account — painful but survivable. At 95 % stake a single loss would wipe the account. The daily target math at $123:
+One bad trade costs 40 % of the account — painful but survivable. At 95 % stake a single loss would wipe the account.
 
-| Outcome | Per trade | Per day (3 trades) |
+**Realistic performance expectations at $123:**
+
+| Day type | Frequency | Result |
 |---|---|---|
-| Win (0.91 → 0.99) | +$4.31 (+3.5 %) | **+$12.93 (+10.5 %)** |
-| Loss (position → 0) | −$49.20 (−40 %) | covered by 2 wins |
+| Active — 3 qualifying trades, all win | ~30 % of days | +8–11 % |
+| Normal — 1–2 trades | ~50 % of days | +2–6 % |
+| Quiet — 0 qualifying markets | ~15 % of days | 0 % |
+| Bad — 1 loss | ~5 % of days | −8–16 % |
+
+**Expected average: 2–4 % per day** when the market cooperates. 10 % days happen but are not the norm — they require 3 qualifying markets all winning on the same day. A realistic weekly target is 15–25 %. That compounds to exceptional annual returns without requiring the impossible.
 
 ### Exits
 
