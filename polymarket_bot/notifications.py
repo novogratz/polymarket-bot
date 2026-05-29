@@ -390,6 +390,7 @@ def _fmt_all_time_line(
     unrealized: float = 0.0,
     *,
     total_override: float | None = None,
+    extra_pnl: float = 0.0,
     return_pct: float | None = None,
     wins_override: int | None = None,
     losses_override: int | None = None,
@@ -401,9 +402,18 @@ def _fmt_all_time_line(
 
     ``unrealized`` (optional, USD) is added to the realized total so a
     currently-winning open position surfaces in the heartbeat line.
+
+    ``extra_pnl`` is added on top of the journal total (used by sell
+    notifications so the just-closed trade is counted before its journal
+    record is written).
     """
     pnl, wins, losses = _journal_stats()
-    total = float(total_override) if total_override is not None else pnl + float(unrealized or 0.0)
+    base = float(total_override) if total_override is not None else pnl + float(unrealized or 0.0)
+    total = base + extra_pnl
+    if extra_pnl > 0.005:
+        wins += 1
+    elif extra_pnl < -0.005:
+        losses += 1
     if wins_override is not None:
         wins = int(wins_override)
     if losses_override is not None:
@@ -571,7 +581,7 @@ def notify_trade_sell(
     # as celebratory/lamentation banners, and the all-time line can carry
     # a contradicting color (🔴 W/L 0%) that breaks the visual mood.
     is_big = is_big_win or (thresholds_on and realized_pnl_usd <= -loss_thresh)
-    lines = [action_line] if is_big else [action_line, _fmt_all_time_line()]
+    lines = [action_line] if is_big else [action_line, _fmt_all_time_line(extra_pnl=realized_pnl_usd)]
     if title and outcome_str:
         lines.append(f"🎯 _{_md_escape(title)}_ 👍 *{outcome_str}*")
     elif title:
