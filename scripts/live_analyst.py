@@ -354,9 +354,8 @@ def daily_report_once() -> None:
         except Exception:
             pass
 
-    unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
     daily_pnl = sum(t["pnl"] for t in today_trades)
-    alltime_pnl = snap.realized_pnl + unrealized
+    alltime_pnl = snap.realized_pnl  # realized only — never mix with unrealized open positions
     daily_pct = (daily_pnl / starting * 100) if starting > 0 else 0.0
     alltime_pct = (alltime_pnl / starting * 100) if starting > 0 else 0.0
     balance = snap.equity
@@ -433,17 +432,18 @@ def cycle_once() -> None:
                 starting = float(m.group(1))
         except Exception:
             pass
-    # Trading PnL = realized (all-time) + unrealized (open). Deposit-proof:
-    # equity - starting would count a top-up as profit (the $37 deposit bug).
+    # Realized PnL = locked-in profit from closed trades. Never mixes with
+    # unrealized (open positions) — mixing them made positive days look negative.
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
-    pnl_total = snap.realized_pnl + unrealized
-    roi = (pnl_total / starting * 100) if starting > 0 else 0
+    realized = snap.realized_pnl
+    realized_roi = (realized / starting * 100) if starting > 0 else 0
 
     stamp = time.strftime("%H:%M UTC", time.gmtime())
-    sign = "+" if pnl_total >= 0 else ""
-    mood = "🟢" if pnl_total >= 0 else "🔴"
-    status_word = "IN PROFIT 🤑" if pnl_total > 0 else "DOWN 📉" if pnl_total < 0 else "FLAT"
-    unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
+    r_sign = "+" if realized >= 0 else ""
+    r_mood = "🟢" if realized >= 0 else "🔴"
+    unr_sign = "+" if unrealized >= 0 else ""
+    unr_mood = "🟢" if unrealized >= 0 else "🔴"
+    status_word = "IN PROFIT 🤑" if realized > 0 else "DOWN 📉" if realized < 0 else "FLAT"
 
     # Daily P&L (trades closed today)
     today_trades = load_todays_trades()
@@ -457,14 +457,14 @@ def cycle_once() -> None:
         f"🔵 *LIVE BOT* · {stamp} · `{snap.profile}`",
         "",
         divider,
-        f"{mood} *OVERALL PnL: {sign}${pnl_total:.2f}  ({roi:+.1f}%)*",
-        f"{daily_mood} *Daily P&L:   {daily_sign}${daily_pnl:.2f}  ({daily_sign}{daily_pct:.1f}%)*",
-        f"💵 *EQUITY: ${snap.equity:.2f}*  ({mood} {sign}${pnl_total:.2f})",
+        f"{r_mood} *Realized PnL: {r_sign}${realized:.2f}  ({realized_roi:+.1f}%)*",
+        f"{daily_mood} *Daily P&L:    {daily_sign}${daily_pnl:.2f}  ({daily_sign}{daily_pct:.1f}%)*",
+        f"💵 *EQUITY: ${snap.equity:.2f}*  ({unr_mood} {unr_sign}${unrealized:.2f} open)",
         divider,
         "",
-        f"{mood} *{status_word}*",
-        f"   realized: {'+' if snap.realized_pnl >= 0 else ''}${snap.realized_pnl:.2f}  •  "
-        f"unrealized: {'+' if unrealized >= 0 else ''}${unrealized:.2f}",
+        f"{r_mood} *{status_word}*",
+        f"   realized: {r_sign}${realized:.2f}  •  "
+        f"unrealized: {unr_sign}${unrealized:.2f}",
         f"   cash ${snap.cash:.2f}  •  deployed ${snap.invested:.2f}",
         "",
         f"📊 {snap.closed} closed  •  🟢 {snap.wins}W / 🔴 {snap.losses}L  •  {snap.win_rate:.0f}% wr  •  {snap.open_positions} open",
