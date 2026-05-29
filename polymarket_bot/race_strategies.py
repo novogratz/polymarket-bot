@@ -133,6 +133,8 @@ def _build_eligible_candidates(
         )
         hours_to_close = max((end_date - now).total_seconds() / 3600.0, 0.0)
         one_day_change = as_float(market.get("oneDayPriceChange"), default=0.0)
+        if settings.race_max_day_change_pct > 0 and abs(one_day_change) > settings.race_max_day_change_pct:
+            continue
 
         for index, outcome in enumerate(outcomes):
             price = prices[index]

@@ -330,6 +330,10 @@ class Settings:
     race_resolved_exit_threshold: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_RESOLVED_EXIT_THRESHOLD", 0.97))
     race_daily_drawdown_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_DAILY_DRAWDOWN_PCT", 0.15))
     race_noise_fallback_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_NOISE_FALLBACK_ENABLED", False))
+    # Max absolute one-day price change. Markets that moved >X today are in
+    # active flux (live game, breaking news) and carry gap risk the SL can't
+    # catch. 0.0 = disabled (default). Grinder sets this to 0.10.
+    race_max_day_change_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MAX_DAY_CHANGE_PCT", 0.0))
     race_contrarian_min_momentum: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_CONTRARIAN_MIN_MOMENTUM", 0.03))
     race_favorite_min_bid: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FAVORITE_MIN_BID", 0.65))
     race_breakout_min_momentum: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_BREAKOUT_MIN_MOMENTUM", 0.05))

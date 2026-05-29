@@ -63,6 +63,11 @@ min_volume_24h_usd = 300.0
 min_price = 0.91
 max_price = 0.95
 
+# Price stability: skip markets that moved >10% today. A market that
+# jumped from 0.06 to 0.93 during a live game carries gap risk the SL
+# can't catch. Stable-at-0.93-for-days is the real near-certainty play.
+max_day_change_pct = 0.10
+
 # Tight spread is non-negotiable — paying 4¢ spread on a 7¢ TP wipes
 # most of the edge. 2¢ max keeps the round-trip viable.
 max_spread = 0.02
