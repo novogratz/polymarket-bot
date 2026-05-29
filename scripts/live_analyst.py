@@ -164,6 +164,9 @@ def load_live_snapshot() -> LiveSnapshot | None:
     loss_pnls: list[float] = []
     journal = DATA_DIR / "trade_journal.jsonl"
     for entry in _read_realized_records(journal):
+        # Skip ghost/test trades: no question means pre-strategy init artifacts.
+        if not entry.get("question"):
+            continue
         pnl = _record_pnl(entry)
         closed += 1
         if pnl > 0:
@@ -442,13 +445,21 @@ def cycle_once() -> None:
     status_word = "IN PROFIT 🤑" if pnl_total > 0 else "DOWN 📉" if pnl_total < 0 else "FLAT"
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
+    # Daily P&L (trades closed today)
+    today_trades = load_todays_trades()
+    daily_pnl = sum(t["pnl"] for t in today_trades)
+    daily_pct = (daily_pnl / starting * 100) if starting > 0 else 0.0
+    daily_mood = "🟢" if daily_pnl >= 0 else "🔴"
+    daily_sign = "+" if daily_pnl >= 0 else ""
+
     divider = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     parts = [
         f"🔵 *LIVE BOT* · {stamp} · `{snap.profile}`",
         "",
         divider,
         f"{mood} *OVERALL PnL: {sign}${pnl_total:.2f}  ({roi:+.1f}%)*",
-        f"💵 *EQUITY: ${snap.equity:.2f}*",
+        f"{daily_mood} *Daily P&L:   {daily_sign}${daily_pnl:.2f}  ({daily_sign}{daily_pct:.1f}%)*",
+        f"💵 *EQUITY: ${snap.equity:.2f}*  ({mood} {sign}${pnl_total:.2f})",
         divider,
         "",
         f"{mood} *{status_word}*",
