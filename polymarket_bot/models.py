@@ -64,6 +64,11 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "exact score",
     # O/U 0.5 (any-goal) soccer: one-event binary, same gap risk as exact score.
     "o/u 0.5",
+    # O/U 5.5+ high-line soccer: Under-5.5 "resolved" as loser if 6+ goals
+    # scored — rare but catastrophic when it happens (-$29.96 in dry run).
+    "o/u 5.5",
+    "o/u 6.5",
+    "o/u 7.5",
 )
 _EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down", "exact-score")
 

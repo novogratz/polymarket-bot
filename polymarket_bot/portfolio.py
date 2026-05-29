@@ -40,10 +40,19 @@ class Portfolio:
         )
 
     def save(self, path: Path) -> None:
+        # Prune closed positions older than 2 hours — they are already in the
+        # trade journal and aren't needed in the state file. Keeping 2 hours of
+        # recently-closed positions lets _has_recent_closed_token() block
+        # re-entry on stale Gamma data between ticks.
+        cutoff = (utc_now() - dt.timedelta(hours=2)).isoformat()
+        positions_to_save = [
+            p for p in self.positions
+            if p.get("status") != "closed" or str(p.get("closed_at", "")) >= cutoff
+        ]
         atomic_write_text(
             path,
             json.dumps(
-                {"cash": self.cash, "positions": self.positions, "pending_orders": self.pending_orders or []},
+                {"cash": self.cash, "positions": positions_to_save, "pending_orders": self.pending_orders or []},
                 indent=2,
                 sort_keys=True,
             ),
@@ -73,6 +82,24 @@ class Portfolio:
             for position in self.positions
         )
 
+    def _has_recent_closed_token(self, token_id: str | None, *, within_minutes: int = 60) -> bool:
+        """True if this token was closed within the last N minutes.
+
+        Prevents re-entry on stale Gamma prices: after a resolved exit the
+        Gamma cache can keep showing ask≈0.95 for several ticks while the live
+        CLOB is already at 0.97+. Without this guard the dry-run bot re-enters
+        the same market every tick, generating hundreds of fake journal wins.
+        """
+        if not token_id:
+            return False
+        cutoff = (utc_now() - dt.timedelta(minutes=within_minutes)).isoformat()
+        return any(
+            str(p.get("token_id", "")) == token_id
+            and p.get("status") == "closed"
+            and str(p.get("closed_at", "")) >= cutoff
+            for p in self.positions
+        )
+
     def has_open_event_position(self, candidate: Candidate) -> bool:
         event_key = _event_key(candidate)
         if not event_key:
@@ -97,6 +124,7 @@ class Portfolio:
             or stake > self.cash
             or self.has_open_position(candidate.market_id, candidate.outcome)
             or self.has_open_event_position(candidate)
+            or self._has_recent_closed_token(candidate.token_id)
         ):
             return None
         position = self._build_position(candidate, stake, entry_price=entry_price)
@@ -153,6 +181,8 @@ class Portfolio:
         order_response: Any = None,
     ) -> dict[str, Any] | None:
         if stake <= 0.0 or self.has_open_position(candidate.market_id, candidate.outcome) or self.has_open_event_position(candidate):
+            return None
+        if self._has_recent_closed_token(candidate.token_id):
             return None
         position = self._build_position(candidate, stake, entry_price=entry_price)
         position["live"] = True
