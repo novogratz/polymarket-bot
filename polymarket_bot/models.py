@@ -62,6 +62,13 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     # Exact-score live sports: "No" at 0.94 gaps to 0.44 in one tick when a
     # goal is scored — the -15% SL cannot catch the gap. -$8.73 in one trade.
     "exact score",
+    # Halftime leading/score markets: resolves in an instant when a goal is
+    # scored → same gap risk. "Andorra leading at halftime" cost -$61.86.
+    "leading at halftime",
+    "score at halftime",
+    "halftime score",
+    "half-time score",
+    "leading at half",
     # O/U 0.5 (any-goal) soccer: one-event binary, same gap risk as exact score.
     "o/u 0.5",
     # O/U 5.5+ high-line soccer: Under-5.5 "resolved" as loser if 6+ goals

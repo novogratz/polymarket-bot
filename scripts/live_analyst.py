@@ -358,9 +358,10 @@ def daily_report_once() -> None:
             pass
 
     daily_pnl = sum(t["pnl"] for t in today_trades)
-    alltime_pnl = snap.realized_pnl  # realized only — never mix with unrealized open positions
+    alltime_pnl = snap.realized_pnl  # cumulative realized across all sessions
     daily_pct = (daily_pnl / starting * 100) if starting > 0 else 0.0
-    alltime_pct = (alltime_pnl / starting * 100) if starting > 0 else 0.0
+    net_vs_start = snap.equity - starting
+    net_vs_start_pct = (net_vs_start / starting * 100) if starting > 0 else 0.0
     balance = snap.equity
 
     date_str = time.strftime("%B %-d, %Y", time.gmtime())
@@ -378,8 +379,9 @@ def daily_report_once() -> None:
         divider,
         "",
         "*PROFIT & LOSS:*",
-        f"  {_mood(daily_pnl)} Daily P&L:   ${_sign(daily_pnl)}{daily_pnl:.2f} ({_sign(daily_pct)}{daily_pct:.2f}%)",
-        f"  {_mood(alltime_pnl)} All-time:    ${_sign(alltime_pnl)}{alltime_pnl:.2f} ({_sign(alltime_pct)}{alltime_pct:.2f}%)  |  Balance: ${balance:.2f}",
+        f"  {_mood(net_vs_start)} P&L vs start:  ${_sign(net_vs_start)}{net_vs_start:.2f} ({_sign(net_vs_start_pct)}{net_vs_start_pct:.2f}%)  |  Equity: ${balance:.2f}",
+        f"  {_mood(daily_pnl)} Daily P&L:     ${_sign(daily_pnl)}{daily_pnl:.2f} ({_sign(daily_pct)}{daily_pct:.2f}%)",
+        f"  {_mood(alltime_pnl)} Realized cumul: ${_sign(alltime_pnl)}{alltime_pnl:.2f}  (all sessions)",
         "",
         "*ACTIVITY:*",
     ]
@@ -436,18 +438,21 @@ def cycle_once() -> None:
                 starting = float(m.group(1))
         except Exception:
             pass
-    # Realized PnL = locked-in profit from closed trades. Never mixes with
-    # unrealized (open positions) — mixing them made positive days look negative.
+    # Primary metric: equity vs starting balance (reflects deposits correctly).
+    # Cumulative realized PnL is shown as context but not as the headline %.
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
     realized = snap.realized_pnl
-    realized_roi = (realized / starting * 100) if starting > 0 else 0
+    net_vs_start = snap.equity - starting
+    net_pct = (net_vs_start / starting * 100) if starting > 0 else 0.0
+    net_mood = "🟢" if net_vs_start >= 0 else "🔴"
+    net_sign = "+" if net_vs_start >= 0 else ""
 
     stamp = time.strftime("%H:%M UTC", time.gmtime())
     r_sign = "+" if realized >= 0 else ""
     r_mood = "🟢" if realized >= 0 else "🔴"
     unr_sign = "+" if unrealized >= 0 else ""
     unr_mood = "🟢" if unrealized >= 0 else "🔴"
-    status_word = "IN PROFIT 🤑" if realized > 0 else "DOWN 📉" if realized < 0 else "FLAT"
+    status_word = "IN PROFIT 🤑" if net_vs_start > 0 else "DOWN 📉" if net_vs_start < 0 else "FLAT"
 
     # Daily P&L (trades closed today)
     today_trades = load_todays_trades()
@@ -461,12 +466,12 @@ def cycle_once() -> None:
         f"🔵 *Polymarket Bot* `kzer_ai` · Grinder · {stamp}",
         "",
         divider,
-        f"{r_mood} *Realized PnL: {r_sign}${realized:.2f}  ({realized_roi:+.1f}%)*",
+        f"{net_mood} *P&L vs start: {net_sign}${net_vs_start:.2f}  ({net_pct:+.1f}%)*",
         f"{daily_mood} *Daily P&L:    {daily_sign}${daily_pnl:.2f}  ({daily_sign}{daily_pct:.1f}%)*",
-        f"💵 *EQUITY: ${snap.equity:.2f}*  ({r_mood} {r_sign}${realized:.2f} all-time)",
+        f"💵 *EQUITY: ${snap.equity:.2f}*  ({r_mood} realized {r_sign}${realized:.2f} cumul)",
         divider,
         "",
-        f"{r_mood} *{status_word}*",
+        f"{net_mood} *{status_word}*",
         f"   realized: {r_sign}${realized:.2f}  •  "
         f"unrealized: {unr_sign}${unrealized:.2f}",
         f"   cash ${snap.cash:.2f}  •  deployed ${snap.invested:.2f}",

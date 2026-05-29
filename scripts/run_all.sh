@@ -186,9 +186,10 @@ echo
 
 # ─── Step 4: Sidecars (analyst + leaderboard + promoter) ────────────
 echo "[run_all] step 4/4: launching sidecars..."
-uv run python scripts/dry_analyst.py 2>&1 | sed -u 's/^/[analyst] /' | tee -a "$RUN_LOG" &
+TELEGRAM_CHAT_ID_DRY_RUN="" \
+    uv run python scripts/dry_analyst.py 2>&1 | sed -u 's/^/[analyst] /' | tee -a "$RUN_LOG" &
 POLYMARKET_DRY_RUN=1 uv run pmbot leaderboard \
-    --auto-discover --interval 10 --telegram \
+    --auto-discover --interval 10 \
     2>&1 | sed -u 's/^/[board] /' | tee -a "$RUN_LOG" &
 
 # Live profile auto-promoter: watches the dry leaderboard every 5min, writes

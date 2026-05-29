@@ -19,7 +19,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
   - `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
   - `race_max_day_change_pct=0.10` — price-stability gate: skip markets that moved >10% today (live-game gap risk)
   - `race_min_outcome_momentum=-0.05` — momentum filter: skip outcomes that fell >5% today (trending away from resolution)
-- Global exclusions (`models.py:is_excluded_market`): crypto Up/Down binaries, temperature/weather (°C + °F), exact score, O/U 0.5, O/U 5.5/6.5/7.5
+- Global exclusions (`models.py:is_excluded_market`): crypto Up/Down binaries, temperature/weather (°C + °F), exact score, O/U 0.5, O/U 5.5/6.5/7.5, halftime leading/score markets (added 2026-05-29 after $61.86 gap loss on "Andorra leading at halftime")
 - Exits: resolved_exit at bid ≥ 0.99, universal sweep at bid ≤ 0.03, max-hold 4.5h. No TP ladder, no SL.
 - Daily DD halt at -15% of starting equity (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT`)
 - Tick interval: 10s on live (was 30s — 3× faster, catches more fleeting entries), 600s on dry twin
@@ -33,7 +33,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 **Momentum filter:** `race_min_outcome_momentum=-0.05` blocks outcomes falling >5% today. A market at 0.91 that was 0.96 this morning is moving *away* from resolution — worse edge than one sitting stably at 0.91. The stability gate (abs 10%) wasn't catching directional decline within that range.
 
-**Binary arb scanner:** every tick a second pass scans all markets for `YES_ask + NO_ask < 0.97` using actual CLOB ask prices (BUY side). When found, both legs are opened — guaranteed 3%+ profit regardless of outcome. Previous bug was using SELL-side (bid) prices which created false signals; now fixed. Arb positions are tagged `is_arb=True`, skip TP/SL, and ride to resolution. Capped at $5/leg.
+**Binary arb scanner:** every tick a second pass scans all markets for `YES_ask + NO_ask < 0.97` using actual CLOB ask prices (BUY side). When found, both legs are opened — guaranteed 3%+ profit regardless of outcome. Sizing uses **proportional stakes**: face value P where YES_stake = P×YES_ask and NO_stake = P×NO_ask, so the guaranteed payout is P regardless of which side wins. P is sized so the larger leg ≤ `race_arb_max_stake_usd` ($5 cap). Previous bugs: (1) used SELL-side (bid) prices — false signals; (2) used equal dollar stakes — net loss when the expensive/likely leg won. Both fixed. Arb positions are tagged `is_arb=True`, skip TP/SL, and ride to resolution. **Currently disabled in grinder.toml** (`arb_threshold=0.0`) — set to 0.97 to re-enable.
 
 **Realistic performance:** 5–7%/day on active days. With 50% stake and wider band, 2 wins = ~9%, 3 wins = ~13%. Weekly target 20–30%. 10%+ days happen often on active markets; the constraint is finding 2–3 qualifying markets per day, not the per-trade math.
 
@@ -96,10 +96,12 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
 - Live analyst now sets `POLYMARKET_PROFILE_LABEL` BEFORE the sidecar spawns (else logs "(unknown)")
 - `load_live_snapshot` prefers `current_price × shares` for equity calculation, falls back to size_usd → notional_usd → stake → cost_basis
 - Telegram leaderboard truncated to top 15 + bottom 5, all plain text (no MarkdownV2 escape literals)
-- Dry-bot Telegram alerts silenced per-subshell via `TELEGRAM_ALERT_*=0` env vars in `run_dry_bot()` — only the live bot speaks
+- Dry-bot Telegram alerts silenced per-subshell via `TELEGRAM_ALERT_*=0` env vars in `run_dry_bot()` and `TELEGRAM_CHAT_ID_DRY_RUN=""` on `dry_analyst.py` — only the live bot speaks, in both `run_live_70.sh` and `run_all.sh`
 - `_pick_favorite` tier 3 wording: "Top of N profitable strategies" when N > 1 (was always "Only profitable", which lied)
 - Analyst journal counter accepts both `realized_pnl_usd` (sweep) and `realized_pnl` (race/smart_money)
 - Hard reset workflow: backups kept in `data/backups_full_<ts>_<reset>/`
+- **Arb sizing fixed (2026-05-29):** was equal dollar stakes per leg → net loss when favorite wins. Now proportional: face value P sized so larger leg ≤ $5 cap; guaranteed payout P regardless of outcome.
+- **Heartbeat display fixed (2026-05-29):** headline now shows "P&L vs start" (equity − starting_cash) instead of cumulative realized PnL %. Cumulative realized includes pre-deposit losses that inflate the negative % while equity is actually up.
 
 ## Safety
 

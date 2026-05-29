@@ -1857,12 +1857,19 @@ def _execute_arb_entries(
         no_outcome = outcomes[1] if len(outcomes) > 1 else "No"
         neg_risk = bool(market.get("negRisk"))
 
-        # Stake per leg: min of arb_max_stake_usd and 40% of cash
-        stake_per_leg = min(
-            settings.race_arb_max_stake_usd,
-            portfolio.cash * 0.40,
+        # Proportional sizing for true arb: face value P is the guaranteed
+        # payout whichever leg wins. YES stake = P * yes_ask, NO stake =
+        # P * no_ask. Profit = P * (1 - yes_ask - no_ask) regardless of
+        # outcome. Cap: largest leg ≤ race_arb_max_stake_usd AND total
+        # ≤ 40% of cash.
+        max_leg = max(yes_ask, no_ask)
+        max_face = min(
+            settings.race_arb_max_stake_usd / max_leg,
+            (portfolio.cash * 0.40) / (yes_ask + no_ask),
         )
-        if stake_per_leg < 1.0 or portfolio.cash < stake_per_leg * 2:
+        yes_stake = round(max_face * yes_ask, 4)
+        no_stake = round(max_face * no_ask, 4)
+        if yes_stake < 0.50 or no_stake < 0.05 or portfolio.cash < yes_stake + no_stake:
             continue
 
         total_cost = yes_ask + no_ask
@@ -1899,21 +1906,21 @@ def _execute_arb_entries(
         no_cand = _make_candidate(no_token, no_outcome, no_ask)
 
         # Place YES leg first
-        yes_pos = portfolio.record_arb_leg(yes_cand, stake_per_leg, entry_price=yes_ask)
+        yes_pos = portfolio.record_arb_leg(yes_cand, yes_stake, entry_price=yes_ask)
         if yes_pos is None:
             continue  # token already held or recently closed
 
         if settings.dry_run:
-            yes_order = {"dry_run": True, "side": "BUY", "amount": stake_per_leg, "price": yes_ask}
+            yes_order = {"dry_run": True, "side": "BUY", "amount": yes_stake, "price": yes_ask}
             yes_response = {"success": True, "orderID": f"arb-yes-{int(utc_now().timestamp()*1000)}"}
         else:
             try:
                 yes_order, yes_response = client.place_market_order(
-                    candidate=yes_cand, amount=stake_per_leg, price=yes_ask, side="BUY"
+                    candidate=yes_cand, amount=yes_stake, price=yes_ask, side="BUY"
                 )
             except Exception as exc:
                 portfolio.positions = [p for p in portfolio.positions if p.get("token_id") != yes_token or p.get("status") != "open"]
-                portfolio.cash = round(portfolio.cash + stake_per_leg, 2)
+                portfolio.cash = round(portfolio.cash + yes_stake, 2)
                 print(f"   arb YES leg failed: {exc}", flush=True)
                 continue
 
@@ -1921,7 +1928,7 @@ def _execute_arb_entries(
         yes_pos["is_arb"] = True
 
         # Place NO leg
-        no_pos = portfolio.record_arb_leg(no_cand, stake_per_leg, entry_price=no_ask)
+        no_pos = portfolio.record_arb_leg(no_cand, no_stake, entry_price=no_ask)
         if no_pos is None:
             # YES filled but NO blocked — keep YES as a normal position
             results.append({"arb": "partial", "leg": "yes_only", "question": question})
@@ -1929,13 +1936,13 @@ def _execute_arb_entries(
             continue
 
         if settings.dry_run:
-            no_order = {"dry_run": True, "side": "BUY", "amount": stake_per_leg, "price": no_ask}
+            no_order = {"dry_run": True, "side": "BUY", "amount": no_stake, "price": no_ask}
             no_response = {"success": True, "orderID": f"arb-no-{int(utc_now().timestamp()*1000)}"}
         else:
             try:
                 from .trading import _build_direct_buy_order
                 no_order, no_response = client.place_market_order(
-                    candidate=no_cand, amount=stake_per_leg, price=no_ask, side="BUY"
+                    candidate=no_cand, amount=no_stake, price=no_ask, side="BUY"
                 )
             except Exception as exc:
                 print(f"   arb NO leg failed: {exc} — YES-only position stays", flush=True)
@@ -1955,12 +1962,13 @@ def _execute_arb_entries(
             "no_ask": no_ask,
             "total_cost": total_cost,
             "guaranteed_profit_pct": profit_pct,
-            "stake_per_leg": stake_per_leg,
+            "yes_stake": yes_stake,
+            "no_stake": no_stake,
         })
         print(
             f"✅ ARB PLACED: {question[:55]} | "
-            f"YES@{yes_ask:.3f} + NO@{no_ask:.3f} | "
-            f"guaranteed +{profit_pct:.1%} | ${stake_per_leg*2:.2f} deployed",
+            f"YES@{yes_ask:.3f}×${yes_stake:.2f} + NO@{no_ask:.3f}×${no_stake:.2f} | "
+            f"guaranteed +{profit_pct:.1%} | ${yes_stake+no_stake:.2f} deployed",
             flush=True,
         )
     return results
