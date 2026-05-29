@@ -1,40 +1,26 @@
-# Profile "grinder" — heavy-favorite, near-resolution scalp.
+# Profile "grinder" — heavy-favorite, ride-to-resolution.
 #
-# Thesis: a market sitting at bid ∈ [0.88, 0.95] with ≤4h to close is
-# pricing near-certainty. Pay the spread, take +7%, rotate. The edge is
-# the implied-probability gap between the bid and the binary outcome
-# actually resolving in the buyer's favor; the -15% SL caps the rare
-# "favorite flips" case.
-#
-# Designed for a $43 live bankroll (2026-05-26 deposit).
-# SIZING (2026-05-27): 50% per trade. Allows up to 2 concurrent positions
-# so capital stays deployed while the first trade rides. Max loss per
-# trade = 7.5% of bankroll. Bet size scales with bankroll automatically.
-# 2026-05-28: max_orders_per_tick=2 to deploy both 50% slots in one tick
-# when two eligible markets exist; max_hours widened to 4.0 (4h-only limit);
-# resolved_exit_threshold lowered to 0.97 (was 0.99 — caused race_expired_close
-# when markets closed without ever reaching 0.99); tp_pct raised to 0.07.
+# Thesis: buy at 0.89–0.94, hold until bid ≥ 0.99 (full resolution).
+# No stop-loss — these are high-probability near-certainty bets.
+# All-in sizing: 95% of cash per trade, one position at a time.
+# Exclusion filters block gap-risk markets (exact scores, weather, O/U 0.5/5.5+).
+# Price-stability filter blocks markets that moved >10% today (live-game flux).
 
 [run]
 starting_cash = 28.0
 mode = "grinder"
 
 [sizing]
-# 50% per trade (2026-05-27): each bet uses half the available balance.
-# Allows up to 2 concurrent positions — after the first 50% bet lands,
-# the remaining 50% deploys on the next tick if a second eligible market
-# exists. Max loss per trade = 7.5% of bankroll (vs 15% all-in).
-# ceiling disabled (0 = no cap) so stake scales with balance as it grows.
-# cash_floor_pct = 0.05 keeps 5% idle as a fee/slippage buffer.
+# 95% of cash per trade — one big bet at a time. The 5% floor covers fees.
 max_position_ceiling_usd = 0.0
-max_position_ceiling_pct = 0.55
+max_position_ceiling_pct = 0.99
 cash_floor_pct = 0.05
-position_pct = 0.50
+position_pct = 0.95
 min_open_positions = 0
 starter_trade_usd = 1.5
 assumed_live_balance_usd = 28.0
 max_trade_usd = 0.0
-high_conviction_balance_fraction = 0.50
+high_conviction_balance_fraction = 0.95
 
 [market_filters]
 min_liquidity_usd = 500.0
@@ -44,66 +30,42 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Time-to-close gate — grinder trades up to 4h before close (the hard
-# 4h-only rule limit). Widened from 3h (2026-05-28) for more eligible
-# markets per tick, especially during low-activity windows.
 max_hours = 4.0
 scan_limit = 750
 
-# Liquidity / volume floors. Heavy-favorite markets resolving in <1h
-# tend to be thin — $500 / $300 is the realistic floor on Polymarket.
 min_liquidity_usd = 500.0
 min_volume_24h_usd = 300.0
 
-# Heavy-favorite band: 0.91 floor raised from 0.88 (2026-05-28) after
-# esports map-winner and weather markets at 0.88-0.90 caused the two
-# biggest SL losses ($3.89 + $3.45). Entries at 0.91+ imply ≥91%
-# probability; the 4¢ band still clears the 7% TP for entries ≤ 0.906,
-# rest ride to the resolved_exit at 0.97.
-min_price = 0.91
-max_price = 0.95
+# Entry band: 0.89–0.94. Wide enough to find trades, tight enough to
+# only touch near-certainty markets. With no SL, we need strong conviction.
+min_price = 0.89
+max_price = 0.94
 
-# Price stability: skip markets that moved >10% today. A market that
-# jumped from 0.06 to 0.93 during a live game carries gap risk the SL
-# can't catch. Stable-at-0.93-for-days is the real near-certainty play.
+# Price stability: skip markets that moved >10% today.
 max_day_change_pct = 0.10
 
-# Tight spread is non-negotiable — paying 4¢ spread on a 7¢ TP wipes
-# most of the edge. 2¢ max keeps the round-trip viable.
+# Tight spread — 2¢ max.
 max_spread = 0.02
 
-# 50% per-trade stake: equity × 50%. stake_usd is the absolute floor
-# that clears the $1 CLOB minimum; with the ceiling disabled the stake
-# is (50% of equity above the 5% cash floor).
+# 95% all-in per trade, one at a time.
 stake_usd = 1.0
-stake_pct = 0.50
-
-# 2 BUYs per tick. With 50% stake each, both 50% slots deploy in one
-# tick when two eligible markets exist simultaneously — twice as fast
-# as waiting for consecutive ticks.
-max_orders_per_tick = 2
+stake_pct = 0.95
+max_orders_per_tick = 1
 cash_floor_pct = 0.05
 
-# Grinder exits — the whole strategy hinges on these.
-#   TP +7%: raised from 6% (2026-05-28). For entries ≤ 0.906 the TP fires
-#     first; entries above ride to the resolved_exit at 0.97 instead.
-#   SL -15%: catastrophic-flip guard. Buying at 0.90, this exits at 0.765.
-#   sl_min_age = 1 min: markets close in <4h, can't wait 15 min.
-#   resolved at bid ≥ 0.97: lowered from 0.99 (2026-05-28). The old 0.99
-#     threshold was causing race_expired_close on markets that closed
-#     without ever printing 0.99 — exiting at 0.97 captures the move.
-tp_pct = 0.07
-sl_pct = 0.15
+# Exits:
+#   tp_pct = 1.0 → effectively disabled (100% gain never happens here).
+#   sl_pct = 1.0 → effectively disabled (only fires if price hits 0).
+#   resolved_exit at bid ≥ 0.99 → hold until full resolution, collect max value.
+#   max_hold_hours = 4.5 → backstop so nothing lingers past expiry.
+tp_pct = 1.0
+sl_pct = 1.0
 sl_min_age_minutes = 1
 near_expiry_minutes = 5
-resolved_exit_threshold = 0.97
-# Daily drawdown halt stays at the race default (-15%) — race profile
-# loader doesn't expose [race].daily_drawdown_pct. Override via env
-# POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0.10 if a tighter halt is desired.
-# Binary intra-market arbitrage: scan every tick for YES_ask + NO_ask < 0.97.
-# Buying both sides guarantees ~3%+ profit regardless of outcome. The $5/leg
-# cap limits exposure; arb positions skip TP/SL and ride to resolution.
-arb_threshold = 0.97
+resolved_exit_threshold = 0.99
+
+# Arb disabled — CLOB bid/ask sides need audit before re-enabling.
+arb_threshold = 0.0
 arb_max_stake_usd = 5.0
 
 [telemetry]
@@ -112,7 +74,7 @@ auto_interval_seconds = 30
 stdout_heartbeat_minutes = 15
 
 [filters]
-max_orders_per_tick = 2
+max_orders_per_tick = 1
 max_hours_to_close = 4.0
 min_trade_usd = 1.0
 max_absolute_spread = 0.02
@@ -132,10 +94,8 @@ max_hours_to_close = 1.0
 max_entry_slippage = 0.02
 
 [exits]
-stop_loss_pct = 0.15
+stop_loss_pct = 1.0
 stop_loss_min_age_minutes = 1
-# Hold long enough for a position bought near the 4h entry edge to reach
-# its +7% TP or resolution before the max-hold backstop flushes it.
 max_hold_hours = 4.5
-near_expiry_exit_losers = true
+near_expiry_exit_losers = false
 near_expiry_loser_minutes = 5
