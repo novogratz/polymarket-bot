@@ -334,6 +334,11 @@ class Settings:
     # active flux (live game, breaking news) and carry gap risk the SL can't
     # catch. 0.0 = disabled (default). Grinder sets this to 0.10.
     race_max_day_change_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MAX_DAY_CHANGE_PCT", 0.0))
+    # Binary intra-market arbitrage: buy both YES and NO when their combined
+    # ask cost < threshold → guaranteed profit regardless of resolution.
+    # 0.0 = disabled. Grinder sets to 0.97 (min 3% guaranteed profit).
+    race_arb_threshold: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_ARB_THRESHOLD", 0.0))
+    race_arb_max_stake_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_ARB_MAX_STAKE_USD", 5.0))
     race_contrarian_min_momentum: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_CONTRARIAN_MIN_MOMENTUM", 0.03))
     race_favorite_min_bid: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FAVORITE_MIN_BID", 0.65))
     race_breakout_min_momentum: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_BREAKOUT_MIN_MOMENTUM", 0.05))

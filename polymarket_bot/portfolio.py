@@ -192,6 +192,33 @@ class Portfolio:
         self.positions.append(position)
         return position
 
+    def record_arb_leg(
+        self,
+        candidate: Candidate,
+        stake: float,
+        *,
+        entry_price: float | None = None,
+        order_id: str | None = None,
+        order_response: Any = None,
+    ) -> dict[str, Any] | None:
+        """Open one leg of a binary arb position.
+
+        Bypasses the event-key deduplicate check so both YES and NO sides of
+        the same market can be open simultaneously. All other guards apply.
+        """
+        if stake <= 0.0 or self.has_open_token(candidate.token_id):
+            return None
+        if self._has_recent_closed_token(candidate.token_id):
+            return None
+        position = self._build_position(candidate, stake, entry_price=entry_price)
+        position["live"] = True
+        position["is_arb"] = True
+        position["order_id"] = order_id
+        position["order_response"] = order_response
+        self.cash = round(max(0.0, self.cash - stake), 2)
+        self.positions.append(position)
+        return position
+
     def record_live_exit(
         self,
         position: dict[str, Any],

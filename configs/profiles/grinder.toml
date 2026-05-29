@@ -16,7 +16,7 @@
 # when markets closed without ever reaching 0.99); tp_pct raised to 0.07.
 
 [run]
-starting_cash = 43.0
+starting_cash = 28.0
 mode = "grinder"
 
 [sizing]
@@ -32,7 +32,7 @@ cash_floor_pct = 0.05
 position_pct = 0.50
 min_open_positions = 0
 starter_trade_usd = 1.5
-assumed_live_balance_usd = 43.0
+assumed_live_balance_usd = 28.0
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.50
 
@@ -100,6 +100,11 @@ resolved_exit_threshold = 0.97
 # Daily drawdown halt stays at the race default (-15%) — race profile
 # loader doesn't expose [race].daily_drawdown_pct. Override via env
 # POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0.10 if a tighter halt is desired.
+# Binary intra-market arbitrage: scan every tick for YES_ask + NO_ask < 0.97.
+# Buying both sides guarantees ~3%+ profit regardless of outcome. The $5/leg
+# cap limits exposure; arb positions skip TP/SL and ride to resolution.
+arb_threshold = 0.97
+arb_max_stake_usd = 5.0
 
 [telemetry]
 quiet = false
