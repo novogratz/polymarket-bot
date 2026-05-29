@@ -149,6 +149,10 @@ def _build_eligible_candidates(
             if spread < 0 or spread > settings.race_max_spread:
                 continue
             outcome_momentum = one_day_change if index == 0 else -one_day_change
+            # Skip outcomes actively falling today — market moving away from
+            # resolution is worse edge than one trending toward it.
+            if outcome_momentum < settings.race_min_outcome_momentum:
+                continue
             candidate = Candidate(
                 market_id=market_id,
                 question=question,
@@ -1817,8 +1821,9 @@ def _find_arb_pairs(
         yes_bid_ask = bid_ask.get(yes_token, (None, None))
         no_bid_ask = bid_ask.get(no_token, (None, None))
         # Ask price = what we pay to buy = bid_ask[1] (the "ask" side)
-        yes_ask = yes_bid_ask[1] if yes_bid_ask[1] is not None else None
-        no_ask = no_bid_ask[1] if no_bid_ask[1] is not None else None
+        # BUY side [0] = what we pay to buy (ask). SELL side [1] = what we receive.
+        yes_ask = yes_bid_ask[0] if yes_bid_ask[0] is not None else None
+        no_ask = no_bid_ask[0] if no_bid_ask[0] is not None else None
         if yes_ask is None or no_ask is None or yes_ask <= 0 or no_ask <= 0:
             continue
         if yes_ask + no_ask < settings.race_arb_threshold:
@@ -1903,19 +1908,10 @@ def _execute_arb_entries(
             yes_response = {"success": True, "orderID": f"arb-yes-{int(utc_now().timestamp()*1000)}"}
         else:
             try:
-                from .trading import execute_live_trade
-                res = execute_live_trade(
-                    client, settings, yes_cand, portfolio,
-                    min_trade_usd=1.0, max_trade_usd=stake_per_leg,
-                    strategy=f"{strategy_name}_arb",
+                yes_order, yes_response = client.place_market_order(
+                    candidate=yes_cand, amount=stake_per_leg, price=yes_ask, side="BUY"
                 )
-                # record_arb_leg already added to portfolio; undo the double-add
-                # by removing the position added by execute_live_trade's internal call
-                # Actually: execute_live_trade calls record_live_position which uses
-                # the event-dedup check and will fail — we need direct approach
-                yes_order, yes_response = res.order, res.response
             except Exception as exc:
-                # Remove the pre-recorded position since the order failed
                 portfolio.positions = [p for p in portfolio.positions if p.get("token_id") != yes_token or p.get("status") != "open"]
                 portfolio.cash = round(portfolio.cash + stake_per_leg, 2)
                 print(f"   arb YES leg failed: {exc}", flush=True)

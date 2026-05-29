@@ -51,6 +51,10 @@ max_price = 0.95
 # tick when a goal is scored. Stable-for-days is the real near-certainty play.
 max_day_change_pct = 0.10
 
+# Momentum filter: skip outcomes that fell >5% today.
+# A market at 0.91 that was 0.96 this morning is trending away from resolution.
+min_outcome_momentum = -0.05
+
 # Tight spread — 2¢ max keeps the round-trip viable.
 max_spread = 0.02
 
@@ -71,8 +75,9 @@ sl_min_age_minutes = 1
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.99
 
-# Binary arb scanner disabled — CLOB bid/ask side needs audit before re-enabling.
-arb_threshold = 0.0
+# Binary arb: buy YES+NO when combined ask cost < 0.97 → guaranteed 3%+ profit.
+# Fixed: now uses BUY-side price (ask) not SELL-side (bid). $5/leg cap.
+arb_threshold = 0.97
 arb_max_stake_usd = 5.0
 
 [telemetry]
