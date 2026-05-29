@@ -43,7 +43,7 @@ Starts the live grinder (30 s tick) alongside a dry paper twin (10 min tick), a 
 
 | Parameter | Value |
 |---|---|
-| Bid band | 0.89 – 0.94 |
+| Bid band | 0.87 – 0.95 |
 | Time to close | ≤ 4 hours |
 | Max spread | 2¢ |
 | Min liquidity | $500 |
@@ -66,20 +66,20 @@ These categories are blocked globally because a stop-loss cannot protect against
 
 ### Sizing
 
-**40 % of balance per trade, up to 2 concurrent positions.**
+**50 % of balance per trade, up to 2 concurrent positions.**
 
-One bad trade costs 40 % of the account — painful but survivable. At 95 % stake a single loss would wipe the account.
+Each win at 50 % stake = **+4.4 % on the account**. Two wins = ~9 %. Three wins = ~13 %. One loss = −50 % on stake, painful but recoverable with one follow-up win.
 
 **Realistic performance expectations at $123:**
 
 | Day type | Frequency | Result |
 |---|---|---|
-| Active — 3 qualifying trades, all win | ~30 % of days | +8–11 % |
-| Normal — 1–2 trades | ~50 % of days | +2–6 % |
-| Quiet — 0 qualifying markets | ~15 % of days | 0 % |
-| Bad — 1 loss | ~5 % of days | −8–16 % |
+| Active — 3 wins | ~25 % of days | +12–14 % |
+| Active — 2 wins | ~40 % of days | +8–9 % |
+| Normal — 1 win | ~25 % of days | +4–5 % |
+| Bad — 1 loss | ~10 % of days | −8–12 % |
 
-**Expected average: 2–4 % per day** when the market cooperates. 10 % days happen but are not the norm — they require 3 qualifying markets all winning on the same day. A realistic weekly target is 15–25 %. That compounds to exceptional annual returns without requiring the impossible.
+**Expected average: 5–7 % per day** on active days. Weekly target: **20–30 %**. Wider entry band (0.87–0.95) and 10 s tick (was 30 s) maximize the number of qualifying trades found each day.
 
 ### Exits
 

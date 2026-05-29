@@ -1,10 +1,10 @@
 # Profile "grinder" — heavy-favorite, ride-to-resolution.
 #
-# Thesis: buy near-certainty binary outcomes at 0.89–0.94 within 4h of close,
-# hold until bid ≥ 0.99. No stop-loss. Sizing at 40% per trade with up to 2
-# concurrent positions — one bad outcome costs 40% of balance, not everything.
+# Thesis: buy near-certainty binary outcomes at 0.87–0.95 within 4h of close,
+# hold until bid ≥ 0.99. No stop-loss. 50% stake, 2 concurrent positions.
 #
-# 10%/day target: each win returns ~8.8% on stake. 3 wins × 40% stake ≈ 10.6%.
+# Target: 2 wins/day → ~9%, 3 wins → ~13%. Each win = ~8.8% on stake = 4.4%
+# on account. Wider band + faster tick = more eligible markets per day.
 # Exclusion filters block all known gap-risk categories (exact scores, weather,
 # O/U 0.5/5.5+). Price-stability filter blocks live-game flux (>10% day change).
 
@@ -13,17 +13,18 @@ starting_cash = 123.0
 mode = "grinder"
 
 [sizing]
-# 40% per trade — leaves room to survive a loss and run 2 positions at once.
+# 50% per trade — 2 wins/day hits ~9%, 3 wins hits ~13%.
+# One loss = -50% on stake, painful but recoverable with one follow-up win.
 # ceiling disabled (0) so stake scales with bankroll automatically.
 max_position_ceiling_usd = 0.0
-max_position_ceiling_pct = 0.44
+max_position_ceiling_pct = 0.54
 cash_floor_pct = 0.05
-position_pct = 0.40
+position_pct = 0.50
 min_open_positions = 0
 starter_trade_usd = 1.5
 assumed_live_balance_usd = 123.0
 max_trade_usd = 0.0
-high_conviction_balance_fraction = 0.40
+high_conviction_balance_fraction = 0.50
 
 [market_filters]
 min_liquidity_usd = 500.0
@@ -39,10 +40,11 @@ scan_limit = 750
 min_liquidity_usd = 500.0
 min_volume_24h_usd = 300.0
 
-# Entry band 0.89–0.94. Below 0.89 the implied probability isn't strong enough
-# without a stop-loss. Above 0.94 the remaining upside to 0.99 is too thin.
-min_price = 0.89
-max_price = 0.94
+# Entry band 0.87–0.95. Wider band = more eligible markets per day.
+# 0.87 still implies 87%+ certainty; price-stability gate (10% day change)
+# blocks live-game flux at the lower end. Above 0.95 upside to 0.99 too thin.
+min_price = 0.87
+max_price = 0.95
 
 # Price-stability gate: skip any market that moved >10% today.
 # A live-game "No" on an exact score sits at 0.93 but can gap to 0.40 in one
@@ -52,9 +54,9 @@ max_day_change_pct = 0.10
 # Tight spread — 2¢ max keeps the round-trip viable.
 max_spread = 0.02
 
-# 40% stake, up to 2 concurrent positions.
+# 50% stake, up to 2 concurrent positions.
 stake_usd = 1.0
-stake_pct = 0.40
+stake_pct = 0.50
 max_orders_per_tick = 2
 cash_floor_pct = 0.05
 
@@ -75,7 +77,7 @@ arb_max_stake_usd = 5.0
 
 [telemetry]
 quiet = false
-auto_interval_seconds = 30
+auto_interval_seconds = 10
 stdout_heartbeat_minutes = 15
 
 [filters]

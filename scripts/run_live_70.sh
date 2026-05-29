@@ -21,18 +21,14 @@ echo "[run_live] logging to $RUN_LOG (live also -> $LIVE_LOG)"
 # Sync live positions (toggle hors schéma).
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
-# Live bankroll baseline = $43 (2026-05-26 deposit).
-# grinder.toml has starting_cash=43 / assumed_live_balance_usd=43.
+# Live bankroll baseline = $123 (2026-05-29 deposit).
 # These exports are the RPC-failure fallback cap — the bot reads the real
-# USDC balance from CLOB each tick, but if that read fails it must not
-# clamp down to a stale low number. Override only if you change bankroll.
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-43.0}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-43.0}
+# USDC balance from CLOB each tick; these kick in only if that read fails.
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-123.0}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-123.0}
 
-# Live tick interval — grinder default is 30s (the profile sets it via
-# [telemetry].auto_interval_seconds). Keep the env override as 30 here too
-# so the parent shell doesn't smuggle in a stale 10s value.
-export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-30}
+# 10s tick — 3× faster than 30s, catches more fleeting band entries.
+export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
 
 # Telegram: tout pousser en live (override .env qui a TELEGRAM_ALERT_TRADES=0
 # pour rester silencieux en dry-run).

@@ -11,9 +11,9 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - Engine: `race` (selector = `select_grinder` in `polymarket_bot/race_strategies.py`)
 - Thesis: buy a binary outcome at bid 0.89–0.94 within 4h of close, hold until bid ≥ 0.99. The edge is the implied-probability gap between the current bid and the binary outcome resolving at 1.0. No stop-loss — the exclusion filters and price-stability gate are the risk controls.
 - Bankroll: **$123 USDC** (2026-05-29 deposit — $100 top-up to prior ~$23 balance).
-- Sizing: **40% per trade**, up to 2 concurrent positions. `race_stake_pct=0.40`, `max_orders_per_tick=2`, `cash_floor_pct=0.05`. One bad trade costs 40% of balance (survivable). Stake scales automatically with bankroll.
+- Sizing: **50% per trade**, up to 2 concurrent positions. `race_stake_pct=0.50`, `max_orders_per_tick=2`, `cash_floor_pct=0.05`. Each win = +4.4% on account; 2 wins/day ≈ 9%. Stake scales automatically with bankroll.
 - Entry filters (in `_build_eligible_candidates`):
-  - `race_min_price=0.89`, `race_max_price=0.94`
+  - `race_min_price=0.87`, `race_max_price=0.95`
   - `race_max_hours=4.0`
   - `race_max_spread=0.02`
   - `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
@@ -21,7 +21,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 - Global exclusions (`models.py:is_excluded_market`): crypto Up/Down binaries, temperature/weather (°C + °F), exact score, O/U 0.5, O/U 5.5/6.5/7.5
 - Exits: resolved_exit at bid ≥ 0.99, universal sweep at bid ≤ 0.03, max-hold 4.5h. No TP ladder, no SL.
 - Daily DD halt at -15% of starting equity (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT`)
-- Tick interval: 30s on live, 600s on dry twin
+- Tick interval: 10s on live (was 30s — 3× faster, catches more fleeting entries), 600s on dry twin
 - Selector ranking: `score = best_bid / max(hours_to_close, 1/60)`
 
 **Bankroll:** $123 USDC. State backups in `data/backups_reset_<timestamp>/`.
@@ -30,7 +30,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 **Why 40% stake, not all-in:** at 95% stake, one bad outcome wipes the account. At 40% stake, a single loss is painful (-40%) but survivable.
 
-**Realistic performance:** 10%/day is not consistently achievable — it requires 3 qualifying markets all winning on the same day. The honest expectation is 2–4%/day on active days, 0% on quiet days, occasional losses. A realistic weekly target is 15–25%. That still compounds to extraordinary annual returns; the math just doesn't support 10%/day indefinitely.
+**Realistic performance:** 5–7%/day on active days. With 50% stake and wider band, 2 wins = ~9%, 3 wins = ~13%. Weekly target 20–30%. 10%+ days happen often on active markets; the constraint is finding 2–3 qualifying markets per day, not the per-trade math.
 
 ### Unified launcher — `scripts/run_all.sh`
 
@@ -240,8 +240,8 @@ Boots: live grinder (30 s tick) + live analyst sidecar (30 min Telegram) + live-
 
 - `POLYMARKET_SYNC_LIVE_POSITIONS=1`, `POLYMARKET_AUTO_INTERVAL_SECONDS=30`
 - Bankroll: **$123** (2026-05-29). `starting_cash=123.0`, `assumed_live_balance_usd=123.0`.
-- Sizing: `race_stake_pct=0.40`, `max_orders_per_tick=2`, `cash_floor_pct=0.05`
-- Entry: `race_min_price=0.89`, `race_max_price=0.94`, `race_max_hours=4.0`, `race_max_spread=0.02`, `race_max_day_change_pct=0.10`
+- Sizing: `race_stake_pct=0.50`, `max_orders_per_tick=2`, `cash_floor_pct=0.05`
+- Entry: `race_min_price=0.87`, `race_max_price=0.95`, `race_max_hours=4.0`, `race_max_spread=0.02`, `race_max_day_change_pct=0.10`
 - Exits: resolved_exit at bid ≥0.99, universal sweep at ≤0.03, max-hold 4.5h. No TP, no SL.
 - Universal sweep closes positions at price ≥0.97 OR ≤0.03 every tick.
 
