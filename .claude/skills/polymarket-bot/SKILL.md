@@ -5,7 +5,21 @@ description: Claude Code skill for the Polymarket smart-money copy-trading bot. 
 
 # Polymarket Bot Skill
 
-## Current state (2026-05-28)
+## Fresh-machine setup (2026-05-30 learnings)
+
+When setting up on a new machine or fresh account:
+
+1. **Install uv** first — `curl -LsSf https://astral.sh/uv/install.sh | sh`, then open a new terminal.
+2. **Install py-clob-client-v2** — `uv add py-clob-client-v2`. The old `py_clob_client` is no longer compatible with Polymarket's CLOB v2 (causes `order_version_mismatch`).
+3. **Create `.env`** from `.env.example`. Key values:
+   - `POLYMARKET_SIGNATURE_TYPE=3` — deposit wallet accounts (all new accounts since 2026) require POLY_1271, not POLY_PROXY (type 1).
+   - `POLYMARKET_PRIVATE_KEY` — your EOA private key.
+   - `POLYMARKET_FUNDER_ADDRESS` — your Polymarket deposit wallet address (shown on polymarket.com profile).
+   - `POLYMARKET_API_KEY/SECRET/PASSPHRASE` — generate with: `uv run python -c "from py_clob_client_v2.client import ClobClient; c = ClobClient('https://clob.polymarket.com', chain_id=137, key='<key>', signature_type=3, funder='<funder>'); creds = c.create_or_derive_api_key(); print(creds.api_key, creds.api_secret, creds.api_passphrase)"`
+4. **Make one manual trade on polymarket.com first** — new accounts need at least one UI trade to register the maker address with the CLOB backend. Without this, all API orders fail with `maker address not allowed`.
+5. **Telegram** — create a bot via @BotFather, get chat_id from `https://api.telegram.org/bot<TOKEN>/getUpdates` after messaging the bot.
+
+## Current state (2026-05-30)
 
 - **Live strategy:** `grinder` — race mode, heavy-favorite near-resolution scalp.
 - **Config:** `configs/profiles/grinder.toml` (single source of truth).

@@ -4,6 +4,40 @@ Claude Code entry point for the Polymarket bot. See also the structured skill in
 
 The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, see `.github/workflows/test.yml`).
 
+## New machine / fresh account setup (2026-05-30)
+
+1. **Install uv**: `curl -LsSf https://astral.sh/uv/install.sh | sh` → open a new terminal.
+2. **Install v2 SDK**: `uv add py-clob-client-v2` — required since Polymarket CLOB v2 (old SDK gives `order_version_mismatch`).
+3. **Create `.env`** from `.env.example`. Critical fields:
+   - `POLYMARKET_SIGNATURE_TYPE=3` — all new accounts (2026+) use the deposit wallet flow (POLY_1271), not POLY_PROXY (type 1).
+   - `POLYMARKET_FUNDER_ADDRESS` — your wallet address as shown on polymarket.com profile page.
+   - `POLYMARKET_PRIVATE_KEY` — your EOA private key (the key that controls the deposit wallet).
+   - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID_LIVE` — create bot via @BotFather, get chat_id from `getUpdates` after messaging the bot.
+4. **Generate API credentials**:
+   ```bash
+   uv run python -c "
+   from py_clob_client_v2.client import ClobClient
+   c = ClobClient('https://clob.polymarket.com', chain_id=137, key='<PRIVATE_KEY>', signature_type=3, funder='<FUNDER_ADDRESS>')
+   creds = c.create_or_derive_api_key()
+   print('KEY:', creds.api_key)
+   print('SECRET:', creds.api_secret)
+   print('PASS:', creds.api_passphrase)
+   "
+   ```
+5. **Approve CLOB allowance** (first time only):
+   ```bash
+   uv run python -c "
+   from py_clob_client_v2.client import ClobClient
+   from py_clob_client_v2.clob_types import ApiCreds, BalanceAllowanceParams, AssetType
+   creds = ApiCreds(api_key='...', api_secret='...', api_passphrase='...')
+   c = ClobClient('https://clob.polymarket.com', chain_id=137, key='<PRIVATE_KEY>', creds=creds, signature_type=3, funder='<FUNDER_ADDRESS>')
+   c.set_api_creds(creds)
+   c.update_balance_allowance(BalanceAllowanceParams(asset_type=AssetType.COLLATERAL))
+   "
+   ```
+6. **Make one manual trade on polymarket.com** — new accounts must place at least one trade through the UI to register the maker address with the CLOB. Without this, all API orders fail with `maker address not allowed, please use the deposit wallet flow`.
+7. Run: `bash scripts/run_live_70.sh`
+
 ## Current state snapshot (2026-05-29)
 
 **Live strategy:** `grinder` — heavy-favorite, ride-to-resolution. Single source-of-truth profile at `configs/profiles/grinder.toml`.

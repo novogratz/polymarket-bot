@@ -359,27 +359,21 @@ class TradingSession:
             module, _ = _load_sdk_client()
             if module is not None:
                 order_args_cls = getattr(module, "OrderArgs", None)
-                order_type_cls = getattr(module, "OrderType", None)
                 partial_options_cls = getattr(module, "PartialCreateOrderOptions", None)
-                side_cls = getattr(module, "Side", None)
-                if order_args_cls and order_type_cls and partial_options_cls and side_cls:
+                if order_args_cls and partial_options_cls:
                     order_args = order_args_cls(
                         token_id=candidate.token_id or "",
                         price=price,
                         size=size,
-                        side=getattr(side_cls, side, side),
+                        side=side,
                     )
                     options = partial_options_cls(
                         tick_size=str(candidate.tick_size or "0.01"),
                         neg_risk=candidate.neg_risk,
                     )
-                    order_type = getattr(order_type_cls, "GTC", "GTC")
                     method = getattr(self.sdk_client, "create_and_post_order", None)
                     if callable(method):
-                        try:
-                            response = method(order_args=order_args, options=options, order_type=order_type)
-                        except TypeError:
-                            response = method(order_args, options, order_type)
+                        response = method(order_args=order_args, options=options)
                         order_dict = {
                             "tokenId": candidate.token_id,
                             "price": price,
@@ -395,7 +389,7 @@ class TradingSession:
             size=size,
             side=side,
             maker=self.settings.funder_address or self.wallet_address,
-            signer=self.wallet_address,
+            signer=self.legacy_client.wallet_address,
             signature_type=self.settings.signature_type,
             neg_risk=candidate.neg_risk,
         )
