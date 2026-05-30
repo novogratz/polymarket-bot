@@ -1025,8 +1025,6 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
     if current_pnl_pct >= settings.race_tp_pct:
         return {"reason": "race_take_profit", "shares": shares}
     if current_pnl_pct <= -settings.race_sl_pct:
-        if _is_sports_total_position(position):
-            return None
         return {"reason": "race_stop_loss", "shares": shares}
     # Near-expiry flush removed: was selling positions at break-even
     # just because the market was about to resolve, leaving real upside
@@ -1040,6 +1038,10 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
 # lets a quick on-chain resolution settle to 0/1 first; after that we realize
 # the position at the best price we have so capital rotates.
 RACE_EXPIRY_GRACE_MIN = 10
+# Sports CLOB windows close while games are still in progress.
+# If the position is still winning (price >= 0.50), give it 6h to resolve
+# naturally via resolved_exit or universal sweep instead of force-selling mid-game.
+RACE_EXPIRY_GRACE_MIN_WINNING = 360
 
 
 def _execute_race_exits(
@@ -1073,13 +1075,19 @@ def _execute_race_exits(
         # and stays open forever — the "5 stale open positions" bug. Realize
         # it at the best price we have so the ledger reflects reality.
         mtc = _minutes_to_close(position)
-        if mtc is not None and mtc <= -RACE_EXPIRY_GRACE_MIN:
+        if mtc is not None and mtc < 0:
             exit_candidate = by_token.get(token_id)
             salvage = max(
                 position_price,
                 float((exit_candidate.best_bid or 0.0) if exit_candidate else 0.0),
                 0.0,
             )
+            # If still winning (price >= 0.50), the event is likely still resolving
+            # (e.g. sports CLOB closes before game ends). Give it 6h to reach
+            # resolved_exit/universal_sweep rather than force-selling mid-game.
+            grace = RACE_EXPIRY_GRACE_MIN_WINNING if salvage >= 0.50 else RACE_EXPIRY_GRACE_MIN
+            if mtc > -grace:
+                continue
             if exit_candidate is None and token_id:
                 exit_candidate = Candidate(
                     market_id=str(position.get("market_id") or ""),

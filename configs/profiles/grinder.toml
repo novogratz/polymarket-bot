@@ -9,7 +9,7 @@
 # O/U 0.5/5.5+). Price-stability filter blocks live-game flux (>10% day change).
 
 [run]
-starting_cash = 33.48
+starting_cash = 15.0
 mode = "grinder"
 
 [sizing]
@@ -34,7 +34,7 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-max_hours = 4.0
+max_hours = 2.0
 scan_limit = 750
 
 min_liquidity_usd = 500.0
@@ -65,13 +65,13 @@ max_orders_per_tick = 2
 cash_floor_pct = 0.05
 
 # Exit rules:
-#   tp_pct = 1.0      → TP disabled; don't exit early, ride to resolution.
-#   sl_pct = 1.0      → SL disabled; no stop-loss on near-certainty bets.
+#   tp_pct = 1.0      → TP disabled; ride to resolution.
+#   sl_pct = 0.35     → SL at -35%: entry 0.94 exits at ~0.61, cuts mid-game bleed.
 #   resolved at 0.99  → exit when the market prints near-final resolution value.
 #   max_hold 4.5h     → backstop so nothing lingers after expiry.
 tp_pct = 1.0
-sl_pct = 1.0
-sl_min_age_minutes = 1
+sl_pct = 0.35
+sl_min_age_minutes = 5
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.99
 

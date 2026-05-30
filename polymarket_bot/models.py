@@ -76,6 +76,14 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "o/u 5.5",
     "o/u 6.5",
     "o/u 7.5",
+    # Spread/handicap markets: gap risk identical to exact-score.
+    # A single goal swings AH spreads by 0.40+ in one tick, SL can't catch it.
+    # "Spread:" prefix covers all Asian handicap markets on Polymarket.
+    "spread:",
+    # Draw markets: binary coin-flip at 0.15–0.30 that spikes to 0.90+ when
+    # score is 0-0 late, then gaps to 0 on any goal. Same gap profile.
+    "end in a draw",
+    "win or draw",
 )
 _EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down", "exact-score")
 
