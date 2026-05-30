@@ -134,6 +134,55 @@ class LiveSnapshot:
     ticks: int
 
 
+def _fetch_live_equity() -> tuple[float, float] | None:
+    """Return (available_cash, total_positions_value) from Polymarket live APIs.
+
+    Uses: CLOB for available cash + Data API for all open/pending positions.
+    Returns None on any failure so callers can fall back to local ledger.
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(REPO_ROOT))
+        from polymarket_bot.profiles import load_profile, apply_profile_to_env
+        from polymarket_bot.config import Settings
+        from polymarket_bot.trading import build_client
+        from polymarket_bot.smart_money import DataApiClient
+        profile_path = REPO_ROOT / "configs" / "profiles" / "grinder.toml"
+        if profile_path.exists():
+            apply_profile_to_env(load_profile(profile_path), override=False)
+        settings = Settings()
+        if not settings.funder_address or settings.dry_run:
+            return None
+        # Available cash from CLOB
+        client = build_client(settings)
+        try:
+            avail = float(client.live_available_balance() or 0.0)
+        except Exception:
+            avail = float(settings.paper_balance_usd or 0.0)
+        # All active positions from Data API — same filter as _sync_live_positions:
+        # size > 0 AND currentValue >= min_value (drops dust / redeemed positions).
+        pos_value = 0.0
+        min_val = float(getattr(settings, "live_position_min_value_usd", 0.5) or 0.5)
+        try:
+            live_positions = DataApiClient(settings.data_api_base_url).positions(
+                user=settings.funder_address
+            )
+            for item in live_positions:
+                try:
+                    size = float(item.get("size") or 0)
+                    cv = float(item.get("currentValue") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if size <= 0 or cv < min_val:
+                    continue
+                pos_value += cv
+        except Exception:
+            pass
+        return avail, pos_value
+    except Exception:
+        return None
+
+
 def load_live_snapshot() -> LiveSnapshot | None:
     paper_state = DATA_DIR / "paper_state.json"
     if not paper_state.exists():
@@ -142,26 +191,32 @@ def load_live_snapshot() -> LiveSnapshot | None:
         state = json.loads(paper_state.read_text())
     except Exception:
         return None
-    cash = float(state.get("cash") or 0.0)
+    # Fetch real equity from Polymarket APIs so the report matches what the
+    # user sees on polymarket.com. The local ledger cash is unreliable after
+    # manual force-closes or mid-tick interruptions.
+    live_data = _fetch_live_equity()
     positions = state.get("positions", []) or []
     open_positions = [p for p in positions if p.get("status") == "open"]
-    # Mark-to-market preferred. Live-synced positions don't always have
-    # size_usd/notional_usd, so fall back to current_price × shares,
-    # then to stake/cost_basis if no current_price either.
-    invested = 0.0
-    for p in open_positions:
-        shares = float(p.get("shares") or 0.0)
-        cur = p.get("current_price")
-        if cur is not None and shares > 0:
-            try:
-                invested += float(cur) * shares
-                continue
-            except (TypeError, ValueError):
-                pass
-        invested += float(
-            p.get("size_usd") or p.get("notional_usd")
-            or p.get("stake") or p.get("cost_basis") or 0.0
-        )
+    if live_data is not None:
+        avail_cash, pos_value = live_data
+        cash = avail_cash
+        invested = pos_value  # already includes ALL live positions from Data API
+    else:
+        cash = float(state.get("cash") or 0.0)
+        invested = 0.0
+        for p in open_positions:
+            shares = float(p.get("shares") or 0.0)
+            cur = p.get("current_price")
+            if cur is not None and shares > 0:
+                try:
+                    invested += float(cur) * shares
+                    continue
+                except (TypeError, ValueError):
+                    pass
+            invested += float(
+                p.get("size_usd") or p.get("notional_usd")
+                or p.get("stake") or p.get("cost_basis") or 0.0
+            )
     equity = cash + invested
     closed = wins = losses = 0
     win_pnls: list[float] = []
