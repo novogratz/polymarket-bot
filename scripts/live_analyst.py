@@ -395,8 +395,62 @@ def load_todays_trades() -> list[dict]:
     return rows
 
 
+def _segment_analysis(all_records: list[dict]) -> list[str]:
+    """Analyse which market segments the bot wins on."""
+    segments: dict[str, dict] = {}
+
+    def _classify(q: str) -> str:
+        q = q.lower()
+        if "o/u" in q or "over/under" in q or "over " in q or "under " in q:
+            return "Soccer O/U"
+        if "win " in q or "win on" in q or "beat " in q:
+            return "Match Result"
+        if "die " in q or "survive" in q or "season" in q:
+            return "Entertainment"
+        if "btc" in q or "eth" in q or "bitcoin" in q or "crypto" in q:
+            return "Crypto"
+        if "seats" in q or "election" in q or "win the most" in q or "president" in q:
+            return "Politics"
+        return "Other"
+
+    for rec in all_records:
+        q = str(rec.get("question") or "")
+        if not q:
+            continue
+        seg = _classify(q)
+        pnl = _record_pnl(rec)
+        if seg not in segments:
+            segments[seg] = {"n": 0, "wins": 0, "pnl": 0.0}
+        segments[seg]["n"] += 1
+        segments[seg]["pnl"] += pnl
+        if pnl > 0:
+            segments[seg]["wins"] += 1
+
+    if not segments:
+        return []
+
+    lines = ["*EDGE ANALYSIS:*"]
+    sorted_segs = sorted(segments.items(), key=lambda x: x[1]["pnl"], reverse=True)
+    for seg, d in sorted_segs:
+        n, wins, pnl = d["n"], d["wins"], d["pnl"]
+        wr = (wins / n * 100) if n else 0
+        sign = "+" if pnl >= 0 else ""
+        mood = "🟢" if pnl >= 0 else "🔴"
+        lines.append(
+            f"  {mood} {seg}: {n} trade{'s' if n!=1 else ''}  "
+            f"{wins}W/{n-wins}L ({wr:.0f}% WR)  {sign}${pnl:.2f}"
+        )
+    best = sorted_segs[0]
+    worst = sorted_segs[-1]
+    if best[1]["pnl"] > 0:
+        lines.append(f"  → Best edge: *{best[0]}* ({best[1]['wins']}W/{best[1]['n']-best[1]['wins']}L, ${best[1]['pnl']:+.2f})")
+    if len(sorted_segs) > 1 and worst[1]["pnl"] < 0:
+        lines.append(f"  → Avoid: *{worst[0]}* ({worst[1]['wins']}W/{worst[1]['n']-worst[1]['wins']}L, ${worst[1]['pnl']:+.2f})")
+    return lines
+
+
 def daily_report_once() -> None:
-    """4 PM UTC daily summary — format matches the user's requested layout."""
+    """5 PM Paris daily quant summary."""
     snap = load_live_snapshot()
     if snap is None:
         return
@@ -415,17 +469,10 @@ def daily_report_once() -> None:
         except Exception:
             pass
 
-    daily_pnl = sum(t["pnl"] for t in today_trades)
-    alltime_pnl = snap.realized_pnl  # cumulative realized across all sessions
-    # Include unrealized PnL from open positions so the total reflects everything
-    open_pos = load_open_positions()
-    unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
-    total_pnl = daily_pnl + unrealized
-    total_pct = (total_pnl / starting * 100) if starting > 0 else 0.0
-    daily_pct = (daily_pnl / starting * 100) if starting > 0 else 0.0
     net_vs_start = snap.equity - starting
     net_vs_start_pct = (net_vs_start / starting * 100) if starting > 0 else 0.0
     balance = snap.equity
+    unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
     date_str = time.strftime("%B %-d, %Y", time.gmtime())
     divider = "━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -436,6 +483,14 @@ def daily_report_once() -> None:
     def _mood(v: float) -> str:
         return "🟢" if v >= 0 else "🔴"
 
+    # All-time stats from journal
+    all_records = _read_realized_records(DATA_DIR / "trade_journal.jsonl")
+    all_records = [r for r in all_records if r.get("question")]
+    total_trades = len(all_records)
+    total_wins = sum(1 for r in all_records if _record_pnl(r) > 0)
+    total_losses = sum(1 for r in all_records if _record_pnl(r) < 0)
+    alltime_wr = (total_wins / total_trades * 100) if total_trades else 0.0
+
     parts = [
         f"📋 *DAILY QUANT REPORT — {date_str}*",
         f"_Polymarket Bot_ `kzer_ai` _· Grinder_",
@@ -443,10 +498,9 @@ def daily_report_once() -> None:
         "",
         "*PROFIT & LOSS:*",
         f"  {_mood(net_vs_start)} P&L vs start:  ${_sign(net_vs_start)}{net_vs_start:.2f} ({_sign(net_vs_start_pct)}{net_vs_start_pct:.2f}%)  |  Equity: ${balance:.2f}",
-        f"  {_mood(total_pnl)} Today total:   ${_sign(total_pnl)}{total_pnl:.2f} ({_sign(total_pct)}{total_pct:.2f}%)  (realized {_sign(daily_pnl)}${daily_pnl:.2f} + open {_sign(unrealized)}${unrealized:.2f})",
-        f"  {_mood(alltime_pnl)} Realized cumul: ${_sign(alltime_pnl)}{alltime_pnl:.2f}  (all sessions)",
+        f"  📊 All-time: {total_trades} trade{'s' if total_trades!=1 else ''}  ({total_wins}W / {total_losses}L)  Win rate: {alltime_wr:.0f}%",
         "",
-        "*ACTIVITY:*",
+        "*ACTIVITY (TODAY):*",
     ]
 
     if today_trades:
@@ -470,17 +524,15 @@ def daily_report_once() -> None:
                 f"  {emoji} {q} ({p.get('side','?')}): "
                 f"cur {p.get('cur', 0):.3f}  {_sign(unr)}${unr:.2f}"
             )
+        parts.append(
+            f"  _Unrealized: {_sign(unrealized)}${unrealized:.2f}_"
+        )
 
-    today_wins = sum(1 for t in today_trades if t["pnl"] > 0)
-    today_losses = sum(1 for t in today_trades if t["pnl"] < 0)
+    parts.append("")
+    edge_lines = _segment_analysis(all_records)
+    parts.extend(edge_lines)
 
     parts += [
-        "",
-        "*PERFORMANCE METRICS:*",
-        f"  🏆 Win Rate:         {snap.win_rate:.1f}%",
-        f"  📊 Today's Trades:   {len(today_trades)}  ({today_wins}W / {today_losses}L)",
-        f"  📈 All-time Trades:  {snap.closed}  ({snap.wins}W / {snap.losses}L)",
-        f"  💰 Current Balance:  ${balance:.2f}",
         "",
         "_Polymarket Bot_ `kzer_ai` _· Grinder_",
     ]
@@ -491,6 +543,11 @@ def daily_report_once() -> None:
 
 
 def cycle_once() -> None:
+    """30-min heartbeat — same format as the daily quant report."""
+    daily_report_once()
+
+
+def _cycle_once_old() -> None:
     snap = load_live_snapshot()
     if snap is None:
         msg = "🔵 *LIVE ANALYST* — no paper_state.json yet (bot not started?)"
