@@ -40,11 +40,11 @@ scan_limit = 750
 min_liquidity_usd = 500.0
 min_volume_24h_usd = 300.0
 
-# Entry band 0.87–0.95. Wider band = more eligible markets per day.
-# 0.87 still implies 87%+ certainty; price-stability gate (10% day change)
-# blocks live-game flux at the lower end. Above 0.95 upside to 0.99 too thin.
-min_price = 0.87
-max_price = 0.95
+# Entry band 0.90–0.94. Tighter = genuinely near-certain only.
+# 0.87–0.89 has asymmetric gap risk (one goal: 0.87 → 0.40).
+# Above 0.94 the spread thins out and upside to 0.99 is too small.
+min_price = 0.90
+max_price = 0.94
 
 # Price-stability gate: skip any market that moved >10% today.
 # A live-game "No" on an exact score sits at 0.93 but can gap to 0.40 in one
