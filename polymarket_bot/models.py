@@ -53,6 +53,12 @@ def parse_json_list(value: Any) -> list[Any]:
 
 
 _EXCLUDED_QUESTION_SUBSTRINGS = (
+    # Crypto Up/Down directional binaries: coin-flips with no model edge.
+    # The grinder 50%-stake lane treated these as favorites and dumped the
+    # whole bankroll into a 5-min BTC flip at 0.635 → -$50 (2026-05-30).
+    # The model-gated btc_edge lane (threshold "above $X" markets) is the
+    # only sanctioned crypto path — it never matches "up or down".
+    "up or down",
     # Temperature/weather threshold markets: specific-degree weather fails
     # constantly even at 0.94 — 0% win rate in grinder band. Both °C and °F.
     "temperature",
@@ -88,7 +94,7 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "end in a draw",
     "win or draw",
 )
-_EXCLUDED_SLUG_SUBSTRINGS = ("exact-score",)
+_EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down", "exact-score")
 
 
 def is_excluded_market(market: dict[str, Any]) -> bool:
