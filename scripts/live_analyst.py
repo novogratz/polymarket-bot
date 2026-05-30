@@ -205,18 +205,31 @@ def _fetch_today_pnl() -> tuple[float, list[dict]] | None:
         except Exception:
             pass
 
-        # For each SELL today: PnL = proceeds - proportional cost basis.
-        # Proportional: cost × (shares_sold / total_shares_bought) so a partial
-        # exit on a large position doesn't allocate the full position cost.
+        # Separate today's buys for filtering + auto-redeemed detection
+        today_buy_assets: set[str] = set()
+        today_buy_cost: dict[str, float] = {}
+        today_buy_shares: dict[str, float] = {}
+        today_buy_title: dict[str, str] = {}
+        for t in all_buys:
+            if t.timestamp >= today_start:
+                today_buy_assets.add(t.asset)
+                today_buy_cost[t.asset] = today_buy_cost.get(t.asset, 0.0) + float(t.usdc_size)
+                today_buy_shares[t.asset] = today_buy_shares.get(t.asset, 0.0) + float(t.size)
+                today_buy_title[t.asset] = t.title
+
+        # Titles to exclude (user request)
+        _EXCLUDE = {"vissel"}
+
         activity: list[dict] = []
         total_realized = 0.0
 
-        # Titles to exclude from activity display (user request)
-        _EXCLUDE_TITLES = {"vissel"}
-
+        # SELLs today where the position was ALSO opened today
+        # (filters out Labour Party / Alex Borg opened weeks ago)
         for t in today_sells:
+            if t.asset not in today_buy_assets:
+                continue  # opened before today — skip
             title = (buy_title.get(t.asset) or t.title or "").lower()
-            if any(ex in title for ex in _EXCLUDE_TITLES):
+            if any(ex in title for ex in _EXCLUDE):
                 continue
             proceeds = float(t.usdc_size)
             sell_sh = float(t.size)
@@ -230,8 +243,26 @@ def _fetch_today_pnl() -> tuple[float, list[dict]] | None:
                 "question": (buy_title.get(t.asset) or t.title or "?")[:50],
                 "pnl": round(pnl, 2),
                 "pct": round(pct, 2),
-                "proceeds": round(proceeds, 2),
-                "cost": round(allocated, 2),
+            })
+
+        # Auto-redeemed wins: bought today, not active, no SELL today, not excluded
+        sold_today = {t.asset for t in today_sells}
+        for asset, cost in today_buy_cost.items():
+            if asset in sold_today or asset in active_assets:
+                continue
+            title_low = today_buy_title.get(asset, "").lower()
+            if any(ex in title_low for ex in _EXCLUDE):
+                continue
+            shares = today_buy_shares.get(asset, 0.0)
+            proceeds = shares * 1.0  # redeemed at full face value
+            pnl = proceeds - cost
+            pct = (pnl / cost * 100) if cost > 0 else 0.0
+            total_realized += pnl
+            activity.append({
+                "question": (today_buy_title.get(asset) or "?")[:50],
+                "pnl": round(pnl, 2),
+                "pct": round(pct, 2),
+                "auto_redeemed": True,
             })
 
         activity.sort(key=lambda x: x["pnl"], reverse=True)
@@ -670,10 +701,9 @@ def daily_report_once() -> None:
             unr = float(p.get("unr", 0) or 0)
             cost = float(p.get("cost", 0) or 0)
             mtm = float(p.get("mtm", 0) or 0)
-            emoji = "🟢" if unr >= 0 else "🔴"
             q = (p.get("question") or "?")[:38]
             parts.append(
-                f"  {emoji} {q} ({p.get('side','?')}): "
+                f"  ⚪ {q} ({p.get('side','?')}): "
                 f"${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${unr:.2f})"
             )
         parts.append(f"  _Unrealized: {_sign(unrealized)}${unrealized:.2f}_")
