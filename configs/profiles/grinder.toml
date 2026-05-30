@@ -58,11 +58,11 @@ min_outcome_momentum = -0.05
 # Tight spread — 2¢ max keeps the round-trip viable.
 max_spread = 0.02
 
-# 50% stake, up to 2 concurrent positions.
+# 30% stake, up to 4 concurrent positions, 1% cash floor — stay fully deployed.
 stake_usd = 1.0
 stake_pct = 0.30
-max_orders_per_tick = 2
-cash_floor_pct = 0.05
+max_orders_per_tick = 4
+cash_floor_pct = 0.01
 
 # Exit rules:
 #   tp_pct = 1.0      → TP disabled; ride to resolution.
