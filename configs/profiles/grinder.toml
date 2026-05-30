@@ -34,7 +34,7 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-max_hours = 2.0
+max_hours = 3.0
 scan_limit = 750
 
 min_liquidity_usd = 500.0
