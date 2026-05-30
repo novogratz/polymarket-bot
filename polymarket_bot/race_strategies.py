@@ -1464,6 +1464,10 @@ def _execute_race_exits(
             resolved_loser = candidate.best_bid is not None and candidate.best_bid <= 0.05
             if expired or resolved_loser or position_resolved:
                 writeoff_price = max(float(candidate.best_bid or 0.0), 0.0)
+                # sync_closed=True prevents _sync_live_positions from re-opening
+                # this position next tick (which would produce duplicate journal
+                # entries and incorrect PnL accounting).
+                position["sync_closed"] = True
                 portfolio.record_live_exit(
                     position,
                     shares=float(plan["shares"]),

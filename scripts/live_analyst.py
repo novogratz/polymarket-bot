@@ -41,13 +41,16 @@ def _record_pnl(record: dict) -> float:
 
 
 def _realized_record_key(record: dict) -> str:
+    # Dedup by token_id — one close event per position token.
+    # Previous key included full closed_at (with microseconds) which caused
+    # duplicate journal entries written within the same second to slip through.
     token = str(record.get("token_id") or "")
-    closed_at = str(record.get("closed_at") or "")
-    reason = str(record.get("exit_reason") or record.get("reason") or "")
-    pnl = round(_record_pnl(record), 4)
-    if token or closed_at or reason:
-        return f"{token}|{closed_at}|{reason}|{pnl}"
-    return json.dumps(record, sort_keys=True)
+    if token:
+        return token
+    # Fallback for records without token_id
+    closed_at = str(record.get("closed_at") or "")[:10]  # date only
+    question = str(record.get("question") or "")
+    return f"{closed_at}|{question}"
 
 
 def _realized_cache_path_for_journal(journal_path: Path) -> Path:
@@ -359,6 +362,11 @@ def daily_report_once() -> None:
 
     daily_pnl = sum(t["pnl"] for t in today_trades)
     alltime_pnl = snap.realized_pnl  # cumulative realized across all sessions
+    # Include unrealized PnL from open positions so the total reflects everything
+    open_pos = load_open_positions()
+    unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
+    total_pnl = daily_pnl + unrealized
+    total_pct = (total_pnl / starting * 100) if starting > 0 else 0.0
     daily_pct = (daily_pnl / starting * 100) if starting > 0 else 0.0
     net_vs_start = snap.equity - starting
     net_vs_start_pct = (net_vs_start / starting * 100) if starting > 0 else 0.0
@@ -380,7 +388,7 @@ def daily_report_once() -> None:
         "",
         "*PROFIT & LOSS:*",
         f"  {_mood(net_vs_start)} P&L vs start:  ${_sign(net_vs_start)}{net_vs_start:.2f} ({_sign(net_vs_start_pct)}{net_vs_start_pct:.2f}%)  |  Equity: ${balance:.2f}",
-        f"  {_mood(daily_pnl)} Daily P&L:     ${_sign(daily_pnl)}{daily_pnl:.2f} ({_sign(daily_pct)}{daily_pct:.2f}%)",
+        f"  {_mood(total_pnl)} Today total:   ${_sign(total_pnl)}{total_pnl:.2f} ({_sign(total_pct)}{total_pct:.2f}%)  (realized {_sign(daily_pnl)}${daily_pnl:.2f} + open {_sign(unrealized)}${unrealized:.2f})",
         f"  {_mood(alltime_pnl)} Realized cumul: ${_sign(alltime_pnl)}{alltime_pnl:.2f}  (all sessions)",
         "",
         "*ACTIVITY:*",
@@ -395,6 +403,18 @@ def daily_report_once() -> None:
             )
     else:
         parts.append("  — No closed trades today")
+
+    if open_pos:
+        parts.append("")
+        parts.append("*OPEN POSITIONS:*")
+        for p in open_pos:
+            unr = float(p.get("unr", 0) or 0)
+            emoji = "🟢" if unr >= 0 else "🔴"
+            q = (p.get("question") or "?")[:40]
+            parts.append(
+                f"  {emoji} {q} ({p.get('side','?')}): "
+                f"cur {p.get('cur', 0):.3f}  {_sign(unr)}${unr:.2f}"
+            )
 
     today_wins = sum(1 for t in today_trades if t["pnl"] > 0)
     today_losses = sum(1 for t in today_trades if t["pnl"] < 0)
