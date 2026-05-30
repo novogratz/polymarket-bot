@@ -9,7 +9,9 @@
 # O/U 0.5/5.5+). Price-stability filter blocks live-game flux (>10% day change).
 
 [run]
-starting_cash = 123.0
+# Re-baselined to current equity 2026-05-30 23:55 UTC: tracking starts fresh
+# from here (Total P&L = equity - starting_cash ≈ 0), 8 open positions kept.
+starting_cash = 50.72
 mode = "grinder"
 
 [sizing]

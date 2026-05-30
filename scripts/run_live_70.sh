@@ -63,12 +63,10 @@ cleanup() {
 trap cleanup INT TERM EXIT
 python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
-# ─── Live-only leaderboard sidecar (Telegram every 5 min) ──────────────
-# --live-only: renders the LIVE bot as the whole board (no dry runs), with
-# winner detail (open / best closed / worst closed). W/L comes from the
-# durable data/realized_trade_cache.jsonl, so it survives journal rotation.
-uv run pmbot leaderboard --live-only --interval 5 --telegram \
-    2>&1 | sed -u 's/^/[board] /' | tee -a "$RUN_LOG" &
+# ─── Live-only leaderboard sidecar REMOVED (2026-05-30) ────────────────
+# The 5-min "🏁 Leaderboard · LIVE only" Telegram summary was noisy and
+# duplicated the daily quant report. Disabled per request. Re-add the
+# `pmbot leaderboard --live-only --interval 5 --telegram` line to restore.
 
 # ─── Dry grinder twin (paper, mirrors the live config for safe compare) ─
 # Same grinder.toml ($43, all-in) but simulated — never spends real money,
