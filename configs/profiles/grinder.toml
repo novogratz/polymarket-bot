@@ -9,7 +9,7 @@
 # O/U 0.5/5.5+). Price-stability filter blocks live-game flux (>10% day change).
 
 [run]
-starting_cash = 137.22
+starting_cash = 123.0
 mode = "grinder"
 
 [sizing]
@@ -22,7 +22,7 @@ cash_floor_pct = 0.05
 position_pct = 0.50
 min_open_positions = 0
 starter_trade_usd = 1.5
-assumed_live_balance_usd = 137.22
+assumed_live_balance_usd = 141.0
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.50
 
