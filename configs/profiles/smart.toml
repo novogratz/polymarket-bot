@@ -28,6 +28,10 @@ cash_floor_pct = 0.05
 # cost money on the crypto coinflip). Strict multi-wallet consensus only.
 min_open_positions = 0
 assumed_live_balance_usd = 65.78
+# Explicitly OFF: when > 0 a high-conviction signal raises its max stake to
+# (live_balance * fraction), overriding the 15% ceiling above — exactly the
+# over-betting we are avoiding. Keep at 0 so the ceiling is the hard cap.
+high_conviction_balance_fraction = 0.0
 
 [filters]
 # Require genuine multi-wallet consensus and meaningful copied flow before we

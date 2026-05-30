@@ -1440,6 +1440,12 @@ def _max_trade_for_signal(
         and available_cash > 0
     ):
         size = available_cash * settings.smart_position_pct * quality_mult
+        # Percentage ceiling (equity-scaled, using cash as a conservative
+        # proxy). Was missing — only the USD cap applied, so a 2.5x conviction
+        # multiplier could reach 25% of cash and defeat the pct ceiling via the
+        # max(base, dynamic) in _dynamic_max_trade.
+        if settings.smart_max_position_ceiling_pct > 0:
+            size = min(size, available_cash * settings.smart_max_position_ceiling_pct)
         if settings.smart_max_position_ceiling_usd > 0:
             size = min(size, settings.smart_max_position_ceiling_usd)
         if is_crypto_micro:
