@@ -30,6 +30,9 @@ export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-
 # 10s tick — 3× faster than 30s, catches more fleeting band entries.
 export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
 
+# Drawdown halt at 40% — generous enough that one SL loss (-35%) doesn't freeze the bot.
+export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-0.40}
+
 # Telegram: tout pousser en live (override .env qui a TELEGRAM_ALERT_TRADES=0
 # pour rester silencieux en dry-run).
 export TELEGRAM_ALERT_TRADES=1

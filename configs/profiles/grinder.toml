@@ -60,7 +60,7 @@ max_spread = 0.02
 
 # 50% stake, up to 2 concurrent positions.
 stake_usd = 1.0
-stake_pct = 0.50
+stake_pct = 0.30
 max_orders_per_tick = 2
 cash_floor_pct = 0.05
 
