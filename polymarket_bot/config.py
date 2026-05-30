@@ -343,6 +343,10 @@ class Settings:
     # 0.0 = disabled. Grinder sets to 0.97 (min 3% guaranteed profit).
     race_arb_threshold: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_ARB_THRESHOLD", 0.0))
     race_arb_max_stake_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_ARB_MAX_STAKE_USD", 5.0))
+    # Minutes past a market's endDate before force-closing a stuck position.
+    # Polymarket closes sports O/U betting at kickoff but the market resolves
+    # 90+ min later after full time — keep this well above 90.
+    race_expiry_grace_min: int = field(default_factory=lambda: int(_float_env("POLYMARKET_RACE_EXPIRY_GRACE_MIN", 150)))
     race_contrarian_min_momentum: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_CONTRARIAN_MIN_MOMENTUM", 0.03))
     race_favorite_min_bid: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FAVORITE_MIN_BID", 0.65))
     race_breakout_min_momentum: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_BREAKOUT_MIN_MOMENTUM", 0.05))

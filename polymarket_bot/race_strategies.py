@@ -1035,11 +1035,11 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
     return None
 
 
-# Minutes past a market's close time before we force-close a position that
-# is stuck in limbo (closed off-chain, not yet resolved on-chain). The grace
-# lets a quick on-chain resolution settle to 0/1 first; after that we realize
-# the position at the best price we have so capital rotates.
-RACE_EXPIRY_GRACE_MIN = 10
+# Default grace period used when settings are unavailable. The real value
+# comes from settings.race_expiry_grace_min (default 150 min) so that
+# sports O/U markets — where Polymarket closes betting at kickoff but
+# resolves after full time (~90 min later) — are never force-closed mid-game.
+RACE_EXPIRY_GRACE_MIN = 150
 
 
 def _execute_race_exits(
@@ -1073,7 +1073,8 @@ def _execute_race_exits(
         # and stays open forever — the "5 stale open positions" bug. Realize
         # it at the best price we have so the ledger reflects reality.
         mtc = _minutes_to_close(position)
-        if mtc is not None and mtc <= -RACE_EXPIRY_GRACE_MIN:
+        grace = getattr(settings, "race_expiry_grace_min", RACE_EXPIRY_GRACE_MIN)
+        if mtc is not None and mtc <= -grace:
             exit_candidate = by_token.get(token_id)
             salvage = max(
                 position_price,

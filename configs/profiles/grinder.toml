@@ -80,6 +80,9 @@ resolved_exit_threshold = 0.99
 # leg) so the guaranteed payout is equal regardless of outcome.
 arb_threshold = 0.0
 arb_max_stake_usd = 5.0
+# Polymarket closes sports O/U betting at kickoff; game resolves ~90min later.
+# 150min grace = kickoff + 90min game + 60min buffer before force-close.
+expiry_grace_min = 150
 
 [telemetry]
 quiet = false
