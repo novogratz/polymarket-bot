@@ -1588,6 +1588,80 @@ def _load_mirror_candidates(
     return extra
 
 
+def _run_btc_edge_pass(
+    client: Any,
+    settings: Settings,
+    portfolio: Portfolio,
+    cash_floor: float,
+) -> list[dict[str, Any]]:
+    """Black-Scholes BTC/ETH threshold edge — model-based crypto lane.
+
+    Runs as an independent pass inside the race tick. Only buys when the
+    modelled terminal probability beats the market price by btc_min_edge
+    (positive EV, not "buy any favorite"). Sized at most btc_max_trade_usd
+    ($5 cap) and never below the cash floor. At most one trade per tick.
+    """
+    from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
+    from .main import load_btc_candidates
+
+    try:
+        candidates = load_btc_candidates(settings)
+        model = CoinbaseBtcClient().model(settings)
+    except Exception as exc:
+        print(f"   btc edge skipped: {type(exc).__name__}: {exc}", flush=True)
+        return []
+
+    eligible = [
+        c for c in candidates
+        if c.token_id
+        and c.accepts_orders
+        and c.best_ask is not None
+        and c.best_bid is not None
+        and c.tick_size is not None
+        and not portfolio.has_open_position(c.market_id)
+        and not portfolio.has_open_token(c.token_id)
+    ]
+    signal = choose_btc_edge_trade(eligible, settings, model)
+    if signal is None:
+        return []
+
+    cash_above_floor = max(0.0, portfolio.cash - cash_floor)
+    if cash_above_floor < max(1.0, settings.btc_min_trade_usd):
+        return []
+    stake = min(settings.btc_max_trade_usd, cash_above_floor)
+
+    signal_payload = signal.to_dict()
+    signal_payload["tag"] = "btc_edge"
+    signal_payload["selection_reason"] = (
+        f"btc_edge {signal.side} strike={signal.strike} "
+        f"fair={signal.fair_probability:.3f} edge={signal.edge:.3f} "
+        f"ask={signal.candidate.best_ask}"
+    )
+    print(
+        f"   ₿ btc edge: {signal.side} fair={signal.fair_probability:.3f} "
+        f"edge={signal.edge:.3f} ask={signal.candidate.best_ask} stake=${stake:.2f}",
+        flush=True,
+    )
+    try:
+        result = execute_live_trade(
+            client, settings, signal.candidate, portfolio,
+            min_trade_usd=settings.btc_min_trade_usd,
+            max_trade_usd=stake,
+            strategy="btc_edge",
+            signal=signal_payload,
+        )
+        portfolio.save(settings.state_path)
+        return [{
+            "strategy": "btc_edge",
+            "order": result.order,
+            "response": result.response,
+            "signal": signal_payload,
+        }]
+    except Exception as exc:
+        print(f"   btc edge trade failed: {type(exc).__name__}: {exc}", flush=True)
+        return []
+
+
 def _run_race_tick(
     settings: Settings,
     strategy_name: str,
@@ -1782,6 +1856,15 @@ def _run_race_tick(
         if arb_pairs:
             arb_results = _execute_arb_entries(client, settings, portfolio, arb_pairs, strategy_name)
 
+    # ── BTC/ETH Black-Scholes edge pass ──────────────────────────────────────
+    # Independent model-based crypto lane — fills dead hours between sports
+    # sessions. Only fires on positive-EV signals, $5 cap per trade.
+    btc_trades: list[dict[str, Any]] = []
+    if settings.btc_edge_integrated:
+        btc_floor = float(portfolio.summary().get("equity", portfolio.cash)) * settings.race_cash_floor_pct
+        btc_trades = _run_btc_edge_pass(client, settings, portfolio, btc_floor)
+        executed.extend(btc_trades)
+
     portfolio.save(settings.state_path)
     return {
         "trade": executed[-1] if executed else None,
@@ -1791,6 +1874,7 @@ def _run_race_tick(
         "exits": exits,
         "rejected_signals": rejected,
         "arb_trades": arb_results,
+        "btc_trades": btc_trades,
         "scan_counts": {"raw_markets": len(markets), "eligible": len(eligible), "picks": len(picks), "fallback_used": fallback_used},
         "summary": portfolio.summary(),
     }

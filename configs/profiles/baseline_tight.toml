@@ -1,0 +1,31 @@
+# Tight baseline — high-conviction only, used by capital-guard tests.
+
+[run]
+starting_cash = 20.0
+mode = "smart_money"
+
+[sizing]
+position_pct = 0.10
+min_open_positions = 0
+starter_trade_usd = 1.0
+assumed_live_balance_usd = 20.0
+
+[filters]
+min_consensus = 3
+fallback_consensus = 3
+min_copied_usdc = 250.0
+max_chase_premium = 0.0
+max_orders_per_tick = 1
+
+[exits]
+stop_loss_pct = 0.40
+max_hold_hours = 24.0
+
+[btc_edge]
+enabled = false
+
+[noise_fallback]
+enabled = false
+
+[deep_fallback]
+enabled = false

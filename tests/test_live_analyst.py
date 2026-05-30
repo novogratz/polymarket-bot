@@ -49,6 +49,7 @@ class LiveAnalystStatsTests(unittest.TestCase):
                         json.dumps({
                             "closed_at": "2026-05-26T10:00:00+00:00",
                             "token_id": "a",
+                            "question": "Will X happen?",
                             "exit_reason": "take_profit",
                             "realized_pnl": 0.40,
                         }),
@@ -56,6 +57,7 @@ class LiveAnalystStatsTests(unittest.TestCase):
                             "event": "position_closed",
                             "closed_at": "2026-05-26T11:00:00+00:00",
                             "token_id": "b",
+                            "question": "Will Y happen?",
                             "exit_reason": "sync_closed",
                             "realized_pnl_usd": -0.10,
                         }),
@@ -68,12 +70,14 @@ class LiveAnalystStatsTests(unittest.TestCase):
                         json.dumps({
                             "closed_at": "2026-05-26T10:00:00+00:00",
                             "token_id": "a",
+                            "question": "Will X happen?",
                             "exit_reason": "take_profit",
                             "realized_pnl": 0.40,
                         }),
                         json.dumps({
                             "closed_at": "2026-05-26T12:00:00+00:00",
                             "token_id": "c",
+                            "question": "Will Z happen?",
                             "exit_reason": "race_take_profit",
                             "realized_pnl": 0.20,
                         }),

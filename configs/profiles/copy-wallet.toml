@@ -1,0 +1,26 @@
+# Copy-wallet (mirror) profile — mirrors a target wallet's trades.
+# Requires POLYMARKET_MIRROR_TARGET env override with a real wallet address.
+
+[run]
+starting_cash = 20.0
+mode = "mirror"
+
+[sizing]
+position_pct = 0.10
+min_open_positions = 0
+assumed_live_balance_usd = 20.0
+
+[mirror]
+target = "0x0000000000000000000000000000000000000000"
+size_usd = 5.0
+mirror_sells = true
+min_target_stake_usd = 1.0
+max_chase_premium = 0.02
+min_buy_price = 0.05
+max_buy_price = 0.95
+
+[btc_edge]
+enabled = false
+
+[noise_fallback]
+enabled = false
