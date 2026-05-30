@@ -547,10 +547,11 @@ class TestThresholdOneLine(NotificationsBaseTest):
         with tempfile.TemporaryDirectory() as tmpd:
             path = Path(tmpd) / "s.json"
             with patch.object(notifications, "_default_state_path", return_value=path):
-                notifications.notify_threshold(
-                    "equity_floor",
-                    {"equity_usd": 48.0, "cash_usd": 4.0, "open_positions": 5},
-                )
+                with patch.dict("os.environ", {"TELEGRAM_EQUITY_FLOOR_USD": "50"}):
+                    notifications.notify_threshold(
+                        "equity_floor",
+                        {"equity_usd": 48.0, "cash_usd": 4.0, "open_positions": 5},
+                    )
         self.assertEqual(len(sent), 1)
         text = sent[0]["text"]
         self.assertNotIn("\n", text)
