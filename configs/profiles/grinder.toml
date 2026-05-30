@@ -15,11 +15,15 @@ mode = "grinder"
 [sizing]
 # 50% per trade — 2 wins/day hits ~9%, 3 wins hits ~13%.
 # One loss = -50% on stake, painful but recoverable with one follow-up win.
-# ceiling disabled (0) so stake scales with bankroll automatically.
-max_position_ceiling_usd = 0.0
-max_position_ceiling_pct = 0.54
+# Hard per-trade USD cap = the real risk control. Grinder edge is thin
+# (buy 0.92 → resolve 1.0 = +8.7%) but a loss is near-total, so over-betting
+# guarantees eventual ruin even with positive edge (Kelly: thin edge + ruinous
+# downside ⇒ small stake is growth-optimal). $10 ≈ 15% of the $65.78 bankroll.
+# Revisit the fraction once the backtest gives a measured edge → real Kelly.
+max_position_ceiling_usd = 10.0
+max_position_ceiling_pct = 0.15
 cash_floor_pct = 0.05
-position_pct = 0.50
+position_pct = 0.12
 min_open_positions = 0
 starter_trade_usd = 1.5
 assumed_live_balance_usd = 65.78
@@ -58,9 +62,11 @@ min_outcome_momentum = -0.05
 # Tight spread — 2¢ max keeps the round-trip viable.
 max_spread = 0.02
 
-# 30% stake, up to 4 concurrent positions, 1% cash floor — stay fully deployed.
+# Fractional sizing: ~12% of equity per trade (capped to $10 by the ceiling
+# above). Was 0.30 — too hot for a thin-edge, near-total-loss bet. Survival
+# first; the backtest will set the growth-optimal Kelly fraction from here.
 stake_usd = 1.0
-stake_pct = 0.30
+stake_pct = 0.12
 max_orders_per_tick = 4
 cash_floor_pct = 0.01
 
