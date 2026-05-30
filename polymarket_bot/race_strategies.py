@@ -1717,7 +1717,16 @@ def _run_race_tick(
         # kept as the absolute floor so micro-bankrolls still clear the
         # $1 CLOB minimum.
         equity = float(portfolio.summary().get("equity", portfolio.cash))
-        target = max(equity * settings.race_stake_pct, 1.0)
+        # Dynamic sizing: scale up when close to resolution.
+        # h2c < 0.5h (30 min) → 1.5× stake. h2c < 1h → 1.25×. Otherwise base.
+        h2c = candidate.hours_to_close or 99.0
+        if h2c < 0.5:
+            size_mult = 1.5
+        elif h2c < 1.0:
+            size_mult = 1.25
+        else:
+            size_mult = 1.0
+        target = max(equity * settings.race_stake_pct * size_mult, 1.0)
         if settings.smart_max_position_ceiling_usd > 0:
             target = min(target, settings.smart_max_position_ceiling_usd)
         stake = min(target, cash_above_floor)
