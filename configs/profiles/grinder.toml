@@ -97,6 +97,21 @@ max_chase_premium = 0.03
 [noise_fallback]
 enabled = false
 
+[btc_edge]
+# BTC/ETH price threshold markets — fills dead time between sports sessions.
+# Black-Scholes model checks if current price gives ≥75% prob of staying above/below
+# threshold. Resolves every hour. Small cap ($5) — crypto is more volatile.
+enabled = true
+min_model_probability = 0.75
+min_edge_over_market = 0.05
+min_buy_price = 0.75
+max_buy_price = 0.97
+max_spread = 0.04
+min_trade_usd = 1.0
+per_trade_cap_usd = 5.0
+min_hours_to_close = 0.08
+volatility_days = 7
+
 [discovery]
 soon_hours = 1
 
