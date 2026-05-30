@@ -474,7 +474,13 @@ def daily_report_once() -> None:
     balance = snap.equity
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
+    # Today P&L = closed trades realized today + unrealized on open positions
+    today_closed_pnl = sum(t["pnl"] for t in today_trades)
+    today_total_pnl = today_closed_pnl + unrealized
+    today_total_pct = (today_total_pnl / starting * 100) if starting > 0 else 0.0
+
     date_str = time.strftime("%B %-d, %Y", time.gmtime())
+    stamp = time.strftime("%H:%M UTC", time.gmtime())
     divider = "━━━━━━━━━━━━━━━━━━━━━━━━"
 
     def _sign(v: float) -> str:
@@ -483,22 +489,14 @@ def daily_report_once() -> None:
     def _mood(v: float) -> str:
         return "🟢" if v >= 0 else "🔴"
 
-    # All-time stats from journal
-    all_records = _read_realized_records(DATA_DIR / "trade_journal.jsonl")
-    all_records = [r for r in all_records if r.get("question")]
-    total_trades = len(all_records)
-    total_wins = sum(1 for r in all_records if _record_pnl(r) > 0)
-    total_losses = sum(1 for r in all_records if _record_pnl(r) < 0)
-    alltime_wr = (total_wins / total_trades * 100) if total_trades else 0.0
-
     parts = [
-        f"📋 *DAILY QUANT REPORT — {date_str}*",
+        f"📋 *DAILY QUANT REPORT — {date_str}* _{stamp}_",
         f"_Polymarket Bot_ `kzer_ai` _· Grinder_",
         divider,
         "",
         "*PROFIT & LOSS:*",
-        f"  {_mood(net_vs_start)} P&L vs start:  ${_sign(net_vs_start)}{net_vs_start:.2f} ({_sign(net_vs_start_pct)}{net_vs_start_pct:.2f}%)  |  Equity: ${balance:.2f}",
-        f"  📊 All-time: {total_trades} trade{'s' if total_trades!=1 else ''}  ({total_wins}W / {total_losses}L)  Win rate: {alltime_wr:.0f}%",
+        f"  {_mood(net_vs_start)} Total P&L:   ${_sign(net_vs_start)}{net_vs_start:.2f} ({_sign(net_vs_start_pct)}{net_vs_start_pct:.2f}%)  |  Equity: ${balance:.2f}",
+        f"  {_mood(today_total_pnl)} Today P&L:   ${_sign(today_total_pnl)}{today_total_pnl:.2f} ({_sign(today_total_pct)}{today_total_pct:.2f}%)",
         "",
         "*ACTIVITY (TODAY):*",
     ]
@@ -518,19 +516,15 @@ def daily_report_once() -> None:
         parts.append("*OPEN POSITIONS:*")
         for p in open_pos:
             unr = float(p.get("unr", 0) or 0)
+            cost = float(p.get("cost", 0) or 0)
+            mtm = float(p.get("mtm", 0) or 0)
             emoji = "🟢" if unr >= 0 else "🔴"
-            q = (p.get("question") or "?")[:40]
+            q = (p.get("question") or "?")[:38]
             parts.append(
                 f"  {emoji} {q} ({p.get('side','?')}): "
-                f"cur {p.get('cur', 0):.3f}  {_sign(unr)}${unr:.2f}"
+                f"invested ${cost:.2f} → now ${mtm:.2f}  ({_sign(unr)}${unr:.2f})"
             )
-        parts.append(
-            f"  _Unrealized: {_sign(unrealized)}${unrealized:.2f}_"
-        )
-
-    parts.append("")
-    edge_lines = _segment_analysis(all_records)
-    parts.extend(edge_lines)
+        parts.append(f"  _Open unrealized: {_sign(unrealized)}${unrealized:.2f}_")
 
     parts += [
         "",
