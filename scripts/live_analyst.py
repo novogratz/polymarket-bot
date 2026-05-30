@@ -701,10 +701,12 @@ def daily_report_once() -> None:
             unr = float(p.get("unr", 0) or 0)
             cost = float(p.get("cost", 0) or 0)
             mtm = float(p.get("mtm", 0) or 0)
-            q = (p.get("question") or "?")[:38]
+            entry = float(p.get("entry", 0) or 0)
+            cur = float(p.get("cur", 0) or 0)
+            q = (p.get("question") or "?")[:35]
             parts.append(
                 f"  ⚪ {q} ({p.get('side','?')}): "
-                f"${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${unr:.2f})"
+                f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${unr:.2f})"
             )
         parts.append(f"  _Unrealized: {_sign(unrealized)}${unrealized:.2f}_")
 

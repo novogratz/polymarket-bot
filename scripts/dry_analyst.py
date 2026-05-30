@@ -976,7 +976,8 @@ def cycle_once() -> None:
     msg = build_main_message(narrative, top, bottom, spawned, tuned, killed,
                               n_total, live_ready=live_ready,
                               live_close=live_close, all_metrics=metrics)
-    telegram_post(msg)
+    # Reporting is handled by live_analyst.py (daily quant + 30-min cycle).
+    # dry_analyst only runs the loser-kill pass — no Telegram here.
     print(msg, flush=True)
 
 
