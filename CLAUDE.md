@@ -10,7 +10,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 - Engine: `race` (selector = `select_grinder` in `polymarket_bot/race_strategies.py`)
 - Thesis: buy a binary outcome at bid 0.87–0.95 within 4h of close, hold until bid ≥ 0.99. The edge is the implied-probability gap between the current bid and the binary outcome resolving at 1.0. No stop-loss — the exclusion filters, price-stability gate, and momentum filter are the risk controls.
-- Bankroll: **$123 USDC** (2026-05-29 deposit — $100 top-up to prior ~$23 balance).
+- Bankroll: **$75.02 USDC** (2026-05-30 — down from $123 deposit, Vissel Kōbe O/U 4.5 Over resolved causing $58 loss).
 - Sizing: **50% per trade**, up to 2 concurrent positions. `race_stake_pct=0.50`, `max_orders_per_tick=2`, `cash_floor_pct=0.05`. Each win = +4.4% on account; 2 wins/day ≈ 9%. Stake scales automatically with bankroll.
 - Entry filters (in `_build_eligible_candidates`):
   - `race_min_price=0.87`, `race_max_price=0.95`
