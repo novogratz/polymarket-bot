@@ -23,6 +23,7 @@ import os
 import random
 from dataclasses import replace
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from . import notifications
@@ -75,10 +76,12 @@ def _load_short_expiry_markets(settings: Settings) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Forward-test observation log — records every near-favorite outcome seen
-# before the strict entry filters so we can later measure realised edge per
-# (price band, hours, momentum). Reconcile with reconcile_forward_log.py.
-# No extra HTTP — iterates the already-fetched market list each tick.
+# Forward-test logging — record every near-favorite the scan sees (a WIDE net,
+# before the strict entry filters) so we can later measure realised edge per
+# (price band, hours, momentum) on the markets the strategy actually meets.
+# Historical CLOB price history is too sparse to validate the grinder edge, so
+# this builds a clean forward dataset instead. Reconcile with
+# scripts/reconcile_forward_log.py. No extra HTTP — iterates fetched markets.
 # ---------------------------------------------------------------------------
 
 _FWD_OBS_LO = 0.80
@@ -119,8 +122,8 @@ def _load_logged_tokens(path: Path) -> set[str]:
 def _log_forward_observations(markets: list[dict[str, Any]], settings: Settings) -> int:
     """Append first-seen observations of near-favorite outcomes (wide band).
 
-    Deduped by token_id across restarts so each token is captured once at the
-    price/h2c the bot first observed it in-band.
+    Deduped by token_id (across restarts via the existing file) so each token
+    is captured once at the price/h2c the bot first observed it in-band.
     """
     global _FWD_LOGGED_TOKENS
     if not _forward_log_enabled():
@@ -160,24 +163,26 @@ def _log_forward_observations(markets: list[dict[str, Any]], settings: Settings)
                 continue
             if best_ask < _FWD_OBS_LO or best_ask > _FWD_OBS_HI:
                 continue
-            rows.append({
-                "ts": now.isoformat(),
-                "token_id": token,
-                "market_id": str(market.get("id") or ""),
-                "question": str(market.get("question") or ""),
-                "outcome": outcome,
-                "outcome_index": index,
-                "slug": str(market.get("slug") or ""),
-                "best_bid": best_bid,
-                "best_ask": best_ask,
-                "spread": round(best_ask - best_bid, 4),
-                "outcome_price": prices[index] if index < len(prices) else None,
-                "hours_to_close": round(hours_to_close, 3),
-                "end_date": end_date.isoformat(),
-                "one_day_change": one_day_change,
-                "liquidity": liquidity,
-                "volume_24h": volume_24h,
-            })
+            rows.append(
+                {
+                    "ts": now.isoformat(),
+                    "token_id": token,
+                    "market_id": str(market.get("id") or ""),
+                    "question": str(market.get("question") or ""),
+                    "outcome": outcome,
+                    "outcome_index": index,
+                    "slug": str(market.get("slug") or ""),
+                    "best_bid": best_bid,
+                    "best_ask": best_ask,
+                    "spread": round(best_ask - best_bid, 4),
+                    "outcome_price": prices[index] if index < len(prices) else None,
+                    "hours_to_close": round(hours_to_close, 3),
+                    "end_date": end_date.isoformat(),
+                    "one_day_change": one_day_change,
+                    "liquidity": liquidity,
+                    "volume_24h": volume_24h,
+                }
+            )
             _FWD_LOGGED_TOKENS.add(token)
     if rows:
         try:
@@ -1149,14 +1154,14 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
     return None
 
 
-# Default grace period used when settings are unavailable. The real value
-# comes from settings.race_expiry_grace_min (default 150 min) so that
-# sports O/U markets — where Polymarket closes betting at kickoff but
-# resolves after full time (~90 min later) — are never force-closed mid-game.
-RACE_EXPIRY_GRACE_MIN = 150
-# If a position is still winning (price >= 0.50) after the market closes,
-# the game is likely still in progress. Give it 6h to resolve naturally
-# via resolved_exit or universal sweep instead of force-selling mid-game.
+# Minutes past a market's close time before we force-close a position that
+# is stuck in limbo (closed off-chain, not yet resolved on-chain). The grace
+# lets a quick on-chain resolution settle to 0/1 first; after that we realize
+# the position at the best price we have so capital rotates.
+RACE_EXPIRY_GRACE_MIN = 10
+# Sports CLOB windows close while games are still in progress.
+# If the position is still winning (price >= 0.50), give it 6h to resolve
+# naturally via resolved_exit or universal sweep instead of force-selling mid-game.
 RACE_EXPIRY_GRACE_MIN_WINNING = 360
 
 
@@ -1198,9 +1203,9 @@ def _execute_race_exits(
                 float((exit_candidate.best_bid or 0.0) if exit_candidate else 0.0),
                 0.0,
             )
-            # Winning position (price >= 0.50): game likely still in progress.
-            # Give it 6h to resolve via resolved_exit/universal sweep.
-            # Losing position: 10min grace then force-close so capital rotates.
+            # If still winning (price >= 0.50), the event is likely still resolving
+            # (e.g. sports CLOB closes before game ends). Give it 6h to reach
+            # resolved_exit/universal_sweep rather than force-selling mid-game.
             grace = RACE_EXPIRY_GRACE_MIN_WINNING if salvage >= 0.50 else RACE_EXPIRY_GRACE_MIN
             if mtc > -grace:
                 continue
@@ -1705,17 +1710,19 @@ def _load_mirror_candidates(
 
 
 def _run_btc_edge_pass(
-    client: Any,
+    client,
     settings: Settings,
     portfolio: Portfolio,
     cash_floor: float,
 ) -> list[dict[str, Any]]:
     """Black-Scholes BTC/ETH threshold edge — model-based crypto lane.
 
-    Runs as an independent pass inside the race tick. Only buys when the
-    modelled terminal probability beats the market price by btc_min_edge
-    (positive EV, not "buy any favorite"). Sized at most btc_max_trade_usd
-    ($5 cap) and never below the cash floor. At most one trade per tick.
+    Runs as an independent pass inside the race tick (parallel to the arb
+    pass). Only buys a threshold market when the modelled terminal
+    probability beats the market price by ``btc_min_edge`` — i.e. positive
+    expected value, not "buy any favorite". Sized at most ``btc_max_trade_usd``
+    ($5 cap by default) and never below the cash floor. At most one trade
+    per tick (the single highest-edge signal).
     """
     from .bitcoin import CoinbaseBtcClient, choose_btc_edge_trade
     from .main import load_btc_candidates
@@ -1728,14 +1735,15 @@ def _run_btc_edge_pass(
         return []
 
     eligible = [
-        c for c in candidates
-        if c.token_id
-        and c.accepts_orders
-        and c.best_ask is not None
-        and c.best_bid is not None
-        and c.tick_size is not None
-        and not portfolio.has_open_position(c.market_id)
-        and not portfolio.has_open_token(c.token_id)
+        candidate
+        for candidate in candidates
+        if candidate.token_id
+        and candidate.accepts_orders
+        and candidate.best_ask is not None
+        and candidate.best_bid is not None
+        and candidate.tick_size is not None
+        and not portfolio.has_open_position(candidate.market_id)
+        and not portfolio.has_open_token(candidate.token_id)
     ]
     signal = choose_btc_edge_trade(eligible, settings, model)
     if signal is None:
@@ -1754,25 +1762,30 @@ def _run_btc_edge_pass(
         f"ask={signal.candidate.best_ask}"
     )
     print(
-        f"   ₿ btc edge: {signal.side} fair={signal.fair_probability:.3f} "
+        f"   ₿ btc edge signal: {signal.side} fair={signal.fair_probability:.3f} "
         f"edge={signal.edge:.3f} ask={signal.candidate.best_ask} stake=${stake:.2f}",
         flush=True,
     )
     try:
         result = execute_live_trade(
-            client, settings, signal.candidate, portfolio,
+            client,
+            settings,
+            signal.candidate,
+            portfolio,
             min_trade_usd=settings.btc_min_trade_usd,
             max_trade_usd=stake,
             strategy="btc_edge",
             signal=signal_payload,
         )
         portfolio.save(settings.state_path)
-        return [{
-            "strategy": "btc_edge",
-            "order": result.order,
-            "response": result.response,
-            "signal": signal_payload,
-        }]
+        return [
+            {
+                "strategy": "btc_edge",
+                "order": result.order,
+                "response": result.response,
+                "signal": signal_payload,
+            }
+        ]
     except Exception as exc:
         print(f"   btc edge trade failed: {type(exc).__name__}: {exc}", flush=True)
         return []
@@ -1786,9 +1799,11 @@ def _run_race_tick(
     print(f"▶  {strategy_name} tick start", flush=True)
     markets = _load_short_expiry_markets(settings)
     _step(settings, f"   markets: {len(markets)} raw")
-    _log_forward_observations(markets, settings)
     eligible = _build_eligible_candidates(markets, settings)
     _step(settings, f"   eligible: {len(eligible)}")
+    obs = _log_forward_observations(markets, settings)
+    if obs:
+        _step(settings, f"   forward-log: +{obs} new observations")
 
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
     if not settings.dry_run and settings.sync_live_positions:
@@ -1908,8 +1923,8 @@ def _run_race_tick(
         # kept as the absolute floor so micro-bankrolls still clear the
         # $1 CLOB minimum.
         equity = float(portfolio.summary().get("equity", portfolio.cash))
-        # Dynamic sizing: scale up when close to resolution — less time
-        # for a reversal, more certainty the bet completes.
+        # Dynamic sizing: scale up when close to resolution.
+        # h2c < 0.5h (30 min) → 1.5× stake. h2c < 1h → 1.25×. Otherwise base.
         h2c = candidate.hours_to_close or 99.0
         if h2c < 0.5:
             size_mult = 1.5
@@ -1918,8 +1933,13 @@ def _run_race_tick(
         else:
             size_mult = 1.0
         target = max(equity * settings.race_stake_pct * size_mult, 1.0)
+        # Percentage-based ceiling (preferred): cap each trade at a fixed
+        # fraction of current equity so the size scales with the bankroll.
+        # Without this the equity-scaled comment above was a lie — only the
+        # fixed USD cap below was ever applied.
         if settings.smart_max_position_ceiling_pct > 0:
             target = min(target, equity * settings.smart_max_position_ceiling_pct)
+        # Optional absolute USD cap (0 = disabled, the percentage rules).
         if settings.smart_max_position_ceiling_usd > 0:
             target = min(target, settings.smart_max_position_ceiling_usd)
         stake = min(target, cash_above_floor)
@@ -1976,12 +1996,13 @@ def _run_race_tick(
             arb_results = _execute_arb_entries(client, settings, portfolio, arb_pairs, strategy_name)
 
     # ── BTC/ETH Black-Scholes edge pass ──────────────────────────────────────
-    # Independent model-based crypto lane — fills dead hours between sports
-    # sessions. Only fires on positive-EV signals, $5 cap per trade.
+    # Independent model-based crypto lane (parallel to the arb pass). Fills the
+    # dead hours when no sports favorite sits in the grinder band. Only fires on
+    # positive-EV signals (model prob beats market by btc_min_edge), $5 cap.
     btc_trades: list[dict[str, Any]] = []
     if settings.btc_edge_integrated:
-        btc_floor = float(portfolio.summary().get("equity", portfolio.cash)) * settings.race_cash_floor_pct
-        btc_trades = _run_btc_edge_pass(client, settings, portfolio, btc_floor)
+        btc_cash_floor = float(portfolio.summary().get("equity", portfolio.cash)) * settings.race_cash_floor_pct
+        btc_trades = _run_btc_edge_pass(client, settings, portfolio, btc_cash_floor)
         executed.extend(btc_trades)
 
     portfolio.save(settings.state_path)

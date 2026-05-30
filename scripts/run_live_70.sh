@@ -21,7 +21,7 @@ echo "[run_live] logging to $RUN_LOG (live also -> $LIVE_LOG)"
 # Sync live positions (toggle hors schéma).
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
-# Live bankroll baseline = $123 (2026-05-29 deposit).
+# Live bankroll baseline = $33.48 (2026-05-30 reset).
 # These exports are the RPC-failure fallback cap — the bot reads the real
 # USDC balance from CLOB each tick; these kick in only if that read fails.
 export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-137.22}

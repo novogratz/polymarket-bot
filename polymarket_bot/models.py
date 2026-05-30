@@ -53,6 +53,11 @@ def parse_json_list(value: Any) -> list[Any]:
 
 
 _EXCLUDED_QUESTION_SUBSTRINGS = (
+    # Crypto Up/Down directional binaries: coin-flips with no model edge.
+    # The grinder 50%-stake lane treated these as favorites and dumped the
+    # whole bankroll into a 5-min BTC flip at 0.635 → -$50 (2026-05-30).
+    # The model-gated btc_edge lane (threshold "above $X" markets) is the
+    # only sanctioned crypto path — it never matches "up or down".
     "up or down",
     # Temperature/weather threshold markets: specific-degree weather fails
     # constantly even at 0.94 — 0% win rate in grinder band. Both °C and °F.
@@ -82,9 +87,10 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "o/u 7.5",
     # Spread/handicap markets: gap risk identical to exact-score.
     # A single goal swings AH spreads by 0.40+ in one tick, SL can't catch it.
+    # "Spread:" prefix covers all Asian handicap markets on Polymarket.
     "spread:",
-    # Draw markets: binary that spikes to 0.90+ when 0-0 late, then gaps to
-    # 0 on any goal. Same gap profile.
+    # Draw markets: binary coin-flip at 0.15–0.30 that spikes to 0.90+ when
+    # score is 0-0 late, then gaps to 0 on any goal. Same gap profile.
     "end in a draw",
     "win or draw",
 )

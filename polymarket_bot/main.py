@@ -565,7 +565,10 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     rejected_signals: list[dict[str, object]] = []
 
     # Daily drawdown circuit breaker — halt NEW entries when today's realized
-    # PnL ≤ -X% of starting equity. Exits still run. Reuses RACE_DAILY_DRAWDOWN_PCT.
+    # PnL is ≤ -X% of starting equity. Exits above still run. Smart-money mode
+    # had no such guard (only race mode did); a live lane needs one. Reuses the
+    # RACE_DAILY_DRAWDOWN_PCT knob as the shared daily-loss limit.
+    daily_dd_halted = False
     if settings.race_daily_drawdown_pct > 0 and opportunities:
         from .edge_strategy import _daily_realized_pnl
 
@@ -579,6 +582,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 flush=True,
             )
             opportunities = []
+            daily_dd_halted = True
 
     if opportunities:
         # Gracefully wait if out of funds.
@@ -1436,8 +1440,10 @@ def _max_trade_for_signal(
         and available_cash > 0
     ):
         size = available_cash * settings.smart_position_pct * quality_mult
-        # Pct ceiling applied before USD cap — conviction multiplier was bypassing
-        # it via the max(base, dynamic) path in _dynamic_max_trade.
+        # Percentage ceiling (equity-scaled, using cash as a conservative
+        # proxy). Was missing — only the USD cap applied, so a 2.5x conviction
+        # multiplier could reach 25% of cash and defeat the pct ceiling via the
+        # max(base, dynamic) in _dynamic_max_trade.
         if settings.smart_max_position_ceiling_pct > 0:
             size = min(size, available_cash * settings.smart_max_position_ceiling_pct)
         if settings.smart_max_position_ceiling_usd > 0:

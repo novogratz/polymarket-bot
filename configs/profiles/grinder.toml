@@ -34,7 +34,6 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# 3h max: closer to resolution = less time for a reversal.
 max_hours = 3.0
 scan_limit = 750
 
@@ -43,14 +42,17 @@ min_volume_24h_usd = 300.0
 
 # Entry band 0.90–0.94. Tighter = genuinely near-certain only.
 # 0.87–0.89 has asymmetric gap risk (one goal: 0.87 → 0.40).
-# Above 0.94 the spread thins and upside to 0.99 is too small.
+# Above 0.94 the spread thins out and upside to 0.99 is too small.
 min_price = 0.90
 max_price = 0.94
 
-# Price-stability gate: skip markets that moved >10% today.
+# Price-stability gate: skip any market that moved >10% today.
+# A live-game "No" on an exact score sits at 0.93 but can gap to 0.40 in one
+# tick when a goal is scored. Stable-for-days is the real near-certainty play.
 max_day_change_pct = 0.10
 
 # Momentum filter: skip outcomes that fell >5% today.
+# A market at 0.91 that was 0.96 this morning is trending away from resolution.
 min_outcome_momentum = -0.05
 
 # Tight spread — 2¢ max keeps the round-trip viable.
@@ -66,8 +68,8 @@ cash_floor_pct = 0.01
 
 # Exit rules:
 #   tp_pct = 1.0      → TP disabled; ride to resolution.
-#   sl_pct = 0.35     → SL at -35% after 5min (entry 0.94 → exits ~0.61).
-#   resolved at 0.97  → exit early when near-final, lock in gain before final tick.
+#   sl_pct = 0.35     → SL at -35%: entry 0.94 exits at ~0.61, cuts mid-game bleed.
+#   resolved at 0.99  → exit when the market prints near-final resolution value.
 #   max_hold 4.5h     → backstop so nothing lingers after expiry.
 tp_pct = 1.0
 sl_pct = 0.35
@@ -76,11 +78,10 @@ near_expiry_minutes = 5
 resolved_exit_threshold = 0.97
 
 # Binary arb disabled (set arb_threshold = 0.97 to re-enable).
+# Sizing now uses proportional stakes (larger stake on the expensive/likely
+# leg) so the guaranteed payout is equal regardless of outcome.
 arb_threshold = 0.0
 arb_max_stake_usd = 5.0
-# Smart expiry grace: handled in race_strategies.py
-# Winning (>=0.50): 360min; losing (<0.50): 10min → keeps capital rotating.
-expiry_grace_min = 150
 
 [telemetry]
 quiet = false
@@ -101,7 +102,7 @@ enabled = false
 [btc_edge]
 # BTC/ETH price threshold markets — fills dead time between sports sessions.
 # Black-Scholes model checks if current price gives ≥75% prob of staying above/below
-# threshold. Resolves every hour. Small cap ($5) — crypto more volatile than sports.
+# threshold. Resolves every hour. Small cap ($5) — crypto is more volatile.
 enabled = true
 min_model_probability = 0.75
 min_edge_over_market = 0.05
