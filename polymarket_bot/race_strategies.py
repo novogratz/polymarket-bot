@@ -23,6 +23,7 @@ import os
 import random
 from dataclasses import replace
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from . import notifications
@@ -72,6 +73,126 @@ def _load_short_expiry_markets(settings: Settings) -> list[dict[str, Any]]:
             if key and key not in merged:
                 merged[key] = market
     return list(merged.values())
+
+
+# ---------------------------------------------------------------------------
+# Forward-test logging — record every near-favorite the scan sees (a WIDE net,
+# before the strict entry filters) so we can later measure realised edge per
+# (price band, hours, momentum) on the markets the strategy actually meets.
+# Historical CLOB price history is too sparse to validate the grinder edge, so
+# this builds a clean forward dataset instead. Reconcile with
+# scripts/reconcile_forward_log.py. No extra HTTP — iterates fetched markets.
+# ---------------------------------------------------------------------------
+
+_FWD_OBS_LO = 0.80
+_FWD_OBS_HI = 0.995
+_FWD_LOGGED_TOKENS: set[str] | None = None
+
+
+def _forward_log_path() -> Path:
+    return Path(os.getenv("POLYMARKET_FORWARD_LOG_PATH", "data/forward_eligible_log.jsonl"))
+
+
+def _forward_log_enabled() -> bool:
+    return os.getenv("POLYMARKET_FORWARD_LOG_ENABLED", "1").lower() in ("1", "true", "yes")
+
+
+def _load_logged_tokens(path: Path) -> set[str]:
+    seen: set[str] = set()
+    if not path.is_file():
+        return seen
+    try:
+        with path.open() as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                tok = str(rec.get("token_id") or "")
+                if tok:
+                    seen.add(tok)
+    except OSError:
+        pass
+    return seen
+
+
+def _log_forward_observations(markets: list[dict[str, Any]], settings: Settings) -> int:
+    """Append first-seen observations of near-favorite outcomes (wide band).
+
+    Deduped by token_id (across restarts via the existing file) so each token
+    is captured once at the price/h2c the bot first observed it in-band.
+    """
+    global _FWD_LOGGED_TOKENS
+    if not _forward_log_enabled():
+        return 0
+    path = _forward_log_path()
+    if _FWD_LOGGED_TOKENS is None:
+        _FWD_LOGGED_TOKENS = _load_logged_tokens(path)
+    now = utc_now()
+    rows: list[dict[str, Any]] = []
+    for market in markets:
+        if is_excluded_market(market):
+            continue
+        if not bool(market.get("acceptingOrders")):
+            continue
+        end_date = parse_dt(market.get("endDate"))
+        if end_date is None or end_date <= now:
+            continue
+        market_best_bid = as_float(market.get("bestBid"), default=None)
+        market_best_ask = as_float(market.get("bestAsk"), default=None)
+        if market_best_bid is None or market_best_ask is None:
+            continue
+        outcomes = [str(item) for item in parse_json_list(market.get("outcomes"))]
+        prices = [as_float(item, -1.0) for item in parse_json_list(market.get("outcomePrices"))]
+        token_ids = [str(item) for item in parse_json_list(market.get("clobTokenIds"))]
+        if len(outcomes) != 2 or len(token_ids) != 2:
+            continue
+        hours_to_close = max((end_date - now).total_seconds() / 3600.0, 0.0)
+        one_day_change = as_float(market.get("oneDayPriceChange"), default=0.0)
+        liquidity = as_float(market.get("liquidity") or market.get("liquidityNum"))
+        volume_24h = as_float(market.get("volume24hr") or market.get("volume24hrClob"))
+        for index, outcome in enumerate(outcomes):
+            token = token_ids[index]
+            if not token or token in _FWD_LOGGED_TOKENS:
+                continue
+            best_bid, best_ask = _quote_for_outcome(index, 2, market_best_bid, market_best_ask)
+            if best_bid is None or best_ask is None:
+                continue
+            if best_ask < _FWD_OBS_LO or best_ask > _FWD_OBS_HI:
+                continue
+            rows.append(
+                {
+                    "ts": now.isoformat(),
+                    "token_id": token,
+                    "market_id": str(market.get("id") or ""),
+                    "question": str(market.get("question") or ""),
+                    "outcome": outcome,
+                    "outcome_index": index,
+                    "slug": str(market.get("slug") or ""),
+                    "best_bid": best_bid,
+                    "best_ask": best_ask,
+                    "spread": round(best_ask - best_bid, 4),
+                    "outcome_price": prices[index] if index < len(prices) else None,
+                    "hours_to_close": round(hours_to_close, 3),
+                    "end_date": end_date.isoformat(),
+                    "one_day_change": one_day_change,
+                    "liquidity": liquidity,
+                    "volume_24h": volume_24h,
+                }
+            )
+            _FWD_LOGGED_TOKENS.add(token)
+    if rows:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a") as handle:
+                for row in rows:
+                    handle.write(json.dumps(row) + "\n")
+        except OSError:
+            pass
+    return len(rows)
 
 
 def _build_eligible_candidates(
@@ -1680,6 +1801,9 @@ def _run_race_tick(
     _step(settings, f"   markets: {len(markets)} raw")
     eligible = _build_eligible_candidates(markets, settings)
     _step(settings, f"   eligible: {len(eligible)}")
+    obs = _log_forward_observations(markets, settings)
+    if obs:
+        _step(settings, f"   forward-log: +{obs} new observations")
 
     portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
     if not settings.dry_run and settings.sync_live_positions:
