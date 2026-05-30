@@ -134,6 +134,112 @@ class LiveSnapshot:
     ticks: int
 
 
+def _get_settings_and_client():
+    """Shared helper: load settings + Data API client. Raises on failure."""
+    import sys
+    from pathlib import Path as _P
+    sys.path.insert(0, str(REPO_ROOT))
+    from polymarket_bot.profiles import load_profile, apply_profile_to_env
+    from polymarket_bot.config import Settings
+    profile_path = REPO_ROOT / "configs" / "profiles" / "grinder.toml"
+    if profile_path.exists():
+        apply_profile_to_env(load_profile(profile_path), override=False)
+    settings = Settings()
+    from polymarket_bot.smart_money import DataApiClient
+    data_client = DataApiClient(settings.data_api_base_url)
+    return settings, data_client
+
+
+def _fetch_today_pnl() -> tuple[float, list[dict]] | None:
+    """Return (today_realized_pnl, activity_list) using Polymarket trade history.
+
+    For each SELL today, looks up the total BUY cost across ALL history
+    (not just today) so positions bought before today are costed correctly.
+    Auto-redeemed positions (bought today, resolved, no SELL trade) are
+    included at face value only when cost basis is known from today's buys.
+    Returns None on failure so the caller can fall back to journal data.
+    """
+    try:
+        import calendar
+        settings, data_client = _get_settings_and_client()
+        if not settings.funder_address:
+            return None
+
+        today_start = calendar.timegm(time.gmtime())
+        today_start -= today_start % 86400  # floor to midnight UTC
+
+        # Fetch today's SELL trades (ground truth for closed positions)
+        sells_raw = data_client.trades(user=settings.funder_address, start=today_start, limit=200, side="SELL")
+        today_sells = [t for t in sells_raw if t.timestamp >= today_start]
+        if not today_sells:
+            return 0.0, []
+
+        # For cost basis: fetch ALL recent BUY trades (no date filter) to cover
+        # positions opened before today but sold today.
+        all_buys = data_client.trades(user=settings.funder_address, start=today_start - 30 * 86400, limit=500, side="BUY")
+        buy_cost: dict[str, float] = {}
+        buy_title: dict[str, str] = {}
+        buy_shares: dict[str, float] = {}
+        for t in all_buys:
+            buy_cost[t.asset] = buy_cost.get(t.asset, 0.0) + float(t.usdc_size)
+            buy_shares[t.asset] = buy_shares.get(t.asset, 0.0) + float(t.size)
+            if t.asset not in buy_title:
+                buy_title[t.asset] = t.title
+
+        # Active positions (already open, not closed today)
+        min_val = float(getattr(settings, "live_position_min_value_usd", 0.5) or 0.5)
+        active_assets: set[str] = set()
+        active_cost: dict[str, float] = {}
+        try:
+            live_pos = data_client.positions(user=settings.funder_address)
+            for item in live_pos:
+                try:
+                    asset = str(item.get("asset") or "")
+                    size = float(item.get("size") or 0)
+                    cv = float(item.get("currentValue") or 0)
+                    if size > 0 and cv >= min_val and asset:
+                        active_assets.add(asset)
+                        active_cost[asset] = float(item.get("initialValue") or 0)
+                except (TypeError, ValueError):
+                    pass
+        except Exception:
+            pass
+
+        # For each SELL today: PnL = proceeds - proportional cost basis.
+        # Proportional: cost × (shares_sold / total_shares_bought) so a partial
+        # exit on a large position doesn't allocate the full position cost.
+        activity: list[dict] = []
+        total_realized = 0.0
+
+        # Titles to exclude from activity display (user request)
+        _EXCLUDE_TITLES = {"vissel"}
+
+        for t in today_sells:
+            title = (buy_title.get(t.asset) or t.title or "").lower()
+            if any(ex in title for ex in _EXCLUDE_TITLES):
+                continue
+            proceeds = float(t.usdc_size)
+            sell_sh = float(t.size)
+            total_cost = buy_cost.get(t.asset, 0.0)
+            total_sh = buy_shares.get(t.asset, sell_sh)
+            allocated = (total_cost * sell_sh / total_sh) if total_sh > 0 else 0.0
+            pnl = proceeds - allocated
+            pct = (pnl / allocated * 100) if allocated > 0 else 0.0
+            total_realized += pnl
+            activity.append({
+                "question": (buy_title.get(t.asset) or t.title or "?")[:50],
+                "pnl": round(pnl, 2),
+                "pct": round(pct, 2),
+                "proceeds": round(proceeds, 2),
+                "cost": round(allocated, 2),
+            })
+
+        activity.sort(key=lambda x: x["pnl"], reverse=True)
+        return round(total_realized, 2), activity
+    except Exception:
+        return None
+
+
 def _fetch_live_equity() -> tuple[float, float] | None:
     """Return (available_cash, total_positions_value) from Polymarket live APIs.
 
@@ -305,7 +411,41 @@ def telegram_post(text: str, *, live: bool = True) -> bool:
 
 
 def load_open_positions() -> list[dict]:
-    """Read paper_state.json open positions with PnL details."""
+    """Read live open positions from Polymarket Data API (ground truth).
+    Falls back to paper_state.json if API unavailable."""
+    try:
+        settings, data_client = _get_settings_and_client()
+        if not settings.funder_address:
+            raise ValueError("no funder address")
+        min_val = float(getattr(settings, "live_position_min_value_usd", 0.5) or 0.5)
+        live_pos = data_client.positions(user=settings.funder_address)
+        out = []
+        for item in live_pos:
+            try:
+                size = float(item.get("size") or 0)
+                cv = float(item.get("currentValue") or 0)
+            except (TypeError, ValueError):
+                continue
+            if size <= 0 or cv < min_val:
+                continue
+            avg_price = float(item.get("avgPrice") or 0)
+            cur_price = float(item.get("curPrice") or avg_price)
+            initial_value = float(item.get("initialValue") or size * avg_price)
+            unr = cv - initial_value
+            unr_pct = (unr / initial_value * 100) if initial_value else 0
+            out.append({
+                "question": str(item.get("title") or item.get("question") or "?"),
+                "side": str(item.get("outcome") or "?"),
+                "entry": avg_price, "cur": cur_price,
+                "shares": size,
+                "cost": initial_value, "mtm": cv,
+                "unr": unr, "unr_pct": unr_pct,
+            })
+        out.sort(key=lambda x: x["unr"], reverse=True)
+        return out
+    except Exception:
+        pass
+    # Fallback: paper_state.json
     paper_state = DATA_DIR / "paper_state.json"
     if not paper_state.exists():
         return []
@@ -331,7 +471,6 @@ def load_open_positions() -> list[dict]:
             "shares": shares,
             "cost": cost, "mtm": mtm,
             "unr": unr, "unr_pct": unr_pct,
-            "opened_at": (p.get("opened_at") or "")[:19].replace("T", " "),
         })
     out.sort(key=lambda x: x["unr"], reverse=True)
     return out
@@ -474,9 +613,16 @@ def daily_report_once() -> None:
     balance = snap.equity
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
-    # Today P&L = closed trades realized today + unrealized on open positions
-    today_closed_pnl = sum(t["pnl"] for t in today_trades)
-    today_total_pnl = today_closed_pnl + unrealized
+    # Today P&L — prefer API-sourced (full trade history) over incomplete journal
+    api_today = _fetch_today_pnl()
+    if api_today is not None:
+        today_closed_pnl, api_activity = api_today
+        today_total_pnl = today_closed_pnl + unrealized
+        use_api_activity = True
+    else:
+        today_closed_pnl = sum(t["pnl"] for t in today_trades)
+        today_total_pnl = today_closed_pnl + unrealized
+        use_api_activity = False
     today_total_pct = (today_total_pnl / starting * 100) if starting > 0 else 0.0
 
     date_str = time.strftime("%B %-d, %Y", time.gmtime())
@@ -498,14 +644,20 @@ def daily_report_once() -> None:
         f"  {_mood(net_vs_start)} Total P&L:   ${_sign(net_vs_start)}{net_vs_start:.2f} ({_sign(net_vs_start_pct)}{net_vs_start_pct:.2f}%)  |  Equity: ${balance:.2f}",
         f"  {_mood(today_total_pnl)} Today P&L:   ${_sign(today_total_pnl)}{today_total_pnl:.2f} ({_sign(today_total_pct)}{today_total_pct:.2f}%)",
         "",
+        "",
         "*ACTIVITY (TODAY):*",
     ]
 
-    if today_trades:
-        for t in today_trades:
+    activity_items = api_activity if use_api_activity else today_trades
+    if activity_items:
+        today_wins = sum(1 for t in activity_items if t["pnl"] > 0)
+        today_losses = sum(1 for t in activity_items if t["pnl"] < 0)
+        parts.append(f"  _{len(activity_items)} trades — {today_wins}W / {today_losses}L_")
+        for t in activity_items:
             emoji = "🟢" if t["pnl"] >= 0 else "🔴"
+            label = t.get("question", "?")
             parts.append(
-                f"  {emoji} {t['question']}: "
+                f"  {emoji} {label}: "
                 f"{_sign(t['pnl'])}${t['pnl']:.2f} ({_sign(t['pct'])}{t['pct']:.2f}%)"
             )
     else:
@@ -513,7 +665,7 @@ def daily_report_once() -> None:
 
     if open_pos:
         parts.append("")
-        parts.append("*OPEN POSITIONS:*")
+        parts.append(f"*OPEN POSITIONS ({len(open_pos)}):*")
         for p in open_pos:
             unr = float(p.get("unr", 0) or 0)
             cost = float(p.get("cost", 0) or 0)
@@ -522,9 +674,9 @@ def daily_report_once() -> None:
             q = (p.get("question") or "?")[:38]
             parts.append(
                 f"  {emoji} {q} ({p.get('side','?')}): "
-                f"invested ${cost:.2f} → now ${mtm:.2f}  ({_sign(unr)}${unr:.2f})"
+                f"${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${unr:.2f})"
             )
-        parts.append(f"  _Open unrealized: {_sign(unrealized)}${unrealized:.2f}_")
+        parts.append(f"  _Unrealized: {_sign(unrealized)}${unrealized:.2f}_")
 
     parts += [
         "",
