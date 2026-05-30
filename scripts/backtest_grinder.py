@@ -49,7 +49,7 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def fetch_price_history(token_id: str, fidelity: int = 10) -> list[tuple[int, float]]:
+def fetch_price_history(token_id: str, fidelity: int = 60) -> list[tuple[int, float]]:
     """Full CLOB price history for one token as sorted [(unix_ts, price)].
 
     Uses interval=max so we get the whole life of the market, then anchor
