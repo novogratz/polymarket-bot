@@ -1933,6 +1933,13 @@ def _run_race_tick(
         else:
             size_mult = 1.0
         target = max(equity * settings.race_stake_pct * size_mult, 1.0)
+        # Percentage-based ceiling (preferred): cap each trade at a fixed
+        # fraction of current equity so the size scales with the bankroll.
+        # Without this the equity-scaled comment above was a lie — only the
+        # fixed USD cap below was ever applied.
+        if settings.smart_max_position_ceiling_pct > 0:
+            target = min(target, equity * settings.smart_max_position_ceiling_pct)
+        # Optional absolute USD cap (0 = disabled, the percentage rules).
         if settings.smart_max_position_ceiling_usd > 0:
             target = min(target, settings.smart_max_position_ceiling_usd)
         stake = min(target, cash_above_floor)

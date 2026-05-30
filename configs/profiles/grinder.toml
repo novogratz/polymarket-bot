@@ -15,12 +15,13 @@ mode = "grinder"
 [sizing]
 # 50% per trade — 2 wins/day hits ~9%, 3 wins hits ~13%.
 # One loss = -50% on stake, painful but recoverable with one follow-up win.
-# Hard per-trade USD cap = the real risk control. Grinder edge is thin
-# (buy 0.92 → resolve 1.0 = +8.7%) but a loss is near-total, so over-betting
-# guarantees eventual ruin even with positive edge (Kelly: thin edge + ruinous
-# downside ⇒ small stake is growth-optimal). $10 ≈ 15% of the $65.78 bankroll.
-# Revisit the fraction once the backtest gives a measured edge → real Kelly.
-max_position_ceiling_usd = 10.0
+# Percentage-based sizing — scales with the bankroll automatically (no fixed
+# dollar cap). Grinder edge is thin (buy 0.92 → resolve 1.0 = +8.7%) but a loss
+# is near-total, so over-betting guarantees eventual ruin even with positive
+# edge (Kelly: thin edge + ruinous downside ⇒ small stake is growth-optimal).
+# Each trade ≤ 15% of current equity; USD cap disabled (0) so % rules.
+# Revisit the fraction once the forward log gives a measured edge → real Kelly.
+max_position_ceiling_usd = 0.0
 max_position_ceiling_pct = 0.15
 cash_floor_pct = 0.05
 position_pct = 0.12
