@@ -9,7 +9,7 @@
 # O/U 0.5/5.5+). Price-stability filter blocks live-game flux (>10% day change).
 
 [run]
-starting_cash = 15.0
+starting_cash = 52.0
 mode = "grinder"
 
 [sizing]
