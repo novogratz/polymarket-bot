@@ -563,6 +563,27 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     executed_trades: list[dict[str, object]] = []
     stop_reason: str | None = None
     rejected_signals: list[dict[str, object]] = []
+
+    # Daily drawdown circuit breaker — halt NEW entries when today's realized
+    # PnL is ≤ -X% of starting equity. Exits above still run. Smart-money mode
+    # had no such guard (only race mode did); a live lane needs one. Reuses the
+    # RACE_DAILY_DRAWDOWN_PCT knob as the shared daily-loss limit.
+    daily_dd_halted = False
+    if settings.race_daily_drawdown_pct > 0 and opportunities:
+        from .edge_strategy import _daily_realized_pnl
+
+        starting_equity = max(settings.paper_balance_usd, settings.assumed_live_balance_usd, 1.0)
+        realized_today = _daily_realized_pnl(settings.trade_journal_path)
+        dd_limit = -starting_equity * settings.race_daily_drawdown_pct
+        if realized_today <= dd_limit:
+            print(
+                f"🛑 {strategy}: daily drawdown limit hit "
+                f"(${realized_today:+.2f} ≤ ${dd_limit:+.2f}) — new entries paused",
+                flush=True,
+            )
+            opportunities = []
+            daily_dd_halted = True
+
     if opportunities:
         # Gracefully wait if out of funds.
         # In dry-run, trust the local ledger (no live CLOB to query).
