@@ -108,7 +108,7 @@ min_buy_price = 0.75
 max_buy_price = 0.97
 max_spread = 0.04
 min_trade_usd = 1.0
-per_trade_cap_usd = 5.0
+per_trade_cap_usd = 15.0
 min_hours_to_close = 0.08
 volatility_days = 7
 

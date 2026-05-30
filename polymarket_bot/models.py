@@ -53,7 +53,6 @@ def parse_json_list(value: Any) -> list[Any]:
 
 
 _EXCLUDED_QUESTION_SUBSTRINGS = (
-    "up or down",
     # Temperature/weather threshold markets: specific-degree weather fails
     # constantly even at 0.94 — 0% win rate in grinder band. Both °C and °F.
     "temperature",
@@ -89,7 +88,7 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "end in a draw",
     "win or draw",
 )
-_EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down", "exact-score")
+_EXCLUDED_SLUG_SUBSTRINGS = ("exact-score",)
 
 
 def is_excluded_market(market: dict[str, Any]) -> bool:
