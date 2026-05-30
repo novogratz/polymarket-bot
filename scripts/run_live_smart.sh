@@ -54,6 +54,21 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
+# ─── Pre-warm HTTP cache (~60s) ────────────────────────────────────────
+# Smart-money fetches the leaderboard every tick. Populate data/cache/http/
+# first so the cold start doesn't 429-storm the data-api and find 0 signals
+# for the first few minutes. The cache layer (TTL 600s) dedups thereafter.
+echo "[run_live_smart] pre-warming HTTP cache (~60s)..."
+uv run python scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache] /' | tee -a "$RUN_LOG" || true
+
+# Re-warm every 8 min (cache TTL is 10 min) to keep live + dry twin warm.
+(
+    while true; do
+        sleep 480
+        uv run python scripts/cache_warmer.py 2>&1 | sed -u 's/^/[cache-refresh] /' | tee -a "$RUN_LOG" || true
+    done
+) &
+
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
 python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
