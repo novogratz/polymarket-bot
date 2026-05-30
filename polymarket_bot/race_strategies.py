@@ -1025,8 +1025,6 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
     if current_pnl_pct >= settings.race_tp_pct:
         return {"reason": "race_take_profit", "shares": shares}
     if current_pnl_pct <= -settings.race_sl_pct:
-        if _is_sports_total_position(position):
-            return None
         return {"reason": "race_stop_loss", "shares": shares}
     # Near-expiry flush removed: was selling positions at break-even
     # just because the market was about to resolve, leaving real upside
@@ -1040,6 +1038,10 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
 # sports O/U markets — where Polymarket closes betting at kickoff but
 # resolves after full time (~90 min later) — are never force-closed mid-game.
 RACE_EXPIRY_GRACE_MIN = 150
+# If a position is still winning (price >= 0.50) after the market closes,
+# the game is likely still in progress. Give it 6h to resolve naturally
+# via resolved_exit or universal sweep instead of force-selling mid-game.
+RACE_EXPIRY_GRACE_MIN_WINNING = 360
 
 
 def _execute_race_exits(
@@ -1073,14 +1075,19 @@ def _execute_race_exits(
         # and stays open forever — the "5 stale open positions" bug. Realize
         # it at the best price we have so the ledger reflects reality.
         mtc = _minutes_to_close(position)
-        grace = getattr(settings, "race_expiry_grace_min", RACE_EXPIRY_GRACE_MIN)
-        if mtc is not None and mtc <= -grace:
+        if mtc is not None and mtc < 0:
             exit_candidate = by_token.get(token_id)
             salvage = max(
                 position_price,
                 float((exit_candidate.best_bid or 0.0) if exit_candidate else 0.0),
                 0.0,
             )
+            # Winning position (price >= 0.50): game likely still in progress.
+            # Give it 6h to resolve via resolved_exit/universal sweep.
+            # Losing position: 10min grace then force-close so capital rotates.
+            grace = RACE_EXPIRY_GRACE_MIN_WINNING if salvage >= 0.50 else RACE_EXPIRY_GRACE_MIN
+            if mtc > -grace:
+                continue
             if exit_candidate is None and token_id:
                 exit_candidate = Candidate(
                     market_id=str(position.get("market_id") or ""),
@@ -1710,7 +1717,16 @@ def _run_race_tick(
         # kept as the absolute floor so micro-bankrolls still clear the
         # $1 CLOB minimum.
         equity = float(portfolio.summary().get("equity", portfolio.cash))
-        target = max(equity * settings.race_stake_pct, 1.0)
+        # Dynamic sizing: scale up when close to resolution — less time
+        # for a reversal, more certainty the bet completes.
+        h2c = candidate.hours_to_close or 99.0
+        if h2c < 0.5:
+            size_mult = 1.5
+        elif h2c < 1.0:
+            size_mult = 1.25
+        else:
+            size_mult = 1.0
+        target = max(equity * settings.race_stake_pct * size_mult, 1.0)
         if settings.smart_max_position_ceiling_usd > 0:
             target = min(target, settings.smart_max_position_ceiling_usd)
         stake = min(target, cash_above_floor)

@@ -69,13 +69,24 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "halftime score",
     "half-time score",
     "leading at half",
-    # O/U 0.5 (any-goal) soccer: one-event binary, same gap risk as exact score.
+    # O/U low-line soccer: 1-3 goals flip the bet. Any single goal is catastrophic.
+    # Only O/U 4.5 passes — needs 5+ goals to lose, rare enough to be near-certain.
     "o/u 0.5",
+    "o/u 1.5",
+    "o/u 2.5",
+    "o/u 3.5",
     # O/U 5.5+ high-line soccer: Under-5.5 "resolved" as loser if 6+ goals
     # scored — rare but catastrophic when it happens (-$29.96 in dry run).
     "o/u 5.5",
     "o/u 6.5",
     "o/u 7.5",
+    # Spread/handicap markets: gap risk identical to exact-score.
+    # A single goal swings AH spreads by 0.40+ in one tick, SL can't catch it.
+    "spread:",
+    # Draw markets: binary that spikes to 0.90+ when 0-0 late, then gaps to
+    # 0 on any goal. Same gap profile.
+    "end in a draw",
+    "win or draw",
 )
 _EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down", "exact-score")
 

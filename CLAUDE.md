@@ -19,7 +19,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
   - `race_min_liquidity_usd=500`, `race_min_volume_24h_usd=300`
   - `race_max_day_change_pct=0.10` — price-stability gate: skip markets that moved >10% today (live-game gap risk)
   - `race_min_outcome_momentum=-0.05` — momentum filter: skip outcomes that fell >5% today (trending away from resolution)
-- Global exclusions (`models.py:is_excluded_market`): crypto Up/Down binaries, temperature/weather (°C + °F), exact score, O/U 0.5, O/U 5.5/6.5/7.5, halftime leading/score markets (added 2026-05-29 after $61.86 gap loss on "Andorra leading at halftime")
+- Global exclusions (`models.py:is_excluded_market`): crypto Up/Down binaries, temperature/weather (°C + °F), exact score, O/U 0.5/1.5/2.5/3.5 (low-line — any goal kills it), O/U 5.5/6.5/7.5, halftime leading/score, **Spread:** (Asian handicap — gap identical to exact-score), draw markets ("end in a draw", "win or draw")
 - Exits: resolved_exit at bid ≥ 0.99, universal sweep at bid ≤ 0.03, max-hold 4.5h. No TP ladder, no SL.
 - Daily DD halt at -15% of starting equity (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT`)
 - Tick interval: 10s on live (was 30s — 3× faster, catches more fleeting entries), 600s on dry twin

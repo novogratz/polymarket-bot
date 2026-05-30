@@ -34,56 +34,52 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-max_hours = 4.0
+# 3h max: closer to resolution = less time for a reversal.
+max_hours = 3.0
 scan_limit = 750
 
 min_liquidity_usd = 500.0
 min_volume_24h_usd = 300.0
 
-# Entry band 0.87–0.95. Wider band = more eligible markets per day.
-# 0.87 still implies 87%+ certainty; price-stability gate (10% day change)
-# blocks live-game flux at the lower end. Above 0.95 upside to 0.99 too thin.
-min_price = 0.87
-max_price = 0.95
+# Entry band 0.90–0.94. Tighter = genuinely near-certain only.
+# 0.87–0.89 has asymmetric gap risk (one goal: 0.87 → 0.40).
+# Above 0.94 the spread thins and upside to 0.99 is too small.
+min_price = 0.90
+max_price = 0.94
 
-# Price-stability gate: skip any market that moved >10% today.
-# A live-game "No" on an exact score sits at 0.93 but can gap to 0.40 in one
-# tick when a goal is scored. Stable-for-days is the real near-certainty play.
+# Price-stability gate: skip markets that moved >10% today.
 max_day_change_pct = 0.10
 
 # Momentum filter: skip outcomes that fell >5% today.
-# A market at 0.91 that was 0.96 this morning is trending away from resolution.
 min_outcome_momentum = -0.05
 
 # Tight spread — 2¢ max keeps the round-trip viable.
 max_spread = 0.02
 
-# All-in: one position at a time, 95% of cash deployed.
-# With a single slot, idle cash never sits half-empty waiting for a second
-# qualifying market. The 5% floor keeps enough for fees.
+# 30% stake, up to 4 concurrent positions, 1% cash floor — stay fully deployed
+# across multiple markets rather than all-in on one. Dynamic sizing scales
+# up to 1.5× at <30min (handled in race_strategies.py).
 stake_usd = 1.0
-stake_pct = 0.95
-max_orders_per_tick = 1
-cash_floor_pct = 0.02
+stake_pct = 0.30
+max_orders_per_tick = 4
+cash_floor_pct = 0.01
 
 # Exit rules:
-#   tp_pct = 1.0      → TP disabled; don't exit early, ride to resolution.
-#   sl_pct = 1.0      → SL disabled; no stop-loss on near-certainty bets.
-#   resolved at 0.99  → exit when the market prints near-final resolution value.
+#   tp_pct = 1.0      → TP disabled; ride to resolution.
+#   sl_pct = 0.35     → SL at -35% after 5min (entry 0.94 → exits ~0.61).
+#   resolved at 0.97  → exit early when near-final, lock in gain before final tick.
 #   max_hold 4.5h     → backstop so nothing lingers after expiry.
 tp_pct = 1.0
-sl_pct = 1.0
-sl_min_age_minutes = 1
+sl_pct = 0.35
+sl_min_age_minutes = 5
 near_expiry_minutes = 5
-resolved_exit_threshold = 0.99
+resolved_exit_threshold = 0.97
 
 # Binary arb disabled (set arb_threshold = 0.97 to re-enable).
-# Sizing now uses proportional stakes (larger stake on the expensive/likely
-# leg) so the guaranteed payout is equal regardless of outcome.
 arb_threshold = 0.0
 arb_max_stake_usd = 5.0
-# Polymarket closes sports O/U betting at kickoff; game resolves ~90min later.
-# 150min grace = kickoff + 90min game + 60min buffer before force-close.
+# Smart expiry grace: handled in race_strategies.py
+# Winning (>=0.50): 360min; losing (<0.50): 10min → keeps capital rotating.
 expiry_grace_min = 150
 
 [telemetry]
@@ -101,6 +97,21 @@ max_chase_premium = 0.03
 
 [noise_fallback]
 enabled = false
+
+[btc_edge]
+# BTC/ETH price threshold markets — fills dead time between sports sessions.
+# Black-Scholes model checks if current price gives ≥75% prob of staying above/below
+# threshold. Resolves every hour. Small cap ($5) — crypto more volatile than sports.
+enabled = true
+min_model_probability = 0.75
+min_edge_over_market = 0.05
+min_buy_price = 0.75
+max_buy_price = 0.97
+max_spread = 0.04
+min_trade_usd = 1.0
+per_trade_cap_usd = 5.0
+min_hours_to_close = 0.08
+volatility_days = 7
 
 [discovery]
 soon_hours = 1
