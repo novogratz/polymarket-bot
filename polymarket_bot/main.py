@@ -2623,6 +2623,32 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
                 f"{(rec['question'] or '')[:50]}",
                 flush=True,
             )
+            # Telegram notification — same path as normal SELL so wins reach the channel.
+            try:
+                opened_iso = rec.get("opened_at") or ""
+                held_secs: int | None = None
+                if opened_iso:
+                    from datetime import datetime, timezone as _tz
+                    try:
+                        opened_dt = datetime.fromisoformat(opened_iso.replace("Z", "+00:00"))
+                        held_secs = int((utc_now() - opened_dt).total_seconds())
+                    except Exception:
+                        pass
+                from . import notifications
+                notifications.notify_trade_sell(
+                    market_title=str(rec.get("question") or ""),
+                    token_id=str(rec.get("token_id") or ""),
+                    price=float(rec.get("exit_price") or 0.0),
+                    size_usd=float(rec.get("cost_basis") or 0.0),
+                    realized_pnl_usd=float(rec.get("realized_pnl_usd") or 0.0),
+                    realized_pnl_pct=(float(rec.get("realized_pnl_pct") or 0.0) * 100),
+                    reason=str(rec.get("exit_reason") or "resolved_sweep"),
+                    outcome=str(rec.get("outcome") or ""),
+                    held_seconds=held_secs,
+                    strategy=str(rec.get("strategy") or strategy_name),
+                )
+            except Exception as _exc:
+                print(f"[sweep] telegram notify failed: {_exc}", flush=True)
     return closed_records
 
 
@@ -2731,6 +2757,20 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
     watchdog_available = hasattr(_signal, "SIGALRM")
     if watchdog_available:
         _signal.signal(_signal.SIGALRM, _handle_tick_alarm)
+
+    # Startup sweep: resolve any positions that were stuck at ≥0.97 from a
+    # previous run (e.g. bot was off when the market resolved). Runs ONCE
+    # before the first tick so the ledger is clean from the start.
+    try:
+        startup_closed = _force_close_resolved_positions(settings, strategy_name)
+        if startup_closed:
+            print(
+                f"[startup] resolved {len(startup_closed)} stuck position(s) "
+                f"at ≥{settings.smart_resolved_exit_threshold:.2f}",
+                flush=True,
+            )
+    except Exception as _startup_exc:
+        print(f"[startup] sweep failed: {_startup_exc}", flush=True)
 
     last_active_profile_mtime: float = 0.0
     while settings.auto_max_ticks <= 0 or tick < settings.auto_max_ticks:

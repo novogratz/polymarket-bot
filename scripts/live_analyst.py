@@ -110,7 +110,7 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))   # 30 min
-DAILY_REPORT_HOUR_UTC = int(os.environ.get("LIVE_ANALYST_DAILY_REPORT_HOUR", "16"))  # 4 PM UTC
+DAILY_REPORT_HOUR_UTC = int(os.environ.get("LIVE_ANALYST_DAILY_REPORT_HOUR", "15"))  # 5 PM Paris (CEST = UTC+2)
 
 
 @dataclass
