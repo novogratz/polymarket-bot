@@ -563,6 +563,23 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     executed_trades: list[dict[str, object]] = []
     stop_reason: str | None = None
     rejected_signals: list[dict[str, object]] = []
+
+    # Daily drawdown circuit breaker — halt NEW entries when today's realized
+    # PnL ≤ -X% of starting equity. Exits still run. Reuses RACE_DAILY_DRAWDOWN_PCT.
+    if settings.race_daily_drawdown_pct > 0 and opportunities:
+        from .edge_strategy import _daily_realized_pnl
+
+        starting_equity = max(settings.paper_balance_usd, settings.assumed_live_balance_usd, 1.0)
+        realized_today = _daily_realized_pnl(settings.trade_journal_path)
+        dd_limit = -starting_equity * settings.race_daily_drawdown_pct
+        if realized_today <= dd_limit:
+            print(
+                f"🛑 {strategy}: daily drawdown limit hit "
+                f"(${realized_today:+.2f} ≤ ${dd_limit:+.2f}) — new entries paused",
+                flush=True,
+            )
+            opportunities = []
+
     if opportunities:
         # Gracefully wait if out of funds.
         # In dry-run, trust the local ledger (no live CLOB to query).
@@ -1419,6 +1436,10 @@ def _max_trade_for_signal(
         and available_cash > 0
     ):
         size = available_cash * settings.smart_position_pct * quality_mult
+        # Pct ceiling applied before USD cap — conviction multiplier was bypassing
+        # it via the max(base, dynamic) path in _dynamic_max_trade.
+        if settings.smart_max_position_ceiling_pct > 0:
+            size = min(size, available_cash * settings.smart_max_position_ceiling_pct)
         if settings.smart_max_position_ceiling_usd > 0:
             size = min(size, settings.smart_max_position_ceiling_usd)
         if is_crypto_micro:

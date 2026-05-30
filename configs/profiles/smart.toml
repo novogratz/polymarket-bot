@@ -1,0 +1,47 @@
+# Profile "smart" — smart-money copy-trading (the bot's documented core edge).
+#
+# Thesis: don't invent an opinion on every market. Wait for public order-flow
+# evidence that multiple profitable leaderboard wallets are buying the SAME
+# token in a short window, then mirror that flow with bounded sizing. The edge
+# is the wallets' collective informational advantage; the risk controls are the
+# consensus filters + the full exit stack (TP ladder + trailing + peak-protect
+# + −40% stop-loss + cohort-sell), which the grinder lacks.
+#
+# Built 2026-05-30 as the higher-VOLUME lane vs the opportunity-starved grinder.
+# Verified to run cleanly; found 0 signals at build time (a quiet hour) — that
+# is expected and correct. It trades only on real consensus, never forces.
+
+[run]
+starting_cash = 65.78
+mode = "smart_money"
+
+[sizing]
+# Percentage-based, scales with the bankroll (no fixed $ cap). Conservative
+# 10% base; conviction multipliers (up to 2.5×) are bounded by the 15% ceiling.
+position_pct = 0.10
+max_position_ceiling_usd = 0.0
+max_position_ceiling_pct = 0.15
+cash_floor_pct = 0.05
+# CRITICAL SAFETY: 0 = never force trades. With min_open_positions > 0 the bot
+# runs relaxed/deep fallback passes that LOOSEN the consensus filters to reach a
+# position count — a force-trade lane with no edge (this is the pattern that
+# cost money on the crypto coinflip). Strict multi-wallet consensus only.
+min_open_positions = 0
+assumed_live_balance_usd = 65.78
+# Explicitly OFF: when > 0 a high-conviction signal raises its max stake to
+# (live_balance * fraction), overriding the 15% ceiling above — exactly the
+# over-betting we are avoiding. Keep at 0 so the ceiling is the hard cap.
+high_conviction_balance_fraction = 0.0
+
+[filters]
+# Require genuine multi-wallet consensus and meaningful copied flow before we
+# mirror. Tight spreads so paying the book doesn't erase the edge.
+min_consensus = 2
+min_copied_usdc = 75.0
+max_orders_per_tick = 2
+max_absolute_spread = 0.03
+max_relative_spread = 0.10
+
+[noise_fallback]
+# Hard off — never place an unfiltered "just trade something" bet.
+enabled = false
