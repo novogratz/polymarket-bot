@@ -668,7 +668,7 @@ def _handle_drawdown(payload: dict[str, Any]) -> None:
 
 def _handle_equity_floor(payload: dict[str, Any]) -> None:
     equity = float(payload.get("equity_usd", 0) or 0)
-    floor = _float_env("TELEGRAM_EQUITY_FLOOR_USD", 50.0)
+    floor = _float_env("TELEGRAM_EQUITY_FLOOR_USD", 0.0)  # disabled by default
     if floor <= 0:
         return
     rearm = floor * 1.05
