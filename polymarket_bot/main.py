@@ -2595,30 +2595,26 @@ def _sweep_sell_live(settings: Settings, position: dict, price: float, shares: f
 
 
 def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> list[dict]:
-    """Universal auto-sell for resolved markets across ALL strategies.
+    """Universal auto-sell for WIN-resolved markets across ALL strategies.
 
     Every tick, iterate the local portfolio and close any position whose
-    cached ``current_price`` indicates the market has effectively resolved:
-      - WIN-side: current_price >= smart_resolved_exit_threshold (default 0.97)
-      - LOSS-side: current_price <= 0.03 (the inverse — market resolved
-        against us, recoup what little remains and stop bleeding)
+    cached ``current_price`` is at or above the resolved-exit threshold
+    (default 0.97). This handles markets that have dropped out of the Gamma
+    scan after resolving — winners sit at 0.999 forever and the per-strategy
+    exit loop never fires for them.
 
-    Why this exists: when a market resolves on Polymarket, it stops being
-    returned by the Gamma scan API, so the per-strategy exit loops (which
-    need a fresh ``candidate.best_bid``) never fire ``resolved_market_exit``.
-    Resolved-winners sit at 0.999 forever; resolved-losers sit at 0.001
-    forever. This sweep closes both, regardless of which strategy mode
-    opened them.
-
-    In live mode, positions between the sweep threshold and 0.995 get a real
-    CLOB SELL (the market is still tradeable). Positions at ≥0.995 auto-redeem
-    on-chain — no sell needed. In dry-run, only the local ledger is updated.
+    LOSS SIDE IS INTENTIONALLY NOT SWEPT. Selling at 0.01–0.03 is:
+      - Dangerous: thin order books and API manipulation can briefly push
+        a live winning position to 0.01 (e.g. Under 4.5 at 2-0 mid-game).
+        The sweep would crystallise a -98% loss on a position that will
+        recover. Poland-Ukraine 2026-05-31: game was 2-0, sweep sold at 0.02
+        and handed the position to an opportunist for nothing.
+      - Unnecessary: losing positions naturally resolve to $0 on-chain.
+        Polymarket settles them without any sell order required.
+    Losing positions are held until natural on-chain resolution.
     """
     win_threshold = float(getattr(settings, "smart_resolved_exit_threshold", 0.97) or 0.97)
-    # Mirror image of the win threshold: if a position's value has collapsed
-    # below 1 - win_threshold (default 0.03), the market has resolved
-    # against us.
-    loss_threshold = round(1.0 - win_threshold, 4)
+    loss_threshold = 0.0  # unused — loss sweep disabled
     try:
         from .portfolio import Portfolio
     except Exception:
@@ -2645,36 +2641,16 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
             cur_f = float(cur)
         except (TypeError, ValueError):
             continue
-        # Only close if either tail
-        if cur_f < win_threshold and cur_f > loss_threshold:
+        # Only sweep WIN side (price at or above resolution threshold).
+        # Loss side (price near 0) is NEVER swept — see docstring above.
+        if cur_f < win_threshold:
             continue
-        # LOSS SWEEP GUARD: never fire on a market that hasn't expired yet.
-        # A thin order book or API manipulation can briefly push the price to
-        # 0.01 on a live market (e.g. Under 4.5 at 2-0 in a game still in
-        # progress). Sweeping at 0.01 would crystallise a -98% loss on a
-        # position that is actually winning. Only sweep the loss side when
-        # the market's end_date is in the past (truly resolved).
-        if cur_f <= loss_threshold:
-            end_date_raw = position.get("end_date")
-            if end_date_raw:
-                try:
-                    from datetime import datetime as _dt, timezone as _tz
-                    end_dt = _dt.fromisoformat(str(end_date_raw).replace("Z", "+00:00"))
-                    if end_dt.tzinfo is None:
-                        end_dt = end_dt.replace(tzinfo=_tz.utc)
-                    if end_dt > now:
-                        continue  # market still live — hold, do not sweep-close
-                except Exception:
-                    pass  # can't parse end_date — skip loss sweep to be safe
-            else:
-                continue  # no end_date info — don't risk a false sweep
         entry = float(position.get("entry_price") or 0.0)
         shares = float(position.get("shares") or 0.0)
         if entry <= 0 or shares <= 0:
             continue
         cost_basis = float(position.get("stake") or position.get("cost_basis") or (entry * shares))
-        side = "win" if cur_f >= win_threshold else "loss"
-        reason = f"resolved_market_sweep_{side}"
+        reason = "resolved_market_sweep_win"
         # For live positions not yet at final settlement value (< 0.995), try a
         # real CLOB SELL so the cash actually lands in the wallet. Markets at
         # ≥0.995 are effectively settled and shares will auto-redeem on-chain.
