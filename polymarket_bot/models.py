@@ -74,14 +74,12 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "halftime score",
     "half-time score",
     "leading at half",
-    # O/U low-line soccer: 1-3 goals flip the bet. Any single goal is catastrophic.
-    # Only O/U 4.5 passes — needs 5+ goals to lose, rare enough to be near-certain.
+    # O/U low-line soccer: 1-3 goals flip the bet instantly.
     "o/u 0.5",
     "o/u 1.5",
     "o/u 2.5",
     "o/u 3.5",
-    # O/U 5.5+ high-line soccer: Under-5.5 "resolved" as loser if 6+ goals
-    # scored — rare but catastrophic when it happens (-$29.96 in dry run).
+    # O/U 5.5+ high-line: rare but catastrophic if 6+ goals scored.
     "o/u 5.5",
     "o/u 6.5",
     "o/u 7.5",

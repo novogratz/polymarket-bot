@@ -2594,31 +2594,142 @@ def _sweep_sell_live(settings: Settings, position: dict, price: float, shares: f
     return None
 
 
+def _close_confirmed_resolved_losses(settings: Settings, strategy_name: str) -> list[dict]:
+    """Record confirmed losses on positions whose price is near zero.
+
+    For every open or sync_closed position with current_price < 0.08, query
+    the Gamma API to verify the market is truly resolved (closed=true,
+    active=false). Only then record the loss and send a Telegram alert.
+
+    This prevents the sweep from firing on mid-game thin-book price spikes
+    (e.g. Under 4.5 briefly showing 0.01 at 2-0). A confirmed resolved loss
+    requires Polymarket itself to have marked the market closed.
+    """
+    from .portfolio import Portfolio
+    from .gamma import GammaClient
+    LOSS_PRICE_THRESHOLD = 0.08
+
+    try:
+        portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+    except Exception:
+        return []
+
+    candidates = [
+        p for p in portfolio.positions
+        if p.get("status") in ("open", "closed")
+        and not p.get("confirmed_loss")
+        and float(p.get("current_price") or 1.0) < LOSS_PRICE_THRESHOLD
+        and p.get("token_id")
+    ]
+    if not candidates:
+        return []
+
+    gamma = GammaClient(settings.gamma_api_base_url)
+    closed_records: list[dict] = []
+    changed = False
+    now = utc_now()
+
+    for position in candidates:
+        token_id = str(position.get("token_id") or "")
+        try:
+            resolved = gamma.is_market_resolved(token_id)
+        except Exception:
+            continue
+        if not resolved:
+            continue
+
+        # Market is confirmed closed by Polymarket — record the real loss
+        shares = float(position.get("shares") or 0.0)
+        cur_f = float(position.get("current_price") or 0.0)
+        cost_basis = float(position.get("stake") or position.get("cost_basis") or 0.0)
+        proceeds = round(cur_f * shares, 4)
+        realized_pnl = round(proceeds - cost_basis, 4)
+
+        position["status"] = "closed"
+        position["confirmed_loss"] = True
+        position["closed_at"] = position.get("closed_at") or now.isoformat()
+        position["exit_reason"] = "confirmed_resolved_loss"
+        position["exit_price"] = cur_f
+        position["realized_pnl"] = realized_pnl
+        position["journaled"] = True
+        changed = True
+
+        rec = {
+            "event": "position_closed",
+            "closed_at": position["closed_at"],
+            "opened_at": position.get("opened_at"),
+            "question": position.get("question"),
+            "outcome": position.get("outcome"),
+            "token_id": token_id,
+            "strategy": strategy_name,
+            "exit_reason": "confirmed_resolved_loss",
+            "entry_price": float(position.get("entry_price") or 0.0),
+            "exit_price": cur_f,
+            "shares": shares,
+            "cost_basis": round(cost_basis, 4),
+            "realized_pnl_usd": realized_pnl,
+            "realized_pnl_pct": round(realized_pnl / cost_basis, 4) if cost_basis > 0 else 0.0,
+        }
+        closed_records.append(rec)
+        print(
+            f"💸 [confirmed-loss] {position.get('outcome')} @ {cur_f:.3f}  "
+            f"pnl ${realized_pnl:+.2f}  {str(position.get('question',''))[:50]}",
+            flush=True,
+        )
+        # Telegram alert
+        try:
+            from . import notifications
+            notifications.notify_trade_sell(
+                market_title=str(position.get("question") or ""),
+                token_id=token_id,
+                price=cur_f,
+                size_usd=cost_basis,
+                realized_pnl_usd=realized_pnl,
+                realized_pnl_pct=(realized_pnl / cost_basis * 100) if cost_basis > 0 else 0.0,
+                reason="confirmed_resolved_loss",
+                held_seconds=None,
+            )
+        except Exception:
+            pass
+
+    if changed:
+        try:
+            portfolio.save(settings.state_path)
+        except Exception as exc:
+            print(f"[confirmed-loss] save failed: {exc}", flush=True)
+        try:
+            journal_path = Path(settings.trade_journal_path)
+            journal_path.parent.mkdir(parents=True, exist_ok=True)
+            with journal_path.open("a", encoding="utf-8") as fh:
+                for rec in closed_records:
+                    fh.write(json.dumps(rec) + "\n")
+        except Exception as exc:
+            print(f"[confirmed-loss] journal failed: {exc}", flush=True)
+
+    return closed_records
+
+
 def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> list[dict]:
-    """Universal auto-sell for resolved markets across ALL strategies.
+    """Universal auto-sell for WIN-resolved markets across ALL strategies.
 
     Every tick, iterate the local portfolio and close any position whose
-    cached ``current_price`` indicates the market has effectively resolved:
-      - WIN-side: current_price >= smart_resolved_exit_threshold (default 0.97)
-      - LOSS-side: current_price <= 0.03 (the inverse — market resolved
-        against us, recoup what little remains and stop bleeding)
+    cached ``current_price`` is at or above the resolved-exit threshold
+    (default 0.97). This handles markets that have dropped out of the Gamma
+    scan after resolving — winners sit at 0.999 forever and the per-strategy
+    exit loop never fires for them.
 
-    Why this exists: when a market resolves on Polymarket, it stops being
-    returned by the Gamma scan API, so the per-strategy exit loops (which
-    need a fresh ``candidate.best_bid``) never fire ``resolved_market_exit``.
-    Resolved-winners sit at 0.999 forever; resolved-losers sit at 0.001
-    forever. This sweep closes both, regardless of which strategy mode
-    opened them.
-
-    In live mode, positions between the sweep threshold and 0.995 get a real
-    CLOB SELL (the market is still tradeable). Positions at ≥0.995 auto-redeem
-    on-chain — no sell needed. In dry-run, only the local ledger is updated.
+    LOSS SIDE IS INTENTIONALLY NOT SWEPT. Selling at 0.01–0.03 is:
+      - Dangerous: thin order books and API manipulation can briefly push
+        a live winning position to 0.01 (e.g. Under 4.5 at 2-0 mid-game).
+        The sweep would crystallise a -98% loss on a position that will
+        recover. Poland-Ukraine 2026-05-31: game was 2-0, sweep sold at 0.02
+        and handed the position to an opportunist for nothing.
+      - Unnecessary: losing positions naturally resolve to $0 on-chain.
+        Polymarket settles them without any sell order required.
+    Losing positions are held until natural on-chain resolution.
     """
     win_threshold = float(getattr(settings, "smart_resolved_exit_threshold", 0.97) or 0.97)
-    # Mirror image of the win threshold: if a position's value has collapsed
-    # below 1 - win_threshold (default 0.03), the market has resolved
-    # against us.
-    loss_threshold = round(1.0 - win_threshold, 4)
+    loss_threshold = 0.0  # unused — loss sweep disabled
     try:
         from .portfolio import Portfolio
     except Exception:
@@ -2645,16 +2756,16 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
             cur_f = float(cur)
         except (TypeError, ValueError):
             continue
-        # Only close if either tail
-        if cur_f < win_threshold and cur_f > loss_threshold:
+        # Only sweep WIN side (price at or above resolution threshold).
+        # Loss side (price near 0) is NEVER swept — see docstring above.
+        if cur_f < win_threshold:
             continue
         entry = float(position.get("entry_price") or 0.0)
         shares = float(position.get("shares") or 0.0)
         if entry <= 0 or shares <= 0:
             continue
         cost_basis = float(position.get("stake") or position.get("cost_basis") or (entry * shares))
-        side = "win" if cur_f >= win_threshold else "loss"
-        reason = f"resolved_market_sweep_{side}"
+        reason = "resolved_market_sweep_win"
         # For live positions not yet at final settlement value (< 0.995), try a
         # real CLOB SELL so the cash actually lands in the wallet. Markets at
         # ≥0.995 are effectively settled and shares will auto-redeem on-chain.
@@ -2891,6 +3002,14 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
             _force_close_resolved_positions(settings, strategy_name)
         except Exception as exc:
             print(f"[sweep] failed: {type(exc).__name__}: {exc}", flush=True)
+        # Confirmed-loss checker: every 5 ticks, verify near-zero positions
+        # against Gamma API. Only records a loss when Polymarket has officially
+        # closed the market — prevents false fires on mid-game price spikes.
+        if tick % 5 == 0:
+            try:
+                _close_confirmed_resolved_losses(settings, strategy_name)
+            except Exception as exc:
+                print(f"[confirmed-loss] failed: {type(exc).__name__}: {exc}", flush=True)
         error: dict[str, str] | None = None
         tick_result: dict[str, object] = {}
         try:

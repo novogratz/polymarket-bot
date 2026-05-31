@@ -86,6 +86,44 @@ class GammaClient:
                 results.append(market)
         return results
 
+    def is_market_resolved(self, token_id: str) -> bool:
+        """Return True if Polymarket has officially resolved this market.
+
+        Queries Gamma without active/closed filters so resolved markets are
+        included. A market is considered resolved when closed=true and
+        active=false. Used to verify a near-zero price is a genuine loss
+        (game over) vs a thin-book price spike mid-game.
+        """
+        if not token_id:
+            return False
+        try:
+            pairs = [
+                ("clob_token_ids", token_id),
+                ("closed", "true"),
+                ("limit", "5"),
+            ]
+            payload = self._get_json(f"/markets?{urllib.parse.urlencode(pairs)}")
+            if not isinstance(payload, list):
+                return False
+            for market in payload:
+                if not isinstance(market, dict):
+                    continue
+                # Check all token slots for this market
+                tokens = market.get("clobTokenIds") or []
+                if isinstance(tokens, str):
+                    try:
+                        import json as _json
+                        tokens = _json.loads(tokens)
+                    except Exception:
+                        tokens = [tokens]
+                if token_id in tokens or str(market.get("id") or "") == token_id:
+                    closed = market.get("closed") in (True, "true", "True", 1)
+                    active = market.get("active") in (True, "true", "True", 1)
+                    return closed and not active
+        except Exception:
+            pass
+        return False
+
     def _get_json(self, path: str) -> Any:
         request = urllib.request.Request(
             f"{self.base_url}{path}",

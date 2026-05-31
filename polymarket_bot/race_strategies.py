@@ -1159,15 +1159,15 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
     return None
 
 
-# Minutes past a market's close time before we force-close a position that
-# is stuck in limbo (closed off-chain, not yet resolved on-chain). The grace
-# lets a quick on-chain resolution settle to 0/1 first; after that we realize
-# the position at the best price we have so capital rotates.
-RACE_EXPIRY_GRACE_MIN = 10
-# Sports CLOB windows close while games are still in progress.
-# If the position is still winning (price >= 0.50), give it 6h to resolve
-# naturally via resolved_exit or universal sweep instead of force-selling mid-game.
-RACE_EXPIRY_GRACE_MIN_WINNING = 360
+# Minutes past close before we even consider realizing a stuck position.
+# Per user rule (2026-05-31): a losing position is NEVER sold (the loss-floor in
+# execute_live_sell blocks any sell below entry). It rides to natural on-chain
+# settlement; only ~8h after expiry do we register the loss LOCALLY (the sell
+# attempt is floor-blocked → written off in the ledger, no order placed). 8h
+# gives the chain ample time to settle a real win to ~1.0 first.
+RACE_EXPIRY_GRACE_MIN = 480  # 8h
+# Winners ride to resolved_exit (bid ≥ 0.97). Long grace as a backstop only.
+RACE_EXPIRY_GRACE_MIN_WINNING = 480
 
 # EOD pre-sell REMOVED (2026-05-31): it force-flattened every open position
 # ~5 min before the daily report to make the summary show clean closed P&L —
