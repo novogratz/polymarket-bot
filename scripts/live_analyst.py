@@ -153,6 +153,20 @@ def _get_settings_and_client():
     return settings, data_client
 
 
+def _tracking_start_ts() -> int:
+    """Unix ts of the last 'fresh start' reset; the report ignores any trade
+    before it. Lets a reset hide pre-reset on-chain activity that the Data API
+    would otherwise keep reporting for 'today'. Returns 0 when the file is
+    absent (i.e. no reset → behave normally). Per-machine (gitignored)."""
+    try:
+        p = DATA_DIR / "live_tracking_start"
+        if p.is_file():
+            return int(float(p.read_text().strip()))
+    except Exception:
+        pass
+    return 0
+
+
 def _fetch_today_pnl() -> tuple[float, list[dict]] | None:
     """Return (today_realized_pnl, activity_list) using Polymarket trade history.
 
@@ -170,6 +184,7 @@ def _fetch_today_pnl() -> tuple[float, list[dict]] | None:
 
         today_start = calendar.timegm(time.gmtime())
         today_start -= today_start % 86400  # floor to midnight UTC
+        today_start = max(today_start, _tracking_start_ts())  # ignore pre-reset trades
 
         # Fetch today's SELL trades (ground truth for closed positions)
         sells_raw = data_client.trades(user=settings.funder_address, start=today_start, limit=200, side="SELL")
@@ -553,12 +568,20 @@ def _today_utc() -> str:
 def load_todays_trades() -> list[dict]:
     """Closed trades with closed_at on today's UTC date."""
     today = _today_utc()
+    start_ts = _tracking_start_ts()
     journal = DATA_DIR / "trade_journal.jsonl"
     rows = []
     for e in _read_realized_records(journal):
         closed_at = str(e.get("closed_at") or "")
         if not closed_at.startswith(today):
             continue
+        if start_ts:  # ignore trades closed before the last fresh-start reset
+            try:
+                from datetime import datetime
+                if datetime.fromisoformat(closed_at.replace("Z", "+00:00")).timestamp() < start_ts:
+                    continue
+            except Exception:
+                pass
         pnl = _record_pnl(e)
         pct_raw = e.get("realized_pnl_pct") or e.get("pnl_pct")
         if pct_raw is not None:
