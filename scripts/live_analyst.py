@@ -678,19 +678,8 @@ def daily_report_once() -> None:
     balance = snap.equity
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
-    # Today P&L — prefer API-sourced (full trade history) over incomplete journal
-    api_today = _fetch_today_pnl()
-    if api_today is not None:
-        today_closed_pnl, api_activity = api_today
-        today_total_pnl = today_closed_pnl + unrealized
-        use_api_activity = True
-    else:
-        today_closed_pnl = sum(t["pnl"] for t in today_trades)
-        today_total_pnl = today_closed_pnl + unrealized
-        use_api_activity = False
-    today_total_pct = (today_total_pnl / starting * 100) if starting > 0 else 0.0
-
-    date_str = time.strftime("%B %-d, %Y", time.gmtime())
+    t = time.gmtime()
+    date_str = time.strftime("%B ", t) + str(t.tm_mday) + time.strftime(", %Y", t)
     stamp = time.strftime("%H:%M UTC", time.gmtime())
     divider = "━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -701,32 +690,14 @@ def daily_report_once() -> None:
         return "🟢" if v >= 0 else "🔴"
 
     parts = [
-        f"📋 *DAILY QUANT REPORT — {date_str}* _{stamp}_",
+        f"📋 *LIVE REPORT — {date_str}* _{stamp}_",
         f"_Polymarket Bot_ `kzer_ai` _· Grinder_",
         divider,
         "",
         "*PROFIT & LOSS:*",
         f"  {_mood(net_vs_start)} Total P&L:   ${_sign(net_vs_start)}{net_vs_start:.2f} ({_sign(net_vs_start_pct)}{net_vs_start_pct:.2f}%)  |  Equity: ${balance:.2f}",
-        f"  {_mood(today_total_pnl)} Today P&L:   ${_sign(today_total_pnl)}{today_total_pnl:.2f} ({_sign(today_total_pct)}{today_total_pct:.2f}%)",
         "",
-        "",
-        "*ACTIVITY (TODAY):*",
     ]
-
-    activity_items = api_activity if use_api_activity else today_trades
-    if activity_items:
-        today_wins = sum(1 for t in activity_items if t["pnl"] > 0)
-        today_losses = sum(1 for t in activity_items if t["pnl"] < 0)
-        parts.append(f"  _{len(activity_items)} trades — {today_wins}W / {today_losses}L_")
-        for t in activity_items:
-            emoji = "🟢" if t["pnl"] >= 0 else "🔴"
-            label = t.get("question", "?")
-            parts.append(
-                f"  {emoji} {label}: "
-                f"{_sign(t['pnl'])}${t['pnl']:.2f} ({_sign(t['pct'])}{t['pct']:.2f}%)"
-            )
-    else:
-        parts.append("  — No closed trades today")
 
     if open_pos:
         parts.append("")
