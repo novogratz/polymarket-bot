@@ -25,8 +25,8 @@ export POLYMARKET_SYNC_LIVE_POSITIONS=1
 # real USDC balance from CLOB each tick; these only kick in if that read fails.
 # MUST match grinder_b.toml — a mismatched fallback (was 141, the primary bot's
 # value) made the report show fake +183% (141 - 49.82 baseline).
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-96.47}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-96.47}
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-62.64}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-62.64}
 
 # 10s tick — 3× faster than 30s, catches more fleeting band entries.
 export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
