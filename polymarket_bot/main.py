@@ -2648,6 +2648,26 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
         # Only close if either tail
         if cur_f < win_threshold and cur_f > loss_threshold:
             continue
+        # LOSS SWEEP GUARD: never fire on a market that hasn't expired yet.
+        # A thin order book or API manipulation can briefly push the price to
+        # 0.01 on a live market (e.g. Under 4.5 at 2-0 in a game still in
+        # progress). Sweeping at 0.01 would crystallise a -98% loss on a
+        # position that is actually winning. Only sweep the loss side when
+        # the market's end_date is in the past (truly resolved).
+        if cur_f <= loss_threshold:
+            end_date_raw = position.get("end_date")
+            if end_date_raw:
+                try:
+                    from datetime import datetime as _dt, timezone as _tz
+                    end_dt = _dt.fromisoformat(str(end_date_raw).replace("Z", "+00:00"))
+                    if end_dt.tzinfo is None:
+                        end_dt = end_dt.replace(tzinfo=_tz.utc)
+                    if end_dt > now:
+                        continue  # market still live — hold, do not sweep-close
+                except Exception:
+                    pass  # can't parse end_date — skip loss sweep to be safe
+            else:
+                continue  # no end_date info — don't risk a false sweep
         entry = float(position.get("entry_price") or 0.0)
         shares = float(position.get("shares") or 0.0)
         if entry <= 0 or shares <= 0:
