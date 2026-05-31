@@ -11,7 +11,7 @@
 [run]
 # Shared profile for the PRIMARY bot (run_live_70.sh). The second bot uses
 # its own grinder_b.toml — edit that one for that machine, never this.
-starting_cash = 98.0
+starting_cash = 15.80
 mode = "grinder"
 
 [sizing]
@@ -24,7 +24,7 @@ cash_floor_pct = 0.05
 position_pct = 0.50
 min_open_positions = 0
 starter_trade_usd = 1.5
-assumed_live_balance_usd = 98.0
+assumed_live_balance_usd = 15.80
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.50
 

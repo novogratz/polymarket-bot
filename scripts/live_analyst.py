@@ -690,7 +690,8 @@ def daily_report_once() -> None:
         use_api_activity = False
     today_total_pct = (today_total_pnl / starting * 100) if starting > 0 else 0.0
 
-    date_str = time.strftime("%B %-d, %Y", time.gmtime())
+    t = time.gmtime()
+    date_str = time.strftime("%B ", t) + str(t.tm_mday) + time.strftime(", %Y", t)
     stamp = time.strftime("%H:%M UTC", time.gmtime())
     divider = "━━━━━━━━━━━━━━━━━━━━━━━━"
 
