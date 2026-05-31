@@ -678,16 +678,17 @@ def daily_report_once() -> None:
     balance = snap.equity
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
-    # Today P&L — prefer API-sourced (full trade history) over incomplete journal
+    # Today P&L = REALIZED closed trades today only. Unrealized swings on still-
+    # open positions belong to Equity / Total P&L, not "Today" — including them
+    # made a winning book show a scary -$10 just because an open bet was mid-dip.
     api_today = _fetch_today_pnl()
     if api_today is not None:
         today_closed_pnl, api_activity = api_today
-        today_total_pnl = today_closed_pnl + unrealized
         use_api_activity = True
     else:
         today_closed_pnl = sum(t["pnl"] for t in today_trades)
-        today_total_pnl = today_closed_pnl + unrealized
         use_api_activity = False
+    today_total_pnl = today_closed_pnl
     today_total_pct = (today_total_pnl / starting * 100) if starting > 0 else 0.0
 
     date_str = time.strftime("%B %-d, %Y", time.gmtime())
