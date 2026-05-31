@@ -42,10 +42,12 @@ export TELEGRAM_EQUITY_FLOOR_USD=0
 export TELEGRAM_ALERT_TRADES=1
 export TELEGRAM_ALERT_TRADES_BUY=1
 export TELEGRAM_ALERT_ERRORS=1
-export TELEGRAM_ALERT_THRESHOLDS=1
-export TELEGRAM_ALERT_HEARTBEAT=1
-export TELEGRAM_ALERT_PORTFOLIO_UPDATES=1
-export TELEGRAM_ALERT_DAILY_SUMMARY=1
+# Periodic status pushes OFF for this bot — no 💓 Bilan heartbeat, no portfolio
+# updates, no daily summary, no threshold pings. Per request: never send these.
+export TELEGRAM_ALERT_THRESHOLDS=0
+export TELEGRAM_ALERT_HEARTBEAT=0
+export TELEGRAM_ALERT_PORTFOLIO_UPDATES=0
+export TELEGRAM_ALERT_DAILY_SUMMARY=0
 
 # Profile label exported BEFORE the live_analyst spawns, so the
 # sidecar inherits it (else it logs "(unknown)" in reports).
