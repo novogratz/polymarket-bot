@@ -315,6 +315,14 @@ def _fetch_live_equity() -> tuple[float, float] | None:
                 pos_value += cv
         except Exception:
             pass
+        equity = avail + pos_value
+        # Redemption lag guard: when a position resolves and disappears from the
+        # Data API, the USDC can take minutes to settle to the CLOB wallet.
+        # During that window equity looks artificially low. Use assumed_live_balance_usd
+        # as a floor so the report never shows a false crash mid-settlement.
+        assumed = float(getattr(settings, "assumed_live_balance_usd", 0) or 0)
+        if assumed > 0 and equity < assumed * 0.5:
+            return assumed, 0.0
         return avail, pos_value
     except Exception:
         return None
