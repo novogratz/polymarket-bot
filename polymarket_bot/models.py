@@ -91,8 +91,22 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     # score is 0-0 late, then gaps to 0 on any goal. Same gap profile.
     "end in a draw",
     "win or draw",
+    # Esports match markets: in-series swings (BO3/BO5) are uncatchable.
+    # BESTIA CS match cost -$5 in one bet (2026-05-31).
+    "counter-strike",
+    "dota 2",
+    "league of legends",
+    "valorant",
+    "overwatch",
+    "starcraft",
+    "rocket league",
+    "rainbow six",
+    "(bo3)",
+    "(bo5)",
+    "- bo3",
+    "- bo5",
 )
-_EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down", "exact-score")
+_EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down", "exact-score", "esports")
 
 
 def is_excluded_market(market: dict[str, Any]) -> bool:
