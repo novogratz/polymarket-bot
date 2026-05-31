@@ -596,6 +596,11 @@ class TestThresholdOneLine(NotificationsBaseTest):
         self.assertEqual(sent, [])
 
 
+@unittest.skip(
+    "💓 Bilan heartbeat removed per user request 2026-05-31: notify_heartbeat "
+    "is now a hard no-op (returns immediately), so these send-assertions no "
+    "longer apply. Kept for reference if the heartbeat is ever reinstated."
+)
 class TestHeartbeat(NotificationsBaseTest):
     def _setup(self) -> list[dict]:
         os.environ["TELEGRAM_BOT_TOKEN"] = "tok"
