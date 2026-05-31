@@ -2389,14 +2389,40 @@ def _print_stdout_heartbeat(
     invested = float(summary.get("invested", 0) or 0)
     unrealized = float(summary.get("unrealized_pnl", 0) or 0)
     positions = int(summary.get("open_positions", 0) or 0)
-    cash_pct = (cash / equity * 100.0) if equity > 0 else 0.0
+    # In live mode, fetch real equity from the Data API so the heartbeat
+    # reflects the on-chain balance (not just the local ledger, which can
+    # be stale when sync_closed positions are still live on-chain).
+    live_equity: float | None = None
+    live_invested: float | None = None
+    if not settings.dry_run and settings.funder_address:
+        try:
+            from .smart_money import DataApiClient as _DAC
+            _pos_value = 0.0
+            _min_val = float(getattr(settings, "live_position_min_value_usd", 0.5) or 0.5)
+            for _item in _DAC(settings.data_api_base_url).positions(user=settings.funder_address):
+                try:
+                    _sz = float(_item.get("size") or 0)
+                    _cv = float(_item.get("currentValue") or 0)
+                    if _sz > 0 and _cv >= _min_val:
+                        _pos_value += _cv
+                except (TypeError, ValueError):
+                    pass
+            live_invested = _pos_value
+            live_equity = cash + _pos_value  # cash from local ledger (CLOB sync); pos from API
+        except Exception:
+            pass
+    display_equity = live_equity if live_equity is not None else equity
+    cash_pct = (cash / display_equity * 100.0) if display_equity > 0 else 0.0
+    equity_note = ""
+    if live_equity is not None and abs(live_equity - equity) > 0.50:
+        equity_note = f"  ⚠️  ledger=${equity:.2f}"
     decided_24h = wins_24h + losses_24h
     win_rate = (wins_24h / decided_24h * 100.0) if decided_24h > 0 else 0.0
     realized_all, closed_all, wins_all, losses_all = _all_time_realized_pnl(
         settings.trade_journal_path
     )
     starting_equity = _starting_equity_for_stats(settings)
-    net_since_start = equity - starting_equity
+    net_since_start = display_equity - starting_equity
     decided_all = wins_all + losses_all
     win_rate_all = (wins_all / decided_all * 100.0) if decided_all > 0 else 0.0
     stamp = time.strftime("%H:%M:%S", time.localtime())
@@ -2409,8 +2435,9 @@ def _print_stdout_heartbeat(
         label = strategy_name
     print(sep, flush=True)
     print(f"📊 PORTFOLIO HEARTBEAT · {stamp} · {label} · {mode}", flush=True)
+    display_invested = live_invested if live_invested is not None else invested
     print(
-        f"   equity ${equity:.2f}  |  cash ${cash:.2f} ({cash_pct:.0f}%)  |  invested ${invested:.2f}",
+        f"   equity ${display_equity:.2f}{equity_note}  |  cash ${cash:.2f} ({cash_pct:.0f}%)  |  invested ${display_invested:.2f}",
         flush=True,
     )
     print(f"   open positions: {positions}  |  unrealized PnL: {unrealized:+.2f}", flush=True)
@@ -2512,6 +2539,61 @@ def _live_vs_dry_summary(live_profile: str) -> list[str]:
     return out
 
 
+def _sweep_sell_live(settings: Settings, position: dict, price: float, shares: float) -> float | None:
+    """Attempt a real CLOB SELL for a sweep-closing live position.
+
+    Only called when price is between the sweep threshold and 0.995 — markets
+    at 0.995+ are effectively settled and shares auto-redeem on-chain; no sell
+    is possible or necessary. Returns actual proceeds on success, None on
+    failure (caller falls back to cached-price accounting).
+    """
+    token_id = str(position.get("token_id") or "")
+    if not token_id or settings.dry_run or not settings.funder_address:
+        return None
+    try:
+        import types as _types
+        client = build_client(settings)
+        # Clamp to actual on-chain share balance to avoid "balance is not enough"
+        sell_shares = shares
+        try:
+            on_chain = client.live_share_balance(token_id)
+            if on_chain is not None and 0 < on_chain < sell_shares:
+                sell_shares = on_chain
+        except Exception:
+            pass
+        if sell_shares <= 0:
+            return None
+        tick_size = float(position.get("tick_size") or 0.001)
+        neg_risk = bool(position.get("neg_risk") or False)
+        sell_price = round(min(price, 0.99), 3)
+        # Minimal stub — place_live_order only reads token_id, tick_size, neg_risk
+        stub = _types.SimpleNamespace(token_id=token_id, tick_size=tick_size, neg_risk=neg_risk)
+        order, response = client.place_live_order(
+            candidate=stub, price=sell_price, size=round(sell_shares, 6), side="SELL"
+        )
+        resp_dict = response if isinstance(response, dict) else (
+            response.__dict__ if hasattr(response, "__dict__") else {}
+        )
+        success = (
+            resp_dict.get("success") is True
+            or resp_dict.get("status") in ("matched", "delayed", "live")
+            or bool(resp_dict.get("orderID") or resp_dict.get("orderId"))
+        )
+        if success:
+            actual_taking = resp_dict.get("takingAmount")
+            proceeds = float(actual_taking) if actual_taking is not None else round(sell_shares * sell_price, 2)
+            print(
+                f"💰 [sweep-sell] SELL {sell_shares} @ {sell_price} → ${proceeds:.2f}  "
+                f"{str(position.get('question', ''))[:50]}",
+                flush=True,
+            )
+            return proceeds
+        print(f"   [sweep-sell] order not matched: {resp_dict}", flush=True)
+    except Exception as exc:
+        print(f"   [sweep-sell] failed: {type(exc).__name__}: {exc}", flush=True)
+    return None
+
+
 def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> list[dict]:
     """Universal auto-sell for resolved markets across ALL strategies.
 
@@ -2528,9 +2610,9 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
     forever. This sweep closes both, regardless of which strategy mode
     opened them.
 
-    Works in live + dry-run. In live, real USDC distribution happens on
-    chain when the market resolves — this just makes the local ledger
-    consistent. In dry-run, it realises the cached PnL.
+    In live mode, positions between the sweep threshold and 0.995 get a real
+    CLOB SELL (the market is still tradeable). Positions at ≥0.995 auto-redeem
+    on-chain — no sell needed. In dry-run, only the local ledger is updated.
     """
     win_threshold = float(getattr(settings, "smart_resolved_exit_threshold", 0.97) or 0.97)
     # Mirror image of the win threshold: if a position's value has collapsed
@@ -2571,10 +2653,22 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
         if entry <= 0 or shares <= 0:
             continue
         cost_basis = float(position.get("stake") or position.get("cost_basis") or (entry * shares))
-        proceeds = cur_f * shares
-        realized_pnl = proceeds - cost_basis
         side = "win" if cur_f >= win_threshold else "loss"
         reason = f"resolved_market_sweep_{side}"
+        # For live positions not yet at final settlement value (< 0.995), try a
+        # real CLOB SELL so the cash actually lands in the wallet. Markets at
+        # ≥0.995 are effectively settled and shares will auto-redeem on-chain.
+        live_sell_threshold = 0.995
+        actual_proceeds: float | None = None
+        if (
+            position.get("live")
+            and not position.get("sync_closed")
+            and not settings.dry_run
+            and cur_f < live_sell_threshold
+        ):
+            actual_proceeds = _sweep_sell_live(settings, position, cur_f, shares)
+        proceeds = actual_proceeds if actual_proceeds is not None else cur_f * shares
+        realized_pnl = proceeds - cost_basis
         position["status"] = "closed"
         position["closed_at"] = now.isoformat()
         position["realized_pnl"] = round(realized_pnl, 4)
