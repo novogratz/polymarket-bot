@@ -91,8 +91,35 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     # score is 0-0 late, then gaps to 0 on any goal. Same gap profile.
     "end in a draw",
     "win or draw",
+    # Esports (2026-05-31): not profitable for this strategy — exclude entirely.
+    # Best-of series swing fast and books are thin/volatile mid-map.
+    "counter-strike",
+    "esports",
+    "valorant",
+    "league of legends",
+    "dota",
+    "cs2",
+    "csgo",
+    "rainbow six",
+    "rocket league",
+    "overwatch",
+    "(bo1)",
+    "(bo3)",
+    "(bo5)",
 )
-_EXCLUDED_SLUG_SUBSTRINGS = ("updown", "up-or-down", "exact-score")
+_EXCLUDED_SLUG_SUBSTRINGS = (
+    "updown",
+    "up-or-down",
+    "exact-score",
+    # Esports slug markers.
+    "counter-strike",
+    "csgo",
+    "cs2",
+    "valorant",
+    "league-of-legends",
+    "dota",
+    "esports",
+)
 
 
 def is_excluded_market(market: dict[str, Any]) -> bool:
