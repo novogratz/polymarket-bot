@@ -9,6 +9,9 @@ set -euo pipefail
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
+# Add uv to PATH (Windows: ~/.local/bin not in default PATH for some shells)
+export PATH="$HOME/.local/bin:$PATH"
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
@@ -39,8 +42,8 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 export POLYMARKET_PROFILE_LABEL=grinder
 
 cleanup() {
-    kill 0 2>/dev/null || true
-    wait 2>/dev/null || true
+    kill 0 2>&1 || true
+    wait 2>&1 || true
 }
 trap cleanup INT TERM EXIT
 
