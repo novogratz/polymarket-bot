@@ -2594,6 +2594,121 @@ def _sweep_sell_live(settings: Settings, position: dict, price: float, shares: f
     return None
 
 
+def _close_confirmed_resolved_losses(settings: Settings, strategy_name: str) -> list[dict]:
+    """Record confirmed losses on positions whose price is near zero.
+
+    For every open or sync_closed position with current_price < 0.08, query
+    the Gamma API to verify the market is truly resolved (closed=true,
+    active=false). Only then record the loss and send a Telegram alert.
+
+    This prevents the sweep from firing on mid-game thin-book price spikes
+    (e.g. Under 4.5 briefly showing 0.01 at 2-0). A confirmed resolved loss
+    requires Polymarket itself to have marked the market closed.
+    """
+    from .portfolio import Portfolio
+    from .gamma import GammaClient
+    LOSS_PRICE_THRESHOLD = 0.08
+
+    try:
+        portfolio = Portfolio.load(settings.state_path, settings.paper_balance_usd)
+    except Exception:
+        return []
+
+    candidates = [
+        p for p in portfolio.positions
+        if p.get("status") in ("open", "closed")
+        and not p.get("confirmed_loss")
+        and float(p.get("current_price") or 1.0) < LOSS_PRICE_THRESHOLD
+        and p.get("token_id")
+    ]
+    if not candidates:
+        return []
+
+    gamma = GammaClient(settings.gamma_api_base_url)
+    closed_records: list[dict] = []
+    changed = False
+    now = utc_now()
+
+    for position in candidates:
+        token_id = str(position.get("token_id") or "")
+        try:
+            resolved = gamma.is_market_resolved(token_id)
+        except Exception:
+            continue
+        if not resolved:
+            continue
+
+        # Market is confirmed closed by Polymarket — record the real loss
+        shares = float(position.get("shares") or 0.0)
+        cur_f = float(position.get("current_price") or 0.0)
+        cost_basis = float(position.get("stake") or position.get("cost_basis") or 0.0)
+        proceeds = round(cur_f * shares, 4)
+        realized_pnl = round(proceeds - cost_basis, 4)
+
+        position["status"] = "closed"
+        position["confirmed_loss"] = True
+        position["closed_at"] = position.get("closed_at") or now.isoformat()
+        position["exit_reason"] = "confirmed_resolved_loss"
+        position["exit_price"] = cur_f
+        position["realized_pnl"] = realized_pnl
+        position["journaled"] = True
+        changed = True
+
+        rec = {
+            "event": "position_closed",
+            "closed_at": position["closed_at"],
+            "opened_at": position.get("opened_at"),
+            "question": position.get("question"),
+            "outcome": position.get("outcome"),
+            "token_id": token_id,
+            "strategy": strategy_name,
+            "exit_reason": "confirmed_resolved_loss",
+            "entry_price": float(position.get("entry_price") or 0.0),
+            "exit_price": cur_f,
+            "shares": shares,
+            "cost_basis": round(cost_basis, 4),
+            "realized_pnl_usd": realized_pnl,
+            "realized_pnl_pct": round(realized_pnl / cost_basis, 4) if cost_basis > 0 else 0.0,
+        }
+        closed_records.append(rec)
+        print(
+            f"💸 [confirmed-loss] {position.get('outcome')} @ {cur_f:.3f}  "
+            f"pnl ${realized_pnl:+.2f}  {str(position.get('question',''))[:50]}",
+            flush=True,
+        )
+        # Telegram alert
+        try:
+            from . import notifications
+            notifications.notify_trade_sell(
+                market_title=str(position.get("question") or ""),
+                token_id=token_id,
+                price=cur_f,
+                size_usd=cost_basis,
+                realized_pnl_usd=realized_pnl,
+                realized_pnl_pct=(realized_pnl / cost_basis * 100) if cost_basis > 0 else 0.0,
+                reason="confirmed_resolved_loss",
+                held_seconds=None,
+            )
+        except Exception:
+            pass
+
+    if changed:
+        try:
+            portfolio.save(settings.state_path)
+        except Exception as exc:
+            print(f"[confirmed-loss] save failed: {exc}", flush=True)
+        try:
+            journal_path = Path(settings.trade_journal_path)
+            journal_path.parent.mkdir(parents=True, exist_ok=True)
+            with journal_path.open("a", encoding="utf-8") as fh:
+                for rec in closed_records:
+                    fh.write(json.dumps(rec) + "\n")
+        except Exception as exc:
+            print(f"[confirmed-loss] journal failed: {exc}", flush=True)
+
+    return closed_records
+
+
 def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> list[dict]:
     """Universal auto-sell for WIN-resolved markets across ALL strategies.
 
@@ -2887,6 +3002,14 @@ def strategy_loop(settings: Settings, strategy_name: str, tick_fn) -> None:
             _force_close_resolved_positions(settings, strategy_name)
         except Exception as exc:
             print(f"[sweep] failed: {type(exc).__name__}: {exc}", flush=True)
+        # Confirmed-loss checker: every 5 ticks, verify near-zero positions
+        # against Gamma API. Only records a loss when Polymarket has officially
+        # closed the market — prevents false fires on mid-game price spikes.
+        if tick % 5 == 0:
+            try:
+                _close_confirmed_resolved_losses(settings, strategy_name)
+            except Exception as exc:
+                print(f"[confirmed-loss] failed: {type(exc).__name__}: {exc}", flush=True)
         error: dict[str, str] | None = None
         tick_result: dict[str, object] = {}
         try:
