@@ -739,6 +739,9 @@ def _heartbeat_top_line(emoji: str, entry: dict[str, Any]) -> str | None:
 
 
 def notify_heartbeat(snapshot: dict[str, Any]) -> None:
+    # 💓 Bilan heartbeat REMOVED permanently per user request (2026-05-31).
+    # Never send this message again, on any bot, regardless of env flags.
+    return
     if not is_enabled() or not _flag("TELEGRAM_ALERT_HEARTBEAT"):
         return
     # Bilan heartbeat is live-only — 30 dry-run bots would firehose the
