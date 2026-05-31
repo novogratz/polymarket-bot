@@ -2068,7 +2068,12 @@ class StrategyTests(unittest.TestCase):
             accepts_orders=True,
         )
         portfolio = Portfolio(cash=1.0, positions=[])
-        position = portfolio.record_live_position(candidate, 4.58, entry_price=0.91)
+        # entry at/below the 0.01 sell price so the loss-floor (never sell below
+        # entry) does not block — this test covers the min-sell-USD bypass, not
+        # a loss-sell.
+        # stake 0.05 @ 0.01 = 5.0 shares (full position); proceeds 5.0*0.01=$0.05
+        # is below smart_min_sell_usd, so this exercises the full-position bypass.
+        position = portfolio.record_live_position(candidate, 0.05, entry_price=0.01)
         self.assertIsNotNone(position)
 
         result = execute_live_sell(
@@ -2077,11 +2082,11 @@ class StrategyTests(unittest.TestCase):
             candidate,
             portfolio,
             position,
-            shares=5.032967,
-            reason="race_stop_loss",
+            shares=5.0,
+            reason="race_take_profit",
         )
 
-        self.assertEqual(result.order["size"], 5.032967)
+        self.assertEqual(result.order["size"], 5.0)
         self.assertEqual(position["status"], "closed")
 
     def test_race_exit_uses_live_position_mark_over_bad_scan_quote(self):

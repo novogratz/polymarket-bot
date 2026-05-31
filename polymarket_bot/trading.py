@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import sys
 import time
 from importlib import import_module
@@ -841,6 +842,24 @@ def execute_live_sell(
         raise ValueError("candidate has no tick size")
 
     sell_price = round(min(max(candidate.best_bid, candidate.tick_size), 0.99), 3)
+
+    # ── HARD LOSS FLOOR (2026-05-31) — NEVER sell below the purchase price ──
+    # Per explicit user rule: a winning/favorite position must never be
+    # force-sold at a loss into a thin-book / phantom bid (the bug that dumped
+    # winning Unders at $0.01–$0.46 mid-game). Losers instead ride to natural
+    # on-chain resolution ($0 if they truly lose, $1 if they win). The only
+    # sells allowed are at or above entry (take-profit / resolved-win). This is
+    # the universal backstop across EVERY exit path — if any caller tries a
+    # loss-sell, the order is refused here and the position is held.
+    # Bypass only with POLYMARKET_ALLOW_LOSS_SELL=1 (manual override).
+    entry_price = float(position.get("entry_price") or 0.0)
+    allow_loss_sell = os.getenv("POLYMARKET_ALLOW_LOSS_SELL", "0").lower() in ("1", "true", "yes")
+    if entry_price > 0 and sell_price < entry_price and not allow_loss_sell:
+        raise ValueError(
+            f"loss_sell_blocked: would sell @ {sell_price} < entry {entry_price} "
+            f"(reason={reason}) — holding to resolution; never sell below purchase price"
+        )
+
     available_shares = float(position.get("shares", 0.0))
     # Clamp to on-chain share balance — local ledger can drift slightly from
     # the wallet due to rounding, partial fills, or resting orders. Asking the
