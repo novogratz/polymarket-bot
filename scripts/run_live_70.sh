@@ -61,7 +61,12 @@ cleanup() {
     wait 2>/dev/null || true
 }
 trap cleanup INT TERM EXIT
-python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
+
+# Kill any stale live_analyst from a previous run so we never have two sending.
+pkill -f "live_analyst.py" 2>/dev/null || true
+sleep 1
+
+uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
 # ─── Live-only leaderboard sidecar REMOVED (2026-05-30) ────────────────
 # The 5-min "🏁 Leaderboard · LIVE only" Telegram summary was noisy and

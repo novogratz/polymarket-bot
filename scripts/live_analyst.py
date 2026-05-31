@@ -137,11 +137,14 @@ class LiveSnapshot:
 def _get_settings_and_client():
     """Shared helper: load settings + Data API client. Raises on failure."""
     import sys
-    from pathlib import Path as _P
     sys.path.insert(0, str(REPO_ROOT))
     from polymarket_bot.profiles import load_profile, apply_profile_to_env
     from polymarket_bot.config import Settings
-    profile_path = REPO_ROOT / "configs" / "profiles" / "grinder.toml"
+    # Use POLYMARKET_PROFILE_LABEL so bot B loads grinder_b.toml, not grinder.toml
+    label = os.environ.get("POLYMARKET_PROFILE_LABEL", "grinder")
+    profile_path = REPO_ROOT / "configs" / "profiles" / f"{label}.toml"
+    if not profile_path.exists():
+        profile_path = REPO_ROOT / "configs" / "profiles" / "grinder.toml"
     if profile_path.exists():
         apply_profile_to_env(load_profile(profile_path), override=False)
     settings = Settings()
