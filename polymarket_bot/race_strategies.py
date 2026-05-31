@@ -1145,8 +1145,13 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
         return None
     if current_pnl_pct >= settings.race_tp_pct:
         return {"reason": "race_take_profit", "shares": shares}
-    if current_pnl_pct <= -settings.race_sl_pct:
-        return {"reason": "race_stop_loss", "shares": shares}
+    # race_stop_loss REMOVED (2026-05-31) — it can never fire again.
+    # The grinder rides favorites to resolution by design. The SL kept
+    # fire-selling WINNING favorites on thin-book phantom bids during kickoff
+    # volatility (e.g. an Under at true 0.94 momentarily showed a 0.46 bid →
+    # SL dumped it for a fake -48%). A price-based SL also can't catch real gap
+    # moves anyway. Exits now ONLY via TP / resolved_exit / universal sweep /
+    # true market resolution. (race_sl_pct is now dead config.)
     # Near-expiry flush removed: was selling positions at break-even
     # just because the market was about to resolve, leaving real upside
     # on the table. Positions now ride until TP / SL / resolved_exit

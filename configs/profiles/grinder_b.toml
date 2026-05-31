@@ -90,7 +90,7 @@ cash_floor_pct = 0.01
 #   resolved at 0.99  → exit when the market prints near-final resolution value.
 #   max_hold 4.5h     → backstop so nothing lingers after expiry.
 tp_pct = 1.0
-sl_pct = 0.35
+sl_pct = 1.0  # SL removed at source 2026-05-31; kept at 1.0 (never fires) for clarity
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.97
