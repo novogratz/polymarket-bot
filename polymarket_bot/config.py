@@ -328,6 +328,8 @@ class Settings:
     race_sl_min_age_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_SL_MIN_AGE_MINUTES", 5))
     race_near_expiry_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_NEAR_EXPIRY_MINUTES", 5))
     race_resolved_exit_threshold: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_RESOLVED_EXIT_THRESHOLD", 0.97))
+    race_limit_sell_trigger: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_LIMIT_SELL_TRIGGER", 0.0))
+    race_limit_sell_price: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_LIMIT_SELL_PRICE", 0.98))
     race_daily_drawdown_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_DAILY_DRAWDOWN_PCT", 0.15))
     race_noise_fallback_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_NOISE_FALLBACK_ENABLED", False))
     # Max absolute one-day price change. Markets that moved >X today are in

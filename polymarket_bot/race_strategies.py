@@ -1341,6 +1341,96 @@ def _execute_race_exits(
             continue
         # ─────────────────────────────────────────────────────────────────
 
+        # ── Resting limit sell (Option B) ────────────────────────────────
+        # When price >= race_limit_sell_trigger (e.g. 0.95), place a single
+        # GTC limit sell at race_limit_sell_price (e.g. 0.98) and track it.
+        # Each tick: if shares gone → fill confirmed, record exit and move on.
+        # If still pending → skip normal exit logic (let the resting order work).
+        # Market auto-redemption at 1.0 is handled by live sync (shares hit 0).
+        _lim_trigger = settings.race_limit_sell_trigger
+        _lim_price = settings.race_limit_sell_price
+        if _lim_trigger > 0 and candidate is not None and candidate.token_id:
+            pending_oid = str(position.get("pending_exit_order_id") or "")
+            if pending_oid:
+                # Check if the resting sell filled by querying on-chain shares
+                _filled = False
+                if not settings.dry_run:
+                    try:
+                        on_chain = client.live_share_balance(str(token_id or ""))
+                        if on_chain is not None and on_chain <= 0.001:
+                            _filled = True
+                    except Exception:
+                        pass
+                else:
+                    _filled = True  # dry-run: simulate immediate fill
+                if _filled:
+                    _exit_price = float(position.get("pending_exit_price") or _lim_price)
+                    _shares = float(position.get("shares") or 0.0)
+                    portfolio.record_live_exit(
+                        position,
+                        shares=_shares,
+                        exit_price=_exit_price,
+                        order_id=pending_oid,
+                        order_response={"orderID": pending_oid, "status": "matched_resting"},
+                        reason="race_limit_sell_filled",
+                    )
+                    out.append({
+                        "market_id": position.get("market_id"),
+                        "question": position.get("question"),
+                        "action": "sell",
+                        "reason": "race_limit_sell_filled",
+                        "exit_price": _exit_price,
+                        "shares": _shares,
+                    })
+                    print(
+                        f"✅ Resting limit sell FILLED: '{position.get('question')}' @ {_exit_price}",
+                        flush=True,
+                    )
+                else:
+                    # Still resting — skip normal exit logic this tick
+                    continue
+            elif position_price >= _lim_trigger:
+                # Place the resting GTC limit sell
+                _shares = float(position.get("shares") or 0.0)
+                if _shares > 0.001:
+                    try:
+                        if not settings.dry_run:
+                            _order, _resp = client.place_live_order(
+                                candidate=candidate,
+                                price=_lim_price,
+                                size=round(_shares, 6),
+                                side="SELL",
+                            )
+                            _oid = (_resp.get("orderID") if isinstance(_resp, dict) else None) or ""
+                        else:
+                            _oid = f"dry-limit-sell-{int(position_price * 1000)}"
+                        if _oid:
+                            position["pending_exit_order_id"] = _oid
+                            position["pending_exit_price"] = _lim_price
+                            portfolio.save(settings.state_path)
+                            out.append({
+                                "market_id": position.get("market_id"),
+                                "question": position.get("question"),
+                                "action": "limit_sell_placed",
+                                "reason": "race_limit_sell_resting",
+                                "exit_price": _lim_price,
+                                "shares": _shares,
+                                "order_id": _oid,
+                            })
+                            print(
+                                f"📋 Resting limit sell @ {_lim_price} for "
+                                f"'{position.get('question')}' "
+                                f"({_shares:.4f} shares, order={_oid[:12]}...)",
+                                flush=True,
+                            )
+                            continue  # skip normal exit logic this tick
+                    except Exception as _exc:
+                        print(
+                            f"⚠️  Resting limit sell failed for '{position.get('question')}': {_exc}",
+                            flush=True,
+                        )
+                        # fall through to normal exit logic
+
         position_resolved = (
             settings.race_resolved_exit_threshold > 0
             and position_price >= settings.race_resolved_exit_threshold
