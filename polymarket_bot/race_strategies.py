@@ -1182,6 +1182,29 @@ def _in_eod_close_window() -> bool:
     return window_start <= current < window_end
 
 
+def _lookup_open_market(token_id: str, settings: Settings) -> dict[str, Any] | None:
+    """Return the live market dict if it is STILL OPEN (accepting orders).
+
+    Sports markets routinely carry an ``endDate`` set BEFORE kickoff (observed
+    2026-05-31: endDate 01:00 UTC but gameStartTime 02:00 UTC), and a position
+    past its stored endDate drops out of the scan — so the only reliable way to
+    know whether a market is genuinely closed is to look it up live. Returns
+    None when the market is closed/resolved or the lookup fails (callers must
+    treat None conservatively, never as "safe to dump").
+    """
+    if not token_id:
+        return None
+    try:
+        markets = GammaClient(settings.gamma_base_url).get_markets_by_clob_token_ids([str(token_id)])
+    except Exception:
+        return None
+    for m in markets:
+        toks = [str(t) for t in parse_json_list(m.get("clobTokenIds"))]
+        if str(token_id) in toks and bool(m.get("acceptingOrders")) and not bool(m.get("closed")):
+            return m
+    return None
+
+
 def _execute_race_exits(
     client: Any,
     settings: Settings,
@@ -1215,15 +1238,41 @@ def _execute_race_exits(
         mtc = _minutes_to_close(position)
         if mtc is not None and mtc < 0:
             exit_candidate = by_token.get(token_id)
+
+            # ── FIX #1+#2 (2026-05-31): never force-close a STILL-OPEN market ──
+            # Gamma's endDate is often set before kickoff for sports (endDate
+            # 01:00 vs gameStartTime 02:00). Trusting it dumped a winning Under
+            # (real value ~0.91) into a 0.10 thin-game bid for -$16. A market
+            # past its stored endDate drops from the scan, so confirm live.
+            open_mkt: Any = True if (exit_candidate is not None and exit_candidate.accepts_orders) else _lookup_open_market(token_id, settings)
+            if open_mkt:
+                # Still trading → NOT expired. Push end_date past the real game
+                # window (gameStartTime + 6h) so we stop re-triggering, and let
+                # it ride to a genuine resolved_exit / universal sweep.
+                gst = parse_dt(str(open_mkt.get("gameStartTime") or "")) if isinstance(open_mkt, dict) else None
+                position["end_date"] = ((gst or utc_now()) + timedelta(hours=6)).isoformat()
+                portfolio.save(settings.state_path)
+                print(
+                    f"🛡️  {strategy_name} held '{position.get('question')}' — market still OPEN "
+                    f"past endDate (early endDate vs gameStartTime); not force-closing.",
+                    flush=True,
+                )
+                continue
+
+            # Market is confirmed closed / unavailable → realize.
             salvage = max(
                 position_price,
                 float((exit_candidate.best_bid or 0.0) if exit_candidate else 0.0),
                 0.0,
             )
-            # If still winning (price >= 0.50), the event is likely still resolving
-            # (e.g. sports CLOB closes before game ends). Give it 6h to reach
-            # resolved_exit/universal_sweep rather than force-selling mid-game.
-            grace = RACE_EXPIRY_GRACE_MIN_WINNING if salvage >= 0.50 else RACE_EXPIRY_GRACE_MIN
+            # ── FIX #3: judge winning by ENTRY price, not a thin-book bid ──
+            # The grinder only buys favorites (entry ≥ 0.85), so a collapsed bid
+            # must never reclassify one as a loser and trigger a fire-sale. A
+            # favorite gets the 6h grace to resolve naturally; only a genuinely
+            # low-entry/confirmed-loser position uses the short grace.
+            entry_px = as_float(position.get("entry_price"), default=0.0)
+            winning = max(salvage, entry_px) >= 0.50
+            grace = RACE_EXPIRY_GRACE_MIN_WINNING if winning else RACE_EXPIRY_GRACE_MIN
             if mtc > -grace:
                 continue
             if exit_candidate is None and token_id:
