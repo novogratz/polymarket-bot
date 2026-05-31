@@ -68,9 +68,11 @@ trap cleanup INT TERM EXIT
 pkill -f "live_analyst.py" 2>/dev/null || true
 sleep 1
 
-# Bot B silences its own live_analyst — reports come from the primary bot only.
-TELEGRAM_CHAT_ID_LIVE="" \
-    uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
+# Bot B posts its OWN 30-min live report to its TELEGRAM_CHAT_ID_LIVE (.env).
+# live_analyst fires cycle_once() immediately on startup (right after the first
+# tick), then again ~60s later, then every 30 min — so you always get a report
+# at launch, not after a 30-min wait.
+uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
 # ─── Live-only leaderboard sidecar REMOVED (2026-05-30) ────────────────
 # The 5-min "🏁 Leaderboard · LIVE only" Telegram summary was noisy and
