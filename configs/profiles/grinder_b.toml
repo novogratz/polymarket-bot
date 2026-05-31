@@ -17,7 +17,7 @@
 # This bot's baseline. Fresh start 2026-05-31: flat ledger, $96.47 (real CLOB
 # balance after manual sell of all positions), 0 positions, history cleared.
 # Total P&L tracks from here.
-starting_cash = 109.0
+starting_cash = 60.0
 mode = "grinder"
 
 [sizing]
@@ -30,7 +30,7 @@ cash_floor_pct = 0.05
 position_pct = 0.50
 min_open_positions = 0
 starter_trade_usd = 1.5
-assumed_live_balance_usd = 109.0
+assumed_live_balance_usd = 60.0
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.50
 
