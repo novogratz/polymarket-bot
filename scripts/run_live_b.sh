@@ -61,7 +61,9 @@ cleanup() {
     wait 2>/dev/null || true
 }
 trap cleanup INT TERM EXIT
-python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
+# Bot B silences its own live_analyst — reports come from the primary bot only.
+TELEGRAM_CHAT_ID_LIVE="" \
+    python3 scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
 # ─── Live-only leaderboard sidecar REMOVED (2026-05-30) ────────────────
 # The 5-min "🏁 Leaderboard · LIVE only" Telegram summary was noisy and
