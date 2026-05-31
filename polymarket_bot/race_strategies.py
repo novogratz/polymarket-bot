@@ -1169,22 +1169,10 @@ RACE_EXPIRY_GRACE_MIN = 10
 # naturally via resolved_exit or universal sweep instead of force-selling mid-game.
 RACE_EXPIRY_GRACE_MIN_WINNING = 360
 
-# ---------------------------------------------------------------------------
-# EOD pre-sell: close all open positions 5 min before the daily EOD report
-# (default 14:55 UTC so everything is flat before the 15:00 UTC summary).
-# Override via POLYMARKET_EOD_CLOSE_HOUR_UTC / POLYMARKET_EOD_CLOSE_MINS_BEFORE.
-# ---------------------------------------------------------------------------
-
-def _in_eod_close_window() -> bool:
-    """Return True during the 5-minute window before the daily EOD close hour."""
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
-    eod_hour = int(os.getenv("POLYMARKET_EOD_CLOSE_HOUR_UTC", "15"))
-    mins_before = int(os.getenv("POLYMARKET_EOD_CLOSE_MINS_BEFORE", "5"))
-    window_start = eod_hour * 60 - mins_before
-    window_end = eod_hour * 60 + mins_before  # keep trying for 5 min after too
-    current = now.hour * 60 + now.minute
-    return window_start <= current < window_end
+# EOD pre-sell REMOVED (2026-05-31): it force-flattened every open position
+# ~5 min before the daily report to make the summary show clean closed P&L —
+# dumping winning favorites mid-game for a cosmetic report. The report now
+# shows open-position equity instead; positions ride to resolution.
 
 
 def _lookup_open_market(token_id: str, settings: Settings) -> dict[str, Any] | None:
@@ -1399,11 +1387,12 @@ def _execute_race_exits(
             and candidate.best_bid >= settings.race_resolved_exit_threshold
         ):
             plan = {"reason": "race_big_win_resolved", "shares": float(position.get("shares", 0.0))}
-        elif _in_eod_close_window():
-            # EOD pre-sell: flatten everything 5 min before the daily report so
-            # the summary reflects a clean closed P&L (not open-position equity).
-            plan = {"reason": "eod_close", "shares": float(position.get("shares", 0.0))}
         else:
+            # eod_close REMOVED (2026-05-31): it flattened EVERY open position
+            # ~5 min before the daily report just to show clean closed P&L —
+            # dumping winning favorites mid-game at whatever (often thin-book)
+            # bid existed, losing real money for a cosmetic report. Positions
+            # now ride to resolution; the report shows open-position equity.
             plan = _simple_exit_plan(position, current_pnl_pct, settings)
         if plan is None:
             continue
