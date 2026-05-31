@@ -278,6 +278,8 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "arb_threshold": ("POLYMARKET_RACE_ARB_THRESHOLD", "float"),
         "arb_max_stake_usd": ("POLYMARKET_RACE_ARB_MAX_STAKE_USD", "float"),
         "expiry_grace_min": ("POLYMARKET_RACE_EXPIRY_GRACE_MIN", "int"),
+        "limit_sell_trigger": ("POLYMARKET_RACE_LIMIT_SELL_TRIGGER", "float"),
+        "limit_sell_price": ("POLYMARKET_RACE_LIMIT_SELL_PRICE", "float"),
     },
     "persistence": {
         "enabled": ("POLYMARKET_PERSISTENCE_ENABLED", "bool"),
