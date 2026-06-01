@@ -567,28 +567,37 @@ def _today_utc() -> str:
 
 
 def load_todays_trades() -> list[dict]:
-    """Closed trades with closed_at on today's UTC date."""
+    """Closed trades with closed_at on today's UTC date, deduplicated."""
     today = _today_utc()
     start_ts = _tracking_start_ts()
     journal = DATA_DIR / "trade_journal.jsonl"
+    seen: set[str] = set()
     rows = []
     for e in _read_realized_records(journal):
         closed_at = str(e.get("closed_at") or "")
         if not closed_at.startswith(today):
             continue
-        if start_ts:  # ignore trades closed before the last fresh-start reset
+        if start_ts:
             try:
                 from datetime import datetime
                 if datetime.fromisoformat(closed_at.replace("Z", "+00:00")).timestamp() < start_ts:
                     continue
             except Exception:
                 pass
+        # Deduplicate by question + closed_at minute (catches repeated sweep writes)
+        dedup_key = f"{e.get('question','')}|{closed_at[:16]}"
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
         pnl = _record_pnl(e)
+        cost = float(e.get("cost_basis") or e.get("stake") or 1.0)
+        # Skip entries with implausible cost_basis (swept wallet-level positions)
+        if cost > 100:
+            continue
         pct_raw = e.get("realized_pnl_pct") or e.get("pnl_pct")
         if pct_raw is not None:
             pct = float(pct_raw) * 100 if abs(float(pct_raw)) < 1 else float(pct_raw)
         else:
-            cost = float(e.get("cost_basis") or e.get("stake") or 1.0)
             pct = (pnl / cost * 100) if cost else 0.0
         rows.append({
             "pnl": pnl,
