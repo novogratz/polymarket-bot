@@ -112,8 +112,7 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "28800"))   # 8 hours
-DAILY_REPORT_HOUR_UTC = int(os.environ.get("LIVE_ANALYST_DAILY_REPORT_HOUR", "16"))  # 4 PM UTC
+CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "14400"))   # 4 hours
 
 
 @dataclass
@@ -655,14 +654,26 @@ def _segment_analysis(all_records: list[dict]) -> list[str]:
 
 
 def _starting_cash() -> float:
-    """Read starting_cash from grinder.toml, fall back to 12.67."""
-    try:
-        profile_file = REPO_ROOT / "configs" / "profiles" / "grinder.toml"
-        m = re.search(r"^starting_cash\s*=\s*([\d.]+)", profile_file.read_text(), re.M)
-        if m:
-            return float(m.group(1))
-    except Exception:
-        pass
+    """Read starting_cash from the active profile's TOML, fall back to 12.67.
+
+    Uses POLYMARKET_PROFILE_LABEL so each bot (grinder, grinder_b, …) reads
+    its own baseline — otherwise the 'since beginning' % is computed against
+    the wrong starting balance.
+    """
+    label = os.environ.get("POLYMARKET_PROFILE_LABEL", "grinder")
+    candidates = [
+        REPO_ROOT / "configs" / "profiles" / f"{label}.toml",
+        REPO_ROOT / "configs" / "profiles" / "grinder.toml",
+    ]
+    for profile_file in candidates:
+        try:
+            if not profile_file.exists():
+                continue
+            m = re.search(r"^starting_cash\s*=\s*([\d.]+)", profile_file.read_text(), re.M)
+            if m:
+                return float(m.group(1))
+        except Exception:
+            pass
     return 12.67
 
 
@@ -771,19 +782,24 @@ def daily_report_once() -> None:
 
 
 def cycle_once() -> None:
-    """8h heartbeat — simple equity + open positions update."""
+    """4h LIVE REPORT — the only Telegram message this bot sends.
+
+    Three sections: Equity (with $ and % gain since the starting balance),
+    top winning + losing trades closed today, and every open position.
+    """
     snap = load_live_snapshot()
     if snap is None:
         return
 
     open_pos = load_open_positions()
+    today_trades = load_todays_trades()
     starting = _starting_cash()
     net = snap.equity - starting
     net_pct = (net / starting * 100) if starting > 0 else 0.0
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
     def _sign(v: float) -> str:
-        return "+" if v >= 0 else ""
+        return "+" if v >= 0 else "-"
 
     def _mood(v: float) -> str:
         return "🟢" if v >= 0 else "🔴"
@@ -799,9 +815,23 @@ def cycle_once() -> None:
         divider,
         "",
         "*PROFIT & LOSS:*",
-        f"  {_mood(net)} Total P&L:   {_sign(net)}${net:.2f} ({_sign(net_pct)}{net_pct:.2f}%)  |  Equity: ${snap.equity:.2f}",
+        f"  {_mood(net)} Equity: ${snap.equity:.2f}  "
+        f"({_sign(net)}${abs(net):.2f}, {_sign(net)}{abs(net_pct):.1f}% since beginning)",
         "",
     ]
+
+    # Top trades closed today — best winners and worst losers.
+    winners = [r for r in today_trades if r["pnl"] > 0]
+    losers = [r for r in today_trades if r["pnl"] < 0]
+    if winners or losers:
+        parts.append("*TOP TRADES TODAY:*")
+        for r in winners[:3]:  # already sorted by pnl desc
+            q = (r.get("question") or "?")[:35]
+            parts.append(f"  🟢 +${r['pnl']:.2f} (+{abs(r['pct']):.1f}%)  {q}")
+        for r in sorted(losers, key=lambda x: x["pnl"])[:3]:
+            q = (r.get("question") or "?")[:35]
+            parts.append(f"  🔴 -${abs(r['pnl']):.2f} (-{abs(r['pct']):.1f}%)  {q}")
+        parts.append("")
 
     if open_pos:
         parts.append(f"*OPEN POSITIONS ({len(open_pos)}):*")
@@ -814,9 +844,9 @@ def cycle_once() -> None:
             q = (p.get("question") or "?")[:35]
             parts.append(
                 f"  ⚪ {q} ({p.get('side','?')}): "
-                f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${unr:.2f})"
+                f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${abs(unr):.2f})"
             )
-        parts.append(f"  _Unrealized: {_sign(unrealized)}${unrealized:.2f}_")
+        parts.append(f"  _Unrealized: {_sign(unrealized)}${abs(unrealized):.2f}_")
         parts.append("")
 
     parts.append(f"_Polymarket Bot_ `kzer_ai` _· Grinder_")
@@ -928,31 +958,23 @@ def _cycle_once_old() -> None:
 
 
 def main() -> int:
-    print(f"[live-analyst] starting — cycle={CYCLE_SECONDS}s, daily report at {DAILY_REPORT_HOUR_UTC:02d}:00 UTC", flush=True)
-    daily_report_sent_date: str = ""
+    """Send the LIVE REPORT once on startup, then every 4 hours. Nothing else.
 
-    cycle_once()
-    time.sleep(60)
+    This sidecar is the ONLY source of Telegram messages for the live bot:
+    no daily quant report, no BUY/SELL alerts, no heartbeat, no error pings.
+    Just the 4-hourly LIVE REPORT (equity since start, top trades today,
+    open positions).
+    """
+    interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "14400"))  # 4 hours
+    print(f"[live-analyst] starting — LIVE REPORT every {interval}s (+ once now on start)", flush=True)
+
     while True:
         try:
             cycle_once()
         except Exception:
             tb = traceback.format_exc()
-            print(f"[live-analyst] cycle failed:\n{tb}", file=sys.stderr, flush=True)
-            telegram_post(f"⚠️ *Live analyst error*\n```\n{tb[:1500]}\n```")
-
-        # Daily 4 PM UTC report — fires once per day in the cycle after 16:00.
-        try:
-            now_utc = time.gmtime()
-            today = _today_utc()
-            if now_utc.tm_hour >= DAILY_REPORT_HOUR_UTC and daily_report_sent_date != today:
-                daily_report_once()
-                daily_report_sent_date = today
-        except Exception:
-            tb = traceback.format_exc()
-            print(f"[live-analyst] daily report failed:\n{tb}", file=sys.stderr, flush=True)
-
-        time.sleep(CYCLE_SECONDS)
+            print(f"[live-analyst] live report failed:\n{tb}", file=sys.stderr, flush=True)
+        time.sleep(interval)
 
 
 if __name__ == "__main__":
