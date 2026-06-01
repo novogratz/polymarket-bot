@@ -2113,7 +2113,7 @@ def _run_race_tick(
                 if cash_above_floor >= min_usd_for_shares:
                     stake = min_usd_for_shares
                 else:
-                    rejected_signals.append({
+                    rejected.append({
                         "candidate": candidate.to_dict(),
                         "reason": f"stake ${stake:.2f} < min {settings.min_order_shares} shares × ${ask_price} = ${min_usd_for_shares:.2f}, insufficient cash",
                     })
