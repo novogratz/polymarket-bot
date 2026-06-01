@@ -1057,23 +1057,54 @@ def _cycle_once_old() -> None:
     print(msg, flush=True)
 
 
+_LAST_REPORT_TS_FILE = DATA_DIR / ".live_analyst_last_report_ts"
+
+
+def _last_report_age_seconds() -> float:
+    """Seconds since the last RAPPORT LIVE was sent. Returns inf if never sent."""
+    try:
+        ts = float(_LAST_REPORT_TS_FILE.read_text().strip())
+        return time.time() - ts
+    except Exception:
+        return float("inf")
+
+
+def _save_last_report_ts() -> None:
+    try:
+        _LAST_REPORT_TS_FILE.write_text(str(time.time()))
+    except Exception:
+        pass
+
+
 def main() -> int:
-    """Send the LIVE REPORT once on startup, then every 8 hours. Nothing else.
+    """Send the LIVE REPORT every 8 hours. On startup, only if last report
+    was > 4 hours ago (suppresses spam from rapid bot restarts).
 
     This sidecar is the ONLY source of Telegram messages for the live bot:
-    no daily quant report, no BUY/SELL alerts, no heartbeat. Just the
-    8-hourly LIVE REPORT (equity since start, top trades today, open positions).
+    no daily quant report, no BUY/SELL alerts, no heartbeat.
     """
     interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "28800"))  # 8 hours
-    print(f"[live-analyst] starting — LIVE REPORT every {interval}s (+ once now on start)", flush=True)
+    cooldown = interval // 2  # fire on startup only if ≥ 4h since last report
 
-    while True:
+    age = _last_report_age_seconds()
+    if age >= cooldown:
+        print(f"[live-analyst] startup report firing (last report {age/3600:.1f}h ago)", flush=True)
         try:
             cycle_once()
+            _save_last_report_ts()
+        except Exception:
+            print(traceback.format_exc(), file=sys.stderr, flush=True)
+    else:
+        print(f"[live-analyst] startup report skipped (last report {age/3600:.1f}h ago, cooldown {cooldown/3600:.1f}h)", flush=True)
+
+    while True:
+        time.sleep(interval)
+        try:
+            cycle_once()
+            _save_last_report_ts()
         except Exception:
             tb = traceback.format_exc()
             print(f"[live-analyst] live report failed:\n{tb}", file=sys.stderr, flush=True)
-        time.sleep(interval)
 
 
 if __name__ == "__main__":
