@@ -54,6 +54,9 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=0
 # sidecar inherits it (else it logs "(unknown)" in reports).
 export POLYMARKET_PROFILE_LABEL=grinder
 
+# Name shown in the LIVE REPORT header/footer.
+export POLYMARKET_BOT_NAME="Grinder Bot 1"
+
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
 # Every 4 hours: reads paper_state + realized_trade_cache and posts the
 # LIVE REPORT — the ONLY Telegram message this stack sends (equity since

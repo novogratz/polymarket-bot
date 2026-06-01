@@ -791,10 +791,11 @@ def cycle_once() -> None:
     date_str = time.strftime("%B ", t) + str(t.tm_mday) + time.strftime(", %Y", t)
     stamp = time.strftime("%H:%M UTC", t)
     divider = "━━━━━━━━━━━━━━━━━━━━━━━━"
+    bot_name = os.environ.get("POLYMARKET_BOT_NAME", "Grinder Bot 1")
 
     parts = [
         f"📋 *LIVE REPORT — {date_str}* _{stamp}_",
-        f"_Polymarket Bot_ `kzer_ai` _· Grinder_",
+        f"_Polymarket · {bot_name}_",
         divider,
         "",
         "*PROFIT & LOSS:*",
@@ -831,7 +832,7 @@ def cycle_once() -> None:
         parts.append(f"  _Unrealized: {_sign(unrealized)}${abs(unrealized):.2f}_")
         parts.append("")
 
-    parts.append(f"_Polymarket Bot_ `kzer_ai` _· Grinder_")
+    parts.append(f"_Polymarket · {bot_name}_")
 
     msg = "\n".join(parts)
     telegram_post(msg)
