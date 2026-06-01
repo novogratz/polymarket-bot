@@ -360,26 +360,27 @@ def load_live_snapshot() -> LiveSnapshot | None:
     live_data = _fetch_live_equity()
     positions = state.get("positions", []) or []
     open_positions = [p for p in positions if p.get("status") == "open"]
-    # Always compute invested from local ledger — it uses last-tick prices.
-    invested = 0.0
-    for p in open_positions:
-        shares = float(p.get("shares") or 0.0)
-        cur = p.get("current_price")
-        if cur is not None and shares > 0:
-            try:
-                invested += float(cur) * shares
-                continue
-            except (TypeError, ValueError):
-                pass
-        invested += float(
-            p.get("size_usd") or p.get("notional_usd")
-            or p.get("stake") or p.get("cost_basis") or 0.0
-        )
-    # Use on-chain cash if available, otherwise local ledger cash.
     if live_data is not None:
-        cash = live_data[0]
+        # Equity straight from Polymarket: CLOB available cash + Data API
+        # position currentValue. This is the same number polymarket.com shows.
+        cash, invested = live_data
     else:
+        # Offline fallback: local ledger cash + last-tick position marks.
         cash = float(state.get("cash") or 0.0)
+        invested = 0.0
+        for p in open_positions:
+            shares = float(p.get("shares") or 0.0)
+            cur = p.get("current_price")
+            if cur is not None and shares > 0:
+                try:
+                    invested += float(cur) * shares
+                    continue
+                except (TypeError, ValueError):
+                    pass
+            invested += float(
+                p.get("size_usd") or p.get("notional_usd")
+                or p.get("stake") or p.get("cost_basis") or 0.0
+            )
     equity = cash + invested
     closed = wins = losses = 0
     win_pnls: list[float] = []
@@ -802,17 +803,16 @@ def cycle_once() -> None:
         "",
     ]
 
-    # Top trades closed today — best winners and worst losers.
-    winners = [r for r in today_trades if r["pnl"] > 0]
-    losers = [r for r in today_trades if r["pnl"] < 0]
-    if winners or losers:
-        parts.append("*TOP TRADES TODAY:*")
-        for r in winners[:3]:  # already sorted by pnl desc
+    # All trades closed today, ordered best → worst (worst loss at the bottom).
+    # load_todays_trades() already sorts by pnl descending.
+    if today_trades:
+        parts.append(f"*TRADES TODAY ({len(today_trades)}):*")
+        for r in today_trades:
             q = (r.get("question") or "?")[:35]
-            parts.append(f"  🟢 +${r['pnl']:.2f} (+{abs(r['pct']):.1f}%)  {q}")
-        for r in sorted(losers, key=lambda x: x["pnl"])[:3]:
-            q = (r.get("question") or "?")[:35]
-            parts.append(f"  🔴 -${abs(r['pnl']):.2f} (-{abs(r['pct']):.1f}%)  {q}")
+            pnl = float(r["pnl"]); pct = float(r.get("pct", 0.0) or 0.0)
+            mood = "🟢" if pnl > 0 else "🔴" if pnl < 0 else "⚪"
+            s = "+" if pnl >= 0 else "-"
+            parts.append(f"  {mood} {s}${abs(pnl):.2f} ({s}{abs(pct):.1f}%)  {q}")
         parts.append("")
 
     if open_pos:
