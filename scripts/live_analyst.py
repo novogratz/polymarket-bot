@@ -922,9 +922,23 @@ def main() -> int:
     except Exception:
         eastern = None  # fall back to fixed UTC-4 (EDT) if tzdata unavailable
 
+    def _now_eastern():
+        return datetime.now(eastern) if eastern is not None else datetime.utcfromtimestamp(time.time() - 4 * 3600)
+
     report_hours = (9, 16)  # 9 AM and 4 PM Eastern
-    print("[live-analyst] starting — DAILY QUANT REPORT at 09:00 & 16:00 America/Toronto only", flush=True)
+    print("[live-analyst] starting — DAILY QUANT REPORT at 09:00 & 16:00 America/Toronto (+ once now on start)", flush=True)
     sent: set[str] = set()  # "YYYY-MM-DD|HH" slots already sent (dedupe)
+
+    # Startup report — fire once when the script starts, then follow the schedule.
+    try:
+        daily_report_once()
+        now0 = _now_eastern()
+        # Mark the current hour slot sent so we don't double-fire if we started
+        # inside the 9 AM / 4 PM window.
+        sent.add(f"{now0:%Y-%m-%d}|{now0.hour:02d}")
+    except Exception:
+        tb = traceback.format_exc()
+        print(f"[live-analyst] startup report failed:\n{tb}", file=sys.stderr, flush=True)
 
     while True:
         try:
