@@ -325,6 +325,39 @@ def _truncate(text: str, max_len: int = 40) -> str:
     return text[: max_len - 1] + "…"
 
 
+def _total_pnl_vs_start() -> float | None:
+    """Equity (cash + marked open positions) minus the profile's starting_cash.
+
+    This is the true "up/down since the reset baseline" — the same number the
+    daily report shows as Total P&L. Preferred over summing journal realized
+    PnL, which counts losses from a position's ENTRY cost (e.g. an esports bet
+    that was already down before a fresh-start reset), making a re-baselined
+    account look far worse than it is. Returns None if it can't be computed.
+    """
+    try:
+        state_path = Path(os.getenv("POLYMARKET_STATE_PATH", "data/paper_state.json"))
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        equity = float(data.get("cash", 0) or 0)
+        for p in data.get("positions", []):
+            if p.get("status") == "open":
+                equity += float(p.get("current_price") or 0) * float(p.get("shares") or 0)
+    except Exception:
+        return None
+    starting: float | None = None
+    try:
+        label = os.getenv("POLYMARKET_PROFILE_LABEL", "grinder")
+        for line in Path(f"configs/profiles/{label}.toml").read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            if s.startswith("starting_cash"):
+                starting = float(s.split("=", 1)[1].split("#")[0].strip())
+                break
+    except Exception:
+        return None
+    if not starting or starting <= 0:
+        return None
+    return round(equity - starting, 2)
+
+
 def _journal_stats() -> tuple[float, int, int]:
     """Return (total_realized_pnl_usd, wins, losses) from the trade journal.
 
@@ -408,8 +441,16 @@ def _fmt_all_time_line(
     record is written).
     """
     pnl, wins, losses = _journal_stats()
-    base = float(total_override) if total_override is not None else pnl + float(unrealized or 0.0)
-    total = base + extra_pnl
+    if total_override is not None:
+        total = float(total_override) + extra_pnl
+    else:
+        vs_start = _total_pnl_vs_start()
+        if vs_start is not None:
+            # Equity − starting baseline (matches the daily report). Equity
+            # already reflects closed trades, so extra_pnl is NOT re-added.
+            total = vs_start
+        else:
+            total = pnl + float(unrealized or 0.0) + extra_pnl
     if extra_pnl > 0.005:
         wins += 1
     elif extra_pnl < -0.005:
