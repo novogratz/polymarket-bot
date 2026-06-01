@@ -1058,30 +1058,22 @@ def _cycle_once_old() -> None:
 
 
 def main() -> int:
-    """Send the LIVE REPORT once on startup, then every 8 hours.
+    """Send the LIVE REPORT once on startup, then every 8 hours. Nothing else.
 
     This sidecar is the ONLY source of Telegram messages for the live bot:
     no daily quant report, no BUY/SELL alerts, no heartbeat. Just the
-    LIVE REPORT (equity since start, top trades today, open positions) — once
-    when the script starts, then on the 8-hourly cadence.
+    8-hourly LIVE REPORT (equity since start, top trades today, open positions).
     """
     interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "28800"))  # 8 hours
-    print(f"[live-analyst] starting — LIVE REPORT now (on start), then every {interval}s", flush=True)
-
-    # Startup report — fire once when the script starts (user wants it on launch).
-    try:
-        cycle_once()
-    except Exception:
-        tb = traceback.format_exc()
-        print(f"[live-analyst] startup report failed:\n{tb}", file=sys.stderr, flush=True)
+    print(f"[live-analyst] starting — LIVE REPORT every {interval}s (+ once now on start)", flush=True)
 
     while True:
-        time.sleep(interval)
         try:
             cycle_once()
         except Exception:
             tb = traceback.format_exc()
             print(f"[live-analyst] live report failed:\n{tb}", file=sys.stderr, flush=True)
+        time.sleep(interval)
 
 
 if __name__ == "__main__":
