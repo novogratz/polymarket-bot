@@ -1084,18 +1084,15 @@ def main() -> int:
     no daily quant report, no BUY/SELL alerts, no heartbeat.
     """
     interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "28800"))  # 8 hours
-    cooldown = interval // 2  # fire on startup only if ≥ 4h since last report
 
-    age = _last_report_age_seconds()
-    if age >= cooldown:
-        print(f"[live-analyst] startup report firing (last report {age/3600:.1f}h ago)", flush=True)
-        try:
-            cycle_once()
-            _save_last_report_ts()
-        except Exception:
-            print(traceback.format_exc(), file=sys.stderr, flush=True)
-    else:
-        print(f"[live-analyst] startup report skipped (last report {age/3600:.1f}h ago, cooldown {cooldown/3600:.1f}h)", flush=True)
+    # ALWAYS fire the report on startup (user wants it on every launch — no
+    # cooldown/skip). Then continue on the 8h cadence below.
+    print("[live-analyst] startup report firing", flush=True)
+    try:
+        cycle_once()
+        _save_last_report_ts()
+    except Exception:
+        print(traceback.format_exc(), file=sys.stderr, flush=True)
 
     while True:
         time.sleep(interval)
