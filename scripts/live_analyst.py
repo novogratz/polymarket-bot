@@ -113,7 +113,7 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "28800"))   # 8 hours
-DAILY_REPORT_HOUR_UTC = int(os.environ.get("LIVE_ANALYST_DAILY_REPORT_HOUR", "15"))  # 5 PM Paris (CEST = UTC+2)
+DAILY_REPORT_HOUR_UTC = int(os.environ.get("LIVE_ANALYST_DAILY_REPORT_HOUR", "16"))  # 4 PM UTC
 
 
 @dataclass
@@ -654,35 +654,35 @@ def _segment_analysis(all_records: list[dict]) -> list[str]:
     return lines
 
 
+def _starting_cash() -> float:
+    """Read starting_cash from grinder.toml, fall back to 12.67."""
+    try:
+        profile_file = REPO_ROOT / "configs" / "profiles" / "grinder.toml"
+        m = re.search(r"^starting_cash\s*=\s*([\d.]+)", profile_file.read_text(), re.M)
+        if m:
+            return float(m.group(1))
+    except Exception:
+        pass
+    return 12.67
+
+
 def daily_report_once() -> None:
-    """5 PM Paris daily quant summary."""
+    """4 PM UTC daily quant summary — shareholder-grade report."""
     snap = load_live_snapshot()
     if snap is None:
         return
 
     today_trades = load_todays_trades()
     open_pos = load_open_positions()
+    top_closed = load_top_closed_trades(5)
 
-    # Starting balance from profile TOML
-    starting = 123.0
-    profile_file = REPO_ROOT / "configs" / "profiles" / f"{snap.profile}.toml"
-    if profile_file.exists():
-        try:
-            m = re.search(r"^starting_cash\s*=\s*([\d.]+)", profile_file.read_text(), re.M)
-            if m:
-                starting = float(m.group(1))
-        except Exception:
-            pass
-
-    net_vs_start = snap.equity - starting
-    net_vs_start_pct = (net_vs_start / starting * 100) if starting > 0 else 0.0
-    balance = snap.equity
+    starting = _starting_cash()
+    net = snap.equity - starting
+    net_pct = (net / starting * 100) if starting > 0 else 0.0
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
-
-    t = time.gmtime()
-    date_str = time.strftime("%B ", t) + str(t.tm_mday) + time.strftime(", %Y", t)
-    stamp = time.strftime("%H:%M UTC", time.gmtime())
-    divider = "━━━━━━━━━━━━━━━━━━━━━━━━"
+    realized = snap.realized_pnl
+    today_pnl = sum(t["pnl"] for t in today_trades)
+    today_pct = (today_pnl / starting * 100) if starting > 0 else 0.0
 
     def _sign(v: float) -> str:
         return "+" if v >= 0 else ""
@@ -690,18 +690,120 @@ def daily_report_once() -> None:
     def _mood(v: float) -> str:
         return "🟢" if v >= 0 else "🔴"
 
+    t = time.gmtime()
+    date_str = time.strftime("%B ", t) + str(t.tm_mday) + time.strftime(", %Y", t)
+    stamp = time.strftime("%H:%M UTC", t)
+
+    status = "IN PROFIT 🚀" if net > 0 else "BREAKEVEN ⚖️" if net == 0 else "IN DRAWDOWN 📉"
+
+    divider  = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    divider2 = "─────────────────────────────────"
+
+    parts = [
+        f"📊 *DAILY QUANT SUMMARY*",
+        f"_{date_str} · {stamp}_",
+        f"_Polymarket Bot_ `kzer_ai` _· Grinder Strategy_",
+        divider,
+        "",
+        f"*💰 PORTFOLIO — {status}*",
+        f"  All\\-time P&L:  {_mood(net)} *{_sign(net)}${net:.2f}*  ({_sign(net_pct)}{net_pct:.1f}%)",
+        f"  Today's P&L:   {_mood(today_pnl)} *{_sign(today_pnl)}${today_pnl:.2f}*  ({_sign(today_pct)}{today_pct:.1f}%)",
+        f"  Equity:        *${snap.equity:.2f}*  |  Cash: ${snap.cash:.2f}",
+        f"  Deployed:      ${snap.invested:.2f}  |  Unrealized: {_mood(unrealized)}{_sign(unrealized)}${unrealized:.2f}",
+        "",
+        divider2,
+        "",
+        f"*📈 TRADING STATISTICS*",
+        f"  Closed trades: *{snap.closed}*  ({snap.wins}W / {snap.losses}L" + (f" / {snap.flats} flat" if snap.flats else "") + ")",
+        f"  Win rate:      *{snap.win_rate:.0f}%*",
+        f"  Avg win:       {f'+${snap.avg_win:.2f}' if snap.avg_win else 'n/a'}  |  Avg loss: {f'-${abs(snap.avg_loss):.2f}' if snap.avg_loss else 'n/a'}",
+        f"  Realized P&L:  {_mood(realized)}{_sign(realized)}${realized:.2f}  (cumulative)",
+        f"  Open now:      {snap.open_positions} position{'s' if snap.open_positions != 1 else ''}",
+    ]
+
+    if today_trades:
+        parts += ["", divider2, "", f"*🏆 TODAY'S TRADES ({len(today_trades)})*"]
+        for i, tr in enumerate(today_trades[:5], 1):
+            emoji = "🟢" if tr["pnl"] > 0 else "🔴"
+            q = (tr.get("question") or "?")[:50]
+            parts.append(
+                f"  {i}\\. {emoji} {_sign(tr['pnl'])}${tr['pnl']:.2f} ({tr['pct']:+.1f}%)\n"
+                f"      _{q}_"
+            )
+        if len(today_trades) > 5:
+            parts.append(f"  _… and {len(today_trades)-5} more_")
+    elif snap.closed > 0:
+        parts += ["", divider2, "", "*🏆 TOP ALL\\-TIME TRADES*"]
+        for i, tr in enumerate(top_closed, 1):
+            emoji = "🟢" if tr["pnl"] > 0 else "🔴"
+            q = (tr.get("question") or "?")[:50]
+            parts.append(
+                f"  {i}\\. {emoji} {_sign(tr['pnl'])}${tr['pnl']:.2f} ({tr['pct']:+.1f}%)\n"
+                f"      _{q}_"
+            )
+
+    if open_pos:
+        parts += ["", divider2, "", f"*🔓 OPEN POSITIONS ({len(open_pos)})*"]
+        for p in open_pos[:5]:
+            unr = float(p.get("unr", 0) or 0)
+            entry = float(p.get("entry", 0) or 0)
+            cur = float(p.get("cur", 0) or 0)
+            cost = float(p.get("cost", 0) or 0)
+            mtm = float(p.get("mtm", 0) or 0)
+            q = (p.get("question") or "?")[:45]
+            parts.append(
+                f"  • _{q}_\n"
+                f"    {p.get('side','?')} @ {entry:.3f} → {cur:.3f}  |  "
+                f"${cost:.2f} → ${mtm:.2f}  {_mood(unr)}{_sign(unr)}${unr:.2f}"
+            )
+        parts.append(f"  _Total unrealized: {_mood(unrealized)}{_sign(unrealized)}${unrealized:.2f}_")
+
+    parts += [
+        "",
+        divider,
+        f"_Next report: tomorrow at 4:00 PM UTC_",
+        f"_Polymarket Bot_ `kzer_ai`",
+    ]
+
+    msg = "\n".join(parts)
+    telegram_post(msg)
+    print(msg, flush=True)
+
+
+def cycle_once() -> None:
+    """8h heartbeat — simple equity + open positions update."""
+    snap = load_live_snapshot()
+    if snap is None:
+        return
+
+    open_pos = load_open_positions()
+    starting = _starting_cash()
+    net = snap.equity - starting
+    net_pct = (net / starting * 100) if starting > 0 else 0.0
+    unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
+
+    def _sign(v: float) -> str:
+        return "+" if v >= 0 else ""
+
+    def _mood(v: float) -> str:
+        return "🟢" if v >= 0 else "🔴"
+
+    t = time.gmtime()
+    date_str = time.strftime("%B ", t) + str(t.tm_mday) + time.strftime(", %Y", t)
+    stamp = time.strftime("%H:%M UTC", t)
+    divider = "━━━━━━━━━━━━━━━━━━━━━━━━"
+
     parts = [
         f"📋 *LIVE REPORT — {date_str}* _{stamp}_",
         f"_Polymarket Bot_ `kzer_ai` _· Grinder_",
         divider,
         "",
         "*PROFIT & LOSS:*",
-        f"  {_mood(net_vs_start)} Total P&L:   ${_sign(net_vs_start)}{net_vs_start:.2f} ({_sign(net_vs_start_pct)}{net_vs_start_pct:.2f}%)  |  Equity: ${balance:.2f}",
+        f"  {_mood(net)} Total P&L:   {_sign(net)}${net:.2f} ({_sign(net_pct)}{net_pct:.2f}%)  |  Equity: ${snap.equity:.2f}",
         "",
     ]
 
     if open_pos:
-        parts.append("")
         parts.append(f"*OPEN POSITIONS ({len(open_pos)}):*")
         for p in open_pos:
             unr = float(p.get("unr", 0) or 0)
@@ -715,20 +817,13 @@ def daily_report_once() -> None:
                 f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${unr:.2f})"
             )
         parts.append(f"  _Unrealized: {_sign(unrealized)}${unrealized:.2f}_")
+        parts.append("")
 
-    parts += [
-        "",
-        "_Polymarket Bot_ `kzer_ai` _· Grinder_",
-    ]
+    parts.append(f"_Polymarket Bot_ `kzer_ai` _· Grinder_")
 
     msg = "\n".join(parts)
     telegram_post(msg)
     print(msg, flush=True)
-
-
-def cycle_once() -> None:
-    """30-min heartbeat — same format as the daily quant report."""
-    daily_report_once()
 
 
 def _cycle_once_old() -> None:
