@@ -37,25 +37,28 @@ export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-
 # (force-close scripts corrupted it). Real equity is read from CLOB each tick.
 export TELEGRAM_EQUITY_FLOOR_USD=0
 
-# Telegram: tout pousser en live (override .env qui a TELEGRAM_ALERT_TRADES=0
-# pour rester silencieux en dry-run).
-export TELEGRAM_ALERT_TRADES=1
-export TELEGRAM_ALERT_TRADES_BUY=1
-export TELEGRAM_ALERT_ERRORS=1
-export TELEGRAM_ALERT_THRESHOLDS=1
-export TELEGRAM_ALERT_HEARTBEAT=1
-export TELEGRAM_ALERT_PORTFOLIO_UPDATES=1
-export TELEGRAM_ALERT_DAILY_SUMMARY=1
+# Telegram: SILENCE the live bot entirely. The ONLY message we want is the
+# 4-hourly LIVE REPORT from the live_analyst sidecar (TELEGRAM_CHAT_ID_LIVE).
+# No BUY/SELL, no heartbeat, no thresholds, no daily summary — nothing.
+# These flags default to ON when unset, so each one must be set to 0 explicitly.
+export TELEGRAM_ALERT_TRADES=0
+export TELEGRAM_ALERT_TRADES_BUY=0
+export TELEGRAM_ALERT_TRADES_SELL=0
+export TELEGRAM_ALERT_ERRORS=0
+export TELEGRAM_ALERT_THRESHOLDS=0
+export TELEGRAM_ALERT_HEARTBEAT=0
+export TELEGRAM_ALERT_PORTFOLIO_UPDATES=0
+export TELEGRAM_ALERT_DAILY_SUMMARY=0
 
 # Profile label exported BEFORE the live_analyst spawns, so the
 # sidecar inherits it (else it logs "(unknown)" in reports).
 export POLYMARKET_PROFILE_LABEL=grinder
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
-# Every 30 min: reads paper_state + realized_trade_cache and posts a
-# LIVE-ONLY deterministic report (equity/ROI, open positions, top closed).
-# No AI, no dry-race comparison. NEVER touches the live bot. Ctrl+C kills
-# the whole process group.
+# Every 4 hours: reads paper_state + realized_trade_cache and posts the
+# LIVE REPORT — the ONLY Telegram message this stack sends (equity since
+# start, top trades today, all open positions). No AI, no dry-race compare.
+# NEVER touches the live bot. Ctrl+C kills the whole process group.
 cleanup() {
     kill 0 2>/dev/null || true
     wait 2>/dev/null || true

@@ -112,8 +112,7 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "28800"))   # 8 hours
-DAILY_REPORT_HOUR_UTC = int(os.environ.get("LIVE_ANALYST_DAILY_REPORT_HOUR", "16"))  # 4 PM UTC
+CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "14400"))   # 4 hours
 
 
 @dataclass
@@ -753,19 +752,24 @@ def daily_report_once() -> None:
 
 
 def cycle_once() -> None:
-    """8h heartbeat — simple equity + open positions update."""
+    """4h LIVE REPORT — the only Telegram message this bot sends.
+
+    Three sections: Equity (with $ and % gain since the starting balance),
+    top winning + losing trades closed today, and every open position.
+    """
     snap = load_live_snapshot()
     if snap is None:
         return
 
     open_pos = load_open_positions()
+    today_trades = load_todays_trades()
     starting = _starting_cash()
     net = snap.equity - starting
     net_pct = (net / starting * 100) if starting > 0 else 0.0
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
     def _sign(v: float) -> str:
-        return "+" if v >= 0 else ""
+        return "+" if v >= 0 else "-"
 
     def _mood(v: float) -> str:
         return "🟢" if v >= 0 else "🔴"
@@ -781,9 +785,23 @@ def cycle_once() -> None:
         divider,
         "",
         "*PROFIT & LOSS:*",
-        f"  {_mood(net)} Total P&L:   {_sign(net)}${net:.2f} ({_sign(net_pct)}{net_pct:.2f}%)  |  Equity: ${snap.equity:.2f}",
+        f"  {_mood(net)} Equity: ${snap.equity:.2f}  "
+        f"({_sign(net)}${abs(net):.2f}, {_sign(net)}{abs(net_pct):.1f}% since beginning)",
         "",
     ]
+
+    # Top trades closed today — best winners and worst losers.
+    winners = [r for r in today_trades if r["pnl"] > 0]
+    losers = [r for r in today_trades if r["pnl"] < 0]
+    if winners or losers:
+        parts.append("*TOP TRADES TODAY:*")
+        for r in winners[:3]:  # already sorted by pnl desc
+            q = (r.get("question") or "?")[:35]
+            parts.append(f"  🟢 +${r['pnl']:.2f} (+{abs(r['pct']):.1f}%)  {q}")
+        for r in sorted(losers, key=lambda x: x["pnl"])[:3]:
+            q = (r.get("question") or "?")[:35]
+            parts.append(f"  🔴 -${abs(r['pnl']):.2f} (-{abs(r['pct']):.1f}%)  {q}")
+        parts.append("")
 
     if open_pos:
         parts.append(f"*OPEN POSITIONS ({len(open_pos)}):*")
@@ -796,9 +814,9 @@ def cycle_once() -> None:
             q = (p.get("question") or "?")[:35]
             parts.append(
                 f"  ⚪ {q} ({p.get('side','?')}): "
-                f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${unr:.2f})"
+                f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${abs(unr):.2f})"
             )
-        parts.append(f"  _Unrealized: {_sign(unrealized)}${unrealized:.2f}_")
+        parts.append(f"  _Unrealized: {_sign(unrealized)}${abs(unrealized):.2f}_")
         parts.append("")
 
     parts.append(f"_Polymarket Bot_ `kzer_ai` _· Grinder_")
@@ -910,52 +928,22 @@ def _cycle_once_old() -> None:
 
 
 def main() -> int:
-    """Send the DAILY QUANT REPORT at 9:00 AM and 4:00 PM Eastern (Canada) only.
+    """Send the LIVE REPORT once on startup, then every 4 hours. Nothing else.
 
-    Nothing else — no 30-min cadence, no startup report, no trade lists.
-    Eastern handles EST/EDT automatically via the America/Toronto tz.
+    This sidecar is the ONLY source of Telegram messages for the live bot:
+    no daily quant report, no BUY/SELL alerts, no heartbeat. Just the
+    4-hourly LIVE REPORT (equity since start, top trades today, open positions).
     """
-    from datetime import datetime
-    try:
-        from zoneinfo import ZoneInfo
-        eastern = ZoneInfo("America/Toronto")
-    except Exception:
-        eastern = None  # fall back to fixed UTC-4 (EDT) if tzdata unavailable
-
-    def _now_eastern():
-        return datetime.now(eastern) if eastern is not None else datetime.utcfromtimestamp(time.time() - 4 * 3600)
-
-    report_hours = (9, 16)  # 9 AM and 4 PM Eastern
-    print("[live-analyst] starting — DAILY QUANT REPORT at 09:00 & 16:00 America/Toronto (+ once now on start)", flush=True)
-    sent: set[str] = set()  # "YYYY-MM-DD|HH" slots already sent (dedupe)
-
-    # Startup report — fire once when the script starts, then follow the schedule.
-    try:
-        daily_report_once()
-        now0 = _now_eastern()
-        # Mark the current hour slot sent so we don't double-fire if we started
-        # inside the 9 AM / 4 PM window.
-        sent.add(f"{now0:%Y-%m-%d}|{now0.hour:02d}")
-    except Exception:
-        tb = traceback.format_exc()
-        print(f"[live-analyst] startup report failed:\n{tb}", file=sys.stderr, flush=True)
+    interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "14400"))  # 4 hours
+    print(f"[live-analyst] starting — LIVE REPORT every {interval}s (+ once now on start)", flush=True)
 
     while True:
         try:
-            if eastern is not None:
-                now = datetime.now(eastern)
-            else:
-                now = datetime.utcfromtimestamp(time.time() - 4 * 3600)  # EDT fallback
-            slot = f"{now:%Y-%m-%d}|{now.hour:02d}"
-            if now.hour in report_hours and now.minute < 10 and slot not in sent:
-                daily_report_once()
-                sent.add(slot)
-                if len(sent) > 8:  # keep the set small
-                    sent = set(sorted(sent)[-8:])
+            cycle_once()
         except Exception:
             tb = traceback.format_exc()
-            print(f"[live-analyst] daily report failed:\n{tb}", file=sys.stderr, flush=True)
-        time.sleep(60)  # check each minute; report fires in the :00–:09 window
+            print(f"[live-analyst] live report failed:\n{tb}", file=sys.stderr, flush=True)
+        time.sleep(interval)
 
 
 if __name__ == "__main__":
