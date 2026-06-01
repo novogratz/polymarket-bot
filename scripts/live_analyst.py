@@ -354,32 +354,33 @@ def load_live_snapshot() -> LiveSnapshot | None:
         state = json.loads(paper_state.read_text())
     except Exception:
         return None
-    # Fetch real equity from Polymarket APIs so the report matches what the
-    # user sees on polymarket.com. The local ledger cash is unreliable after
-    # manual force-closes or mid-tick interruptions.
+    # Use CLOB for available cash (accurate on-chain balance) but LOCAL
+    # paper_state for invested value. The Data API returns real-time market
+    # prices that swing wildly mid-resolution (e.g. a "No" at 0.96 briefly
+    # prints 0.16 before settling at 1.0), which caused -$7 phantom losses.
     live_data = _fetch_live_equity()
     positions = state.get("positions", []) or []
     open_positions = [p for p in positions if p.get("status") == "open"]
+    # Always compute invested from local ledger — it uses last-tick prices.
+    invested = 0.0
+    for p in open_positions:
+        shares = float(p.get("shares") or 0.0)
+        cur = p.get("current_price")
+        if cur is not None and shares > 0:
+            try:
+                invested += float(cur) * shares
+                continue
+            except (TypeError, ValueError):
+                pass
+        invested += float(
+            p.get("size_usd") or p.get("notional_usd")
+            or p.get("stake") or p.get("cost_basis") or 0.0
+        )
+    # Use on-chain cash if available, otherwise local ledger cash.
     if live_data is not None:
-        avail_cash, pos_value = live_data
-        cash = avail_cash
-        invested = pos_value  # already includes ALL live positions from Data API
+        cash = live_data[0]
     else:
         cash = float(state.get("cash") or 0.0)
-        invested = 0.0
-        for p in open_positions:
-            shares = float(p.get("shares") or 0.0)
-            cur = p.get("current_price")
-            if cur is not None and shares > 0:
-                try:
-                    invested += float(cur) * shares
-                    continue
-                except (TypeError, ValueError):
-                    pass
-            invested += float(
-                p.get("size_usd") or p.get("notional_usd")
-                or p.get("stake") or p.get("cost_basis") or 0.0
-            )
     equity = cash + invested
     closed = wins = losses = 0
     win_pnls: list[float] = []
