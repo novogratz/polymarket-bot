@@ -38,13 +38,14 @@ export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-
 # (force-close scripts corrupted it). Real equity is read from CLOB each tick.
 export TELEGRAM_EQUITY_FLOOR_USD=0
 
-# Telegram: tout pousser en live (override .env qui a TELEGRAM_ALERT_TRADES=0
-# pour rester silencieux en dry-run).
-export TELEGRAM_ALERT_TRADES=1
-export TELEGRAM_ALERT_TRADES_BUY=1
-export TELEGRAM_ALERT_ERRORS=1
-# Periodic status pushes OFF for this bot — no 💓 Bilan heartbeat, no portfolio
-# updates, no daily summary, no threshold pings. Per request: never send these.
+# Telegram: SILENCE the live bot entirely. The ONLY message we want is the
+# 4-hourly LIVE REPORT from the live_analyst sidecar (TELEGRAM_CHAT_ID_LIVE).
+# No BUY/SELL, no heartbeat, no thresholds, no daily summary — nothing.
+# These flags default to ON when unset, so each one must be set to 0 explicitly.
+export TELEGRAM_ALERT_TRADES=0
+export TELEGRAM_ALERT_TRADES_BUY=0
+export TELEGRAM_ALERT_TRADES_SELL=0
+export TELEGRAM_ALERT_ERRORS=0
 export TELEGRAM_ALERT_THRESHOLDS=0
 export TELEGRAM_ALERT_HEARTBEAT=0
 export TELEGRAM_ALERT_PORTFOLIO_UPDATES=0
@@ -55,10 +56,10 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=0
 export POLYMARKET_PROFILE_LABEL=grinder_b
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
-# Every 30 min: reads paper_state + realized_trade_cache and posts a
-# LIVE-ONLY deterministic report (equity/ROI, open positions, top closed).
-# No AI, no dry-race comparison. NEVER touches the live bot. Ctrl+C kills
-# the whole process group.
+# Every 4 hours: reads paper_state + realized_trade_cache and posts the
+# LIVE REPORT — the ONLY Telegram message this stack sends (equity since
+# start, top trades today, all open positions). No AI, no dry-race compare.
+# NEVER touches the live bot. Ctrl+C kills the whole process group.
 cleanup() {
     kill 0 2>/dev/null || true
     wait 2>/dev/null || true
@@ -69,10 +70,9 @@ trap cleanup INT TERM EXIT
 pkill -f "live_analyst.py" 2>/dev/null || true
 sleep 1
 
-# Bot B posts its OWN 30-min live report to its TELEGRAM_CHAT_ID_LIVE (.env).
-# live_analyst fires cycle_once() immediately on startup (right after the first
-# tick), then again ~60s later, then every 30 min — so you always get a report
-# at launch, not after a 30-min wait.
+# Bot B posts its OWN live report to its TELEGRAM_CHAT_ID_LIVE (.env).
+# live_analyst fires cycle_once() immediately on startup, then every 4 hours —
+# so you always get a report at launch, not after a 4-hour wait.
 uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
 # ─── Live-only leaderboard sidecar REMOVED (2026-05-30) ────────────────

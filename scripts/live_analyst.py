@@ -654,14 +654,26 @@ def _segment_analysis(all_records: list[dict]) -> list[str]:
 
 
 def _starting_cash() -> float:
-    """Read starting_cash from grinder.toml, fall back to 12.67."""
-    try:
-        profile_file = REPO_ROOT / "configs" / "profiles" / "grinder.toml"
-        m = re.search(r"^starting_cash\s*=\s*([\d.]+)", profile_file.read_text(), re.M)
-        if m:
-            return float(m.group(1))
-    except Exception:
-        pass
+    """Read starting_cash from the active profile's TOML, fall back to 12.67.
+
+    Uses POLYMARKET_PROFILE_LABEL so each bot (grinder, grinder_b, …) reads
+    its own baseline — otherwise bot B's 'since beginning' % is computed
+    against the wrong starting balance.
+    """
+    label = os.environ.get("POLYMARKET_PROFILE_LABEL", "grinder")
+    candidates = [
+        REPO_ROOT / "configs" / "profiles" / f"{label}.toml",
+        REPO_ROOT / "configs" / "profiles" / "grinder.toml",
+    ]
+    for profile_file in candidates:
+        try:
+            if not profile_file.exists():
+                continue
+            m = re.search(r"^starting_cash\s*=\s*([\d.]+)", profile_file.read_text(), re.M)
+            if m:
+                return float(m.group(1))
+        except Exception:
+            pass
     return 12.67
 
 
