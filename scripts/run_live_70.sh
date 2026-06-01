@@ -24,8 +24,8 @@ export POLYMARKET_SYNC_LIVE_POSITIONS=1
 # Live bankroll baseline = $122.00 (2026-05-31 fresh start).
 # These exports are the RPC-failure fallback cap — the bot reads the real
 # USDC balance from CLOB each tick; these kick in only if that read fails.
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-54.78}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-54.78}
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-15.43}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-15.43}
 
 # 10s tick — 3× faster than 30s, catches more fleeting band entries.
 export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
@@ -49,7 +49,8 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=1
 
 # Profile label exported BEFORE the live_analyst spawns, so the
 # sidecar inherits it (else it logs "(unknown)" in reports).
-export POLYMARKET_PROFILE_LABEL=grinder
+export POLYMARKET_PROFILE_LABEL="grinder bot 3"
+export POLYMARKET_BOT_NAME="Grinder Bot 3"
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
 # Every 30 min: reads paper_state + realized_trade_cache and posts a
