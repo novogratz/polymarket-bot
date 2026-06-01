@@ -772,11 +772,24 @@ _FR_MONTHS = [
     "", "janvier", "février", "mars", "avril", "mai", "juin", "juillet",
     "août", "septembre", "octobre", "novembre", "décembre",
 ]
-_SIDE_FR = {"yes": "Oui", "no": "Non", "over": "Plus", "under": "Moins"}
+_SIDE_FR = {"yes": "Oui", "no": "Non"}
 
 
-def _side_fr(side: str) -> str:
-    return _SIDE_FR.get(str(side or "").strip().lower(), str(side or "?"))
+def _bet_side(side: str, question: str = "") -> str:
+    """French label for the outcome the bot bought.
+
+    Over/Under become "Au-dessus de X buts" / "En-dessous de X buts" where X
+    is the goal line parsed from the market title (e.g. "O/U 4.5"). Yes/No
+    map to Oui/Non; anything else is returned as-is.
+    """
+    s = str(side or "").strip().lower()
+    if s in ("over", "under"):
+        m = (re.search(r"o/u\s*([\d.]+)", str(question or ""), re.I)
+             or re.search(r"(\d+\.\d+)", str(question or "")))
+        line = m.group(1) if m else ""
+        suffix = f" {line} buts" if line else " buts"
+        return ("Au-dessus de" if s == "over" else "En-dessous de") + suffix
+    return _SIDE_FR.get(s, str(side or "?"))
 
 
 def _fr_cache_path() -> Path:
@@ -901,8 +914,9 @@ def cycle_once() -> None:
             s = "+" if pnl >= 0 else "-"
             entry = float(r.get("entry") or 0.0)
             xt = r.get("exit")
-            # "Plus @0.88→1.00" — pari du bot, proba implicite payée, résolution.
-            bet = f"{_side_fr(r.get('side'))} @{entry:.2f}" if entry else _side_fr(r.get("side"))
+            # "Au-dessus de 4.5 buts @0.88→1.00" — pari, proba payée, résolution.
+            side_lbl = _bet_side(r.get("side"), r.get("question"))
+            bet = f"{side_lbl} @{entry:.2f}" if entry else side_lbl
             if xt is not None:
                 bet += f"→{float(xt):.2f}"
             parts.append(
@@ -920,7 +934,7 @@ def cycle_once() -> None:
             entry = float(p.get("entry", 0) or 0)
             cur = float(p.get("cur", 0) or 0)
             parts.append(
-                f"  ⚪ {_q(p.get('question') or '')} ({_side_fr(p.get('side'))}) : "
+                f"  ⚪ {_q(p.get('question') or '')} ({_bet_side(p.get('side'), p.get('question'))}) : "
                 f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${abs(unr):.2f})"
             )
         parts.append(f"  _Latent : {_sign(unrealized)}${abs(unrealized):.2f}_")
