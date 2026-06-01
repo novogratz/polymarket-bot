@@ -39,7 +39,7 @@ export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-
 export TELEGRAM_EQUITY_FLOOR_USD=0
 
 # Telegram: SILENCE the live bot entirely. The ONLY message we want is the
-# 4-hourly LIVE REPORT from the live_analyst sidecar (TELEGRAM_CHAT_ID_LIVE).
+# 8-hourly LIVE REPORT from the live_analyst sidecar (TELEGRAM_CHAT_ID_LIVE).
 # No BUY/SELL, no heartbeat, no thresholds, no daily summary — nothing.
 # These flags default to ON when unset, so each one must be set to 0 explicitly.
 export TELEGRAM_ALERT_TRADES=0
@@ -59,7 +59,7 @@ export POLYMARKET_PROFILE_LABEL=grinder_b
 export POLYMARKET_BOT_NAME="Grinder Bot 2"
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
-# Every 4 hours: reads paper_state + realized_trade_cache and posts the
+# Every 8 hours: reads paper_state + realized_trade_cache and posts the
 # LIVE REPORT — the ONLY Telegram message this stack sends (equity since
 # start, top trades today, all open positions). No AI, no dry-race compare.
 # NEVER touches the live bot. Ctrl+C kills the whole process group.
@@ -74,8 +74,8 @@ pkill -f "live_analyst.py" 2>/dev/null || true
 sleep 1
 
 # Bot B posts its OWN live report to its TELEGRAM_CHAT_ID_LIVE (.env).
-# live_analyst fires cycle_once() immediately on startup, then every 4 hours —
-# so you always get a report at launch, not after a 4-hour wait.
+# live_analyst fires cycle_once() immediately on startup, then every 8 hours —
+# so you always get a report at launch, not after an 8-hour wait.
 uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
 # ─── Live-only leaderboard sidecar REMOVED (2026-05-30) ────────────────

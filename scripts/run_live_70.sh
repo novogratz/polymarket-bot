@@ -38,7 +38,7 @@ export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-
 export TELEGRAM_EQUITY_FLOOR_USD=0
 
 # Telegram: SILENCE the live bot entirely. The ONLY message we want is the
-# 4-hourly LIVE REPORT from the live_analyst sidecar (TELEGRAM_CHAT_ID_LIVE).
+# 8-hourly LIVE REPORT from the live_analyst sidecar (TELEGRAM_CHAT_ID_LIVE).
 # No BUY/SELL, no heartbeat, no thresholds, no daily summary — nothing.
 # These flags default to ON when unset, so each one must be set to 0 explicitly.
 export TELEGRAM_ALERT_TRADES=0
@@ -58,7 +58,7 @@ export POLYMARKET_PROFILE_LABEL=grinder
 export POLYMARKET_BOT_NAME="Grinder Bot 1"
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
-# Every 4 hours: reads paper_state + realized_trade_cache and posts the
+# Every 8 hours: reads paper_state + realized_trade_cache and posts the
 # LIVE REPORT — the ONLY Telegram message this stack sends (equity since
 # start, top trades today, all open positions). No AI, no dry-race compare.
 # NEVER touches the live bot. Ctrl+C kills the whole process group.
