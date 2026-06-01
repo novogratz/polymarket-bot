@@ -2103,6 +2103,21 @@ def _run_race_tick(
         if settings.smart_max_position_ceiling_usd > 0:
             target = min(target, settings.smart_max_position_ceiling_usd)
         stake = min(target, cash_above_floor)
+        # Enforce Polymarket's 5-share minimum. At small bankrolls the
+        # race_stake_pct alone may produce fewer than 5 shares; bump the
+        # stake to exactly what's needed and skip if cash can't cover it.
+        ask_price = float(candidate.best_ask or candidate.price or 0.0)
+        if ask_price > 0 and settings.min_order_shares > 0:
+            min_usd_for_shares = settings.min_order_shares * ask_price
+            if stake < min_usd_for_shares:
+                if cash_above_floor >= min_usd_for_shares:
+                    stake = min_usd_for_shares
+                else:
+                    rejected_signals.append({
+                        "candidate": candidate.to_dict(),
+                        "reason": f"stake ${stake:.2f} < min {settings.min_order_shares} shares × ${ask_price} = ${min_usd_for_shares:.2f}, insufficient cash",
+                    })
+                    continue
         signal_payload = {
             "question": candidate.question,
             "selection_reason": (
