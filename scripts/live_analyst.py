@@ -721,26 +721,8 @@ def daily_report_once() -> None:
         f"  Open now:      {snap.open_positions} position{'s' if snap.open_positions != 1 else ''}",
     ]
 
-    if today_trades:
-        parts += ["", divider2, "", f"*🏆 TODAY'S TRADES ({len(today_trades)})*"]
-        for i, tr in enumerate(today_trades[:5], 1):
-            emoji = "🟢" if tr["pnl"] > 0 else "🔴"
-            q = (tr.get("question") or "?")[:50]
-            parts.append(
-                f"  {i}\\. {emoji} {_sign(tr['pnl'])}${tr['pnl']:.2f} ({tr['pct']:+.1f}%)\n"
-                f"      _{q}_"
-            )
-        if len(today_trades) > 5:
-            parts.append(f"  _… and {len(today_trades)-5} more_")
-    elif snap.closed > 0:
-        parts += ["", divider2, "", "*🏆 TOP ALL\\-TIME TRADES*"]
-        for i, tr in enumerate(top_closed, 1):
-            emoji = "🟢" if tr["pnl"] > 0 else "🔴"
-            q = (tr.get("question") or "?")[:50]
-            parts.append(
-                f"  {i}\\. {emoji} {_sign(tr['pnl'])}${tr['pnl']:.2f} ({tr['pct']:+.1f}%)\n"
-                f"      _{q}_"
-            )
+    # Per-trade lists intentionally omitted (user: "don't show all trades").
+    # The report stays a clean P&L + stats + open-positions summary.
 
     if open_pos:
         parts += ["", divider2, "", f"*🔓 OPEN POSITIONS ({len(open_pos)})*"]
@@ -761,7 +743,7 @@ def daily_report_once() -> None:
     parts += [
         "",
         divider,
-        f"_Next report: tomorrow at 4:00 PM UTC_",
+        f"_Reports at 9:00 AM & 4:00 PM ET_",
         f"_Polymarket Bot_ `kzer_ai`",
     ]
 
@@ -928,31 +910,38 @@ def _cycle_once_old() -> None:
 
 
 def main() -> int:
-    print(f"[live-analyst] starting — cycle={CYCLE_SECONDS}s, daily report at {DAILY_REPORT_HOUR_UTC:02d}:00 UTC", flush=True)
-    daily_report_sent_date: str = ""
+    """Send the DAILY QUANT REPORT at 9:00 AM and 4:00 PM Eastern (Canada) only.
 
-    cycle_once()
-    time.sleep(60)
+    Nothing else — no 30-min cadence, no startup report, no trade lists.
+    Eastern handles EST/EDT automatically via the America/Toronto tz.
+    """
+    from datetime import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        eastern = ZoneInfo("America/Toronto")
+    except Exception:
+        eastern = None  # fall back to fixed UTC-4 (EDT) if tzdata unavailable
+
+    report_hours = (9, 16)  # 9 AM and 4 PM Eastern
+    print("[live-analyst] starting — DAILY QUANT REPORT at 09:00 & 16:00 America/Toronto only", flush=True)
+    sent: set[str] = set()  # "YYYY-MM-DD|HH" slots already sent (dedupe)
+
     while True:
         try:
-            cycle_once()
-        except Exception:
-            tb = traceback.format_exc()
-            print(f"[live-analyst] cycle failed:\n{tb}", file=sys.stderr, flush=True)
-            telegram_post(f"⚠️ *Live analyst error*\n```\n{tb[:1500]}\n```")
-
-        # Daily 4 PM UTC report — fires once per day in the cycle after 16:00.
-        try:
-            now_utc = time.gmtime()
-            today = _today_utc()
-            if now_utc.tm_hour >= DAILY_REPORT_HOUR_UTC and daily_report_sent_date != today:
+            if eastern is not None:
+                now = datetime.now(eastern)
+            else:
+                now = datetime.utcfromtimestamp(time.time() - 4 * 3600)  # EDT fallback
+            slot = f"{now:%Y-%m-%d}|{now.hour:02d}"
+            if now.hour in report_hours and now.minute < 10 and slot not in sent:
                 daily_report_once()
-                daily_report_sent_date = today
+                sent.add(slot)
+                if len(sent) > 8:  # keep the set small
+                    sent = set(sorted(sent)[-8:])
         except Exception:
             tb = traceback.format_exc()
             print(f"[live-analyst] daily report failed:\n{tb}", file=sys.stderr, flush=True)
-
-        time.sleep(CYCLE_SECONDS)
+        time.sleep(60)  # check each minute; report fires in the :00–:09 window
 
 
 if __name__ == "__main__":
