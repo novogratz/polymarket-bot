@@ -31,7 +31,7 @@ export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
 export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0
 export TELEGRAM_EQUITY_FLOOR_USD=0
 
-# SILENCE the live bot entirely. The ONLY message we want is the 4-hourly
+# SILENCE the live bot entirely. The ONLY message we want is the 8-hourly
 # LIVE REPORT from the live_analyst sidecar. These flags default to ON when
 # unset, so each one must be set to 0 explicitly.
 export TELEGRAM_ALERT_TRADES=0
