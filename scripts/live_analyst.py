@@ -593,8 +593,11 @@ def load_todays_trades() -> list[dict]:
         rows.append({
             "pnl": pnl,
             "pct": pct,
-            "question": (e.get("question") or "?")[:50],
+            "question": str(e.get("question") or "?"),
             "reason": e.get("exit_reason", "?"),
+            "side": str(e.get("outcome") or e.get("side") or "?"),
+            "entry": float(e.get("entry_price") or 0.0),
+            "exit": float(e.get("exit_price")) if e.get("exit_price") is not None else None,
         })
     rows.sort(key=lambda r: r["pnl"], reverse=True)
     return rows
@@ -658,8 +661,8 @@ def _starting_cash() -> float:
     """Read starting_cash from the active profile's TOML, fall back to 12.67.
 
     Uses POLYMARKET_PROFILE_LABEL so each bot (grinder, grinder_b, …) reads
-    its own baseline — otherwise the 'since beginning' % is computed against
-    the wrong starting balance.
+    its own baseline — otherwise bot B's 'since beginning' % is computed
+    against the wrong starting balance.
     """
     label = os.environ.get("POLYMARKET_PROFILE_LABEL", "grinder")
     candidates = [
@@ -733,26 +736,8 @@ def daily_report_once() -> None:
         f"  Open now:      {snap.open_positions} position{'s' if snap.open_positions != 1 else ''}",
     ]
 
-    if today_trades:
-        parts += ["", divider2, "", f"*🏆 TODAY'S TRADES ({len(today_trades)})*"]
-        for i, tr in enumerate(today_trades[:5], 1):
-            emoji = "🟢" if tr["pnl"] > 0 else "🔴"
-            q = (tr.get("question") or "?")[:50]
-            parts.append(
-                f"  {i}\\. {emoji} {_sign(tr['pnl'])}${tr['pnl']:.2f} ({tr['pct']:+.1f}%)\n"
-                f"      _{q}_"
-            )
-        if len(today_trades) > 5:
-            parts.append(f"  _… and {len(today_trades)-5} more_")
-    elif snap.closed > 0:
-        parts += ["", divider2, "", "*🏆 TOP ALL\\-TIME TRADES*"]
-        for i, tr in enumerate(top_closed, 1):
-            emoji = "🟢" if tr["pnl"] > 0 else "🔴"
-            q = (tr.get("question") or "?")[:50]
-            parts.append(
-                f"  {i}\\. {emoji} {_sign(tr['pnl'])}${tr['pnl']:.2f} ({tr['pct']:+.1f}%)\n"
-                f"      _{q}_"
-            )
+    # Per-trade lists intentionally omitted (user: "don't show all trades").
+    # The report stays a clean P&L + stats + open-positions summary.
 
     if open_pos:
         parts += ["", divider2, "", f"*🔓 OPEN POSITIONS ({len(open_pos)})*"]
@@ -773,7 +758,7 @@ def daily_report_once() -> None:
     parts += [
         "",
         divider,
-        f"_Next report: tomorrow at 4:00 PM UTC_",
+        f"_Reports at 9:00 AM & 4:00 PM ET_",
         f"_Polymarket Bot_ `kzer_ai`",
     ]
 
@@ -782,11 +767,92 @@ def daily_report_once() -> None:
     print(msg, flush=True)
 
 
-def cycle_once() -> None:
-    """4h LIVE REPORT — the only Telegram message this bot sends.
+# ── French localisation ──────────────────────────────────────────────────
+_FR_MONTHS = [
+    "", "janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+    "août", "septembre", "octobre", "novembre", "décembre",
+]
+_SIDE_FR = {"yes": "Oui", "no": "Non"}
 
-    Three sections: Equity (with $ and % gain since the starting balance),
-    top winning + losing trades closed today, and every open position.
+
+def _bet_side(side: str, question: str = "") -> str:
+    """French label for the outcome the bot bought.
+
+    Over/Under become "Au-dessus de X buts" / "En-dessous de X buts" where X
+    is the goal line parsed from the market title (e.g. "O/U 4.5"). Yes/No
+    map to Oui/Non; anything else is returned as-is.
+    """
+    s = str(side or "").strip().lower()
+    if s in ("over", "under"):
+        m = (re.search(r"o/u\s*([\d.]+)", str(question or ""), re.I)
+             or re.search(r"(\d+\.\d+)", str(question or "")))
+        line = m.group(1) if m else ""
+        suffix = f" {line} buts" if line else " buts"
+        return ("Au-dessus de" if s == "over" else "En-dessous de") + suffix
+    return _SIDE_FR.get(s, str(side or "?"))
+
+
+def _fr_cache_path() -> Path:
+    return DATA_DIR / "cache" / "fr_translations.json"
+
+
+def _translate_questions_fr(questions: list[str]) -> dict[str, str]:
+    """Translate market questions to French via the `claude` CLI.
+
+    Returns {english: french}. On ANY failure (CLI missing, timeout, bad
+    output) the missing entries are simply left out so the caller falls back
+    to English. Never raises. Disabled with LIVE_REPORT_FR=0. Results are
+    cached on disk so repeated questions don't re-hit the CLI.
+    """
+    if os.environ.get("LIVE_REPORT_FR", "1").strip() in {"0", "false", "False"}:
+        return {}
+    uniq = sorted({q for q in questions if q and q != "?"})
+    if not uniq:
+        return {}
+    cache: dict[str, str] = {}
+    path = _fr_cache_path()
+    try:
+        if path.is_file():
+            cache = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        cache = {}
+    missing = [q for q in uniq if q not in cache]
+    if missing:
+        import subprocess
+        prompt = (
+            "Translate each of these Polymarket prediction-market titles to French. "
+            "Keep team names, league names, player names, tickers and numbers "
+            "unchanged. Return ONLY a JSON object mapping each original English "
+            "string to its French translation — no markdown, no commentary.\n\n"
+            + json.dumps(missing, ensure_ascii=False)
+        )
+        try:
+            proc = subprocess.run(
+                ["claude", "-p", prompt],
+                capture_output=True, text=True, timeout=150,
+            )
+            out = (proc.stdout or "").strip()
+            start, end = out.find("{"), out.rfind("}")
+            if start != -1 and end > start:
+                mapping = json.loads(out[start:end + 1])
+                for k, v in mapping.items():
+                    if isinstance(k, str) and isinstance(v, str) and v.strip():
+                        cache[k] = v.strip()
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+        except Exception as exc:
+            print(f"[live-analyst] FR translate failed, keeping English: {exc}",
+                  file=sys.stderr, flush=True)
+    return {q: cache[q] for q in uniq if q in cache}
+
+
+def cycle_once() -> None:
+    """4h LIVE REPORT (French) — the only Telegram message this bot sends.
+
+    Three sections: Capital (équité + gain $ et % depuis le début), tous les
+    trades clôturés aujourd'hui (meilleur → pire), et toutes les positions
+    ouvertes. Les libellés sont en français ; les titres de marché sont
+    traduits via le CLI `claude` avec repli sur l'anglais en cas d'échec.
     """
     snap = load_live_snapshot()
     if snap is None:
@@ -799,6 +865,15 @@ def cycle_once() -> None:
     net_pct = (net / starting * 100) if starting > 0 else 0.0
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
+    # Translate every market title once (English fallback on failure).
+    fr = _translate_questions_fr(
+        [r.get("question") or "" for r in today_trades]
+        + [p.get("question") or "" for p in open_pos]
+    )
+
+    def _q(en: str) -> str:
+        return fr.get(en, en) or "?"
+
     def _sign(v: float) -> str:
         return "+" if v >= 0 else "-"
 
@@ -806,48 +881,63 @@ def cycle_once() -> None:
         return "🟢" if v >= 0 else "🔴"
 
     t = time.gmtime()
-    date_str = time.strftime("%B ", t) + str(t.tm_mday) + time.strftime(", %Y", t)
+    date_str = f"{t.tm_mday} {_FR_MONTHS[t.tm_mon]} {t.tm_year}"
     stamp = time.strftime("%H:%M UTC", t)
     divider = "━━━━━━━━━━━━━━━━━━━━━━━━"
     bot_name = os.environ.get("POLYMARKET_BOT_NAME", "Grinder Bot 1")
 
     parts = [
-        f"📋 *LIVE REPORT — {date_str}* _{stamp}_",
+        f"📋 *RAPPORT LIVE — {date_str}* _{stamp}_",
         f"_Polymarket · {bot_name}_",
         divider,
         "",
-        "*PROFIT & LOSS:*",
-        f"  {_mood(net)} Equity: ${snap.equity:.2f}  "
-        f"({_sign(net)}${abs(net):.2f}, {_sign(net)}{abs(net_pct):.1f}% since beginning)",
+        "*PROFITS & PERTES :*",
+        f"  {_mood(net)} Capital : ${snap.equity:.2f}  "
+        f"({_sign(net)}${abs(net):.2f}, {_sign(net)}{abs(net_pct):.1f}% depuis le début)",
         "",
     ]
 
-    # All trades closed today, ordered best → worst (worst loss at the bottom).
-    # load_todays_trades() already sorts by pnl descending.
+    # Tous les trades clôturés aujourd'hui, du meilleur à la pire perte (en bas).
+    # load_todays_trades() trie déjà par PnL décroissant.
     if today_trades:
-        parts.append(f"*TRADES TODAY ({len(today_trades)}):*")
+        n_total = len(today_trades)
+        n_win = sum(1 for r in today_trades if float(r["pnl"]) > 0)
+        n_loss = sum(1 for r in today_trades if float(r["pnl"]) < 0)
+        day_pnl = sum(float(r["pnl"]) for r in today_trades)
+        parts.append(
+            f"*TRADES DU JOUR* (Total : {n_total}, Réussis : {n_win}, "
+            f"Ratés : {n_loss}, Gains du jour : {_sign(day_pnl)}${abs(day_pnl):.2f})"
+        )
         for r in today_trades:
-            q = (r.get("question") or "?")[:35]
             pnl = float(r["pnl"]); pct = float(r.get("pct", 0.0) or 0.0)
             mood = "🟢" if pnl > 0 else "🔴" if pnl < 0 else "⚪"
             s = "+" if pnl >= 0 else "-"
-            parts.append(f"  {mood} {s}${abs(pnl):.2f} ({s}{abs(pct):.1f}%)  {q}")
+            entry = float(r.get("entry") or 0.0)
+            xt = r.get("exit")
+            # "Au-dessus de 4.5 buts @0.88→1.00" — pari, proba payée, résolution.
+            side_lbl = _bet_side(r.get("side"), r.get("question"))
+            bet = f"{side_lbl} @{entry:.2f}" if entry else side_lbl
+            if xt is not None:
+                bet += f"→{float(xt):.2f}"
+            parts.append(
+                f"  {mood} {s}${abs(pnl):.2f} ({s}{abs(pct):.1f}%)  {bet}\n"
+                f"      _{_q(r.get('question') or '')}_"
+            )
         parts.append("")
 
     if open_pos:
-        parts.append(f"*OPEN POSITIONS ({len(open_pos)}):*")
+        parts.append(f"*POSITIONS OUVERTES ({len(open_pos)}) :*")
         for p in open_pos:
             unr = float(p.get("unr", 0) or 0)
             cost = float(p.get("cost", 0) or 0)
             mtm = float(p.get("mtm", 0) or 0)
             entry = float(p.get("entry", 0) or 0)
             cur = float(p.get("cur", 0) or 0)
-            q = (p.get("question") or "?")[:35]
             parts.append(
-                f"  ⚪ {q} ({p.get('side','?')}): "
+                f"  ⚪ {_q(p.get('question') or '')} ({_bet_side(p.get('side'), p.get('question'))}) : "
                 f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${abs(unr):.2f})"
             )
-        parts.append(f"  _Unrealized: {_sign(unrealized)}${abs(unrealized):.2f}_")
+        parts.append(f"  _Latent : {_sign(unrealized)}${abs(unrealized):.2f}_")
         parts.append("")
 
     parts.append(f"_Polymarket · {bot_name}_")
@@ -962,9 +1052,8 @@ def main() -> int:
     """Send the LIVE REPORT once on startup, then every 4 hours. Nothing else.
 
     This sidecar is the ONLY source of Telegram messages for the live bot:
-    no daily quant report, no BUY/SELL alerts, no heartbeat, no error pings.
-    Just the 4-hourly LIVE REPORT (equity since start, top trades today,
-    open positions).
+    no daily quant report, no BUY/SELL alerts, no heartbeat. Just the
+    4-hourly LIVE REPORT (equity since start, top trades today, open positions).
     """
     interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "14400"))  # 4 hours
     print(f"[live-analyst] starting — LIVE REPORT every {interval}s (+ once now on start)", flush=True)
