@@ -45,6 +45,9 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=0
 
 export POLYMARKET_PROFILE_LABEL=grinder
 
+# Name shown in the LIVE REPORT header/footer.
+export POLYMARKET_BOT_NAME="Grinder Bot 3"
+
 cleanup() {
     kill 0 2>&1 || true
     wait 2>&1 || true
