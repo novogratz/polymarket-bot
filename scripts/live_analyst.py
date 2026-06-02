@@ -690,6 +690,47 @@ def _starting_cash() -> float:
     return 12.67
 
 
+def _daily_equity_file() -> Path:
+    """Per-bot file recording end-of-day equity, keyed by profile label so
+    each grinder bot tracks its own balance history."""
+    label = os.environ.get("POLYMARKET_PROFILE_LABEL", "grinder")
+    return DATA_DIR / f".live_analyst_daily_equity_{label}.json"
+
+
+def _record_daily_equity(equity: float) -> None:
+    """Store today's equity (UTC date keyed). Overwrites within the day, so
+    once the day rolls over the stored value is the day's closing balance.
+    Keeps the last 30 days."""
+    try:
+        path = _daily_equity_file()
+        data = {}
+        if path.is_file():
+            data = json.loads(path.read_text())
+        data[_today_utc()] = round(float(equity), 2)
+        for stale in sorted(data)[:-30]:
+            data.pop(stale, None)
+        path.write_text(json.dumps(data))
+    except Exception:
+        pass
+
+
+def _yesterday_equity() -> float | None:
+    """Most recent recorded equity from a UTC date strictly before today —
+    i.e. yesterday's closing balance. None if no prior snapshot exists."""
+    try:
+        path = _daily_equity_file()
+        if not path.is_file():
+            return None
+        data = json.loads(path.read_text())
+        today = _today_utc()
+        prior = [d for d in data if d < today]
+        if not prior:
+            return None
+        return float(data[max(prior)])
+    except Exception:
+        return None
+
+
 def daily_report_once() -> None:
     """4 PM UTC daily quant summary — shareholder-grade report."""
     snap = load_live_snapshot()
@@ -874,6 +915,11 @@ def cycle_once() -> None:
     net_pct = (net / starting * 100) if starting > 0 else 0.0
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
+    # Track end-of-day equity so "Gains du jour" can show today's % progress
+    # against yesterday's closing balance (not just the all-time start).
+    yest_bal = _yesterday_equity()
+    _record_daily_equity(snap.equity)
+
     # Translate every market title once (English fallback on failure).
     fr = _translate_questions_fr(
         [r.get("question") or "" for r in today_trades]
@@ -913,9 +959,15 @@ def cycle_once() -> None:
         n_win = sum(1 for r in today_trades if float(r["pnl"]) > 0)
         n_loss = sum(1 for r in today_trades if float(r["pnl"]) < 0)
         day_pnl = sum(float(r["pnl"]) for r in today_trades)
+        # % progress today vs yesterday's closing balance (falls back to the
+        # all-time start when no prior-day snapshot exists yet).
+        base_bal = yest_bal if (yest_bal and yest_bal > 0) else starting
+        day_pct_vs_yest = (day_pnl / base_bal * 100) if base_bal > 0 else 0.0
+        base_lbl = "vs hier" if (yest_bal and yest_bal > 0) else "vs début"
         parts.append(
             f"*TRADES DU JOUR* (Total : {n_total}, Réussis : {n_win}, "
-            f"Ratés : {n_loss}, Gains du jour : {_sign(day_pnl)}${abs(day_pnl):.2f})"
+            f"Ratés : {n_loss}, Gains du jour : {_sign(day_pnl)}${abs(day_pnl):.2f} "
+            f"/ {_sign(day_pct_vs_yest)}{abs(day_pct_vs_yest):.1f}% {base_lbl})"
         )
         for r in today_trades:
             pnl = float(r["pnl"]); pct = float(r.get("pct", 0.0) or 0.0)
