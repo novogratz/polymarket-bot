@@ -68,11 +68,13 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-# Kill any stale live_analyst from a previous run so we never have two sending.
-pkill -f "live_analyst.py" 2>/dev/null || true
+# Kill only THIS bot's stale live_analyst (matched by the profile-label tag
+# passed on the command line). Scoped so the 3 grinder analysts can coexist
+# instead of pkill'ing each other on startup.
+pkill -f "live_analyst.py ${POLYMARKET_PROFILE_LABEL}\$" 2>/dev/null || true
 sleep 1
 
-uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
+uv run python scripts/live_analyst.py "${POLYMARKET_PROFILE_LABEL}" 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
 # ─── Live-only leaderboard sidecar REMOVED (2026-05-30) ────────────────
 # The 5-min "🏁 Leaderboard · LIVE only" Telegram summary was noisy and

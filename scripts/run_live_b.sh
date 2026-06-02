@@ -69,14 +69,16 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-# Kill any stale live_analyst from a previous run.
-pkill -f "live_analyst.py" 2>/dev/null || true
+# Kill only THIS bot's stale live_analyst (matched by the profile-label tag
+# passed on the command line). Scoped so the 3 grinder analysts can coexist
+# instead of pkill'ing each other on startup.
+pkill -f "live_analyst.py ${POLYMARKET_PROFILE_LABEL}\$" 2>/dev/null || true
 sleep 1
 
 # Bot B posts its OWN live report to its TELEGRAM_CHAT_ID_LIVE (.env).
 # live_analyst fires cycle_once() immediately on startup, then every 8 hours —
 # so you always get a report at launch, not after an 8-hour wait.
-uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
+uv run python scripts/live_analyst.py "${POLYMARKET_PROFILE_LABEL}" 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
 # ─── Live-only leaderboard sidecar REMOVED (2026-05-30) ────────────────
 # The 5-min "🏁 Leaderboard · LIVE only" Telegram summary was noisy and
