@@ -112,7 +112,7 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "28800"))   # 8 hours
+CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "10800"))   # 3 hours
 
 
 @dataclass
@@ -849,7 +849,7 @@ def _translate_questions_fr(questions: list[str]) -> dict[str, str]:
 
 
 def cycle_once() -> None:
-    """8h LIVE REPORT (French) — the only Telegram message this bot sends.
+    """3h LIVE REPORT (French) — the only Telegram message this bot sends.
 
     Three sections: Capital (équité + gain $ et % depuis le début), tous les
     trades clôturés aujourd'hui (meilleur → pire), et toutes les positions
@@ -1098,14 +1098,14 @@ def _run_report() -> None:
 
 
 def main() -> int:
-    """Send the LIVE REPORT once on startup, then every 8 hours, plus an
+    """Send the LIVE REPORT once on startup, then every 3 hours, plus an
     extra fire at 10:00 US/Eastern every day. Nothing else.
 
     This sidecar is the ONLY source of Telegram messages for the live bot:
     no daily quant report, no BUY/SELL alerts, no heartbeat. Just the
     LIVE REPORT (equity since start, top trades today, open positions).
     """
-    interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "28800"))  # 8 hours
+    interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "10800"))  # 3 hours
     print(
         f"[live-analyst] starting — LIVE REPORT every {interval}s "
         f"(+ once now on start, + daily at 10:00 US/Eastern)",
