@@ -1076,32 +1076,68 @@ def _save_last_report_ts() -> None:
         pass
 
 
-def main() -> int:
-    """Send the LIVE REPORT every 8 hours. On startup, only if last report
-    was > 4 hours ago (suppresses spam from rapid bot restarts).
+def _seconds_until_next_10am_eastern() -> float:
+    """Seconds from now until the next 10:00 in US/Eastern (DST-aware).
 
-    This sidecar is the ONLY source of Telegram messages for the live bot:
-    no daily quant report, no BUY/SELL alerts, no heartbeat.
+    Returns +inf if zoneinfo is unavailable, which disables the extra
+    daily fire and falls back to the plain interval cadence.
     """
-    interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "28800"))  # 8 hours
+    try:
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+        eastern = ZoneInfo("America/New_York")
+    except Exception:
+        return float("inf")
+    now = datetime.now(eastern)
+    target = now.replace(hour=10, minute=0, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    return max(1.0, (target - now).total_seconds())
 
-    # ALWAYS fire the report on startup (user wants it on every launch — no
-    # cooldown/skip). Then continue on the 8h cadence below.
-    print("[live-analyst] startup report firing", flush=True)
+
+def _run_report() -> None:
     try:
         cycle_once()
         _save_last_report_ts()
     except Exception:
-        print(traceback.format_exc(), file=sys.stderr, flush=True)
+        tb = traceback.format_exc()
+        print(f"[live-analyst] live report failed:\n{tb}", file=sys.stderr, flush=True)
+
+
+def main() -> int:
+    """Send the LIVE REPORT once on startup, then every 8 hours, plus an
+    extra fire at 10:00 US/Eastern every day. Nothing else.
+
+    This sidecar is the ONLY source of Telegram messages for the live bot:
+    no daily quant report, no BUY/SELL alerts, no heartbeat. Just the
+    LIVE REPORT (equity since start, top trades today, open positions).
+    """
+    interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "28800"))  # 8 hours
+    print(
+        f"[live-analyst] starting — LIVE REPORT every {interval}s "
+        f"(+ once now on start, + daily at 10:00 US/Eastern)",
+        flush=True,
+    )
+
+    _run_report()  # once on startup (user wants it on every launch)
+    next_interval = time.time() + interval
+    next_10am = time.time() + _seconds_until_next_10am_eastern()
 
     while True:
-        time.sleep(interval)
-        try:
-            cycle_once()
-            _save_last_report_ts()
-        except Exception:
-            tb = traceback.format_exc()
-            print(f"[live-analyst] live report failed:\n{tb}", file=sys.stderr, flush=True)
+        now = time.time()
+        sleep_for = max(1.0, min(next_interval, next_10am) - now)
+        time.sleep(sleep_for)
+
+        now = time.time()
+        fired = False
+        if now >= next_interval:
+            _run_report()
+            next_interval = time.time() + interval
+            fired = True
+        if now >= next_10am:
+            if not fired:
+                _run_report()
+            next_10am = time.time() + _seconds_until_next_10am_eastern()
 
 
 if __name__ == "__main__":
