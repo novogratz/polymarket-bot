@@ -54,10 +54,13 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-pkill -f "live_analyst.py" 2>/dev/null || true
+# Kill only THIS bot's stale live_analyst (matched by the profile-label tag
+# passed on the command line). Scoped so the 3 grinder analysts can coexist
+# instead of pkill'ing each other on startup.
+pkill -f "live_analyst.py ${POLYMARKET_PROFILE_LABEL}\$" 2>/dev/null || true
 sleep 1
 
-uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
+uv run python scripts/live_analyst.py "${POLYMARKET_PROFILE_LABEL}" 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
 POLYMARKET_QUIET=1 \
     POLYMARKET_SUPPRESS_BUY_LOGS=1 \
