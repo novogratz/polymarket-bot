@@ -949,6 +949,8 @@ def cycle_once() -> None:
         "*PROFITS & PERTES :*",
         f"  {_mood(net)} Capital : ${snap.equity:.2f}  "
         f"({_sign(net)}${abs(net):.2f}, {_sign(net)}{abs(net_pct):.1f}% depuis le début)",
+        f"  📊 Trades : *{snap.closed}*  •  Réussite : *{snap.win_rate:.0f}%* "
+        f"({snap.wins}V / {snap.losses}D{f' / {snap.flats} nul' if snap.flats else ''})",
         "",
     ]
 
