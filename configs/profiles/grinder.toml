@@ -95,11 +95,8 @@ resolved_exit_threshold = 0.97
 arb_threshold = 0.0
 arb_max_stake_usd = 5.0
 
-# Resting limit sell: when current_price >= limit_sell_trigger, place a GTC
-# limit sell at limit_sell_price. Locks in profit early without waiting for
-# the market to hit resolved_exit_threshold. 0.0 = disabled.
-limit_sell_trigger = 0.95
-limit_sell_price = 0.98
+# Resting limit sell removed 2026-06-03 to match Bot 2 (grinder_b): ride the
+# winner all the way to resolved_exit_threshold instead of capping at 0.98.
 
 [telemetry]
 quiet = false
