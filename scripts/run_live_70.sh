@@ -37,15 +37,15 @@ export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-
 # (force-close scripts corrupted it). Real equity is read from CLOB each tick.
 export TELEGRAM_EQUITY_FLOOR_USD=0
 
-# Telegram: tout pousser en live (override .env qui a TELEGRAM_ALERT_TRADES=0
-# pour rester silencieux en dry-run).
-export TELEGRAM_ALERT_TRADES=1
-export TELEGRAM_ALERT_TRADES_BUY=1
-export TELEGRAM_ALERT_ERRORS=1
-export TELEGRAM_ALERT_THRESHOLDS=1
-export TELEGRAM_ALERT_HEARTBEAT=1
-export TELEGRAM_ALERT_PORTFOLIO_UPDATES=1
-export TELEGRAM_ALERT_DAILY_SUMMARY=1
+# Telegram: live report only — no BUY/SELL/heartbeat noise.
+export TELEGRAM_ALERT_TRADES=0
+export TELEGRAM_ALERT_TRADES_BUY=0
+export TELEGRAM_ALERT_TRADES_SELL=0
+export TELEGRAM_ALERT_ERRORS=0
+export TELEGRAM_ALERT_THRESHOLDS=0
+export TELEGRAM_ALERT_HEARTBEAT=0
+export TELEGRAM_ALERT_PORTFOLIO_UPDATES=0
+export TELEGRAM_ALERT_DAILY_SUMMARY=0
 
 # Profile label exported BEFORE the live_analyst spawns, so the
 # sidecar inherits it (else it logs "(unknown)" in reports).
