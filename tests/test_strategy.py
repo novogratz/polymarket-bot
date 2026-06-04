@@ -886,6 +886,7 @@ class StrategyTests(unittest.TestCase):
         far = btc_terminal_probability(spot=100000, strike=110000, hours=6, annual_volatility=0.6, direction="above")
         self.assertGreater(near, far)
 
+    @unittest.skip("crypto banned 2026-06-03")
     def test_btc_signal_requires_edge(self):
         end_date = (utc_now() + timedelta(hours=3)).isoformat()
         candidate = rank_markets(
@@ -915,6 +916,7 @@ class StrategyTests(unittest.TestCase):
         )
         self.assertIsNotNone(signal)
 
+    @unittest.skip("crypto banned 2026-06-03")
     def test_btc_signal_requires_user_odds_band(self):
         end_date = (utc_now() + timedelta(hours=3)).isoformat()
         candidate = rank_markets(
@@ -949,6 +951,7 @@ class StrategyTests(unittest.TestCase):
         )
         self.assertIsNone(signal)
 
+    @unittest.skip("crypto banned 2026-06-03")
     def test_load_btc_candidates_queries_btc_keywords(self):
         end_date = (utc_now() + timedelta(hours=3)).isoformat()
 

@@ -264,6 +264,7 @@ class NearCertaintyTests(unittest.TestCase):
 
 
 class CryptoEdgeIntegrationTests(unittest.TestCase):
+    @unittest.skip("crypto banned 2026-06-03")
     def test_filters_to_crypto_markets_only(self):
         # NOTE: "Up or Down" markets are now blanket-excluded via
         # is_excluded_market (low liquidity / FOK bounces). Use a
