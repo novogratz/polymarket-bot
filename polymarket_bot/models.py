@@ -53,12 +53,18 @@ def parse_json_list(value: Any) -> list[Any]:
 
 
 _EXCLUDED_QUESTION_SUBSTRINGS = (
-    # Crypto Up/Down directional binaries: coin-flips with no model edge.
-    # The grinder 50%-stake lane treated these as favorites and dumped the
-    # whole bankroll into a 5-min BTC flip at 0.635 → -$50 (2026-05-30).
-    # The model-gated btc_edge lane (threshold "above $X" markets) is the
-    # only sanctioned crypto path — it never matches "up or down".
+    # ALL crypto markets banned (2026-06-03) — Up/Down, price thresholds, and
+    # any coin market. btc_edge lane also disabled in the profiles.
     "up or down",
+    "bitcoin",
+    "btc",
+    "ethereum",
+    "solana",
+    "dogecoin",
+    "xrp",
+    "cardano",
+    "litecoin",
+    "crypto",
     # Temperature/weather threshold markets: specific-degree weather fails
     # constantly even at 0.94 — 0% win rate in grinder band. Both °C and °F.
     "temperature",
@@ -119,6 +125,12 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     "league-of-legends",
     "dota",
     "esports",
+    # Crypto slug markers (all crypto banned 2026-06-03).
+    "bitcoin",
+    "btc",
+    "ethereum",
+    "solana",
+    "crypto",
 )
 
 

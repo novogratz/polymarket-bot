@@ -121,7 +121,7 @@ enabled = false
 # BTC/ETH price threshold markets — fills dead time between sports sessions.
 # Black-Scholes model checks if current price gives ≥75% prob of staying above/below
 # threshold. Resolves every hour. Small cap ($5) — crypto is more volatile.
-enabled = true
+enabled = false
 min_model_probability = 0.75
 min_edge_over_market = 0.05
 min_buy_price = 0.75
