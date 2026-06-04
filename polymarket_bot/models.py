@@ -53,18 +53,34 @@ def parse_json_list(value: Any) -> list[Any]:
 
 
 _EXCLUDED_QUESTION_SUBSTRINGS = (
-    # ALL crypto markets banned (2026-06-03) — Up/Down, price thresholds, and
-    # any coin market. btc_edge lane also disabled in the profiles.
+    # ALL crypto markets banned (2026-06-03).
     "up or down",
     "bitcoin",
     "btc",
     "ethereum",
+    "eth ",
+    " eth?",
     "solana",
-    "dogecoin",
+    " sol ",
     "xrp",
+    "ripple",
+    "dogecoin",
+    "doge",
     "cardano",
     "litecoin",
+    "polygon",
+    "matic",
+    "avalanche",
+    "avax",
+    "chainlink",
+    "binance",
+    " bnb",
     "crypto",
+    "altcoin",
+    "defi",
+    " nft",
+    "blockchain",
+    "stablecoin",
     # Temperature/weather threshold markets: specific-degree weather fails
     # constantly even at 0.94 — 0% win rate in grinder band. Both °C and °F.
     "temperature",
@@ -116,7 +132,6 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     "updown",
     "up-or-down",
     "exact-score",
-    # Esports slug markers.
     "counter-strike",
     "csgo",
     "cs2",
@@ -124,11 +139,17 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     "league-of-legends",
     "dota",
     "esports",
-    # Crypto slug markers (all crypto banned 2026-06-03).
     "bitcoin",
     "btc",
     "ethereum",
     "solana",
+    "dogecoin",
+    "ripple",
+    "cardano",
+    "polygon",
+    "avalanche",
+    "chainlink",
+    "binance",
     "crypto",
 )
 
