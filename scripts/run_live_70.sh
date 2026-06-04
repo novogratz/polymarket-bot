@@ -24,8 +24,8 @@ export POLYMARKET_SYNC_LIVE_POSITIONS=1
 # Live bankroll baseline = $122.00 (2026-05-31 fresh start).
 # These exports are the RPC-failure fallback cap — the bot reads the real
 # USDC balance from CLOB each tick; these kick in only if that read fails.
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-25.0}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-25.0}
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-13.45}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-13.45}
 
 # 10s tick — 3× faster than 30s, catches more fleeting band entries.
 export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
