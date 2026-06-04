@@ -344,15 +344,24 @@ def _total_pnl_vs_start() -> float | None:
     except Exception:
         return None
     starting: float | None = None
+    # Per-machine baseline override (gitignored), written by fresh_start.py so
+    # each bot keeps its own reset baseline without touching the shared profile.
     try:
-        label = os.getenv("POLYMARKET_PROFILE_LABEL", "grinder")
-        for line in Path(f"configs/profiles/{label}.toml").read_text(encoding="utf-8").splitlines():
-            s = line.strip()
-            if s.startswith("starting_cash"):
-                starting = float(s.split("=", 1)[1].split("#")[0].strip())
-                break
+        ov = Path("data/starting_cash.txt").read_text(encoding="utf-8").strip()
+        if ov:
+            starting = float(ov)
     except Exception:
-        return None
+        starting = None
+    if starting is None:
+        try:
+            label = os.getenv("POLYMARKET_PROFILE_LABEL", "grinder")
+            for line in Path(f"configs/profiles/{label}.toml").read_text(encoding="utf-8").splitlines():
+                s = line.strip()
+                if s.startswith("starting_cash"):
+                    starting = float(s.split("=", 1)[1].split("#")[0].strip())
+                    break
+        except Exception:
+            return None
     if not starting or starting <= 0:
         return None
     return round(equity - starting, 2)

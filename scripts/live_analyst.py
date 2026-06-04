@@ -673,6 +673,15 @@ def _starting_cash() -> float:
     its own baseline — otherwise bot B's 'since beginning' % is computed
     against the wrong starting balance.
     """
+    # Per-machine baseline override (gitignored) — written by fresh_start.py on
+    # each bot so it keeps its own reset baseline without touching the shared
+    # profile (bot 2 and bot 3 have different balances).
+    try:
+        ov = (DATA_DIR / "starting_cash.txt").read_text().strip()
+        if ov:
+            return float(ov)
+    except Exception:
+        pass
     label = os.environ.get("POLYMARKET_PROFILE_LABEL", "grinder")
     candidates = [
         REPO_ROOT / "configs" / "profiles" / f"{label}.toml",
