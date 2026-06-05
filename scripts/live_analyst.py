@@ -912,7 +912,8 @@ def cycle_once() -> None:
 
     # Translate every market title once (English fallback on failure).
     fr = _translate_questions_fr(
-        [p.get("question") or "" for p in open_pos]
+        [r.get("question") or "" for r in today_trades]
+        + [p.get("question") or "" for p in open_pos]
     )
 
     def _q(en: str) -> str:
@@ -942,6 +943,44 @@ def cycle_once() -> None:
         f" ({snap.wins}V / {snap.losses}D{f' / {snap.flats} nul' if snap.flats else ''})",
         "",
     ]
+
+    # Tous les trades cloturés aujourd'hui (meilleur -> pire perte en bas).
+    if today_trades:
+        n_total = len(today_trades)
+        n_win = sum(1 for r in today_trades if float(r["pnl"]) > 0)
+        n_loss = sum(1 for r in today_trades if float(r["pnl"]) < 0)
+        day_pnl = sum(float(r["pnl"]) for r in today_trades)
+        base_bal = yest_bal if (yest_bal and yest_bal > 0) else starting
+        day_pct = (day_pnl / base_bal * 100) if base_bal > 0 else 0.0
+        base_lbl = "vs hier" if (yest_bal and yest_bal > 0) else "vs debut"
+        parts.append(
+            f"TRADES DU JOUR (Total : {n_total}, Reussis : {n_win}, "
+            f"Rates : {n_loss}, Gains du jour : {_sign(day_pnl)}${abs(day_pnl):.2f} "
+            f"/ {_sign(day_pct)}{abs(day_pct):.1f}% {base_lbl})"
+        )
+        for r in today_trades:
+            pnl = float(r["pnl"]); pct = float(r.get("pct", 0.0) or 0.0)
+            mood = "🟢" if pnl > 0 else "🔴" if pnl < 0 else "⚪"
+            s = "+" if pnl >= 0 else "-"
+            entry = float(r.get("entry") or 0.0)
+            xt = r.get("exit")
+            # Always show entry -> sell prices (e.g. 0.95 -> 0.97). Derive the
+            # exit from the realized % when it wasn't recorded.
+            if xt is None and entry:
+                xt = entry * (1.0 + pct / 100.0)
+            side_lbl = _bet_side(r.get("side"), r.get("question"))
+            if entry and xt is not None:
+                price = f"{entry:.2f} -> {float(xt):.2f}"
+            elif entry:
+                price = f"{entry:.2f} -> ?"
+            else:
+                price = ""
+            detail = f"{price}  · {side_lbl}" if price else side_lbl
+            parts.append(
+                f"  {mood} {s}${abs(pnl):.2f} ({s}{abs(pct):.1f}%)  {detail}\n"
+                f"      {_q(r.get('question') or '')}"
+            )
+        parts.append("")
 
     if open_pos:
         parts.append(f"POSITIONS OUVERTES ({len(open_pos)}) :")
