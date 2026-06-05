@@ -1,0 +1,60 @@
+name: auto-improve
+
+# Autonomous strategy self-improvement. Proposes a bounded tweak to the DRY
+# twin profile (configs/profiles/grinder_auto.toml), validates it against the
+# unit-test suite, and opens a PR. It NEVER edits live profiles, .env, or the
+# trade-selection code, and never spends real money (grinder_auto is dry-run).
+#
+# OFF by default: it only runs on manual dispatch or the schedule below, and
+# only does anything when AUTO_IMPROVE_ENABLED=1 is set (provided here). The
+# two risky switches stay OFF unless you set them as repo variables:
+#   AUTO_IMPROVE_AUTOMERGE  -> self-merge once CI is green
+#   AUTO_IMPROVE_USE_LLM    -> use the claude CLI to propose deltas
+# See docs/AUTONOMY.md.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "17 6 * * *"   # 06:17 UTC daily; disable by removing this block
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: auto-improve
+  cancel-in-progress: false
+
+jobs:
+  improve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --python 3.12
+
+      - name: Configure git identity
+        run: |
+          git config user.name "auto-improve[bot]"
+          git config user.email "auto-improve@users.noreply.github.com"
+
+      - name: Run self-improvement loop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUTO_IMPROVE_ENABLED: "1"
+          # Risky switches: OFF unless set as repo variables. Auto-merge needs a
+          # branch-protection required check on `main` to be meaningful.
+          AUTO_IMPROVE_AUTOMERGE: ${{ vars.AUTO_IMPROVE_AUTOMERGE || '0' }}
+          AUTO_IMPROVE_USE_LLM: ${{ vars.AUTO_IMPROVE_USE_LLM || '0' }}
+        run: uv run python scripts/auto_improve.py
