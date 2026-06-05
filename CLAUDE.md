@@ -153,8 +153,8 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
 - Do not implement random or unfiltered live trades. The `noise_fallback` path is the only forced-trade lane and is hard-capped at $10/trade and 4 trades/tick.
 - Preserve the local ledger `data/paper_state.json` unless the user explicitly asks for a reset.
 - Preserve `data/trade_journal.jsonl` and `data/strategy_overrides.json` unless explicitly asked to reset them.
-- No LLM call (Claude, Codex, anything else) in the scanning or trade-selection path. The scanner stays deterministic Python over Polymarket APIs.
-- The bot does not have the capability to write or push source code on its own.
+- No LLM call (Claude, Codex, anything else) in the scanning or trade-selection path. The scanner stays deterministic Python over Polymarket APIs. (The `auto-improve` self-tuner runs OFFLINE and never enters the live trade loop — see below.)
+- Source-code autonomy is bounded and opt-in (2026-06-05). `scripts/auto_improve.py` + `.github/workflows/auto-improve.yml` may open PRs that tune ONLY the dry-run twin profile `configs/profiles/grinder_auto.toml`, gated by the unit-test suite and hard parameter bounds (4h-only enforced). It never edits live profiles (`grinder.toml`/`grinder_b.toml`), `.env`, or trade-selection code; never spends real money; auto-merge and LLM-proposal are OFF by default. Promotion of a tuned value to a live profile is a manual human step. Full design + switches in `docs/AUTONOMY.md`.
 
 ## Project map
 
