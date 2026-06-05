@@ -54,7 +54,7 @@ min_volume_24h_usd = 300.0
 # Lower bound 0.85 carries a bit more gap risk than 0.90, but the catastrophic
 # categories (exact scores, coinflips, weather) stay excluded and the $10 cap
 # bounds any single loss. Upper bound 0.97 still leaves room up to ~1.0.
-min_price = 0.85
+min_price = 0.92
 max_price = 0.97
 
 # Price-stability gate: skip any market that moved >10% today.
@@ -85,7 +85,7 @@ tp_pct = 1.0
 sl_pct = 1.0  # SL removed at source 2026-05-31; kept at 1.0 (never fires) for clarity
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
-resolved_exit_threshold = 0.97
+resolved_exit_threshold = 0.95
 
 # Binary arb disabled (set arb_threshold = 0.97 to re-enable).
 # Sizing now uses proportional stakes (larger stake on the expensive/likely
