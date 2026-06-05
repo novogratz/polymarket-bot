@@ -881,7 +881,7 @@ def _translate_questions_fr(questions: list[str]) -> dict[str, str]:
         try:
             proc = subprocess.run(
                 ["claude", "-p", prompt],
-                capture_output=True, text=True, timeout=150,
+                capture_output=True, encoding="utf-8", errors="replace", timeout=150,
             )
             out = (proc.stdout or "").strip()
             start, end = out.find("{"), out.rfind("}")
