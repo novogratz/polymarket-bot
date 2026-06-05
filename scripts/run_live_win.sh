@@ -31,7 +31,11 @@ export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
 export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0
 export TELEGRAM_EQUITY_FLOOR_USD=0
 
-# SILENCE the live bot entirely. The ONLY message we want is the 8-hourly
+# LIVE REPORT cadence: every 1 hour (the ONLY Telegram message this stack
+# sends). Pinned explicitly so it never drifts from the code default.
+export LIVE_ANALYST_CYCLE_SECONDS=${LIVE_ANALYST_CYCLE_SECONDS:-3600}
+
+# SILENCE the live bot entirely. The ONLY message we want is the hourly
 # LIVE REPORT from the live_analyst sidecar. These flags default to ON when
 # unset, so each one must be set to 0 explicitly.
 export TELEGRAM_ALERT_TRADES=0
