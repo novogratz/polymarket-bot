@@ -70,11 +70,10 @@ min_outcome_momentum = -0.05
 # thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.
 max_spread = 0.04
 
-# 50% stake, up to 2 concurrent positions — doubles per-trade return vs 30%.
-# 2 slots keeps max exposure at ~100% of account (not 200%).
+# 70% stake, 1 slot — each win ~+70% on stake, fast compounding at high win rate.
 stake_usd = 1.0
-stake_pct = 0.50
-max_orders_per_tick = 2
+stake_pct = 0.70
+max_orders_per_tick = 1
 cash_floor_pct = 0.01
 
 # Exit rules:
