@@ -37,7 +37,10 @@ export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-
 # (force-close scripts corrupted it). Real equity is read from CLOB each tick.
 export TELEGRAM_EQUITY_FLOOR_USD=0
 
-# Telegram: live report only — no BUY/SELL/heartbeat noise.
+# Telegram: SILENCE the live bot entirely. The ONLY message we want is the
+# hourly LIVE REPORT from the live_analyst sidecar (TELEGRAM_CHAT_ID_LIVE).
+# No BUY/SELL, no heartbeat, no thresholds, no daily summary — nothing.
+# These flags default to ON when unset, so each one must be set to 0 explicitly.
 export TELEGRAM_ALERT_TRADES=0
 export TELEGRAM_ALERT_TRADES_BUY=0
 export TELEGRAM_ALERT_TRADES_SELL=0
@@ -52,22 +55,27 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=0
 export POLYMARKET_PROFILE_LABEL="grinder bot 3"
 export POLYMARKET_BOT_NAME="Grinder Bot 3"
 
+# Name shown in the LIVE REPORT header/footer.
+export POLYMARKET_BOT_NAME="Grinder Bot 1"
+
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
-# Every 30 min: reads paper_state + realized_trade_cache and posts a
-# LIVE-ONLY deterministic report (equity/ROI, open positions, top closed).
-# No AI, no dry-race comparison. NEVER touches the live bot. Ctrl+C kills
-# the whole process group.
+# Every 8 hours: reads paper_state + realized_trade_cache and posts the
+# LIVE REPORT — the ONLY Telegram message this stack sends (equity since
+# start, top trades today, all open positions). No AI, no dry-race compare.
+# NEVER touches the live bot. Ctrl+C kills the whole process group.
 cleanup() {
     kill 0 2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup INT TERM EXIT
 
-# Kill any stale live_analyst from a previous run so we never have two sending.
-pkill -f "live_analyst.py" 2>/dev/null || true
+# Kill only THIS bot's stale live_analyst (matched by the profile-label tag
+# passed on the command line). Scoped so the 3 grinder analysts can coexist
+# instead of pkill'ing each other on startup.
+pkill -f "live_analyst.py ${POLYMARKET_PROFILE_LABEL}\$" 2>/dev/null || true
 sleep 1
 
-uv run python scripts/live_analyst.py 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
+uv run python scripts/live_analyst.py "${POLYMARKET_PROFILE_LABEL}" 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
 # ─── Live-only leaderboard sidecar REMOVED (2026-05-30) ────────────────
 # The 5-min "🏁 Leaderboard · LIVE only" Telegram summary was noisy and

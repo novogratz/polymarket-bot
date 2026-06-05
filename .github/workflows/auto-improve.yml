@@ -1,0 +1,63 @@
+name: auto-improve
+
+# Autonomous strategy self-improvement. Each run asks the Claude Code CLI to
+# propose a bounded EXIT/SIZING tweak to the LIVE grinder profile
+# (configs/profiles/grinder.toml), validates it against the unit-test suite,
+# opens a PR, and auto-merges once CI is green.
+#
+# It can NEVER change the entry/bet-selection filters (win-rate frozen), never
+# introduces a stop-loss, never edits any other file, and never spends money
+# directly (a live bot picks up the merged config on its next restart).
+# See docs/AUTONOMY.md.
+#
+# Requires repo secret ANTHROPIC_API_KEY for the Claude CLI. Without it the
+# script falls back to a deterministic bounded hill-climb.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "17 6 * * *"   # 06:17 UTC daily; remove this block to disable
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: auto-improve
+  cancel-in-progress: false
+
+jobs:
+  improve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --python 3.12
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code || echo "claude CLI install failed; will fall back to hill-climb"
+
+      - name: Configure git identity
+        run: |
+          git config user.name "auto-improve[bot]"
+          git config user.email "auto-improve@users.noreply.github.com"
+
+      - name: Run self-improvement loop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AUTO_IMPROVE_ENABLED: "1"
+          AUTO_IMPROVE_USE_LLM: ${{ vars.AUTO_IMPROVE_USE_LLM || '1' }}
+          AUTO_IMPROVE_AUTOMERGE: ${{ vars.AUTO_IMPROVE_AUTOMERGE || '1' }}
+        run: uv run python scripts/auto_improve.py

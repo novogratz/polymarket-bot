@@ -53,7 +53,8 @@ def parse_json_list(value: Any) -> list[Any]:
 
 
 _EXCLUDED_QUESTION_SUBSTRINGS = (
-    # ALL crypto markets banned (2026-06-03).
+    # ALL crypto markets banned (2026-06-03) — Up/Down, price thresholds, and
+    # any coin market. btc_edge lane also disabled in the profiles.
     "up or down",
     "bitcoin",
     "btc",
@@ -116,13 +117,18 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     # Esports match markets: in-series swings (BO3/BO5) are uncatchable.
     # BESTIA CS match cost -$5 in one bet (2026-05-31).
     "counter-strike",
+    "esports",
     "dota 2",
+    "dota",
     "league of legends",
     "valorant",
     "overwatch",
     "starcraft",
     "rocket league",
     "rainbow six",
+    "cs2",
+    "csgo",
+    "(bo1)",
     "(bo3)",
     "(bo5)",
     "- bo3",
@@ -132,6 +138,7 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     "updown",
     "up-or-down",
     "exact-score",
+    # Esports slug markers.
     "counter-strike",
     "csgo",
     "cs2",
@@ -139,6 +146,7 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     "league-of-legends",
     "dota",
     "esports",
+    # Crypto slug markers (all crypto banned 2026-06-03).
     "bitcoin",
     "btc",
     "ethereum",

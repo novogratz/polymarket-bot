@@ -867,9 +867,15 @@ def _translate_questions_fr(questions: list[str]) -> dict[str, str]:
             + json.dumps(missing, ensure_ascii=False)
         )
         try:
+            # Force UTF-8 decode of the CLI output. text=True uses the locale
+            # encoding, which on a non-UTF-8 host (e.g. Windows cp1252, or a
+            # sidecar launched with no LANG) mangles accents into mojibake
+            # (é -> Ã©). encoding="utf-8" makes accents render on Telegram
+            # regardless of the host locale.
             proc = subprocess.run(
                 ["claude", "-p", prompt],
-                capture_output=True, encoding="utf-8", errors="replace", timeout=150,
+                capture_output=True, encoding="utf-8", errors="replace",
+                timeout=150,
             )
             out = (proc.stdout or "").strip()
             start, end = out.find("{"), out.rfind("}")
@@ -944,19 +950,22 @@ def cycle_once() -> None:
         "",
     ]
 
-    # Tous les trades cloturés aujourd'hui (meilleur -> pire perte en bas).
+    # Tous les trades clôturés aujourd'hui, du meilleur à la pire perte (en bas).
+    # load_todays_trades() trie déjà par PnL décroissant.
     if today_trades:
         n_total = len(today_trades)
         n_win = sum(1 for r in today_trades if float(r["pnl"]) > 0)
         n_loss = sum(1 for r in today_trades if float(r["pnl"]) < 0)
         day_pnl = sum(float(r["pnl"]) for r in today_trades)
+        # % progress today vs yesterday's closing balance (falls back to the
+        # all-time start when no prior-day snapshot exists yet).
         base_bal = yest_bal if (yest_bal and yest_bal > 0) else starting
-        day_pct = (day_pnl / base_bal * 100) if base_bal > 0 else 0.0
+        day_pct_vs_yest = (day_pnl / base_bal * 100) if base_bal > 0 else 0.0
         base_lbl = "vs hier" if (yest_bal and yest_bal > 0) else "vs debut"
         parts.append(
             f"TRADES DU JOUR (Total : {n_total}, Reussis : {n_win}, "
             f"Rates : {n_loss}, Gains du jour : {_sign(day_pnl)}${abs(day_pnl):.2f} "
-            f"/ {_sign(day_pct)}{abs(day_pct):.1f}% {base_lbl})"
+            f"/ {_sign(day_pct_vs_yest)}{abs(day_pct_vs_yest):.1f}% {base_lbl})"
         )
         for r in today_trades:
             pnl = float(r["pnl"]); pct = float(r.get("pct", 0.0) or 0.0)
@@ -964,15 +973,16 @@ def cycle_once() -> None:
             s = "+" if pnl >= 0 else "-"
             entry = float(r.get("entry") or 0.0)
             xt = r.get("exit")
-            # Always show entry -> sell prices (e.g. 0.95 -> 0.97). Derive the
-            # exit from the realized % when it wasn't recorded.
+            # Always show the entry → sell prices (e.g. "0.95 → 0.97"). When the
+            # exit price wasn't recorded (auto-redeemed / resolved without a SELL
+            # trade), derive it from the realized %: exit = entry * (1 + pct/100).
             if xt is None and entry:
                 xt = entry * (1.0 + pct / 100.0)
             side_lbl = _bet_side(r.get("side"), r.get("question"))
             if entry and xt is not None:
-                price = f"{entry:.2f} -> {float(xt):.2f}"
+                price = f"{entry:.2f} → {float(xt):.2f}"
             elif entry:
-                price = f"{entry:.2f} -> ?"
+                price = f"{entry:.2f} → ?"
             else:
                 price = ""
             detail = f"{price}  · {side_lbl}" if price else side_lbl
@@ -992,7 +1002,7 @@ def cycle_once() -> None:
             cur = float(p.get("cur", 0) or 0)
             parts.append(
                 f"  ⚪ {_q(p.get('question') or '')} ({_bet_side(p.get('side'), p.get('question'))}) : "
-                f"{entry:.2f} -> {cur:.2f}  |  ${cost:.2f} -> ${mtm:.2f}  ({_sign(unr)}${abs(unr):.2f})"
+                f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${abs(unr):.2f})"
             )
         parts.append(f"  Latent : {_sign(unrealized)}${abs(unrealized):.2f}")
         parts.append("")

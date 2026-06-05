@@ -450,8 +450,16 @@ def _fmt_all_time_line(
     record is written).
     """
     pnl, wins, losses = _journal_stats()
-    base = float(total_override) if total_override is not None else pnl + float(unrealized or 0.0)
-    total = base + extra_pnl
+    if total_override is not None:
+        total = float(total_override) + extra_pnl
+    else:
+        vs_start = _total_pnl_vs_start()
+        if vs_start is not None:
+            # Equity − starting baseline (matches the daily report). Equity
+            # already reflects closed trades, so extra_pnl is NOT re-added.
+            total = vs_start
+        else:
+            total = pnl + float(unrealized or 0.0) + extra_pnl
     if extra_pnl > 0.005:
         wins += 1
     elif extra_pnl < -0.005:

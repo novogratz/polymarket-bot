@@ -153,8 +153,8 @@ The dry-analyst `_pick_favorite` returns wording "Top of N profitable strategies
 - Do not implement random or unfiltered live trades. The `noise_fallback` path is the only forced-trade lane and is hard-capped at $10/trade and 4 trades/tick.
 - Preserve the local ledger `data/paper_state.json` unless the user explicitly asks for a reset.
 - Preserve `data/trade_journal.jsonl` and `data/strategy_overrides.json` unless explicitly asked to reset them.
-- No LLM call (Claude, Codex, anything else) in the scanning or trade-selection path. The scanner stays deterministic Python over Polymarket APIs.
-- The bot does not have the capability to write or push source code on its own.
+- No LLM call (Claude, Codex, anything else) in the scanning or trade-selection path. The scanner stays deterministic Python over Polymarket APIs. (The `auto-improve` self-tuner runs OFFLINE and never enters the live trade loop — see below.)
+- Source-code autonomy is bounded and opt-in (2026-06-05). `scripts/auto_improve.py` + `.github/workflows/auto-improve.yml` use the Claude Code CLI to open PRs that tune the LIVE `grinder.toml`, then auto-merge once CI is green. It may ONLY change EXIT/SIZING knobs (`tp_pct`, `stake_pct`, `max_orders_per_tick`, `resolved_exit_threshold`, `max_hold_hours`), each hard-clamped. The ENTRY/bet-selection filters (price band, spread, hours, day-change, momentum, liquidity/volume) are FROZEN — `_audit_frozen` aborts if they move — so the win rate is protected. A stop-loss can NEVER be introduced (`sl_pct`/`stop_loss_pct` not tunable; honours "never sell losing positions"). It never edits any other file (`grinder_b.toml`, kzer profile, `.env`, source). This is the one sanctioned exception to "no LLM / no self-written source" — it runs OFFLINE, never in the live trade loop. Full design + switches in `docs/AUTONOMY.md`.
 
 ## Project map
 
