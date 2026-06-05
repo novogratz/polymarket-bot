@@ -21,12 +21,12 @@ echo "[run_live] logging to $RUN_LOG (live also -> $LIVE_LOG)"
 # Sync live positions (toggle hors schéma).
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
-# Bot B bankroll fallback = $49.82 (this bot's real equity). The bot reads the
-# real USDC balance from CLOB each tick; these only kick in if that read fails.
-# MUST match grinder_b.toml — a mismatched fallback (was 141, the primary bot's
-# value) made the report show fake +183% (141 - 49.82 baseline).
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-30.0}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-30.0}
+# Bot B bankroll fallback = $65 (this bot's baseline). The bot reads the real
+# USDC balance from CLOB each tick; these only kick in if that read fails.
+# MUST match grinder_b.toml starting_cash — a mismatched fallback skews the
+# "depuis le début" % in the LIVE REPORT.
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-65.0}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-65.0}
 
 # 10s tick — 3× faster than 30s, catches more fleeting band entries.
 export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}

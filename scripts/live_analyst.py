@@ -886,9 +886,15 @@ def _translate_questions_fr(questions: list[str]) -> dict[str, str]:
             + json.dumps(missing, ensure_ascii=False)
         )
         try:
+            # Force UTF-8 decode of the CLI output. text=True uses the locale
+            # encoding, which on a non-UTF-8 host (e.g. Windows cp1252, or a
+            # sidecar launched with no LANG) mangles accents into mojibake
+            # (é -> Ã©). encoding="utf-8" makes accents render on Telegram
+            # regardless of the host locale.
             proc = subprocess.run(
                 ["claude", "-p", prompt],
-                capture_output=True, text=True, timeout=150,
+                capture_output=True, encoding="utf-8", errors="replace",
+                timeout=150,
             )
             out = (proc.stdout or "").strip()
             start, end = out.find("{"), out.rfind("}")

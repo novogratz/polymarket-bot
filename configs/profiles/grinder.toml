@@ -13,7 +13,7 @@
 # its own grinder_b.toml — edit that one for that machine, never this.
 # Fresh start 2026-06-04: flat ledger, $13.45 real cash, 0 positions,
 # history cleared. Total P&L tracks from here.
-starting_cash = 13.45
+starting_cash = 60.0
 mode = "grinder"
 
 [sizing]
@@ -26,7 +26,7 @@ cash_floor_pct = 0.05
 position_pct = 0.50
 min_open_positions = 0
 starter_trade_usd = 1.5
-assumed_live_balance_usd = 13.45
+assumed_live_balance_usd = 60.0
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.50
 
