@@ -992,13 +992,21 @@ def cycle_once() -> None:
             s = "+" if pnl >= 0 else "-"
             entry = float(r.get("entry") or 0.0)
             xt = r.get("exit")
-            # "Au-dessus de 4.5 buts @0.88→1.00" — pari, proba payée, résolution.
+            # Always show the entry → sell prices (e.g. "0.95 → 0.97"). When the
+            # exit price wasn't recorded (auto-redeemed / resolved without a SELL
+            # trade), derive it from the realized %: exit = entry * (1 + pct/100).
+            if xt is None and entry:
+                xt = entry * (1.0 + pct / 100.0)
             side_lbl = _bet_side(r.get("side"), r.get("question"))
-            bet = f"{side_lbl} @{entry:.2f}" if entry else side_lbl
-            if xt is not None:
-                bet += f"→{float(xt):.2f}"
+            if entry and xt is not None:
+                price = f"{entry:.2f} → {float(xt):.2f}"
+            elif entry:
+                price = f"{entry:.2f} → ?"
+            else:
+                price = ""
+            detail = f"{price}  · {side_lbl}" if price else side_lbl
             parts.append(
-                f"  {mood} {s}${abs(pnl):.2f} ({s}{abs(pct):.1f}%)  {bet}\n"
+                f"  {mood} {s}${abs(pnl):.2f} ({s}{abs(pct):.1f}%)  {detail}\n"
                 f"      _{_q(r.get('question') or '')}_"
             )
         parts.append("")
