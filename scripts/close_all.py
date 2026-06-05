@@ -48,14 +48,31 @@ _load_env()
 
 
 def _get_current_bid(token_id: str) -> float | None:
-    """Fetch current best bid for a token from the CLOB order book."""
+    """Fetch current best bid via CLOB /price (SELL side) then Gamma fallback."""
+    # Try CLOB /price endpoint first (authenticated not required, less likely to 403)
+    for attempt in range(2):
+        try:
+            url = f"https://clob.polymarket.com/price?token_id={token_id}&side=SELL"
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            data = json.loads(urllib.request.urlopen(req, timeout=10).read().decode())
+            price = data.get("price")
+            if price is not None:
+                return float(price)
+        except Exception:
+            time.sleep(1)
+
+    # Fallback: Gamma API
     try:
-        url = f"https://clob.polymarket.com/book?token_id={token_id}"
+        url = f"https://gamma-api.polymarket.com/markets?clob_token_ids={token_id}"
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
         data = json.loads(urllib.request.urlopen(req, timeout=10).read().decode())
-        bids = data.get("bids") or []
-        if bids:
-            return float(bids[0].get("price", 0))
+        markets = data if isinstance(data, list) else data.get("markets", [])
+        for m in markets:
+            for outcome in (m.get("tokens") or m.get("outcomes") or []):
+                if str(outcome.get("token_id") or "") == token_id:
+                    p = outcome.get("price") or outcome.get("outcome_price")
+                    if p is not None:
+                        return float(p)
     except Exception as exc:
         print(f"  ! bid fetch failed for {token_id[:16]}: {exc}")
     return None
@@ -97,28 +114,48 @@ def _sell_position(client, position: dict) -> float | None:
     neg_risk = bool(position.get("neg_risk") or False)
 
     stub = types.SimpleNamespace(token_id=token_id, tick_size=tick_size, neg_risk=neg_risk)
-    try:
-        _, response = client.place_live_order(
-            candidate=stub, price=sell_price, size=round(shares, 6), side="SELL"
-        )
-        resp = response if isinstance(response, dict) else (
-            response.__dict__ if hasattr(response, "__dict__") else {}
-        )
-        success = (
-            resp.get("success") is True
-            or resp.get("status") in ("matched", "delayed", "live")
-            or bool(resp.get("orderID") or resp.get("orderId"))
-        )
-        if success:
-            taking = resp.get("takingAmount")
-            proceeds = float(taking) if taking is not None else round(shares * sell_price, 2)
-            print(f"  ✓ SOLD {shares:.4f} @ {sell_price} → ${proceeds:.2f}  "
-                  f"{position.get('question', '?')[:50]}")
-            return proceeds
-        else:
+    # Try up to 3 times — retry on timeout; lower price on invalid maker amount
+    for attempt in range(3):
+        try:
+            _, response = client.place_live_order(
+                candidate=stub, price=sell_price, size=round(shares, 6), side="SELL"
+            )
+            resp = response if isinstance(response, dict) else (
+                response.__dict__ if hasattr(response, "__dict__") else {}
+            )
+            success = (
+                resp.get("success") is True
+                or resp.get("status") in ("matched", "delayed", "live")
+                or bool(resp.get("orderID") or resp.get("orderId"))
+            )
+            if success:
+                taking = resp.get("takingAmount")
+                proceeds = float(taking) if taking is not None else round(shares * sell_price, 2)
+                print(f"  ✓ SOLD {shares:.4f} @ {sell_price} → ${proceeds:.2f}  "
+                      f"{position.get('question', '?')[:50]}")
+                return proceeds
+            err = str(resp)
+            if "invalid maker amount" in err.lower() and attempt < 2:
+                # Round shares to 2 decimal places and nudge price down one tick
+                shares = round(shares, 2)
+                sell_price = round(max(sell_price - tick_size, 0.01), 3)
+                time.sleep(1)
+                continue
             print(f"  ! order not matched: {resp}")
-    except Exception as exc:
-        print(f"  ! sell failed: {type(exc).__name__}: {exc}")
+            break
+        except Exception as exc:
+            msg = str(exc)
+            if attempt < 2 and ("timed out" in msg.lower() or "timeout" in msg.lower()):
+                print(f"  retrying ({attempt+1}/3) after timeout...")
+                time.sleep(3)
+                continue
+            if "invalid maker amount" in msg.lower() and attempt < 2:
+                shares = round(shares, 2)
+                sell_price = round(max(sell_price - tick_size, 0.01), 3)
+                time.sleep(1)
+                continue
+            print(f"  ! sell failed: {type(exc).__name__}: {exc}")
+            break
     return None
 
 
@@ -131,16 +168,33 @@ def main() -> int:
         print("ERROR: POLYMARKET_FUNDER_ADDRESS not set in .env")
         return 1
 
-    # Load paper_state
+    # Load positions — prefer Data API (ground truth) over paper_state
     state_path = DATA_DIR / "paper_state.json"
-    if not state_path.exists():
-        print("No paper_state.json found — nothing to close.")
-        return 0
+    state = json.loads(state_path.read_text()) if state_path.exists() else {}
 
-    state = json.loads(state_path.read_text())
-    positions = state.get("positions") or []
+    positions = []
+    try:
+        url = "https://data-api.polymarket.com/positions?" + urllib.parse.urlencode(
+            {"user": settings.funder_address, "sizeThreshold": "0.1", "limit": "100"}
+        )
+        req = urllib.request.Request(url, headers={"User-Agent": "x", "Accept": "application/json"})
+        api_positions = json.loads(urllib.request.urlopen(req, timeout=20).read().decode())
+        for p in api_positions:
+            positions.append({
+                "token_id": p.get("asset") or p.get("token_id"),
+                "question": p.get("title") or p.get("question") or "?",
+                "shares": float(p.get("size") or p.get("shares") or 0),
+                "current_price": float(p.get("curPrice") or p.get("current_price") or 0.5),
+                "tick_size": float(p.get("tickSize") or p.get("tick_size") or 0.01),
+                "neg_risk": bool(p.get("negRisk") or p.get("neg_risk") or False),
+            })
+        print(f"Found {len(positions)} open position(s) from Data API.")
+    except Exception as exc:
+        print(f"Data API failed ({exc}), falling back to paper_state...")
+        positions = state.get("positions") or []
+
     if not positions:
-        print("No open positions in paper_state.json.")
+        print("No open positions found — nothing to close.")
         return 0
 
     print(f"\nClosing {len(positions)} open position(s)...\n")
