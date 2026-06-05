@@ -68,7 +68,7 @@ min_outcome_momentum = -0.05
 
 # Spread 2¢ → 4¢ (2026-05-30): the wider 0.85-0.97 band includes slightly
 # thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.
-max_spread = 0.04
+max_spread = 0.02
 
 # 80% stake, 1 slot — Kelly-optimal at 90% win rate (Kelly = W - L/R = 0.80).
 stake_usd = 1.0
@@ -121,7 +121,7 @@ min_model_probability = 0.75
 min_edge_over_market = 0.05
 min_buy_price = 0.75
 max_buy_price = 0.97
-max_spread = 0.04
+max_spread = 0.02
 min_trade_usd = 1.0
 per_trade_cap_usd = 5.0
 min_hours_to_close = 0.08
