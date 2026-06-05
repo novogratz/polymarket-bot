@@ -429,34 +429,22 @@ def telegram_post(text: str, *, live: bool = True) -> bool:
         print(f"[live-analyst] telegram disabled ({chat_var} missing)\n{text}", flush=True)
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-
-    def _send(use_markdown: bool) -> bool:
-        body = {
-            "chat_id": chat,
-            "text": text[:4000],
-            "disable_web_page_preview": True,
-        }
-        if use_markdown:
-            body["parse_mode"] = "Markdown"
-        req = urllib.request.Request(
-            url, data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+    # Plain text only — no parse_mode. Market titles can contain _ * ( )
+    # which break Telegram Markdown parsing and corrupt accented characters.
+    body = {
+        "chat_id": chat,
+        "text": text[:4000],
+        "disable_web_page_preview": True,
+    }
+    req = urllib.request.Request(
+        url, data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return 200 <= resp.status < 300
-
-    try:
-        return _send(True)
     except Exception as exc:
-        # 400 → Markdown parse error (e.g. the model's **bold** leaks into the
-        # verdict). Retry as plain text so the report still lands.
-        if getattr(exc, "code", None) == 400:
-            try:
-                return _send(False)
-            except Exception as exc2:
-                print(f"[live-analyst] telegram failed (plain retry): {exc2}", file=sys.stderr, flush=True)
-                return False
         print(f"[live-analyst] telegram failed: {exc}", file=sys.stderr, flush=True)
         return False
 
@@ -943,20 +931,20 @@ def cycle_once() -> None:
     bot_name = os.environ.get("POLYMARKET_BOT_NAME", "Grinder Bot 1")
 
     parts = [
-        f"📋 *RAPPORT LIVE — {date_str}* _{stamp}_",
-        f"_Polymarket · {bot_name}_",
+        f"📋 RAPPORT LIVE — {date_str} {stamp}",
+        f"Polymarket · {bot_name}",
         divider,
         "",
-        "*PROFITS & PERTES :*",
+        "PROFITS & PERTES :",
         f"  {_mood(net)} Capital : ${snap.equity:.2f}  "
-        f"({_sign(net)}${abs(net):.2f}, {_sign(net)}{abs(net_pct):.1f}% depuis le début)",
-        f"  📊 Trades : *{snap.closed}*  •  Réussite : *{snap.win_rate:.0f}%* "
-        f"({snap.wins}V / {snap.losses}D{f' / {snap.flats} nul' if snap.flats else ''})",
+        f"({_sign(net)}${abs(net):.2f}, {_sign(net)}{abs(net_pct):.1f}% depuis le debut)",
+        f"  📊 Trades : {snap.closed}  •  Reussite : {snap.win_rate:.0f}%"
+        f" ({snap.wins}V / {snap.losses}D{f' / {snap.flats} nul' if snap.flats else ''})",
         "",
     ]
 
     if open_pos:
-        parts.append(f"*POSITIONS OUVERTES ({len(open_pos)}) :*")
+        parts.append(f"POSITIONS OUVERTES ({len(open_pos)}) :")
         for p in open_pos:
             unr = float(p.get("unr", 0) or 0)
             cost = float(p.get("cost", 0) or 0)
@@ -965,12 +953,12 @@ def cycle_once() -> None:
             cur = float(p.get("cur", 0) or 0)
             parts.append(
                 f"  ⚪ {_q(p.get('question') or '')} ({_bet_side(p.get('side'), p.get('question'))}) : "
-                f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${abs(unr):.2f})"
+                f"{entry:.2f} -> {cur:.2f}  |  ${cost:.2f} -> ${mtm:.2f}  ({_sign(unr)}${abs(unr):.2f})"
             )
-        parts.append(f"  _Latent : {_sign(unrealized)}${abs(unrealized):.2f}_")
+        parts.append(f"  Latent : {_sign(unrealized)}${abs(unrealized):.2f}")
         parts.append("")
 
-    parts.append(f"_Polymarket · {bot_name}_")
+    parts.append(f"Polymarket · {bot_name}")
 
     msg = "\n".join(parts)
     telegram_post(msg)
