@@ -70,9 +70,9 @@ min_outcome_momentum = -0.05
 # thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.
 max_spread = 0.04
 
-# 70% stake, 1 slot — each win ~+70% on stake, fast compounding at high win rate.
+# 80% stake, 1 slot — Kelly-optimal at 90% win rate (Kelly = W - L/R = 0.80).
 stake_usd = 1.0
-stake_pct = 0.70
+stake_pct = 0.80
 max_orders_per_tick = 1
 cash_floor_pct = 0.01
 
