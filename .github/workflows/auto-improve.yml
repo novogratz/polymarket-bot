@@ -1,21 +1,22 @@
 name: auto-improve
 
-# Autonomous strategy self-improvement. Proposes a bounded tweak to the DRY
-# twin profile (configs/profiles/grinder_auto.toml), validates it against the
-# unit-test suite, and opens a PR. It NEVER edits live profiles, .env, or the
-# trade-selection code, and never spends real money (grinder_auto is dry-run).
+# Autonomous strategy self-improvement. Each run asks the Claude Code CLI to
+# propose a bounded EXIT/SIZING tweak to the LIVE grinder profile
+# (configs/profiles/grinder.toml), validates it against the unit-test suite,
+# opens a PR, and auto-merges once CI is green.
 #
-# OFF by default: it only runs on manual dispatch or the schedule below, and
-# only does anything when AUTO_IMPROVE_ENABLED=1 is set (provided here). The
-# two risky switches stay OFF unless you set them as repo variables:
-#   AUTO_IMPROVE_AUTOMERGE  -> self-merge once CI is green
-#   AUTO_IMPROVE_USE_LLM    -> use the claude CLI to propose deltas
+# It can NEVER change the entry/bet-selection filters (win-rate frozen), never
+# introduces a stop-loss, never edits any other file, and never spends money
+# directly (a live bot picks up the merged config on its next restart).
 # See docs/AUTONOMY.md.
+#
+# Requires repo secret ANTHROPIC_API_KEY for the Claude CLI. Without it the
+# script falls back to a deterministic bounded hill-climb.
 
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "17 6 * * *"   # 06:17 UTC daily; disable by removing this block
+    - cron: "17 6 * * *"   # 06:17 UTC daily; remove this block to disable
 
 permissions:
   contents: write
@@ -44,6 +45,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --python 3.12
 
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code || echo "claude CLI install failed; will fall back to hill-climb"
+
       - name: Configure git identity
         run: |
           git config user.name "auto-improve[bot]"
@@ -52,9 +56,8 @@ jobs:
       - name: Run self-improvement loop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           AUTO_IMPROVE_ENABLED: "1"
-          # Risky switches: OFF unless set as repo variables. Auto-merge needs a
-          # branch-protection required check on `main` to be meaningful.
-          AUTO_IMPROVE_AUTOMERGE: ${{ vars.AUTO_IMPROVE_AUTOMERGE || '0' }}
-          AUTO_IMPROVE_USE_LLM: ${{ vars.AUTO_IMPROVE_USE_LLM || '0' }}
+          AUTO_IMPROVE_USE_LLM: ${{ vars.AUTO_IMPROVE_USE_LLM || '1' }}
+          AUTO_IMPROVE_AUTOMERGE: ${{ vars.AUTO_IMPROVE_AUTOMERGE || '1' }}
         run: uv run python scripts/auto_improve.py
