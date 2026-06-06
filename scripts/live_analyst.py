@@ -112,7 +112,7 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "3600"))   # 1 hour
+CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))   # 30 minutes
 
 
 @dataclass
@@ -1196,7 +1196,7 @@ def main() -> int:
     no daily quant report, no BUY/SELL alerts, no heartbeat. Just the
     LIVE REPORT (equity since start, top trades today, open positions).
     """
-    interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "3600"))  # 1 hour
+    interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))  # 30 minutes
     print(
         f"[live-analyst] starting — LIVE REPORT every {interval}s "
         f"(+ once now on start, + daily at 10:00 US/Eastern)",

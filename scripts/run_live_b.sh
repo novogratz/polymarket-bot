@@ -38,12 +38,12 @@ export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-
 # (force-close scripts corrupted it). Real equity is read from CLOB each tick.
 export TELEGRAM_EQUITY_FLOOR_USD=0
 
-# LIVE REPORT cadence: every 1 hour (the ONLY Telegram message this stack
+# LIVE REPORT cadence: every 30 minutes (the ONLY Telegram message this stack
 # sends). Pinned explicitly so it never drifts from the code default.
-export LIVE_ANALYST_CYCLE_SECONDS=${LIVE_ANALYST_CYCLE_SECONDS:-3600}
+export LIVE_ANALYST_CYCLE_SECONDS=${LIVE_ANALYST_CYCLE_SECONDS:-1800}
 
 # Telegram: SILENCE the live bot entirely. The ONLY message we want is the
-# hourly LIVE REPORT from the live_analyst sidecar (TELEGRAM_CHAT_ID_LIVE).
+# 30-minute LIVE REPORT from the live_analyst sidecar (TELEGRAM_CHAT_ID_LIVE).
 # No BUY/SELL, no heartbeat, no thresholds, no daily summary — nothing.
 # These flags default to ON when unset, so each one must be set to 0 explicitly.
 export TELEGRAM_ALERT_TRADES=0
