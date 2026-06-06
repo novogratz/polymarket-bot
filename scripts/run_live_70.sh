@@ -33,10 +33,6 @@ export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
 # Drawdown halt at 40% — generous enough that one SL loss (-35%) doesn't freeze the bot.
 export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-0.40}
 
-# Allow SL-triggered sells below entry price (the default loss-floor blocks them).
-# The SL in race_strategies.py uses 3-tick confirmation to filter phantom bids.
-export POLYMARKET_ALLOW_LOSS_SELL=1
-
 # Disable floor alert — local ledger cash is lower than real CLOB balance
 # (force-close scripts corrupted it). Real equity is read from CLOB each tick.
 export TELEGRAM_EQUITY_FLOOR_USD=0

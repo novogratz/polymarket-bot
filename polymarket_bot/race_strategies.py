@@ -1162,20 +1162,6 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
     mtc = _minutes_to_close(position)
     if mtc is not None and 0 <= mtc < 30 and current_pnl_pct > 0:
         return {"reason": "near_expiry_profit_lock", "shares": shares}
-    # Stop-loss with multi-tick confirmation to guard against Polymarket phantom
-    # bids (thin books can flash an anomalous low bid for a single tick, then
-    # snap back — the old SL fired on those and sold winners). Requires
-    # _SL_CONFIRM_TICKS consecutive ticks (≈30s at 10s interval) below the
-    # threshold before selling. A one-tick glitch resets the counter.
-    if settings.race_sl_pct < 1.0:
-        token_id = str(position.get("token_id") or "")
-        if current_pnl_pct <= -settings.race_sl_pct:
-            _sl_below_ticks[token_id] = _sl_below_ticks.get(token_id, 0) + 1
-            if _sl_below_ticks[token_id] >= _SL_CONFIRM_TICKS:
-                _sl_below_ticks.pop(token_id, None)
-                return {"reason": "race_stop_loss", "shares": shares}
-        else:
-            _sl_below_ticks.pop(token_id, None)
     return None
 
 
