@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (bid 0.87–0.95) within 4 hours of resolution, holds until the market prints near-final value (bid ≥ 0.99), and rotates capital into the next opportunity. Includes a binary arbitrage scanner that books risk-free profit whenever YES + NO combined cost drops below $1.
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (bid 0.85–0.97) within ~4 hours of resolution, holds until the market prints near-final value (bid ≥ 0.97), and rotates capital into the next opportunity. Ships an optional binary arbitrage scanner and an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -29,7 +29,9 @@ pip install -e ".[dev]"
 bash scripts/run_live_70.sh
 ```
 
-Starts the live grinder (**10 s tick**) alongside a dry paper twin (10 min tick), a live analyst sidecar (Telegram summary every 30 min), and an autonomous dry analyst (15 min report). All logic is deterministic — no AI anywhere.
+Starts the live grinder (**10 s tick**) alongside a dry paper twin (10 min tick) and a read-only **live analyst** sidecar that posts a Telegram **LIVE REPORT every hour** (equity since start, today's closed trades with entry → sell prices, open positions). The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path**.
+
+Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet, ledger, and per-bot analyst (`run_live_70.sh`, `run_live_b.sh`, and `run_live_win.sh` on the `kzer_windows` branch).
 
 > **Do not use `run_all.sh` for live trading.** It resets the ledger on startup and launches a retired 95-profile dry race.
 
@@ -37,19 +39,21 @@ Starts the live grinder (**10 s tick**) alongside a dry paper twin (10 min tick)
 
 ## Strategy
 
-**Thesis.** A binary market at bid 0.87–0.95 within 4 hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0. A secondary arb pass each tick books risk-free profit when YES + NO combined ask < $1.
+**Thesis.** A binary market at bid 0.85–0.97 within ~4 hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0. An optional arb pass each tick books risk-free profit when YES + NO combined ask < $1.
 
 ### Entry filters
 
-| Parameter | Value |
+| Parameter | Value (`grinder.toml [race]`) |
 |---|---|
-| Bid band | 0.87 – 0.95 |
-| Time to close | ≤ 4 hours |
-| Max spread | 2¢ |
+| Bid band | 0.85 – 0.97 |
+| Time to close | ≤ 4 hours (hard rule; scan loads ≤ 6 h then filters to 4 h) |
+| Max spread | ≤ 4¢ |
 | Min liquidity | $500 |
 | Min 24 h volume | $300 |
 | Max one-day price change | 10 % |
 | Min outcome momentum | −5 % |
+
+> Exact values live in `configs/profiles/grinder.toml` and are the single source of truth — the table reflects the current live config but may be tuned over time (see [Self-improvement](#self-improvement)).
 
 The **price-stability gate** (max day change 10 %) blocks markets that moved significantly today — a live-game "No" sitting at 0.93 can collapse to 0.40 in a single tick when a goal is scored. The **momentum filter** (min −5 %) additionally skips outcomes that are actively falling today: a market at 0.91 that was at 0.96 this morning is trending *away* from resolution, not toward it.
 
@@ -60,8 +64,11 @@ These categories are blocked globally because a stop-loss cannot protect against
 | Pattern | Reason |
 |---|---|
 | `exact score` | Soccer exact-score collapses instantly on a goal |
-| `o/u 0.5` | Any-goal binary — same gap risk |
+| `o/u 0.5 / 1.5 / 2.5 / 3.5` | Low-line totals — any goal flips them |
 | `o/u 5.5 / 6.5 / 7.5` | High-line soccer, catastrophic if 6+ goals scored |
+| `spread:` (Asian handicap) | Same gap risk as exact-score |
+| draw markets (`end in a draw`, `win or draw`) | Coin-flip-like, no real favorite edge |
+| halftime leading / score | Resolves mid-game, gap risk |
 | `temperature`, `°c`, `°f` | Specific-degree weather, near-zero win rate in band |
 | `up or down`, slug `updown` | Crypto Up/Down binaries, no real book depth |
 
@@ -71,7 +78,7 @@ These categories are blocked globally because a stop-loss cannot protect against
 
 Each win at 50 % stake = **+4.4 % on the account**. Two wins = ~9 %. Three wins = ~13 %. One loss = −50 % on stake, painful but recoverable with one follow-up win.
 
-**Realistic performance expectations at $123:**
+**Realistic performance expectations** (percentages are bankroll-independent — the stake scales with the account):
 
 | Day type | Frequency | Result |
 |---|---|---|
@@ -80,21 +87,32 @@ Each win at 50 % stake = **+4.4 % on the account**. Two wins = ~9 %. Three wins 
 | Normal — 1 win | ~25 % of days | +4–5 % |
 | Bad — 1 loss | ~10 % of days | −8–12 % |
 
-**Expected average: 5–7 % per day** on active days. Weekly target: **20–30 %**. Wider entry band (0.87–0.95) and 10 s tick (was 30 s) maximize the number of qualifying trades found each day.
+**Expected average: 5–7 % per day** on active days. Weekly target: **20–30 %**. The wide entry band (0.85–0.97) and 10 s tick maximize the number of qualifying trades found each day.
 
 ### Exits
 
 | Condition | Code |
 |---|---|
-| Bid ≥ 0.99 | `race_big_win_resolved` — primary exit |
+| Bid ≥ 0.97 | `race_big_win_resolved` — primary exit (`resolved_exit_threshold`) |
 | Hold ≥ 4.5 h | `race_expired_close` — backstop |
 | Bid ≤ 0.03 (universal sweep) | `resolved_market_sweep_loss` |
 
-No take-profit ladder. No stop-loss. The exclusion filters, price-stability gate, and momentum filter are the primary risk controls.
+No take-profit ladder and **no stop-loss** — a stop-loss cannot catch the gap moves that sink prediction markets (a "No" at 0.94 can print 0.44 in one tick), so the exclusion filters, price-stability gate, and momentum filter are the risk controls instead. Losing positions are **never** force-sold.
 
 ### Binary arbitrage
 
-A second pass runs every tick scanning all markets for `YES_ask + NO_ask < 0.97`. When found, the bot buys both tokens — one will resolve to $1, the other to $0, guaranteeing at least 3 % profit regardless of the outcome. Arb positions skip TP/SL and ride to resolution. Capped at $5 per leg so it never crowds out the main grinder trades.
+An optional pass scans all markets for `YES_ask + NO_ask < threshold`. When found, the bot buys both tokens — one resolves to $1, the other to $0, guaranteeing a profit regardless of outcome. Arb positions skip TP/SL and ride to resolution, capped at $5 per leg. **Currently disabled** (`arb_threshold = 0.0` in `grinder.toml`); set it to e.g. `0.97` to enable.
+
+### Self-improvement
+
+An **opt-in** autonomous loop (`scripts/auto_improve.py` + `.github/workflows/auto-improve.yml`) lets the bot tune its own strategy and ship the changes as auto-merged pull requests, driven by the Claude Code CLI. It is fenced so it can never harm the win rate:
+
+- **Entry/bet-selection is frozen** — the agent can only change *exit/sizing* knobs (`tp_pct`, `stake_pct`, `max_orders_per_tick`, `resolved_exit_threshold`, `max_hold_hours`), each hard-clamped. An audit aborts the run if any entry filter moves.
+- **A stop-loss can never be introduced.**
+- It edits only `grinder.toml`, never other profiles, `.env`, or source code.
+- A PR opens only after the unit-test suite passes, and auto-merges only when CI is green.
+
+Off by default (`AUTO_IMPROVE_ENABLED=0`). Full design, switches, and setup in [`docs/AUTONOMY.md`](docs/AUTONOMY.md).
 
 ---
 
@@ -133,8 +151,17 @@ POLYMARKET_API_PASSPHRASE=...
 ```bash
 POLYMARKET_SYNC_LIVE_POSITIONS=1         # sync live CLOB positions each tick
 POLYMARKET_AUTO_INTERVAL_SECONDS=10      # tick interval (set by run_live_70.sh)
-POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0.15  # daily DD halt threshold
+POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0.40  # daily DD halt threshold
 POLYMARKET_HTTP_CACHE_TTL_SECONDS=600    # shared HTTP cache TTL
+LIVE_ANALYST_CYCLE_SECONDS=3600          # LIVE REPORT cadence (1 h)
+```
+
+**Autonomous self-improvement (opt-in — see [`docs/AUTONOMY.md`](docs/AUTONOMY.md)):**
+
+```bash
+AUTO_IMPROVE_ENABLED=0     # master gate; nothing runs unless 1
+AUTO_IMPROVE_USE_LLM=1     # propose changes via the Claude Code CLI
+AUTO_IMPROVE_AUTOMERGE=1   # auto-merge the PR once CI is green
 ```
 
 ---
@@ -172,12 +199,15 @@ polymarket_bot/
   models.py            shared dataclasses, exclusion filters
   smart_money.py       leaderboard fetch and signal scoring
 scripts/
-  run_live_70.sh       canonical live launcher
-  live_analyst.py      30 min Telegram sidecar (read-only)
+  run_live_70.sh       canonical live launcher (Bot 1)
+  run_live_b.sh        Bot 2 launcher (grinder_b)
+  live_analyst.py      hourly Telegram LIVE REPORT sidecar (read-only)
   dry_analyst.py       15 min deterministic report + loser-kill
+  auto_improve.py      opt-in self-improvement loop (auto-PR, off by default)
 docs/
   PROFILES.md          TOML key reference
   STRATEGIES.md        entry lanes and exit conditions
+  AUTONOMY.md          self-improvement engine design + switches
 ```
 
 ---

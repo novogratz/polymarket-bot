@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] - 2026-06-05
+
+Official "Grinder V1" release. Heavy-favorite, ride-to-resolution strategy with a deterministic live trade path.
+
+### Added
+
+- **Autonomous self-improvement engine** (`scripts/auto_improve.py` + `.github/workflows/auto-improve.yml`): opt-in loop that uses the Claude Code CLI to tune the live strategy's **exit/sizing** knobs and ship the change as an auto-merged PR. Entry/bet-selection is frozen and a stop-loss can never be introduced; gated by the unit-test suite and green CI. Off by default. See `docs/AUTONOMY.md`.
+- **Hourly LIVE REPORT** (`scripts/live_analyst.py`): per-bot Telegram report on startup, every 1 h, and a daily 10:00 ET fire. Shows equity since start, every closed trade with **entry → sell prices**, and open positions. French localisation with UTF-8-safe translation.
+- Three-bot live deployment (Grinder Bot 1/2/3), each with its own wallet, ledger, and scoped analyst.
+
+### Changed
+
+- Entry band widened to **0.85–0.97**; `resolved_exit_threshold` held at **0.97**.
+- Per-bot all-time baselines re-based after manual deposits; "depuis le début" % now reflects deposited capital.
+- Documentation refreshed (`README.md`, `CHANGELOG.md`) to match the live config.
+
+### Fixed
+
+- French accents no longer mojibake on Telegram (force UTF-8 decode of the translation CLI output — fixes Windows cp1252 hosts).
+
 ## [1.5.0] - 2026-05-28
 
 Grinder strategy tuning: faster exits, bigger wins per trade, more opportunities per tick.
