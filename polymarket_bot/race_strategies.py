@@ -41,6 +41,12 @@ from .trading import build_client, execute_live_sell, execute_live_trade
 _sl_below_ticks: dict[str, int] = {}
 _SL_CONFIRM_TICKS = 3
 
+# Track consecutive ticks a candidate has been in the entry band per token_id.
+# Prevents buying on a one-tick price anomaly — token must appear in the band
+# for 2 consecutive ticks before we commit capital.
+_entry_confirm_ticks: dict[str, int] = {}
+_ENTRY_CONFIRM_TICKS = 2
+
 
 def _step(settings: Settings, msg: str) -> None:
     if not settings.quiet:
@@ -1151,6 +1157,11 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
         return None
     if current_pnl_pct >= settings.race_tp_pct:
         return {"reason": "race_take_profit", "shares": shares}
+    # Near-expiry profit lock: market closing in <30min and we're in profit —
+    # sell now to lock in the gain rather than risking a last-minute revert.
+    mtc = _minutes_to_close(position)
+    if mtc is not None and 0 <= mtc < 30 and current_pnl_pct > 0:
+        return {"reason": "near_expiry_profit_lock", "shares": shares}
     # Stop-loss with multi-tick confirmation to guard against Polymarket phantom
     # bids (thin books can flash an anomalous low bid for a single tick, then
     # snap back — the old SL fired on those and sold winners). Requires
@@ -2077,7 +2088,15 @@ def _run_race_tick(
         # can fire and free the token for future entries.
         if portfolio.has_open_token(candidate.token_id):
             rejected.append({"question": candidate.question, "reason": "duplicate_open_token"})
+            _entry_confirm_ticks.pop(candidate.token_id, None)
             continue
+        # 2-tick confirmation: must appear in the band on 2 consecutive ticks
+        # before we enter — filters one-tick price anomalies from thin books.
+        _entry_confirm_ticks[candidate.token_id] = _entry_confirm_ticks.get(candidate.token_id, 0) + 1
+        if _entry_confirm_ticks[candidate.token_id] < _ENTRY_CONFIRM_TICKS:
+            rejected.append({"question": candidate.question, "reason": "entry_confirm_pending"})
+            continue
+        _entry_confirm_ticks.pop(candidate.token_id, None)
         ev_slug = str(candidate.event_slug or "")
         if ev_slug and event_exposure.get(ev_slug, 0) >= EVENT_EXPOSURE_CAP:
             rejected.append({"question": candidate.question, "reason": f"event_exposure_cap:{ev_slug}"})
@@ -2101,7 +2120,11 @@ def _run_race_tick(
             size_mult = 1.25
         else:
             size_mult = 1.0
-        target = max(equity * settings.race_stake_pct * size_mult, 1.0)
+        # Tiered stake by entry price: high-confidence zone (0.92+) gets
+        # full stake × 1.10 (≈55%); lower zone (0.88–0.91) gets × 0.70 (≈35%).
+        _entry_price = float(candidate.best_ask or candidate.price or 0.0)
+        _tier_mult = 1.10 if _entry_price >= 0.92 else 0.70
+        target = max(equity * settings.race_stake_pct * size_mult * _tier_mult, 1.0)
         # Percentage-based ceiling (preferred): cap each trade at a fixed
         # fraction of current equity so the size scales with the bankroll.
         # Without this the equity-scaled comment above was a lie — only the
