@@ -1145,17 +1145,25 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
         return None
     if current_pnl_pct >= settings.race_tp_pct:
         return {"reason": "race_take_profit", "shares": shares}
-    # race_stop_loss REMOVED (2026-05-31) — it can never fire again.
-    # The grinder rides favorites to resolution by design. The SL kept
-    # fire-selling WINNING favorites on thin-book phantom bids during kickoff
-    # volatility (e.g. an Under at true 0.94 momentarily showed a 0.46 bid →
-    # SL dumped it for a fake -48%). A price-based SL also can't catch real gap
-    # moves anyway. Exits now ONLY via TP / resolved_exit / universal sweep /
-    # true market resolution. (race_sl_pct is now dead config.)
-    # Near-expiry flush removed: was selling positions at break-even
-    # just because the market was about to resolve, leaving real upside
-    # on the table. Positions now ride until TP / SL / resolved_exit
-    # / market resolution. Killed for all race strategies.
+
+    # ── CONTROLLED multi-tick stop-loss (re-enabled 2026-06-06 per user) ──
+    # The blanket SL was removed 2026-05-31 because a ONE-tick thin-book phantom
+    # bid (an Under at true 0.94 momentarily showing 0.46) made it dump winning
+    # favorites for a fake -48%. The fix is confirmation, not absence: the loss
+    # must persist for `race_sl_confirm_ticks` CONSECUTIVE ticks before we sell,
+    # so a single-tick blip can never trigger it. Disabled when sl_pct >= 1.0.
+    # The streak counter lives on the position dict (persisted in the ledger).
+    sl_pct = float(settings.race_sl_pct or 0.0)
+    if 0.0 < sl_pct < 1.0:
+        if current_pnl_pct <= -sl_pct:
+            count = int(position.get("sl_confirm_count", 0) or 0) + 1
+            position["sl_confirm_count"] = count
+            confirm_needed = max(1, int(settings.race_sl_confirm_ticks))
+            if count >= confirm_needed:
+                return {"reason": "race_stop_loss_confirmed", "shares": shares}
+        elif position.get("sl_confirm_count"):
+            # recovered back above the threshold — reset the confirmation streak
+            position["sl_confirm_count"] = 0
     return None
 
 

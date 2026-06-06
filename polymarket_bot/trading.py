@@ -854,7 +854,16 @@ def execute_live_sell(
     # Bypass only with POLYMARKET_ALLOW_LOSS_SELL=1 (manual override).
     entry_price = float(position.get("entry_price") or 0.0)
     allow_loss_sell = os.getenv("POLYMARKET_ALLOW_LOSS_SELL", "0").lower() in ("1", "true", "yes")
-    if entry_price > 0 and sell_price < entry_price and not allow_loss_sell:
+    # The controlled multi-tick stop-loss is a DELIBERATE loss sale — it has
+    # already been confirmed over several ticks, so it is exempt from the hard
+    # loss floor. Every other path still rides losers to resolution.
+    CONFIRMED_LOSS_REASONS = {"race_stop_loss_confirmed"}
+    if (
+        entry_price > 0
+        and sell_price < entry_price
+        and not allow_loss_sell
+        and reason not in CONFIRMED_LOSS_REASONS
+    ):
         raise ValueError(
             f"loss_sell_blocked: would sell @ {sell_price} < entry {entry_price} "
             f"(reason={reason}) — holding to resolution; never sell below purchase price"

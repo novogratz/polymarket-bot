@@ -325,6 +325,11 @@ class Settings:
     race_cash_floor_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_CASH_FLOOR_PCT", 0.10))
     race_tp_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_TP_PCT", 0.25))
     race_sl_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_SL_PCT", 0.50))
+    # Controlled stop-loss: number of CONSECUTIVE ticks the loss must persist
+    # past race_sl_pct before the SL fires. >1 means a one-tick thin-book
+    # phantom bid can't trigger a sale (the 2026-05-31 disaster). SL is disabled
+    # entirely when race_sl_pct >= 1.0.
+    race_sl_confirm_ticks: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_SL_CONFIRM_TICKS", 3))
     race_sl_min_age_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_SL_MIN_AGE_MINUTES", 5))
     race_near_expiry_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_NEAR_EXPIRY_MINUTES", 5))
     race_resolved_exit_threshold: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_RESOLVED_EXIT_THRESHOLD", 0.97))

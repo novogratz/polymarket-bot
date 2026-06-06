@@ -81,12 +81,17 @@ max_orders_per_tick = 4
 cash_floor_pct = 0.01
 
 # Exit rules:
-#   tp_pct = 1.0      → TP disabled; ride to resolution.
-#   sl_pct = 0.35     → SL at -35%: entry 0.94 exits at ~0.61, cuts mid-game bleed.
-#   resolved at 0.99  → exit when the market prints near-final resolution value.
-#   max_hold 4.5h     → backstop so nothing lingers after expiry.
+#   tp_pct = 1.0          → TP disabled; ride to resolution.
+#   sl_pct = 0.25         → CONTROLLED SL at -25%: entry 0.85 exits ~0.64.
+#                           Loose on purpose (won't fire on normal dips) but
+#                           cuts a real collapse (e.g. Luxembourg 0.85 → 0.54).
+#   sl_confirm_ticks = 3  → must stay past -25% for 3 consecutive ticks before
+#                           firing, so a one-tick thin-book blip can't trigger it.
+#   resolved at 0.97      → exit when the market prints near-final value.
+#   max_hold 4.5h         → backstop so nothing lingers after expiry.
 tp_pct = 1.0
-sl_pct = 1.0  # SL removed at source 2026-05-31; kept at 1.0 (never fires) for clarity
+sl_pct = 0.25            # controlled multi-tick stop-loss (re-enabled 2026-06-06)
+sl_confirm_ticks = 3
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.97
