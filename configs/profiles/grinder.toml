@@ -85,7 +85,7 @@ tp_pct = 1.0
 sl_pct = 1.0  # SL removed at source 2026-05-31; kept at 1.0 (never fires) for clarity
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
-resolved_exit_threshold = 0.95
+resolved_exit_threshold = 0.99
 
 # Binary arb disabled (set arb_threshold = 0.97 to re-enable).
 # Sizing now uses proportional stakes (larger stake on the expensive/likely
