@@ -1152,6 +1152,26 @@ def _save_last_report_ts() -> None:
         pass
 
 
+def _seconds_until_next_half_hour() -> float:
+    """Seconds from now until the next :00 or :30 clock mark (ET, DST-aware).
+
+    Fires at 12:00, 12:30, 1:00, 1:30, ... regardless of when the bot started.
+    Falls back to UTC if zoneinfo is unavailable.
+    """
+    try:
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("America/New_York"))
+    except Exception:
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+    if now.minute < 30:
+        target = now.replace(minute=30, second=0, microsecond=0)
+    else:
+        target = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    return max(1.0, (target - now).total_seconds())
+
+
 def _seconds_until_next_10am_eastern() -> float:
     """Seconds from now until the next 10:00 in US/Eastern (DST-aware).
 
@@ -1181,34 +1201,32 @@ def _run_report() -> None:
 
 
 def main() -> int:
-    """Send the LIVE REPORT once on startup, then every 1 hour, plus an
-    extra fire at 10:00 US/Eastern every day. Nothing else.
+    """Send the LIVE REPORT once on startup, then at every :00 and :30
+    clock mark (ET), plus an extra fire at 10:00 US/Eastern every day.
 
-    This sidecar is the ONLY source of Telegram messages for the live bot:
-    no daily quant report, no BUY/SELL alerts, no heartbeat. Just the
-    LIVE REPORT (equity since start, top trades today, open positions).
+    Reports fire at 12:00, 12:30, 1:00, 1:30, etc. — aligned to the clock
+    regardless of when the bot was started.
     """
-    interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))  # 30 minutes
     print(
-        f"[live-analyst] starting — LIVE REPORT every {interval}s "
-        f"(+ once now on start, + daily at 10:00 US/Eastern)",
+        "[live-analyst] starting — LIVE REPORT at every :00 and :30 ET "
+        "(+ once now on start, + daily at 10:00 US/Eastern)",
         flush=True,
     )
 
-    _run_report()  # once on startup (user wants it on every launch)
-    next_interval = time.time() + interval
+    _run_report()  # once on startup
+    next_fire = time.time() + _seconds_until_next_half_hour()
     next_10am = time.time() + _seconds_until_next_10am_eastern()
 
     while True:
         now = time.time()
-        sleep_for = max(1.0, min(next_interval, next_10am) - now)
+        sleep_for = max(1.0, min(next_fire, next_10am) - now)
         time.sleep(sleep_for)
 
         now = time.time()
         fired = False
-        if now >= next_interval:
+        if now >= next_fire:
             _run_report()
-            next_interval = time.time() + interval
+            next_fire = time.time() + _seconds_until_next_half_hour()
             fired = True
         if now >= next_10am:
             if not fired:
