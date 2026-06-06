@@ -54,13 +54,10 @@ min_volume_24h_usd = 300.0
 # Lower bound 0.85 carries a bit more gap risk than 0.90, but the catastrophic
 # categories (exact scores, coinflips, weather) stay excluded and the $10 cap
 # bounds any single loss. Upper bound 0.97 still leaves room up to ~1.0.
-min_price = 0.92
-max_price = 0.97
+min_price = 0.88
+max_price = 0.95
 
-# Price-stability gate: skip any market that moved >10% today.
-# A live-game "No" on an exact score sits at 0.93 but can gap to 0.40 in one
-# tick when a goal is scored. Stable-for-days is the real near-certainty play.
-max_day_change_pct = 0.10
+max_day_change_pct = 1.0
 
 # Momentum filter: skip outcomes that fell >5% today.
 # A market at 0.91 that was 0.96 this morning is trending away from resolution.
@@ -72,7 +69,7 @@ max_spread = 0.02
 
 # 80% stake, 1 slot — Kelly-optimal at 90% win rate (Kelly = W - L/R = 0.80).
 stake_usd = 1.0
-stake_pct = 0.80
+stake_pct = 0.95
 max_orders_per_tick = 1
 cash_floor_pct = 0.01
 
@@ -82,7 +79,7 @@ cash_floor_pct = 0.01
 #   resolved at 0.99  → exit when the market prints near-final resolution value.
 #   max_hold 4.5h     → backstop so nothing lingers after expiry.
 tp_pct = 1.0
-sl_pct = 1.0  # SL removed at source 2026-05-31; kept at 1.0 (never fires) for clarity
+sl_pct = 0.35
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.99

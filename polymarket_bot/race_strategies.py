@@ -35,6 +35,12 @@ from .portfolio import Portfolio
 from .pricing import _fetch_clob_quotes, ensure_open_positions_in_pool
 from .trading import build_client, execute_live_sell, execute_live_trade
 
+# Track consecutive ticks below SL threshold per token_id.
+# Phantom thin-book bids last 1 tick then snap back; requiring 3 consecutive
+# ticks below the threshold filters them out without delaying a real move.
+_sl_below_ticks: dict[str, int] = {}
+_SL_CONFIRM_TICKS = 3
+
 
 def _step(settings: Settings, msg: str) -> None:
     if not settings.quiet:
@@ -1145,17 +1151,20 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
         return None
     if current_pnl_pct >= settings.race_tp_pct:
         return {"reason": "race_take_profit", "shares": shares}
-    # race_stop_loss REMOVED (2026-05-31) — it can never fire again.
-    # The grinder rides favorites to resolution by design. The SL kept
-    # fire-selling WINNING favorites on thin-book phantom bids during kickoff
-    # volatility (e.g. an Under at true 0.94 momentarily showed a 0.46 bid →
-    # SL dumped it for a fake -48%). A price-based SL also can't catch real gap
-    # moves anyway. Exits now ONLY via TP / resolved_exit / universal sweep /
-    # true market resolution. (race_sl_pct is now dead config.)
-    # Near-expiry flush removed: was selling positions at break-even
-    # just because the market was about to resolve, leaving real upside
-    # on the table. Positions now ride until TP / SL / resolved_exit
-    # / market resolution. Killed for all race strategies.
+    # Stop-loss with multi-tick confirmation to guard against Polymarket phantom
+    # bids (thin books can flash an anomalous low bid for a single tick, then
+    # snap back — the old SL fired on those and sold winners). Requires
+    # _SL_CONFIRM_TICKS consecutive ticks (≈30s at 10s interval) below the
+    # threshold before selling. A one-tick glitch resets the counter.
+    if settings.race_sl_pct < 1.0:
+        token_id = str(position.get("token_id") or "")
+        if current_pnl_pct <= -settings.race_sl_pct:
+            _sl_below_ticks[token_id] = _sl_below_ticks.get(token_id, 0) + 1
+            if _sl_below_ticks[token_id] >= _SL_CONFIRM_TICKS:
+                _sl_below_ticks.pop(token_id, None)
+                return {"reason": "race_stop_loss", "shares": shares}
+        else:
+            _sl_below_ticks.pop(token_id, None)
     return None
 
 
