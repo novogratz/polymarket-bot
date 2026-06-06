@@ -950,9 +950,16 @@ def cycle_once() -> None:
     def _mood(v: float) -> str:
         return "🟢" if v >= 0 else "🔴"
 
-    t = time.gmtime()
-    date_str = f"{t.tm_mday} {_FR_MONTHS[t.tm_mon]} {t.tm_year}"
-    stamp = time.strftime("%H:%M UTC", t)
+    try:
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo as _ZI
+        _now_et = _dt.now(_ZI("America/New_York"))
+        date_str = f"{_now_et.day} {_FR_MONTHS[_now_et.month]} {_now_et.year}"
+        stamp = _now_et.strftime("%H:%M ET")
+    except Exception:
+        t = time.gmtime()
+        date_str = f"{t.tm_mday} {_FR_MONTHS[t.tm_mon]} {t.tm_year}"
+        stamp = time.strftime("%H:%M UTC", t)
     divider = "━━━━━━━━━━━━━━━━━━━━━━━━"
     bot_name = os.environ.get("POLYMARKET_BOT_NAME", "Grinder Bot 1")
 
