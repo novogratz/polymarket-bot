@@ -69,8 +69,8 @@ max_spread = 0.02
 
 # 80% stake, 1 slot — Kelly-optimal at 90% win rate (Kelly = W - L/R = 0.80).
 stake_usd = 1.0
-stake_pct = 0.95
-max_orders_per_tick = 1
+stake_pct = 0.50
+max_orders_per_tick = 2
 cash_floor_pct = 0.01
 
 # Exit rules:
