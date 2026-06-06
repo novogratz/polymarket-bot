@@ -112,7 +112,7 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "3600"))   # 1 hour
+CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))   # 30 minutes
 
 
 @dataclass
@@ -566,6 +566,17 @@ def _today_utc() -> str:
     return time.strftime("%Y-%m-%d", time.gmtime())
 
 
+def _et_stamp() -> str:
+    """Current time as 'HH:MM ET' in US Eastern (DST-aware). UTC fallback only
+    if zoneinfo is unavailable. All Telegram timestamps use this — never UTC."""
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/New_York")).strftime("%H:%M ET")
+    except Exception:
+        return time.strftime("%H:%M UTC", time.gmtime())
+
+
 def load_todays_trades() -> list[dict]:
     """Closed trades with closed_at on today's UTC date, deduplicated."""
     today = _today_utc()
@@ -766,7 +777,7 @@ def daily_report_once() -> None:
 
     t = time.gmtime()
     date_str = time.strftime("%B ", t) + str(t.tm_mday) + time.strftime(", %Y", t)
-    stamp = time.strftime("%H:%M UTC", t)
+    stamp = _et_stamp()
 
     status = "IN PROFIT 🚀" if net > 0 else "BREAKEVEN ⚖️" if net == 0 else "IN DRAWDOWN 📉"
 
@@ -1072,7 +1083,7 @@ def _cycle_once_old() -> None:
     net_mood = "🟢" if net_vs_start >= 0 else "🔴"
     net_sign = "+" if net_vs_start >= 0 else ""
 
-    stamp = time.strftime("%H:%M UTC", time.gmtime())
+    stamp = _et_stamp()
     r_sign = "+" if realized >= 0 else ""
     r_mood = "🟢" if realized >= 0 else "🔴"
     unr_sign = "+" if unrealized >= 0 else ""
@@ -1196,7 +1207,7 @@ def main() -> int:
     no daily quant report, no BUY/SELL alerts, no heartbeat. Just the
     LIVE REPORT (equity since start, top trades today, open positions).
     """
-    interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "3600"))  # 1 hour
+    interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))  # 30 minutes
     print(
         f"[live-analyst] starting — LIVE REPORT every {interval}s "
         f"(+ once now on start, + daily at 10:00 US/Eastern)",

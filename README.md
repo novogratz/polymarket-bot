@@ -29,7 +29,7 @@ pip install -e ".[dev]"
 bash scripts/run_live_70.sh
 ```
 
-Starts the live grinder (**10 s tick**) alongside a dry paper twin (10 min tick) and a read-only **live analyst** sidecar that posts a Telegram **LIVE REPORT every hour** (equity since start, today's closed trades with entry → sell prices, open positions). The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path**.
+Starts the live grinder (**10 s tick**) alongside a dry paper twin (10 min tick) and a read-only **live analyst** sidecar that posts a Telegram **LIVE REPORT every 30 minutes** (equity since start, today's closed trades with entry → sell prices, open positions). The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path**.
 
 Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet, ledger, and per-bot analyst (`run_live_70.sh`, `run_live_b.sh`, and `run_live_win.sh` on the `kzer_windows` branch).
 
@@ -153,7 +153,7 @@ POLYMARKET_SYNC_LIVE_POSITIONS=1         # sync live CLOB positions each tick
 POLYMARKET_AUTO_INTERVAL_SECONDS=10      # tick interval (set by run_live_70.sh)
 POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0.40  # daily DD halt threshold
 POLYMARKET_HTTP_CACHE_TTL_SECONDS=600    # shared HTTP cache TTL
-LIVE_ANALYST_CYCLE_SECONDS=3600          # LIVE REPORT cadence (1 h)
+LIVE_ANALYST_CYCLE_SECONDS=1800          # LIVE REPORT cadence (30 min)
 ```
 
 **Autonomous self-improvement (opt-in — see [`docs/AUTONOMY.md`](docs/AUTONOMY.md)):**
@@ -201,7 +201,7 @@ polymarket_bot/
 scripts/
   run_live_70.sh       canonical live launcher (Bot 1)
   run_live_b.sh        Bot 2 launcher (grinder_b)
-  live_analyst.py      hourly Telegram LIVE REPORT sidecar (read-only)
+  live_analyst.py      30 min Telegram LIVE REPORT sidecar (read-only)
   dry_analyst.py       15 min deterministic report + loser-kill
   auto_improve.py      opt-in self-improvement loop (auto-PR, off by default)
 docs/
