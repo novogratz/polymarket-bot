@@ -1199,9 +1199,29 @@ def _run_report() -> None:
         print(f"[live-analyst] live report failed:\n{tb}", file=sys.stderr, flush=True)
 
 
+def _next_aligned(interval: int, *, min_gap: float = 120.0) -> float:
+    """Next wall-clock epoch that is a multiple of `interval`, so reports land
+    on fixed boundaries regardless of when the bot started (1800s → :00/:30,
+    3600s → :00). Epoch multiples of a 15-/30-/60-min interval coincide with
+    those wall-clock minutes in any whole/half-hour timezone (incl. US/Eastern).
+
+    Skips a boundary that is < min_gap away so the startup report and the first
+    grid report don't fire back-to-back when launch lands just before a tick.
+    """
+    now = time.time()
+    nxt = (int(now // interval) + 1) * interval
+    if nxt - now < min_gap:
+        nxt += interval
+    return float(nxt)
+
+
 def main() -> int:
-    """Send the LIVE REPORT once on startup, then every 1 hour, plus an
-    extra fire at 10:00 US/Eastern every day. Nothing else.
+    """Send the LIVE REPORT once on startup, then on every wall-clock
+    :00/:30 boundary (for the default 30-min interval), plus an extra fire at
+    10:00 US/Eastern every day. Nothing else.
+
+    The periodic fire is aligned to the clock, not to launch time — restart the
+    bot at 1:07 and reports still land at 1:30, 2:00, 2:30, ...
 
     This sidecar is the ONLY source of Telegram messages for the live bot:
     no daily quant report, no BUY/SELL alerts, no heartbeat. Just the
@@ -1209,13 +1229,13 @@ def main() -> int:
     """
     interval = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))  # 30 minutes
     print(
-        f"[live-analyst] starting — LIVE REPORT every {interval}s "
-        f"(+ once now on start, + daily at 10:00 US/Eastern)",
+        f"[live-analyst] starting — LIVE REPORT every {interval}s on the "
+        f"wall-clock grid (+ once now on start, + daily at 10:00 US/Eastern)",
         flush=True,
     )
 
     _run_report()  # once on startup (user wants it on every launch)
-    next_interval = time.time() + interval
+    next_interval = _next_aligned(interval)
     next_10am = time.time() + _seconds_until_next_10am_eastern()
 
     while True:
@@ -1227,7 +1247,7 @@ def main() -> int:
         fired = False
         if now >= next_interval:
             _run_report()
-            next_interval = time.time() + interval
+            next_interval = _next_aligned(interval)  # re-align to the clock grid
             fired = True
         if now >= next_10am:
             if not fired:
