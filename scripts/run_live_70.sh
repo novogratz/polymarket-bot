@@ -30,8 +30,9 @@ export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-
 # 10s tick — 3× faster than 30s, catches more fleeting band entries.
 export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
 
-# Drawdown halt at 40% — generous enough that one SL loss (-35%) doesn't freeze the bot.
-export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-0.40}
+# Daily drawdown halt REMOVED per user (2026-06-07) — 0 disables the gate,
+# the bot keeps trading whatever the day's realized PnL ("use the cash").
+export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-0}
 
 # Disable floor alert — local ledger cash is lower than real CLOB balance
 # (force-close scripts corrupted it). Real equity is read from CLOB each tick.

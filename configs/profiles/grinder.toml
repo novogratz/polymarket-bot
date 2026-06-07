@@ -74,11 +74,15 @@ cash_floor_pct = 0.01
 
 # Exit rules:
 #   tp_pct = 1.0      → TP disabled; ride to resolution.
-#   sl_pct = 0.35     → SL at -35%: entry 0.94 exits at ~0.61, cuts mid-game bleed.
+#   sl_pct = 0.25     → CONTROLLED SL at -25%, SOCCER MONEYLINE ONLY
+#                       ("Will <Team> win on <date>?" Yes/No bets). All other
+#                       markets (O/U 4.5 totals, specials) NEVER stop out
+#                       (user rule 2026-06-07, gate in
+#                       _is_soccer_moneyline_position; 3-tick confirm const).
 #   resolved at 0.99  → exit when the market prints near-final resolution value.
 #   max_hold 4.5h     → backstop so nothing lingers after expiry.
 tp_pct = 1.0
-sl_pct = 1.0
+sl_pct = 0.25  # -25% confirmed SL, soccer moneyline only
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.99

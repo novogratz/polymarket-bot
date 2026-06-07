@@ -21,6 +21,7 @@ import datetime as dt
 import json
 import os
 import random
+import re
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
@@ -1142,6 +1143,27 @@ def _is_sports_total_position(position: dict[str, Any]) -> bool:
     )
 
 
+# Soccer moneyline questions print as "Will <Team> win on <YYYY-MM-DD>?" with
+# Yes/No outcomes (totals print "X vs. Y: O/U 4.5" with Over/Under outcomes,
+# election markets say "win the most seats" — neither matches).
+_SOCCER_MONEYLINE_RE = re.compile(r"^will .+ win on \d{4}-\d{2}-\d{2}\?$")
+
+
+def _is_soccer_moneyline_position(position: dict[str, Any]) -> bool:
+    """True only for team-win Yes/No bets — the ONLY market type allowed a SL.
+
+    User rule (2026-06-07): a moneyline can collapse on a goal and STAY
+    collapsed, so a confirmed -25% exit cuts the bleed. Everything else —
+    totals (O/U 4.5), specials, non-sports — rides to resolution with no
+    stop-loss, because their dips are routinely phantom or recoverable.
+    """
+    outcome = str(position.get("outcome") or "").strip().lower()
+    if outcome not in {"yes", "no"}:
+        return False
+    question = str(position.get("question") or "").strip().lower()
+    return bool(_SOCCER_MONEYLINE_RE.match(question))
+
+
 def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings: Settings) -> dict[str, Any] | None:
     shares = float(position.get("shares", 0.0) or 0.0)
     if shares <= 0:
@@ -1157,6 +1179,22 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
         return None
     if current_pnl_pct >= settings.race_tp_pct:
         return {"reason": "race_take_profit", "shares": shares}
+    # ── CONTROLLED multi-tick stop-loss — SOCCER MONEYLINE ONLY (2026-06-07) ──
+    # Ported from main: the loss must persist for _SL_CONFIRM_TICKS CONSECUTIVE
+    # ticks before we sell, so a one-tick thin-book phantom bid can't trigger
+    # it. Scope (user rule): ONLY team-win Yes/No bets get the SL. All other
+    # markets — O/U 4.5 totals, anything non-moneyline — NEVER stop out.
+    # The streak counter lives on the position dict (persisted in the ledger).
+    sl_pct = float(settings.race_sl_pct or 0.0)
+    if 0.0 < sl_pct < 1.0 and _is_soccer_moneyline_position(position):
+        if current_pnl_pct <= -sl_pct:
+            count = int(position.get("sl_confirm_count", 0) or 0) + 1
+            position["sl_confirm_count"] = count
+            if count >= _SL_CONFIRM_TICKS:
+                return {"reason": "race_stop_loss_confirmed", "shares": shares}
+        elif position.get("sl_confirm_count"):
+            # recovered back above the threshold — reset the confirmation streak
+            position["sl_confirm_count"] = 0
     # Near-expiry profit lock: market closing in <30min and we're in profit —
     # sell now to lock in the gain rather than risking a last-minute revert.
     mtc = _minutes_to_close(position)

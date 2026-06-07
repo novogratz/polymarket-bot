@@ -84,14 +84,17 @@ stake_pct = 0.30
 max_orders_per_tick = 4
 cash_floor_pct = 0.01
 
-# Exit rules (match grinder.toml / main 2026-06-06):
+# Exit rules (match grinder.toml / main 2026-06-07):
 #   tp_pct = 1.0          → TP disabled; ride to resolution.
-#   sl_pct = 0.25         → CONTROLLED SL at -25% (entry 0.85 exits ~0.64).
+#   sl_pct = 0.25         → CONTROLLED SL at -25%, SOCCER MONEYLINE ONLY
+#                           ("Will <Team> win on <date>?" Yes/No bets). All
+#                           other markets NEVER stop out (user rule 2026-06-07,
+#                           gate in _is_soccer_moneyline_position).
 #   sl_confirm_ticks = 3  → must stay past -25% for 3 consecutive ticks before
 #                           selling, so a thin-book one-tick blip can't dump a winner.
 #   resolved at 0.99      → exit when the market prints near-final resolution value.
 tp_pct = 1.0
-sl_pct = 0.25            # controlled multi-tick stop-loss (re-enabled 2026-06-06)
+sl_pct = 0.25            # -25% confirmed SL, soccer moneyline only
 sl_confirm_ticks = 3
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
