@@ -82,15 +82,17 @@ cash_floor_pct = 0.01
 
 # Exit rules:
 #   tp_pct = 1.0          → TP disabled; ride to resolution.
-#   sl_pct = 0.25         → CONTROLLED SL at -25%: entry 0.85 exits ~0.64.
-#                           Loose on purpose (won't fire on normal dips) but
-#                           cuts a real collapse (e.g. Luxembourg 0.85 → 0.54).
+#   sl_pct = 0.25         → CONTROLLED SL at -25%, SOCCER MONEYLINE ONLY
+#                           ("Will <Team> win on <date>?" Yes/No bets). All
+#                           other markets (O/U 4.5 totals, specials) NEVER
+#                           stop out — they ride to resolution (user rule
+#                           2026-06-07, gate in _is_soccer_moneyline_position).
 #   sl_confirm_ticks = 3  → must stay past -25% for 3 consecutive ticks before
 #                           firing, so a one-tick thin-book blip can't trigger it.
 #   resolved at 0.97      → exit when the market prints near-final value.
 #   max_hold 4.5h         → backstop so nothing lingers after expiry.
 tp_pct = 1.0
-sl_pct = 0.25            # controlled multi-tick stop-loss (re-enabled 2026-06-06)
+sl_pct = 0.25            # -25% confirmed SL, soccer moneyline only
 sl_confirm_ticks = 3
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
