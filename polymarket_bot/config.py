@@ -335,7 +335,8 @@ class Settings:
     race_resolved_exit_threshold: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_RESOLVED_EXIT_THRESHOLD", 0.97))
     race_limit_sell_trigger: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_LIMIT_SELL_TRIGGER", 0.0))
     race_limit_sell_price: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_LIMIT_SELL_PRICE", 0.98))
-    race_daily_drawdown_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_DAILY_DRAWDOWN_PCT", 0.15))
+    # Daily drawdown halt removed per user (2026-06-07) — 0 disables the gate.
+    race_daily_drawdown_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_DAILY_DRAWDOWN_PCT", 0.0))
     race_noise_fallback_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_NOISE_FALLBACK_ENABLED", False))
     # Max absolute one-day price change. Markets that moved >X today are in
     # active flux (live game, breaking news) and carry gap risk the SL can't
