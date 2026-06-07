@@ -1136,20 +1136,37 @@ def _is_sports_total_position(position: dict[str, Any]) -> bool:
 # election markets say "win the most seats" — neither matches).
 _SOCCER_MONEYLINE_RE = re.compile(r"^will .+ win on \d{4}-\d{2}-\d{2}\?$")
 
+# Slug/event_slug substrings that confirm a market is soccer specifically.
+# Guards against NBA/NFL/MLB markets that might share the same question format.
+_SOCCER_SLUG_KEYWORDS = (
+    "soccer", "football", "premier-league", "la-liga", "laliga",
+    "bundesliga", "serie-a", "ligue-1", "champions-league",
+    "europa-league", "world-cup", "copa", "mls", "eredivisie",
+    "primeira-liga", "superliga", "liga-mx", "brasileirao",
+    "international-friendly", "nations-league", "euro-",
+)
+
 
 def _is_soccer_moneyline_position(position: dict[str, Any]) -> bool:
-    """True only for team-win Yes/No bets — the ONLY market type allowed a SL.
+    """True only for SOCCER team-win Yes/No bets — the ONLY market type with SL.
 
-    User rule (2026-06-07): a moneyline can collapse on a goal and STAY
-    collapsed, so a confirmed -25% exit cuts the bleed. Everything else —
-    totals (O/U 4.5), specials, non-sports — rides to resolution with no
-    stop-loss, because their dips are routinely phantom or recoverable.
+    Three-layer check:
+      1. outcome must be Yes or No
+      2. question must match "Will <X> win on YYYY-MM-DD?"
+      3. slug or event_slug must contain a soccer keyword — separates soccer
+         from NBA/NFL/MLB. If no slug stored, trust the regex (overwhelmingly
+         soccer on Polymarket).
     """
     outcome = str(position.get("outcome") or "").strip().lower()
     if outcome not in {"yes", "no"}:
         return False
     question = str(position.get("question") or "").strip().lower()
-    return bool(_SOCCER_MONEYLINE_RE.match(question))
+    if not _SOCCER_MONEYLINE_RE.match(question):
+        return False
+    slug = str(position.get("slug") or position.get("event_slug") or "").lower()
+    if slug:
+        return any(kw in slug for kw in _SOCCER_SLUG_KEYWORDS)
+    return True
 
 
 def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings: Settings) -> dict[str, Any] | None:
