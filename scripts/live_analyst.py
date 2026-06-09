@@ -498,6 +498,7 @@ def load_open_positions() -> list[dict]:
                 "shares": size,
                 "cost": initial_value, "mtm": cv,
                 "unr": unr, "unr_pct": unr_pct,
+                "slug": str(item.get("eventSlug") or item.get("slug") or ""),
             })
         out.sort(key=lambda x: x["unr"], reverse=True)
         return out
@@ -529,6 +530,7 @@ def load_open_positions() -> list[dict]:
             "shares": shares,
             "cost": cost, "mtm": mtm,
             "unr": unr, "unr_pct": unr_pct,
+            "slug": str(p.get("event_slug") or p.get("slug") or ""),
         })
     out.sort(key=lambda x: x["unr"], reverse=True)
     return out
@@ -862,6 +864,17 @@ def _bet_side(side: str, question: str = "") -> str:
     return _SIDE_FR.get(s, str(side or "?"))
 
 
+def _market_url(p: dict) -> str:
+    """Polymarket event page URL for an open position, or '' when unknown.
+
+    Uses the Data API `eventSlug` (fallback `slug`) captured in
+    load_open_positions; the slug is plain `[a-z0-9-]` so it is safe inside a
+    Markdown link without escaping. Empty when the position came from the
+    paper_state fallback (no slug stored)."""
+    slug = str(p.get("slug") or "").strip()
+    return f"https://polymarket.com/event/{slug}" if slug else ""
+
+
 def _fr_cache_path() -> Path:
     return DATA_DIR / "cache" / "fr_translations.json"
 
@@ -1030,17 +1043,24 @@ def cycle_once() -> None:
         parts.append("")
 
     if open_pos:
-        parts.append(f"*POSITIONS OUVERTES ({len(open_pos)}) :*")
+        parts.append(
+            f"*POSITIONS OUVERTES ({len(open_pos)}) : "
+            f"{_mood(unrealized)} {_sign(unrealized)}${abs(unrealized):.2f}*"
+        )
         for p in open_pos:
             unr = float(p.get("unr", 0) or 0)
             cost = float(p.get("cost", 0) or 0)
             mtm = float(p.get("mtm", 0) or 0)
             entry = float(p.get("entry", 0) or 0)
             cur = float(p.get("cur", 0) or 0)
-            parts.append(
-                f"  ⚪ {_q(p.get('question') or '')} ({_bet_side(p.get('side'), p.get('question'))}) : "
+            line = (
+                f"  {_mood(unr)} {_q(p.get('question') or '')} ({_bet_side(p.get('side'), p.get('question'))}) : "
                 f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${abs(unr):.2f})"
             )
+            url = _market_url(p)
+            if url:
+                line += f"\n      [▶️ Voir le match]({url})"
+            parts.append(line)
         parts.append(f"  _Latent : {_sign(unrealized)}${abs(unrealized):.2f}_")
         parts.append("")
 

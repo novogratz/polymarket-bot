@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **LIVE REPORT — `POSITIONS OUVERTES`**: each open position now shows a 🟢/🔴 light (winning vs. losing on unrealized P&L) and a **`▶️ Voir le match`** link to the Polymarket event page (`eventSlug` from the Data API). The section header carries the **overall unrealized P&L** (`🟢/🔴 ±$X`) next to the count.
+
 ## [2.1.0] - 2026-06-09
 
 Grinder hardening: real risk controls + safer exits, crypto/esports banned, per-bot resets, and a documentation pass.
