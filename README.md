@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (bid 0.85–0.97) within ~4 hours of resolution, holds until the market prints near-final value (bid ≥ 0.97), and rotates capital into the next opportunity. Ships an optional binary arbitrage scanner and an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.85–0.97) within ~6 hours of resolution and holds until the market prints near-final value (bid ≥ 0.97), with a controlled −25% confirmed stop-loss and a hard "never sell below entry" floor. Crypto and esports markets are excluded. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -29,9 +29,9 @@ pip install -e ".[dev]"
 bash scripts/run_live_70.sh
 ```
 
-Starts the live grinder (**10 s tick**) alongside a dry paper twin (10 min tick) and a read-only **live analyst** sidecar that posts a Telegram **LIVE REPORT every 30 minutes** (equity since start, today's closed trades with entry → sell prices, open positions). The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path**.
+Starts the live grinder (**10 s tick**) alongside a dry paper twin and a read-only **live analyst** sidecar that posts a Telegram **LIVE REPORT** — on startup, then on a fixed cadence (`LIVE_ANALYST_CYCLE_SECONDS`), plus a daily 10:00 ET fire. The report shows **equity, P&L since start, total trades + win rate, and open positions** — nothing else (no per-trade lists, no heartbeat, no BUY/SELL spam). The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path**.
 
-Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet, ledger, and per-bot analyst (`run_live_70.sh`, `run_live_b.sh`, and `run_live_win.sh` on the `kzer_windows` branch).
+Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet, ledger, and per-bot analyst (`run_live_70.sh` = bot 1, `run_live_b.sh` = bots 2 & 3, `run_live_win.sh` on the `kzer_windows` branch). Each keeps a per-machine baseline (`data/starting_cash.txt`); reset any bot with `scripts/fresh_start.py` (wipes closed-trade history, keeps open trades).
 
 > **Do not use `run_all.sh` for live trading.** It resets the ledger on startup and launches a retired 95-profile dry race.
 
@@ -39,14 +39,14 @@ Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet,
 
 ## Strategy
 
-**Thesis.** A binary market at bid 0.85–0.97 within ~4 hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0. An optional arb pass each tick books risk-free profit when YES + NO combined ask < $1.
+**Thesis.** A binary market at ask 0.85–0.97 within ~6 hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0.
 
 ### Entry filters
 
 | Parameter | Value (`grinder.toml [race]`) |
 |---|---|
-| Bid band | 0.85 – 0.97 |
-| Time to close | ≤ 4 hours (hard rule; scan loads ≤ 6 h then filters to 4 h) |
+| Price band (ask) | 0.85 – 0.97 |
+| Time to close | ≤ 6 hours |
 | Max spread | ≤ 4¢ |
 | Min liquidity | $500 |
 | Min 24 h volume | $300 |
@@ -70,38 +70,22 @@ These categories are blocked globally because a stop-loss cannot protect against
 | draw markets (`end in a draw`, `win or draw`) | Coin-flip-like, no real favorite edge |
 | halftime leading / score | Resolves mid-game, gap risk |
 | `temperature`, `°c`, `°f` | Specific-degree weather, near-zero win rate in band |
-| `up or down`, slug `updown` | Crypto Up/Down binaries, no real book depth |
+| **All crypto** — `bitcoin`/`btc`/`ethereum`/`solana`/`dogecoin`/`xrp`/… + Up/Down | Banned: volatile, no edge for this strategy |
+| **Esports** — `counter-strike`/`valorant`/`league of legends`/`dota`/… + `(bo3)`/`(bo5)` | Banned: in-series swings are uncatchable |
 
 ### Sizing
 
-**50 % of balance per trade, up to 2 concurrent positions.**
-
-Each win at 50 % stake = **+4.4 % on the account**. Two wins = ~9 %. Three wins = ~13 %. One loss = −50 % on stake, painful but recoverable with one follow-up win.
-
-**Realistic performance expectations** (percentages are bankroll-independent — the stake scales with the account):
-
-| Day type | Frequency | Result |
-|---|---|---|
-| Active — 3 wins | ~25 % of days | +12–14 % |
-| Active — 2 wins | ~40 % of days | +8–9 % |
-| Normal — 1 win | ~25 % of days | +4–5 % |
-| Bad — 1 loss | ~10 % of days | −8–12 % |
-
-**Expected average: 5–7 % per day** on active days. Weekly target: **20–30 %**. The wide entry band (0.85–0.97) and 10 s tick maximize the number of qualifying trades found each day.
+**Percentage of equity per trade** (`position_pct`), capped by `max_position_ceiling_pct` — no fixed dollar cap, so the stake scales automatically with the bankroll. Up to `max_orders_per_tick` new entries per tick, with a cash floor kept in reserve.
 
 ### Exits
 
 | Condition | Code |
 |---|---|
-| Bid ≥ 0.97 | `race_big_win_resolved` — primary exit (`resolved_exit_threshold`) |
-| Hold ≥ 4.5 h | `race_expired_close` — backstop |
-| Bid ≤ 0.03 (universal sweep) | `resolved_market_sweep_loss` |
+| Bid ≥ 0.97 | `race_big_win_resolved` — primary win exit (`resolved_exit_threshold`) |
+| Down ≥ 25 % from entry, confirmed 3 consecutive ticks | `race_stop_loss_confirmed` — the one path allowed to sell below entry |
+| Genuinely-resolved loser ~8 h past expiry | written off locally (no order; settles on-chain) |
 
-No take-profit ladder and **no stop-loss** — a stop-loss cannot catch the gap moves that sink prediction markets (a "No" at 0.94 can print 0.44 in one tick), so the exclusion filters, price-stability gate, and momentum filter are the risk controls instead. Losing positions are **never** force-sold.
-
-### Binary arbitrage
-
-An optional pass scans all markets for `YES_ask + NO_ask < threshold`. When found, the bot buys both tokens — one resolves to $1, the other to $0, guaranteeing a profit regardless of outcome. Arb positions skip TP/SL and ride to resolution, capped at $5 per leg. **Currently disabled** (`arb_threshold = 0.0` in `grinder.toml`); set it to e.g. `0.97` to enable.
+**Never sell below entry** is a hard floor in `execute_live_sell` — the *only* exception is the **controlled stop-loss**, which fires at −25% only after the loss persists for 3 consecutive ticks (so a one-tick thin-book phantom bid can't dump a winner). There is no take-profit ladder, no EOD flatten, and no loss-sweep (the universal sweep realizes **winners** ≥ 0.97 only). The expiry path never force-closes a market that is still accepting orders (it uses a live lookup + `gameStartTime`, since Gamma `endDate` is often set before kickoff). The **daily drawdown halt is disabled** — the per-trade confirmed SL is the risk control.
 
 ### Self-improvement
 
@@ -150,10 +134,9 @@ POLYMARKET_API_PASSPHRASE=...
 
 ```bash
 POLYMARKET_SYNC_LIVE_POSITIONS=1         # sync live CLOB positions each tick
-POLYMARKET_AUTO_INTERVAL_SECONDS=10      # tick interval (set by run_live_70.sh)
-POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0.40  # daily DD halt threshold
-POLYMARKET_HTTP_CACHE_TTL_SECONDS=600    # shared HTTP cache TTL
-LIVE_ANALYST_CYCLE_SECONDS=1800          # LIVE REPORT cadence (30 min)
+POLYMARKET_AUTO_INTERVAL_SECONDS=10      # tick interval (set by the launcher)
+POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0     # daily DD halt — 0 = disabled
+LIVE_ANALYST_CYCLE_SECONDS=1800          # LIVE REPORT cadence (fires on startup + this interval + daily 10:00 ET)
 ```
 
 **Autonomous self-improvement (opt-in — see [`docs/AUTONOMY.md`](docs/AUTONOMY.md)):**
