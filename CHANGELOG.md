@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **Esports ban gap — `LoL:` titles slipped through**: Polymarket titles League of Legends markets `LoL: <team> vs <team> - Game N Winner`, which matched neither `league of legends` nor any other esports pattern; the bot bought $351 of `LoL: FENNEL vs KT Rolster` on 2026-06-10. Added `lol:` (question) and `lol-` (slug) to `is_excluded_market`, with unit tests for the esports ban.
 - **LIVE REPORT — big wins missing from `TRADES DU JOUR`**: `load_todays_trades` dropped every closed trade with `cost_basis > $100` (a 2026-06-01 guard against swept wallet-level positions, added when the bankroll was ~$50). With percentage sizing the normal stake is now ~$350, so all full-size wins (Nigeria, Málaga–Las Palmas, Orebro on 2026-06-10) silently vanished from the report and from `Gains du jour`. The dollar cap is removed; dedup + tracking-start filtering already cover the original problem. Regression test in `tests/test_live_analyst.py`.
 
 ### Changed

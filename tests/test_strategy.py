@@ -15,7 +15,7 @@ import unittest
 from polymarket_bot.auto_tuner import compute_overrides
 from polymarket_bot.bitcoin import BtcModel, btc_signal, btc_terminal_probability, parse_btc_threshold
 from polymarket_bot.config import Settings
-from polymarket_bot.models import Candidate, utc_now
+from polymarket_bot.models import Candidate, is_excluded_market, utc_now
 from polymarket_bot.polymarket import ApiCreds, PolymarketClient
 from polymarket_bot.portfolio import Portfolio
 from polymarket_bot.smart_money import SmartTrade, market_category, smart_money_signals
@@ -2742,6 +2742,32 @@ class JournalSuggestionsTests(unittest.TestCase):
             self.assertTrue(suggestions)
             self.assertIsInstance(suggestions[0], dict)
             self.assertIn("id", suggestions[0])
+
+
+class ExcludedMarketTests(unittest.TestCase):
+    def test_lol_prefix_titles_are_excluded(self):
+        # Regression: Polymarket titles LoL markets "LoL: A vs B - Game N
+        # Winner", not "League of Legends" — the bot bought $351 of
+        # FENNEL vs KT Rolster on 2026-06-10 despite the esports ban.
+        self.assertTrue(is_excluded_market({
+            "question": "LoL: FENNEL vs KT Rolster Challengers - Game 1 Winner",
+            "slug": "lol-fennel-vs-kt-rolster-challengers-game-1-winner",
+        }))
+
+    def test_esports_keywords_excluded(self):
+        for question in (
+            "Counter-Strike: NaVi vs FaZe (BO3)",
+            "Valorant Champions: winner of map 2?",
+            "Will T1 win the League of Legends final?",
+        ):
+            self.assertTrue(is_excluded_market({"question": question, "slug": ""}), question)
+
+    def test_regular_sports_not_excluded(self):
+        for market in (
+            {"question": "Will Nigeria win on 2026-06-10?", "slug": "fif-nga-2026-06-10"},
+            {"question": "Málaga CF vs. UD Las Palmas: O/U 4.5", "slug": "malaga-las-palmas-more-markets"},
+        ):
+            self.assertFalse(is_excluded_market(market), market["question"])
 
 
 if __name__ == "__main__":

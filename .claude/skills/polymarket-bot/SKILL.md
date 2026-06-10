@@ -30,7 +30,8 @@ Buy a heavily-favored binary outcome and ride it to resolution.
     lookup + `gameStartTime`, since Gamma `endDate` is often pre-kickoff).
   - **Daily drawdown halt: disabled** (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0`).
 - **Excluded markets (`models.is_excluded_market`):** ALL crypto
-  (bitcoin/btc/ethereum/solana/… + Up-Down), esports (CS/valorant/LoL/dota/BO3/BO5),
+  (bitcoin/btc/ethereum/solana/… + Up-Down), esports (CS/valorant/"LoL:" + league of
+  legends/dota/BO3/BO5),
   weather/°C/°F, exact-score, O/U low (0.5–3.5) + high (5.5+) lines, Asian-handicap
   "Spread:", draw markets, halftime markets.
 - **Disabled:** `btc_edge` lane, `noise_fallback`.

@@ -103,6 +103,9 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "esports",
     "valorant",
     "league of legends",
+    # "LoL:" title prefix — Polymarket LoL markets are titled
+    # "LoL: <team> vs <team> - Game N Winner", not "League of Legends".
+    "lol:",
     "dota",
     "cs2",
     "csgo",
@@ -123,6 +126,7 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     "cs2",
     "valorant",
     "league-of-legends",
+    "lol-",
     "dota",
     "esports",
     # Crypto slug markers (all crypto banned 2026-06-03).
