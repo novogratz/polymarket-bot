@@ -15,6 +15,12 @@ from datetime import datetime
 from typing import Any
 
 
+# The Gamma API silently truncates every /markets response to 100 rows no
+# matter what limit is requested, returning a bare array with no total count
+# or pagination headers (#30). Pages must be walked with offset.
+_GAMMA_PAGE_SIZE = 100
+
+
 class GammaClient:
     def __init__(self, base_url: str = "https://gamma-api.polymarket.com", timeout: int = 15) -> None:
         self.base_url = base_url.rstrip("/")
@@ -32,10 +38,18 @@ class GammaClient:
         end_date_max: datetime | None = None,
         question_contains: str | None = None,
     ) -> list[dict[str, Any]]:
+        """Fetch up to ``limit`` markets, paginating past the server's 100-row cap.
+
+        ``limit`` is enforced client-side: pages of 100 are requested with an
+        increasing ``offset`` until ``limit`` markets are collected or a short
+        page signals the end of the inventory (the API returns no total).
+        Results are deduplicated by market id, since the inventory can shift
+        between page requests. A page failure after the first returns the
+        markets collected so far instead of discarding them.
+        """
         query: dict[str, str] = {
             "active": str(active).lower(),
             "closed": str(closed).lower(),
-            "limit": str(limit),
             "order": order,
             "ascending": str(ascending).lower(),
         }
@@ -45,8 +59,36 @@ class GammaClient:
             query["end_date_max"] = end_date_max.isoformat()
         if question_contains:
             query["question_contains"] = question_contains
-        params = urllib.parse.urlencode(query)
-        return self._get_json(f"/markets?{params}")
+
+        results: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        offset = 0
+        while len(results) < limit:
+            page_limit = min(_GAMMA_PAGE_SIZE, limit - len(results))
+            page_query = dict(query, limit=str(page_limit), offset=str(offset))
+            try:
+                payload = self._get_json(f"/markets?{urllib.parse.urlencode(page_query)}")
+            except Exception:
+                if offset == 0:
+                    raise
+                break
+            if not isinstance(payload, list) or not payload:
+                break
+            for market in payload:
+                if not isinstance(market, dict):
+                    continue
+                key = str(market.get("id") or market.get("conditionId") or "")
+                if key and key in seen_ids:
+                    continue
+                if key:
+                    seen_ids.add(key)
+                results.append(market)
+                if len(results) >= limit:
+                    break
+            if len(payload) < page_limit:
+                break
+            offset += len(payload)
+        return results
 
     def get_markets_by_clob_token_ids(
         self,

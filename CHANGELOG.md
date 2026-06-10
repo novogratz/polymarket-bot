@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **Gamma scans now paginate past the API's silent 100-row cap** (#30): the Gamma `/markets` endpoint truncates every response to 100 rows regardless of the requested `limit`, so every `scan_limit` above 100 was an illusion — the grinder scan saw ≤200 unique markets of the ~1,900 closing within its window (the 100 soonest-closing + the 100 highest-volume). `GammaClient.get_markets` now walks pages of 100 with `offset`, deduplicates by market id across pages, stops on a short page, and treats `limit` as a client-side ceiling. A page failure after the first returns the partial result instead of discarding it. All scan lanes benefit; exclusions (crypto, esports, …) are unchanged and still applied downstream.
+
 ## [2.2.0] - 2026-06-10
 
 Winners ride to 0.99, the live report shows every full-size trade again, and the esports ban is airtight.
