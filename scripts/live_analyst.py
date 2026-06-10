@@ -604,9 +604,10 @@ def load_todays_trades() -> list[dict]:
         seen.add(dedup_key)
         pnl = _record_pnl(e)
         cost = float(e.get("cost_basis") or e.get("stake") or 1.0)
-        # Skip entries with implausible cost_basis (swept wallet-level positions)
-        if cost > 100:
-            continue
+        # No dollar cap on cost_basis here: percentage sizing scales the stake
+        # with the bankroll, so any fixed threshold ends up hiding legitimate
+        # full-size trades from the report. Repeated sweep writes are already
+        # handled by the dedup above; pre-reset closes by the start_ts check.
         pct_raw = e.get("realized_pnl_pct") or e.get("pnl_pct")
         if pct_raw is not None:
             pct = float(pct_raw) * 100 if abs(float(pct_raw)) < 1 else float(pct_raw)

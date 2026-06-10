@@ -97,6 +97,63 @@ class LiveAnalystStatsTests(unittest.TestCase):
         self.assertAlmostEqual(snap.win_rate, 2 / 3 * 100.0)
         self.assertAlmostEqual(snap.equity, 7.0)
 
+    def test_todays_trades_include_large_stakes(self):
+        # Regression: a fixed cost_basis > $100 filter silently dropped every
+        # full-size win once percentage sizing pushed stakes past $100
+        # (Nigeria / Las Palmas / Orebro on 2026-06-10).
+        import time
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            data_dir.mkdir()
+            live_analyst.DATA_DIR = data_dir
+            (data_dir / "trade_journal.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({
+                            "event": "position_closed",
+                            "closed_at": f"{today}T18:57:17+00:00",
+                            "token_id": "big",
+                            "question": "Orebro SK vs. GIF Sundsvall: O/U 4.5",
+                            "exit_reason": "race_big_win_resolved",
+                            "cost_basis": 350.16,
+                            "realized_pnl": 39.34,
+                            "pnl_pct": 0.1123,
+                        }),
+                        json.dumps({
+                            "event": "position_closed",
+                            "closed_at": f"{today}T20:25:37+00:00",
+                            "token_id": "sweep",
+                            "question": "Will Nigeria win on 2026-06-10?",
+                            "exit_reason": "resolved_market_sweep_win",
+                            "cost_basis": 347.96,
+                            "realized_pnl_usd": 22.5352,
+                            "realized_pnl_pct": 0.0648,
+                        }),
+                        json.dumps({
+                            "event": "position_closed",
+                            "closed_at": f"{today}T12:30:17+00:00",
+                            "token_id": "small",
+                            "question": "Will annual inflation be 4.1% in May?",
+                            "exit_reason": "race_big_win_resolved",
+                            "cost_basis": 16.82,
+                            "realized_pnl": 0.95,
+                            "pnl_pct": 0.0565,
+                        }),
+                    ]
+                )
+            )
+
+            rows = live_analyst.load_todays_trades()
+
+        questions = {r["question"] for r in rows}
+        self.assertIn("Orebro SK vs. GIF Sundsvall: O/U 4.5", questions)
+        self.assertIn("Will Nigeria win on 2026-06-10?", questions)
+        self.assertIn("Will annual inflation be 4.1% in May?", questions)
+        self.assertEqual(len(rows), 3)
+        # Sorted by PnL desc — the big win leads the list
+        self.assertAlmostEqual(rows[0]["pnl"], 39.34)
+
     def test_top_closed_trades_reads_cache_when_journal_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "data"
