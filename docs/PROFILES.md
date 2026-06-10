@@ -135,7 +135,7 @@ Cible : `.env` ne contient que secrets (`PRIVATE_KEY`, `API_KEY`...), endpoints 
 | `max_hold_hours` | float | Force-close à X heures de durée (par défaut 24h). |
 | `near_expiry_min_profit` | float | Exit profitable juste avant clôture si PnL ≥ +X%. |
 | `near_expiry_minutes_to_close` | int | Fenêtre du near-expiry exit (X minutes avant clôture). |
-| `resolved_market_threshold` | float | Le marché est considéré résolu si le bid atteint X (typiquement 0.97). |
+| `resolved_market_threshold` | float | Le marché est considéré résolu si le bid atteint X (grinder : 0.99 depuis le 2026-06-10, repli 0.98). |
 
 ## Section `[cohort_exit]` — sortie sur signal cohorte
 

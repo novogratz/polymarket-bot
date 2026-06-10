@@ -91,14 +91,17 @@ cash_floor_pct = 0.01
 #                           other markets NEVER stop out (user rule 2026-06-07,
 #                           gate in _is_soccer_moneyline_position).
 #   sl_confirm_ticks = 3  → must persist 3 consecutive ticks before firing.
-#   resolved at 0.97      → exit when the market prints near-final value.
+#   resolved at 0.99      → exit when the market prints near-final value
+#                           (raised from 0.97 2026-06-10 to ride winners
+#                           closer to settlement; drop to 0.98 if 0.99 rarely
+#                           fills before resolution).
 #   max_hold 4.5h         → backstop so nothing lingers after expiry.
 tp_pct = 1.0
 sl_pct = 0.25            # -25% confirmed SL, soccer moneyline only
 sl_confirm_ticks = 3
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
-resolved_exit_threshold = 0.97
+resolved_exit_threshold = 0.99
 
 # Binary arb disabled (set arb_threshold = 0.97 to re-enable).
 # Sizing now uses proportional stakes (larger stake on the expensive/likely
