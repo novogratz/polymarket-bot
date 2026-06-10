@@ -208,7 +208,7 @@ Si la position a plus de `max_hold_hours` (défaut 24h), force-close. Filet de s
 
 ### Exit 8 — Resolved market
 
-Si `bid ≥ resolved_market_threshold` (typiquement 0.97), le marché est de facto résolu en notre faveur. Exit pour matérialiser sans attendre le settlement. Tag : `resolved_market`.
+Si `bid ≥ resolved_market_threshold` (grinder : 0.99 depuis le 2026-06-10, repli 0.98), le marché est de facto résolu en notre faveur. Exit pour matérialiser sans attendre le settlement. Tag : `resolved_market`.
 
 ### Exit 9 — Cohort silent (variante de cohort exit)
 

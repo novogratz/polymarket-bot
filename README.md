@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.85–0.97) within ~6 hours of resolution and holds until the market prints near-final value (bid ≥ 0.97), with a controlled −25% confirmed stop-loss and a hard "never sell below entry" floor. Crypto and esports markets are excluded. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.85–0.97) within ~6 hours of resolution and holds until the market prints near-final value (bid ≥ 0.99), with a controlled −25% confirmed stop-loss and a hard "never sell below entry" floor. Crypto and esports markets are excluded. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -81,11 +81,11 @@ These categories are blocked globally because a stop-loss cannot protect against
 
 | Condition | Code |
 |---|---|
-| Bid ≥ 0.97 | `race_big_win_resolved` — primary win exit (`resolved_exit_threshold`) |
+| Bid ≥ 0.99 | `race_big_win_resolved` — primary win exit (`resolved_exit_threshold`; raised from 0.97 on 2026-06-10, fallback 0.98) |
 | Down ≥ 25 % from entry, confirmed 3 consecutive ticks | `race_stop_loss_confirmed` — the one path allowed to sell below entry |
 | Genuinely-resolved loser ~8 h past expiry | written off locally (no order; settles on-chain) |
 
-**Never sell below entry** is a hard floor in `execute_live_sell` — the *only* exception is the **controlled stop-loss**, which fires at −25% only after the loss persists for 3 consecutive ticks (so a one-tick thin-book phantom bid can't dump a winner). There is no take-profit ladder, no EOD flatten, and no loss-sweep (the universal sweep realizes **winners** ≥ 0.97 only). The expiry path never force-closes a market that is still accepting orders (it uses a live lookup + `gameStartTime`, since Gamma `endDate` is often set before kickoff). The **daily drawdown halt is disabled** — the per-trade confirmed SL is the risk control.
+**Never sell below entry** is a hard floor in `execute_live_sell` — the *only* exception is the **controlled stop-loss**, which fires at −25% only after the loss persists for 3 consecutive ticks (so a one-tick thin-book phantom bid can't dump a winner). There is no take-profit ladder, no EOD flatten, and no loss-sweep (the universal sweep realizes **winners** ≥ 0.99 only). The expiry path never force-closes a market that is still accepting orders (it uses a live lookup + `gameStartTime`, since Gamma `endDate` is often set before kickoff). The **daily drawdown halt is disabled** — the per-trade confirmed SL is the risk control.
 
 ### Self-improvement
 

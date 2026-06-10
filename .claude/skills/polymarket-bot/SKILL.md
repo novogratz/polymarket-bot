@@ -19,13 +19,13 @@ Buy a heavily-favored binary outcome and ride it to resolution.
 - **Sizing:** percentage of equity (`position_pct`), capped by
   `max_position_ceiling_pct` (no fixed USD cap), `max_orders_per_tick`.
 - **Exits:**
-  - Resolved-exit: sell at bid ≥ `resolved_exit_threshold` (0.97).
+  - Resolved-exit: sell at bid ≥ `resolved_exit_threshold` (0.99; raised from 0.97 on 2026-06-10, fallback 0.98).
   - **Controlled stop-loss: −25 %, confirmed over 3 consecutive ticks**
     (`sl_pct`, `sl_confirm_ticks`) so a one-tick thin-book blip can't dump a
     winner. Min age 5 min.
   - **Hard rule: never sell below entry** (floor in `trading.execute_live_sell`).
     Only `race_stop_loss_confirmed` is exempt. Other losers ride to resolution.
-  - No EOD flatten, no loss-sweep (winners-only sweep ≥ 0.97), no blanket SL.
+  - No EOD flatten, no loss-sweep (winners-only sweep ≥ 0.99), no blanket SL.
   - Expiry never force-closes a market still `acceptingOrders` (uses a live
     lookup + `gameStartTime`, since Gamma `endDate` is often pre-kickoff).
   - **Daily drawdown halt: disabled** (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0`).

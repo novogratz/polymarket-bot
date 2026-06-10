@@ -41,11 +41,11 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 **Sizing:** percentage of equity (`position_pct`), capped by `max_position_ceiling_pct` (no fixed USD cap), `max_orders_per_tick`. Scales automatically with the bankroll.
 
 **Exits** (`_execute_race_exits`):
-- **Resolved-exit** — sell at bid ≥ `resolved_exit_threshold` (0.97).
+- **Resolved-exit** — sell at bid ≥ `resolved_exit_threshold` (0.99; raised from 0.97 on 2026-06-10 — drop to 0.98 if 0.99 rarely fills before resolution).
 - **Controlled stop-loss — −25%, confirmed over 3 consecutive ticks** (`sl_pct=0.25`, `sl_confirm_ticks=3`, min age 5 min). A one-tick thin-book phantom bid can never trigger it; the loss must persist. Tagged `race_stop_loss_confirmed`.
 - **Never sell below entry** — hard floor in `trading.execute_live_sell`. The confirmed stop-loss is the **only** exempt path; every other path holds a losing position to natural on-chain resolution.
 - **Expiry** never force-closes a market that is still `acceptingOrders` — it confirms via a live lookup and uses `gameStartTime` (Gamma `endDate` is frequently set *before* kickoff for sports). A genuinely-resolved loser is written off locally ~8 h after expiry, no order.
-- No EOD flatten, no blanket stop-loss, no loss-sweep (the universal sweep realizes **winners** ≥ 0.97 only).
+- No EOD flatten, no blanket stop-loss, no loss-sweep (the universal sweep realizes **winners** ≥ `resolved_exit_threshold` (0.99) only).
 - **Daily drawdown halt: disabled** (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0`). The per-trade confirmed SL is the risk control.
 
 **Excluded markets** (`models.py:is_excluded_market`, blanket across every lane):
@@ -128,7 +128,7 @@ When changing strategy/filters/sizing/exits: edit **both** `grinder.toml` and `g
 1. Load short-expiry Gamma markets (within `max_hours`).
 2. Build eligible candidates (entry filters + exclusions); log a wide forward-observation net.
 3. Sync live Polymarket positions into the ledger; refresh live USDC cash.
-4. Run exits: resolved-exit (≥0.97), confirmed −25% SL, expiry/open-market handling, winners-only sweep.
+4. Run exits: resolved-exit (≥0.99), confirmed −25% SL, expiry/open-market handling, winners-only sweep.
 5. (Daily drawdown halt — disabled.)
 6. Place new grinder picks with percentage sizing toward the cash floor.
 7. Persist portfolio + write journal entries for any closed positions.
