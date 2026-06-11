@@ -34,7 +34,7 @@ from .models import Candidate, as_float, is_excluded_market, parse_dt, parse_jso
 from .news_strategy import _asset_key, _event_slug, _quote_for_outcome
 from .portfolio import Portfolio
 from .pricing import _fetch_clob_quotes, ensure_open_positions_in_pool
-from .trading import build_client, execute_live_sell, execute_live_trade
+from .trading import build_client, execute_live_sell, execute_live_trade, live_best_bid
 
 # Track consecutive ticks below SL threshold per token_id.
 # Phantom thin-book bids last 1 tick then snap back; requiring 3 consecutive
@@ -1287,6 +1287,17 @@ def _execute_race_exits(
         token_id = position.get("token_id")
         candidate = by_token.get(token_id)
         position_price = as_float(position.get("current_price"), default=0.0)
+
+        # ── Live-book bid probe (2026-06-10) ─────────────────────────────
+        # Gamma's flipped quote and the synced curPrice both lag the CLOB:
+        # winners sat at a real 0.99 bid while this loop saw 0.95 and never
+        # fired the resolved exit. The live book is the executable truth —
+        # lift the decision price to it so the resolved sell triggers (and
+        # prices) off what is actually fillable right now.
+        if not settings.dry_run and token_id:
+            live_bid = live_best_bid(client, str(token_id))
+            if live_bid is not None and live_bid > position_price:
+                position_price = live_bid
 
         # ── Past-expiry force-close ──────────────────────────────────────
         # A position whose market is comfortably past its close time has

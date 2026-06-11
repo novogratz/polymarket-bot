@@ -84,15 +84,21 @@ cash_floor_pct = 0.01
 #                           ("Will <Team> win on <date>?" Yes/No bets). All
 #                           other markets NEVER stop out (user rule 2026-06-07,
 #                           gate in _is_soccer_moneyline_position).
-#   sl_confirm_ticks = 3  → must stay past -25% for 3 consecutive ticks before
-#                           selling, so a thin-book one-tick blip can't dump a winner.
-#   resolved at 0.99      → exit when the market prints near-final resolution value.
+#   sl_confirm_ticks = 3  → must persist 3 consecutive ticks before firing.
+#   resolved at 0.98      → exit when the market prints near-final value.
+#                           0.97 → 0.99 on 2026-06-10, then → 0.98 same day:
+#                           the exit now reads the LIVE book bid (stale Gamma
+#                           quotes held winners past 0.99), and the sell is a
+#                           marketable limit at min(bid, 0.99) — a 0.99 bid
+#                           still fills at 0.99, a 0.98 bid closes at 0.98
+#                           instead of waiting for a print that may never come.
+#   max_hold 4.5h         → backstop so nothing lingers after expiry.
 tp_pct = 1.0
 sl_pct = 0.25            # -25% confirmed SL, soccer moneyline only
 sl_confirm_ticks = 3
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
-resolved_exit_threshold = 0.99   # raised 0.97 → 0.99 2026-06-10 (fallback 0.98)
+resolved_exit_threshold = 0.98
 
 # Binary arb disabled (set arb_threshold = 0.97 to re-enable).
 # Sizing now uses proportional stakes (larger stake on the expensive/likely

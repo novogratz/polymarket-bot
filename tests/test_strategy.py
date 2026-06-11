@@ -2245,6 +2245,112 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(position["status"], "closed")
         self.assertAlmostEqual(float(position["realized_pnl"]), 0.25)
 
+    # ── Live-book bid probe (2026-06-10 regression) ──────────────────────
+    # Gamma's flipped quote and the synced curPrice lag the CLOB: winners
+    # whose real book bid sat at 0.99 showed 0.95 in the exit loop and were
+    # never sold. The exit must trust the live order book.
+
+    class _LiveBookClient:
+        """Fake live TradingSession: order book + sell plumbing only."""
+
+        def __init__(self, bids):
+            self._bids = bids
+            self.sells = []
+
+        def get_order_book(self, token_id):
+            if self._bids is None:
+                raise RuntimeError("book unavailable")
+            return {"bids": self._bids, "asks": []}
+
+        def live_share_balance(self, token_id):
+            return None  # keep the ledger's share count
+
+        def place_live_order(self, *, candidate, price, size, side):
+            self.sells.append({"price": price, "size": size, "side": side})
+            return (
+                {"side": side, "price": price, "size": size},
+                {"success": True, "status": "matched", "orderID": "live-sell-1"},
+            )
+
+    def _race_exit_live_harness(self, client, stale_bid=0.95, threshold=0.98):
+        import tempfile
+        from polymarket_bot.race_strategies import _execute_race_exits
+
+        candidate = Candidate(
+            market_id="1",
+            question="Will Israel close its airspace by June 11?",
+            slug="israel-closes-its-airspace-by",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="No",
+            price=stale_bid,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/israel-closes-its-airspace-by",
+            best_bid=stale_bid,
+            best_ask=stale_bid + 0.04,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=1.0, positions=[])
+        position = portfolio.record_live_position(candidate, 4.7, entry_price=0.89)
+        self.assertIsNotNone(position)
+        position["strategy"] = "grinder"
+        position["current_price"] = stale_bid
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            exits = _execute_race_exits(
+                client,
+                Settings(
+                    dry_run=False,
+                    min_order_shares=5.0,
+                    race_resolved_exit_threshold=threshold,
+                    race_sl_min_age_minutes=15,
+                    quiet=True,
+                    state_path=base / "paper_state.json",
+                    trade_journal_path=base / "trade_journal.jsonl",
+                ),
+                portfolio,
+                [candidate],
+                "grinder",
+            )
+        return exits, position, client
+
+    def test_race_resolved_exit_uses_live_book_bid_over_stale_quote(self):
+        # Stale view 0.95, real book bid 0.99 → the winner must be sold.
+        client = self._LiveBookClient(bids=[{"price": "0.99", "size": "500"}])
+        exits, position, client = self._race_exit_live_harness(client)
+
+        self.assertEqual(len(exits), 1)
+        self.assertEqual(exits[0]["reason"], "race_big_win_resolved")
+        self.assertEqual(position["status"], "closed")
+        self.assertEqual(len(client.sells), 1)
+        self.assertAlmostEqual(client.sells[0]["price"], 0.99)
+
+    def test_race_resolved_exit_fallback_fills_at_098_bid(self):
+        # "If 0.99 doesn't work just close at 0.98": a real 0.98 bid is
+        # enough — the marketable sell goes out at 0.98, not held for 0.99.
+        client = self._LiveBookClient(bids=[{"price": "0.98", "size": "500"}])
+        exits, position, client = self._race_exit_live_harness(client)
+
+        self.assertEqual(len(exits), 1)
+        self.assertEqual(exits[0]["reason"], "race_big_win_resolved")
+        self.assertEqual(position["status"], "closed")
+        self.assertAlmostEqual(client.sells[0]["price"], 0.98)
+
+    def test_race_resolved_exit_book_probe_fails_open(self):
+        # Book unavailable → keep the stale price and do nothing (no sell,
+        # no writeoff): the position must stay open for the next tick.
+        client = self._LiveBookClient(bids=None)
+        exits, position, client = self._race_exit_live_harness(client)
+
+        self.assertEqual(exits, [])
+        self.assertEqual(position["status"], "open")
+        self.assertEqual(client.sells, [])
+
     def test_live_sell_allows_full_position_below_nominal_share_minimum(self):
         candidate = Candidate(
             market_id="1",

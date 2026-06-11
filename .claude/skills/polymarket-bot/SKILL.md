@@ -1,64 +1,113 @@
 ---
 name: polymarket-bot
-description: Claude Code skill for the Polymarket smart-money copy-trading bot. Use for any change to strategy, filters, sizing, exits, journal, or the auto-tuner.
+description: Claude Code skill for the Polymarket grinder bot. Use for any change to strategy, filters, sizing, exits, exclusions, reporting, or the reset/launch scripts.
 ---
 
 # Polymarket Bot Skill
 
-## Fresh-machine setup (2026-05-30 learnings)
+Deterministic favorite-grinder bot for Polymarket binary markets. **No LLM in the
+scan or trade-selection path** — the engine is pure Python over Polymarket APIs.
 
-When setting up on a new machine or fresh account:
+## Current strategy — `grinder` (race mode)
 
-1. **Install uv** first — `curl -LsSf https://astral.sh/uv/install.sh | sh`, then open a new terminal.
-2. **Install py-clob-client-v2** — `uv add py-clob-client-v2`. The old `py_clob_client` is no longer compatible with Polymarket's CLOB v2 (causes `order_version_mismatch`).
-3. **Create `.env`** from `.env.example`. Key values:
-   - `POLYMARKET_SIGNATURE_TYPE=3` — deposit wallet accounts (all new accounts since 2026) require POLY_1271, not POLY_PROXY (type 1).
-   - `POLYMARKET_PRIVATE_KEY` — your EOA private key.
-   - `POLYMARKET_FUNDER_ADDRESS` — your Polymarket deposit wallet address (shown on polymarket.com profile).
-   - `POLYMARKET_API_KEY/SECRET/PASSPHRASE` — generate with: `uv run python -c "from py_clob_client_v2.client import ClobClient; c = ClobClient('https://clob.polymarket.com', chain_id=137, key='<key>', signature_type=3, funder='<funder>'); creds = c.create_or_derive_api_key(); print(creds.api_key, creds.api_secret, creds.api_passphrase)"`
-4. **Make one manual trade on polymarket.com first** — new accounts need at least one UI trade to register the maker address with the CLOB backend. Without this, all API orders fail with `maker address not allowed`.
-5. **Telegram** — create a bot via @BotFather, get chat_id from `https://api.telegram.org/bot<TOKEN>/getUpdates` after messaging the bot.
+Buy a heavily-favored binary outcome and ride it to resolution.
 
-## Current state (2026-05-30)
+- **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1) and
+  `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
+- **Entry:** ask ∈ **[0.85, 0.97]**, ≤ **6 h** to close, spread ≤ 4¢, liquidity
+  ≥ $500, 24 h volume ≥ $300. NO price-movement gates (user 2026-06-10): day-
+  change, day-momentum, and 1h gates all removed — fast movers stay tradeable,
+  values logged in the forward net only, pinned by tests.
+  Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
+  dropped before pick-slot truncation.
+- **Sizing (dynamic):** hard cap **20% of equity per bet** (`stake_pct`); per-bet
+  target = available cash spread across the actionable opportunities (cash/N),
+  full cap when the market is slow. Near-resolution boost never pierces the cap.
+  Depth-capped entries top up later toward the same cap.
+- **Exits:**
+  - Resolved-exit: sell at **live CLOB book** bid ≥ `resolved_exit_threshold`
+    (0.98 since 2026-06-10). The exit loop probes the live book per position
+    (`live_best_bid`) — Gamma quotes/`curPrice` lag and held winners past 0.99.
+    Sell is a marketable limit at min(bid, 0.99): a 0.99 bid fills at 0.99,
+    a 0.98 bid closes at 0.98. Probe fail-open → cached price.
+  - **Controlled stop-loss: −25 %, confirmed over 3 consecutive ticks,
+    SOCCER MONEYLINES ONLY** (`sl_pct`, `sl_confirm_ticks`,
+    `_is_soccer_moneyline_position`). Min age 5 min. Everything else (O/U,
+    elections, …) rides to resolution.
+  - **Hard rule: never sell below entry** (floor in `trading.execute_live_sell`).
+    Only `race_stop_loss_confirmed` is exempt. Other losers ride to resolution.
+  - No EOD flatten, no loss-sweep; the winners-only sweep uses
+    max(smart, race) thresholds (0.98) and can never front-run the race exit.
+  - FOK BUY capped to 90% of executable ask depth; true fill booked; depth-
+    capped entries top up later toward the 20% per-bet cap.
+  - Expiry never force-closes a market still `acceptingOrders` (uses a live
+    lookup + `gameStartTime`, since Gamma `endDate` is often pre-kickoff).
+  - **Daily drawdown halt: disabled** (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0`).
+- **Tradeable by decision (test-pinned):** elections/primaries/mayoral races
+  and fast-moving markets (no 1h gate).
+- **Excluded markets (`models.is_excluded_market`):** ALL crypto
+  (bitcoin/btc/ethereum/solana/… + Up-Down), esports (CS/valorant/"LoL:" + league of
+  legends/dota/BO3/BO5),
+  weather/°C/°F, exact-score, O/U low (0.5–3.5) + high (5.5+) lines, Asian-handicap
+  "Spread:", draw markets, halftime markets.
+- **Disabled:** `btc_edge` lane, `noise_fallback`.
 
-- **Live strategy:** `grinder` — race mode, heavy-favorite near-resolution scalp.
-- **Config:** `configs/profiles/grinder.toml` (single source of truth).
-- **Launcher:** `bash scripts/run_live_70.sh` — preserves ledger/journal. Do NOT use `run_all.sh` for live (it resets the ledger).
-- **Bankroll:** $75.02 USDC. **Sizing:** 30%/trade, `max_orders_per_tick=4`, 1% floor. Dynamic: 1.5× at <30min to close.
-- **Entry:** bid ∈ [0.90, 0.94], ≤3h to close, spread ≤2¢, liq ≥$500, vol ≥$300.
-- **Exits:** SL −35% (after 5 min), resolved_exit at bid ≥0.97, max-hold 4.5h.
-- **W/L record:** `data/realized_trade_cache.jsonl` (survives `reset-ledger` journal rotation).
-- **Analysts:** all deterministic — no AI, no LLM, no Codex anywhere.
+## Multi-bot layout
+
+3 independent live bots, each its own wallet / `.env` / ledger.
+
+- **Launchers:** `run_live_70.sh` (bot 1), `run_live_b.sh` (bots 2 & 3),
+  `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
+- **Per-machine baseline:** `data/starting_cash.txt` (gitignored) — each bot's
+  report baseline, independent of the shared profile. Written by `fresh_start.py`.
+- Ledger/journal/cache are gitignored = per-machine; only code + profiles are shared.
+
+## Reporting — `scripts/live_analyst.py`
+
+The **only** Telegram message. Deterministic French "RAPPORT LIVE": fires on
+**startup**, then every `LIVE_ANALYST_CYCLE_SECONDS`, plus a daily 10:00 US/Eastern.
+Shows equity, **P&L since start (= equity − baseline)**, **total trades + win
+rate**, and open positions. No per-trade lists, no heartbeat, no BUY/SELL alerts.
+
+## Reset workflow — `scripts/fresh_start.py`
+
+Run on a bot's own machine, bot stopped: wipes closed-trade history, **keeps open
+trades** (re-synced on start), stamps `data/live_tracking_start`, and sets the
+per-machine baseline. `--equity X` forces the baseline (else cash + positions).
 
 ## Guardrails
 
 - No `.env` values, private keys, or passphrases in output or commits.
-- Live trading requires `--live` flag on `pmbot auto-loop`; `--yes` is for script automation only.
-- No LLM call in the scanning or trade-selection path.
-- No random trade entry beyond bounded `noise_fallback` (disabled on grinder).
-- Never delete `data/paper_state.json`, `data/trade_journal.jsonl`, or `data/realized_trade_cache.jsonl` unless the user explicitly asks for a reset.
+- Live trading requires `--live` on `pmbot auto-loop`; `--yes` is script-only.
+- No LLM in the scan or trade-selection path.
+- Never delete `data/paper_state.json`, `data/trade_journal.jsonl`, or
+  `data/realized_trade_cache.jsonl` unless the user explicitly asks for a reset.
 - The bot must not gain the capability to commit or push source code.
 
 ## Commands
 
 ```bash
-uv run python -B -m unittest discover -s tests
-uv run pmbot status
-uv run pmbot positions
-uv run pmbot journal-stats
-bash scripts/run_live_70.sh
+uv run python -B -m unittest discover -s tests   # tests
+uv run pmbot status                              # equity, open positions
+bash scripts/run_live_b.sh                       # launch a live bot
+uv run python scripts/fresh_start.py             # reset (keep open trades)
 ```
 
 ## Key files
 
-- `polymarket_bot/race_strategies.py` — grinder entry/exit engine (`select_grinder`, `_build_eligible_candidates`, `_check_race_exits`).
-- `polymarket_bot/main.py` — tick orchestration, sizing, journal.
-- `polymarket_bot/config.py` — all `Settings` fields and env-var names.
-- `scripts/run_live_70.sh` — canonical live launcher (update when config changes).
+- `polymarket_bot/race_strategies.py` — grinder engine (`select_grinder`,
+  `_build_eligible_candidates`, `_execute_race_exits`, confirmed SL, expiry).
+- `polymarket_bot/trading.py` — order execution + never-sell-below-entry floor.
+- `polymarket_bot/models.py` — `is_excluded_market` (the ban list).
+- `polymarket_bot/config.py` — all `Settings` fields / env-var names.
+- `scripts/live_analyst.py` — the Telegram report.
+- `scripts/fresh_start.py` — per-machine reset.
 
 ## Editing workflow
 
-1. Read `race_strategies.py` + `main.py` for the grinder path.
-2. Strategy/filter changes go in `configs/profiles/grinder.toml`.
-3. Update tests if behavior changes (`tests/test_strategy.py`).
+1. Strategy/filter/sizing/exit changes → `configs/profiles/grinder.toml` **and**
+   `grinder_b.toml` (keep in sync). Code-level → `race_strategies.py` /
+   `trading.py` / `models.py`.
+2. Update tests (`tests/test_strategy.py`) if behavior changes.
+3. Propagate to `kzer_windows` (cherry-pick) when it should apply to bot 3.
 4. Update `CHANGELOG.md`, `README.md`, `CLAUDE.md`, and this SKILL.md when user-visible.
