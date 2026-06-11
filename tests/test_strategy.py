@@ -3060,10 +3060,28 @@ class ExcludedMarketTests(unittest.TestCase):
         ):
             self.assertTrue(is_excluded_market({"question": question, "slug": ""}), question)
 
+    def test_elections_and_primaries_stay_tradeable(self):
+        # User decision 2026-06-10: elections/primaries/mayoral races are a
+        # liked, profitable lane (Billy Webster, Castrovillari wins) and must
+        # NOT be banned — despite the postponement risk seen on the Alan
+        # Wilson SC primary. Pin them as allowed so a future exclusion-list
+        # edit can't silently drop them.
+        for market in (
+            {"question": "Will Alan Wilson win the 2026 South Carolina Governor Republican primary election?",
+             "slug": "south-carolina-governor-republican-primary-winner-784"},
+            {"question": "Will Billy Webster win the 2026 South Carolina Governor Democratic primary election?",
+             "slug": "south-carolina-governor-democratic-primary"},
+            {"question": "Will Ernesto Bello win the 2026 Castrovillari mayoral election?",
+             "slug": "castrovillari-mayoral-election-winner"},
+        ):
+            self.assertFalse(is_excluded_market(market), market["question"])
+
     def test_regular_sports_not_excluded(self):
         for market in (
             {"question": "Will Nigeria win on 2026-06-10?", "slug": "fif-nga-2026-06-10"},
             {"question": "Málaga CF vs. UD Las Palmas: O/U 4.5", "slug": "malaga-las-palmas-more-markets"},
+            {"question": "Will PPI YoY be between 7.0% and 7.9% in May?", "slug": "producer-price-index-ppi-yoy-may-2026"},
+            {"question": "Will annual inflation be 4.1% in May?", "slug": "annual-inflation-may-2026"},
         ):
             self.assertFalse(is_excluded_market(market), market["question"])
 
