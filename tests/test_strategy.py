@@ -3178,15 +3178,16 @@ class DynamicStakeTargetTests(unittest.TestCase):
         self.assertAlmostEqual(capped, 200.0)  # (800/3)×1.5=400 → cap
 
 
-class OneHourChangeNeverExcludesTests(unittest.TestCase):
+class PriceMovementNeverExcludesTests(unittest.TestCase):
     """User decision 2026-06-10: markets that moved recently must stay
-    tradeable — a 1h flux gate was added and removed the same day. Recently
-    moving markets are often the ones converging toward resolution; if
-    anything they are the focus. Pin: no oneHourPriceChange value may
-    exclude a market."""
+    tradeable — the 1h flux gates AND the day-change gates (>10% day move,
+    >5% day fall) were all removed. Recently moving markets are often the
+    ones converging toward resolution; if anything they are the focus.
+    Pin: no oneHourPriceChange or oneDayPriceChange value may exclude a
+    market."""
 
     @staticmethod
-    def _market(one_hour=0.0):
+    def _market(one_hour=0.0, one_day=0.0):
         end = (utc_now() + timedelta(hours=2)).isoformat()
         return {
             "id": "m1",
@@ -3202,26 +3203,42 @@ class OneHourChangeNeverExcludesTests(unittest.TestCase):
             "outcomes": '["Yes", "No"]',
             "outcomePrices": '["0.91", "0.09"]',
             "clobTokenIds": '["tok-yes", "tok-no"]',
-            "oneDayPriceChange": 0.0,
+            "oneDayPriceChange": one_day,
             "oneHourPriceChange": one_hour,
         }
+
+    @staticmethod
+    def _settings():
+        return Settings(
+            race_min_price=0.85, race_max_price=0.97, race_max_hours=6.0,
+            race_max_spread=0.04, race_min_liquidity_usd=500, race_min_volume_24h_usd=300,
+        )
 
     def test_fast_moving_markets_stay_eligible(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates
 
-        settings = Settings(
-            race_min_price=0.85, race_max_price=0.97, race_max_hours=6.0,
-            race_max_spread=0.04, race_min_liquidity_usd=500, race_min_volume_24h_usd=300,
-        )
         for one_hour in (0.20, -0.20, 0.05, -0.05):
-            eligible = _build_eligible_candidates([self._market(one_hour)], settings)
+            eligible = _build_eligible_candidates([self._market(one_hour=one_hour)], self._settings())
             self.assertEqual(len(eligible), 1, f"one_hour={one_hour} must not exclude")
 
-    def test_one_hour_gate_knobs_no_longer_exist(self):
-        with self.assertRaises(TypeError):
-            Settings(race_max_hour_change_pct=0.05)
-        with self.assertRaises(TypeError):
-            Settings(race_min_outcome_momentum_1h=-0.02)
+    def test_day_movers_and_day_fallers_stay_eligible(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        for one_day in (0.30, -0.30, 0.10, -0.10):
+            eligible = _build_eligible_candidates([self._market(one_day=one_day)], self._settings())
+            self.assertEqual(len(eligible), 1, f"one_day={one_day} must not exclude")
+            # Both outcomes survive — no momentum floor on either side.
+            self.assertEqual(len(eligible[0:1]), 1)
+
+    def test_movement_gate_knobs_no_longer_exist(self):
+        for knob in (
+            {"race_max_hour_change_pct": 0.05},
+            {"race_min_outcome_momentum_1h": -0.02},
+            {"race_max_day_change_pct": 0.10},
+            {"race_min_outcome_momentum": -0.05},
+        ):
+            with self.assertRaises(TypeError):
+                Settings(**knob)
 
 
 class ExcludedMarketTests(unittest.TestCase):

@@ -35,9 +35,7 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 **Entry** (`_build_eligible_candidates`):
 - price (ask) ∈ **[0.85, 0.97]**, ≤ **6 h** to close
 - spread ≤ 4¢, liquidity ≥ $500, 24 h volume ≥ $300
-- `max_day_change_pct = 0.10` — skip markets that moved >10% today (live-game gap risk)
-- `min_outcome_momentum = -0.05` — skip outcomes that fell >5% today (trending away from resolution)
-- **No `oneHourPriceChange` gate** (added + removed 2026-06-10): recently-moving markets stay tradeable — they are often the ones converging toward resolution. The 1h value is logged in the forward net only; a test pins that it can never exclude a market.
+- **No price-movement gates** (removed 2026-06-10): the >10% day-change gate, the −5% day-momentum floor, and the short-lived 1h gates are all gone — recently-moving markets stay tradeable (they are often the ones converging toward resolution). Both day and 1h values are logged in the forward net only; tests pin that neither can ever exclude a market.
 - The scan paginates the Gamma API past its silent 100-row cap (~1,000–2,000 raw markets/tick) and held/pending/capped markets are removed **before** the top-4 pick truncation so they never burn slots.
 
 **Execution (2026-06-10):** FOK BUY with ask+1-tick guard, stake capped at 90% of the executable ask depth (no more FOK kills on thin books), true fill (`making/taking`) booked to the ledger. Depth-capped entries **top up** on later ticks toward the same 20% cap — each top-up re-passes all entry filters; one position per event otherwise.

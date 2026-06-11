@@ -11,7 +11,8 @@
 # Target: 2 wins/day → ~9%, 3 wins → ~13%. Each win = ~8.8% on stake = 4.4%
 # on account. Wider band + faster tick = more eligible markets per day.
 # Exclusion filters block all known gap-risk categories (exact scores, weather,
-# O/U 0.5/5.5+). Price-stability filter blocks live-game flux (>10% day change).
+# O/U 0.5/5.5+). No price-movement gates (removed 2026-06-10): fast movers
+# are often converging toward resolution and stay tradeable.
 
 [run]
 # This bot's baseline. Fresh start 2026-05-31: flat ledger, $96.47 (real CLOB
@@ -62,15 +63,6 @@ min_volume_24h_usd = 300.0
 # bounds any single loss. Upper bound 0.97 still leaves room up to ~1.0.
 min_price = 0.85
 max_price = 0.97
-
-# Price-stability gate: skip any market that moved >10% today.
-# A live-game "No" on an exact score sits at 0.93 but can gap to 0.40 in one
-# tick when a goal is scored. Stable-for-days is the real near-certainty play.
-max_day_change_pct = 0.10
-
-# Momentum filter: skip outcomes that fell >5% today.
-# A market at 0.91 that was 0.96 this morning is trending away from resolution.
-min_outcome_momentum = -0.05
 
 # Spread 2¢ → 4¢ (2026-05-30): the wider 0.85-0.97 band includes slightly
 # thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.
