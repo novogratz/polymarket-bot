@@ -2032,6 +2032,42 @@ def _position_cap_usd(settings: Settings, equity: float) -> float:
     return max(0.0, cap)
 
 
+def _dynamic_stake_target(
+    settings: Settings,
+    equity: float,
+    cash_above_floor: float,
+    n_opportunities: int,
+    hours_to_close: float | None,
+) -> float:
+    """Per-bet sizing target (user 2026-06-10): spread the available cash
+    across the actionable opportunities, hard-capped per bet.
+
+    - Hard cap: ``equity × race_stake_pct`` (20%) — never more on one bet.
+    - Busy window (N actionable markets): each bet targets cash/N so every
+      opportunity can be funded, instead of the first picks taking the
+      full cap and starving the rest.
+    - Slow market (1–2 opportunities): each bet gets the full cap.
+    - The near-resolution boost (1.5× under 30 min, 1.25× under 1 h)
+      scales the spread share but can never pierce the cap.
+    """
+    per_bet_cap = equity * settings.race_stake_pct
+    spread_share = cash_above_floor / max(1, n_opportunities)
+    h2c = hours_to_close if hours_to_close is not None else 99.0
+    if h2c < 0.5:
+        size_mult = 1.5
+    elif h2c < 1.0:
+        size_mult = 1.25
+    else:
+        size_mult = 1.0
+    target = max(min(per_bet_cap, spread_share * size_mult), 1.0)
+    # Configured ceilings still bound everything (0 = disabled).
+    if settings.smart_max_position_ceiling_pct > 0:
+        target = min(target, equity * settings.smart_max_position_ceiling_pct)
+    if settings.smart_max_position_ceiling_usd > 0:
+        target = min(target, settings.smart_max_position_ceiling_usd)
+    return target
+
+
 def _actionable_candidates(
     eligible: list[tuple[Candidate, float]], portfolio: Portfolio, settings: Settings
 ) -> list[tuple[Candidate, float]]:
@@ -2144,6 +2180,10 @@ def _run_race_tick(
             f"   actionable: {len(actionable)}/{len(eligible)} (already-held markets excluded from pick slots)",
         )
 
+    # Opportunity count drives per-bet sizing: many actionable markets →
+    # spread the cash; few → full per-bet cap (see _dynamic_stake_target).
+    n_opportunities = max(1, len(actionable))
+
     picks = select_fn(actionable)
 
     # Noise fallback: if the selector returned nothing AND there are no
@@ -2207,31 +2247,10 @@ def _run_race_tick(
         cash_above_floor = max(0.0, portfolio.cash - cash_floor)
         if cash_above_floor < 1.0:
             break
-        # Equity-scaled sizing: a fixed % of current equity, capped by
-        # the profile's position ceiling. Means a $100 → $200 bankroll
-        # automatically doubles the per-trade size. race_stake_usd is
-        # kept as the absolute floor so micro-bankrolls still clear the
-        # $1 CLOB minimum.
         equity = float(portfolio.summary().get("equity", portfolio.cash))
-        # Dynamic sizing: scale up when close to resolution.
-        # h2c < 0.5h (30 min) → 1.5× stake. h2c < 1h → 1.25×. Otherwise base.
-        h2c = candidate.hours_to_close or 99.0
-        if h2c < 0.5:
-            size_mult = 1.5
-        elif h2c < 1.0:
-            size_mult = 1.25
-        else:
-            size_mult = 1.0
-        target = max(equity * settings.race_stake_pct * size_mult, 1.0)
-        # Percentage-based ceiling (preferred): cap each trade at a fixed
-        # fraction of current equity so the size scales with the bankroll.
-        # Without this the equity-scaled comment above was a lie — only the
-        # fixed USD cap below was ever applied.
-        if settings.smart_max_position_ceiling_pct > 0:
-            target = min(target, equity * settings.smart_max_position_ceiling_pct)
-        # Optional absolute USD cap (0 = disabled, the percentage rules).
-        if settings.smart_max_position_ceiling_usd > 0:
-            target = min(target, settings.smart_max_position_ceiling_usd)
+        target = _dynamic_stake_target(
+            settings, equity, cash_above_floor, n_opportunities, candidate.hours_to_close
+        )
         stake = min(target, cash_above_floor)
         if topup_pos is not None:
             stake = min(stake, topup_room)

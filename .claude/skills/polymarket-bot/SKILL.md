@@ -16,8 +16,10 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
 - **Entry:** ask ∈ **[0.85, 0.97]**, ≤ **6 h** to close, spread ≤ 4¢, liquidity
   ≥ $500, 24 h volume ≥ $300, |day change| ≤ 10 %, outcome momentum ≥ −5 %.
-- **Sizing:** percentage of equity (`position_pct`), capped by
-  `max_position_ceiling_pct` (no fixed USD cap), `max_orders_per_tick`.
+- **Sizing (dynamic):** hard cap **20% of equity per bet** (`stake_pct`); per-bet
+  target = available cash spread across the actionable opportunities (cash/N),
+  full cap when the market is slow. Near-resolution boost never pierces the cap.
+  Depth-capped entries top up later toward the same cap.
 - **Exits:**
   - Resolved-exit: sell at bid ≥ `resolved_exit_threshold` (0.99; raised from 0.97 on 2026-06-10, fallback 0.98).
   - **Controlled stop-loss: −25 %, confirmed over 3 consecutive ticks**

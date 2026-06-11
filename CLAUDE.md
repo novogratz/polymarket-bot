@@ -38,7 +38,7 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 - `max_day_change_pct = 0.10` — skip markets that moved >10% today (live-game gap risk)
 - `min_outcome_momentum = -0.05` — skip outcomes that fell >5% today (trending away from resolution)
 
-**Sizing:** percentage of equity (`position_pct`), capped by `max_position_ceiling_pct` (no fixed USD cap), `max_orders_per_tick`. Scales automatically with the bankroll.
+**Sizing (dynamic, 2026-06-10):** hard cap **20% of equity per bet** (`stake_pct = 0.20`); the per-bet target spreads available cash across the actionable opportunities (cash/N), so a busy window funds every market and a slow market gives each bet the full 20%. The <30 min/<1 h boost scales the spread share but never pierces the cap (`_dynamic_stake_target`). Depth-capped entries can be topped up later toward the same 20% cap. Scales automatically with the bankroll.
 
 **Exits** (`_execute_race_exits`):
 - **Resolved-exit** — sell at bid ≥ `resolved_exit_threshold` (0.99; raised from 0.97 on 2026-06-10 — drop to 0.98 if 0.99 rarely fills before resolution).
