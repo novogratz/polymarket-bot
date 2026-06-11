@@ -67,10 +67,15 @@ max_price = 0.97
 # A live-game "No" on an exact score sits at 0.93 but can gap to 0.40 in one
 # tick when a goal is scored. Stable-for-days is the real near-certainty play.
 max_day_change_pct = 0.10
+# One-hour flux gate: skip markets that moved >5% in the LAST HOUR — calm 24h
+# numbers can hide a goal/news spike happening right now (2026-06-10, Pierre).
+max_hour_change_pct = 0.05
 
 # Momentum filter: skip outcomes that fell >5% today.
 # A market at 0.91 that was 0.96 this morning is trending away from resolution.
 min_outcome_momentum = -0.05
+# Same floor on the last hour: skip outcomes that fell >2% in the past 60 min.
+min_outcome_momentum_1h = -0.02
 
 # Spread 2¢ → 4¢ (2026-05-30): the wider 0.85-0.97 band includes slightly
 # thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.

@@ -275,6 +275,8 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "underdog_min_volume": ("POLYMARKET_RACE_UNDERDOG_MIN_VOLUME", "float"),
         "max_day_change_pct": ("POLYMARKET_RACE_MAX_DAY_CHANGE_PCT", "float"),
         "min_outcome_momentum": ("POLYMARKET_RACE_MIN_OUTCOME_MOMENTUM", "float"),
+        "max_hour_change_pct": ("POLYMARKET_RACE_MAX_HOUR_CHANGE_PCT", "float"),
+        "min_outcome_momentum_1h": ("POLYMARKET_RACE_MIN_OUTCOME_MOMENTUM_1H", "float"),
         "arb_threshold": ("POLYMARKET_RACE_ARB_THRESHOLD", "float"),
         "arb_max_stake_usd": ("POLYMARKET_RACE_ARB_MAX_STAKE_USD", "float"),
         "expiry_grace_min": ("POLYMARKET_RACE_EXPIRY_GRACE_MIN", "int"),
