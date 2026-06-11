@@ -248,6 +248,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
     "race": {
         "max_hours": ("POLYMARKET_RACE_MAX_HOURS", "float"),
         "max_hours_cap": ("POLYMARKET_RACE_MAX_HOURS_CAP", "float"),
+        "daily_expiry_fallback": ("POLYMARKET_RACE_DAILY_EXPIRY_FALLBACK", "bool"),
         "scan_limit": ("POLYMARKET_RACE_SCAN_LIMIT", "int"),
         "min_liquidity_usd": ("POLYMARKET_RACE_MIN_LIQUIDITY_USD", "float"),
         "min_volume_24h_usd": ("POLYMARKET_RACE_MIN_VOLUME_24H_USD", "float"),

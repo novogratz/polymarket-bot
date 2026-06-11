@@ -2100,21 +2100,36 @@ def _dynamic_stake_target(
     return target
 
 
-def _entry_window_ladder(settings: Settings) -> list[float]:
-    """Hour windows to try, narrowest first: base, then +2h steps to the cap.
+def _entry_window_ladder(settings: Settings, now: Any = None) -> list[float]:
+    """Hour windows to try, narrowest first.
 
-    User rule 2026-06-11: prefer bets within 4h of resolution; if nothing is
-    actionable there, widen to 6, 8, 10 and stop at 12 max. With
-    ``race_max_hours_cap`` ≤ base (or 0) the ladder is just [base] — the
-    pre-existing fixed-window behavior.
+    User rules 2026-06-11/12: prefer bets within 4h of resolution; if nothing
+    is actionable, widen in 2h steps to 12h (4 → 6 → 8 → 10 → 12), then jump
+    straight to the cap (24h). If even the cap is empty and
+    ``race_daily_expiry_fallback`` is on, one last rung extends to the end of
+    TOMORROW (UTC) so daily markets ("Will X be Y on <date>?", stamped at
+    midnight UTC like the Trump-approval one) stay reachable. With
+    ``race_max_hours_cap`` ≤ base (or 0) the ladder is just [base].
     """
     base = max(float(settings.race_max_hours), 0.5)
     cap = float(settings.race_max_hours_cap or 0.0)
     ladder = [base]
     hours = base
-    while cap > hours + 1e-9:
-        hours = min(hours + 2.0, cap)
+    step_limit = min(cap, 12.0)
+    while step_limit > hours + 1e-9:
+        hours = min(hours + 2.0, step_limit)
         ladder.append(hours)
+    if cap > ladder[-1] + 1e-9:
+        ladder.append(cap)
+    if settings.race_daily_expiry_fallback:
+        if now is None:
+            now = utc_now()
+        end_of_tomorrow = (now + timedelta(days=2)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        daily_rung = (end_of_tomorrow - now).total_seconds() / 3600.0
+        if daily_rung > ladder[-1] + 1e-9:
+            ladder.append(round(daily_rung, 2))
     return ladder
 
 

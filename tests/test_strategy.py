@@ -3324,6 +3324,38 @@ class DynamicEntryWindowTests(unittest.TestCase):
         ladder = _entry_window_ladder(Settings(race_max_hours=4.0, race_max_hours_cap=12.0))
         self.assertEqual(ladder, [4.0, 6.0, 8.0, 10.0, 12.0])
 
+    def test_entry_window_ladder_jumps_to_24h_cap_then_daily_rung(self):
+        # User rule 2026-06-12: 4 → 6 → 8 → 10 → 12 → 24, and when even 24h
+        # is empty, one last rung to the end of TOMORROW (UTC) so daily
+        # markets like the Trump-approval one stay reachable.
+        from datetime import datetime, timezone
+        from polymarket_bot.race_strategies import _entry_window_ladder
+
+        now = datetime(2026, 6, 12, 10, 0, tzinfo=timezone.utc)
+        ladder = _entry_window_ladder(
+            Settings(race_max_hours=4.0, race_max_hours_cap=24.0,
+                     race_daily_expiry_fallback=True),
+            now=now,
+        )
+        # End of tomorrow = 2026-06-14T00:00Z → 38h from 10:00Z.
+        self.assertEqual(ladder, [4.0, 6.0, 8.0, 10.0, 12.0, 24.0, 38.0])
+
+        # Late in the day the daily rung still clears the 24h cap (25h).
+        late = datetime(2026, 6, 12, 23, 0, tzinfo=timezone.utc)
+        ladder = _entry_window_ladder(
+            Settings(race_max_hours=4.0, race_max_hours_cap=24.0,
+                     race_daily_expiry_fallback=True),
+            now=late,
+        )
+        self.assertEqual(ladder[-1], 25.0)
+        self.assertEqual(ladder[:-1], [4.0, 6.0, 8.0, 10.0, 12.0, 24.0])
+
+        # Fallback off → ladder stops at the cap.
+        ladder = _entry_window_ladder(
+            Settings(race_max_hours=4.0, race_max_hours_cap=24.0), now=now
+        )
+        self.assertEqual(ladder, [4.0, 6.0, 8.0, 10.0, 12.0, 24.0])
+
     def test_entry_window_ladder_disabled_without_cap(self):
         from polymarket_bot.race_strategies import _entry_window_ladder
 

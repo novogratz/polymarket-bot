@@ -33,7 +33,7 @@ The live trade loop is **fully deterministic — no LLM in the scanning or trade
 Buy a heavily-favored binary outcome near its resolution and **ride it to resolution**. The edge is the implied-probability gap between the entry price and a near-certain outcome settling at 1.0. Source of truth: `configs/profiles/grinder.toml` (bot 1) and `configs/profiles/grinder_b.toml` (bots 2 & 3) — keep their strategy keys in sync. Selector `select_grinder` in `polymarket_bot/race_strategies.py`.
 
 **Entry** (`_build_eligible_candidates`):
-- price (ask) ∈ **[0.85, 0.97]**, **dynamic entry window**: ≤ **4 h** to close preferred; when no candidate is actionable in 4 h, the window widens in 2 h steps (4 → 6 → 8 → 10) and stops at **12 h max** (`race_max_hours=4`, `race_max_hours_cap=12`, ladder in `_entry_window_ladder`). The Gamma load always covers the 12 h cap so held positions beyond 4 h keep being marked and managed.
+- price (ask) ∈ **[0.85, 0.97]**, **dynamic entry window**: ≤ **4 h** to close preferred; when no candidate is actionable the window widens 4 → 6 → 8 → 10 → 12, jumps to **24 h**, and if even 24 h is empty a last rung reaches the **end of tomorrow (UTC)** so daily markets ("on <date>", stamped midnight UTC like Trump approval) stay reachable (`race_max_hours=4`, `race_max_hours_cap=24`, `race_daily_expiry_fallback=1`, ladder in `_entry_window_ladder`). The Gamma load always covers the widest rung so held positions keep being marked and managed.
 - **One bet per GAME** (`_dedup_same_game` + `_open_game_keys` + `EVENT_EXPOSURE_CAP=1`): a game is identified by its date-truncated event slug AND the team names parsed from the question — Polymarket files one game under several events (moneyline / `-more-markets` / `-first-to-score`), which let $958 stack onto Mexico–South Africa on 2026-06-11. Same-game candidates collapse to a single pick before selection, an open position on any market of a game blocks all its other markets across ticks, and an in-loop backstop rejects same-tick repeats. For **soccer**, the **under-4.5-goals** market wins over everything else in the game; otherwise the highest bid is kept.
 - spread ≤ 4¢, liquidity ≥ $500, 24 h volume ≥ $300
 - **No price-movement gates** (removed 2026-06-10): the >10% day-change gate, the −5% day-momentum floor, and the short-lived 1h gates are all gone — recently-moving markets stay tradeable (they are often the ones converging toward resolution). Both day and 1h values are logged in the forward net only; tests pin that neither can ever exclude a market.
@@ -130,8 +130,8 @@ When changing strategy/filters/sizing/exits: edit **both** `grinder.toml` and `g
 
 ## Tick sequence (race/grinder)
 
-1. Load short-expiry Gamma markets (out to the `max_hours_cap` 12 h ladder cap).
-2. Build eligible candidates (entry filters + exclusions); log a wide forward-observation net. Entries use the narrowest ladder window (4 → 6 → 8 → 10 → 12 h) that has actionable candidates; same-game picks collapse to one (soccer: under 4.5 preferred).
+1. Load short-expiry Gamma markets (out to the widest ladder rung).
+2. Build eligible candidates (entry filters + exclusions); log a wide forward-observation net. Entries use the narrowest ladder window (4 → 6 → 8 → 10 → 12 → 24 h → end of tomorrow) that has actionable candidates; same-game picks collapse to one (soccer: under 4.5 preferred).
 3. Sync live Polymarket positions into the ledger; refresh live USDC cash.
 4. Run exits: live-book bid probe + resolved-exit (≥0.99), confirmed −25% SL, expiry/open-market handling, winners-only sweep.
 5. (Daily drawdown halt — disabled.)
