@@ -2272,7 +2272,7 @@ class StrategyTests(unittest.TestCase):
                 {"success": True, "status": "matched", "orderID": "live-sell-1"},
             )
 
-    def _race_exit_live_harness(self, client, stale_bid=0.95, threshold=0.98):
+    def _race_exit_live_harness(self, client, stale_bid=0.95, threshold=0.99):
         import tempfile
         from polymarket_bot.race_strategies import _execute_race_exits
 
@@ -2330,16 +2330,17 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(len(client.sells), 1)
         self.assertAlmostEqual(client.sells[0]["price"], 0.99)
 
-    def test_race_resolved_exit_fallback_fills_at_098_bid(self):
-        # "If 0.99 doesn't work just close at 0.98": a real 0.98 bid is
-        # enough — the marketable sell goes out at 0.98, not held for 0.99.
+    def test_race_resolved_exit_holds_at_098_bid(self):
+        # Threshold back to 0.99 (user 2026-06-10): a 0.98 best bid is NOT
+        # enough — the displayed "98¢" is usually the midpoint, the position
+        # is about to settle at 1.00, so the bot holds for a real 0.99 bid
+        # or on-chain resolution.
         client = self._LiveBookClient(bids=[{"price": "0.98", "size": "500"}])
         exits, position, client = self._race_exit_live_harness(client)
 
-        self.assertEqual(len(exits), 1)
-        self.assertEqual(exits[0]["reason"], "race_big_win_resolved")
-        self.assertEqual(position["status"], "closed")
-        self.assertAlmostEqual(client.sells[0]["price"], 0.98)
+        self.assertEqual(exits, [])
+        self.assertEqual(position["status"], "open")
+        self.assertEqual(client.sells, [])
 
     def test_race_resolved_exit_book_probe_fails_open(self):
         # Book unavailable → keep the stale price and do nothing (no sell,
