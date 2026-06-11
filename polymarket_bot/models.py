@@ -98,8 +98,26 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     # score is 0-0 late, then gaps to 0 on any goal. Same gap profile.
     "end in a draw",
     "win or draw",
-    # Esports (2026-05-31): not profitable for this strategy — exclude entirely.
-    # Best-of series swing fast and books are thin/volatile mid-map.
+)
+_EXCLUDED_SLUG_SUBSTRINGS = (
+    "updown",
+    "up-or-down",
+    "exact-score",
+    # Crypto slug markers (all crypto banned 2026-06-03).
+    "bitcoin",
+    "btc",
+    "ethereum",
+    "solana",
+    "crypto",
+)
+
+# ── Esports — LIVE GAMES ONLY (2026-06-12, was a blanket ban) ─────────────
+# Blanket-banned 2026-05-31 (thin/volatile pre-game books; the FENNEL LoL
+# buy). User re-allowed them 2026-06-12 ON ONE CONDITION: the game must be
+# IN PROGRESS (gameStartTime in the past) — an in-play favorite is converging
+# to resolution. Pre-game, missing gameStartTime, or a start so old the
+# series must be over (> _ESPORTS_LIVE_MAX_HOURS) stays excluded.
+_ESPORTS_QUESTION_SUBSTRINGS = (
     "counter-strike",
     "esports",
     "valorant",
@@ -116,10 +134,26 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "(bo1)",
     "(bo3)",
     "(bo5)",
-    # Stock market / equities (2026-06-11, user rule): never bet on stock,
-    # index, or share-price markets (the grinder bought "S&P 500 (SPY)
-    # closes above $725" on 2026-06-10). Safe plain substrings here; short
-    # tickers needing word boundaries live in _STOCK_MARKET_RE below.
+)
+_ESPORTS_SLUG_SUBSTRINGS = (
+    "counter-strike",
+    "csgo",
+    "cs2",
+    "valorant",
+    "league-of-legends",
+    "lol-",
+    "dota",
+    "esports",
+)
+_ESPORTS_LIVE_MAX_HOURS = 8.0
+
+# ── Stock market — ONGOING TRADING SESSION ONLY (2026-06-12) ─────────────
+# Blanket-banned 2026-06-11 after the SPY buy. User re-allowed 2026-06-12 ON
+# ONE CONDITION: only during the ongoing day's regular NYSE session
+# (Mon–Fri 09:30–16:00 ET) and only for THAT day's close (market end within
+# _STOCK_SAME_DAY_MAX_HOURS) — an in-session same-day close converges to the
+# 16:00 print. Overnight, weekends, and multi-day stock bets stay excluded.
+_STOCK_QUESTION_SUBSTRINGS = (
     "s&p",
     "dow jones",
     "russell 2000",
@@ -129,36 +163,18 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "market cap",
     "wall street",
     # Price-threshold close markets ("X closes above $725 on June 10?") —
-    # the stock/index/commodity pattern; crypto is already banned above.
+    # the stock/index/commodity pattern; crypto is banned outright above.
     "closes above $",
     "close above $",
     "closes below $",
     "close below $",
 )
-_EXCLUDED_SLUG_SUBSTRINGS = (
-    "updown",
-    "up-or-down",
-    "exact-score",
-    # Esports slug markers.
-    "counter-strike",
-    "csgo",
-    "cs2",
-    "valorant",
-    "league-of-legends",
-    "lol-",
-    "dota",
-    "esports",
-    # Crypto slug markers (all crypto banned 2026-06-03).
-    "bitcoin",
-    "btc",
-    "ethereum",
-    "solana",
-    "crypto",
-    # Stock market slug markers (2026-06-11).
+_STOCK_SLUG_SUBSTRINGS = (
     "stock-market",
     "sp500",
     "s-and-p",
 )
+_STOCK_SAME_DAY_MAX_HOURS = 12.0
 
 # Stock tickers and company names need word boundaries — plain substrings
 # would false-positive ("spy" in "spying", "meta" in "metal"). Lowercased
@@ -172,8 +188,52 @@ _STOCK_MARKET_RE = re.compile(
 )
 
 
-def is_excluded_market(market: dict[str, Any]) -> bool:
-    """True for market types blanket-excluded from every strategy.
+def _parse_market_dt(raw: Any) -> datetime | None:
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    s = s.replace("Z", "+00:00").replace(" ", "T")
+    if s.endswith("+00"):
+        s += ":00"
+    try:
+        d = datetime.fromisoformat(s)
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d
+    except ValueError:
+        return None
+
+
+def _esports_game_is_live(market: dict[str, Any], now: datetime) -> bool:
+    """True only while the game/series is actually IN PROGRESS."""
+    start = _parse_market_dt(market.get("gameStartTime"))
+    if start is None:
+        return False
+    hours_running = (now - start).total_seconds() / 3600.0
+    return 0.0 <= hours_running <= _ESPORTS_LIVE_MAX_HOURS
+
+
+def _stock_session_is_ongoing(market: dict[str, Any], now: datetime) -> bool:
+    """True only during the regular NYSE session AND for that day's close."""
+    try:
+        from zoneinfo import ZoneInfo
+        et = now.astimezone(ZoneInfo("America/New_York"))
+    except Exception:
+        return False
+    if et.weekday() >= 5:  # Sat/Sun
+        return False
+    minutes = et.hour * 60 + et.minute
+    if not (9 * 60 + 30 <= minutes < 16 * 60):  # 09:30-16:00 ET
+        return False
+    end = _parse_market_dt(market.get("endDate"))
+    if end is None:
+        return False
+    hours_to_end = (end - now).total_seconds() / 3600.0
+    return 0.0 <= hours_to_end <= _STOCK_SAME_DAY_MAX_HOURS
+
+
+def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> bool:
+    """True for market types excluded from every strategy.
 
     Blocked categories:
     - Crypto Up/Down binaries: no real book depth, FOK orders bounce.
@@ -181,8 +241,14 @@ def is_excluded_market(market: dict[str, Any]) -> bool:
       weather fails constantly even at 0.94.
     - Exact-score live sports: gaps on goals, SL can't catch them.
     - O/U 0.5 soccer: any-goal binary, same gap risk.
-    - Stock market / equities (2026-06-11): indices, ETFs, tickers,
-      company stocks, and price-threshold close markets.
+
+    Conditionally allowed (2026-06-12, user rule — "ongoing only"):
+    - Esports: tradeable ONLY while the game is live (gameStartTime in the
+      past, within _ESPORTS_LIVE_MAX_HOURS). Pre-game or unknown start ->
+      excluded.
+    - Stock market / equities: tradeable ONLY during the ongoing regular
+      NYSE session (Mon-Fri 09:30-16:00 ET) and only for that day's close.
+      Overnight, weekends, multi-day -> excluded.
     """
     q = str(market.get("question") or "").lower()
     if any(pat in q for pat in _EXCLUDED_QUESTION_SUBSTRINGS):
@@ -190,8 +256,21 @@ def is_excluded_market(market: dict[str, Any]) -> bool:
     slug = str(market.get("slug") or "").lower()
     if any(pat in slug for pat in _EXCLUDED_SLUG_SUBSTRINGS):
         return True
-    if _STOCK_MARKET_RE.search(q) or _STOCK_MARKET_RE.search(slug):
-        return True
+    if now is None:
+        now = datetime.now(timezone.utc)
+    is_esports = any(pat in q for pat in _ESPORTS_QUESTION_SUBSTRINGS) or any(
+        pat in slug for pat in _ESPORTS_SLUG_SUBSTRINGS
+    )
+    if is_esports:
+        return not _esports_game_is_live(market, now)
+    is_stock = (
+        any(pat in q for pat in _STOCK_QUESTION_SUBSTRINGS)
+        or any(pat in slug for pat in _STOCK_SLUG_SUBSTRINGS)
+        or bool(_STOCK_MARKET_RE.search(q))
+        or bool(_STOCK_MARKET_RE.search(slug))
+    )
+    if is_stock:
+        return not _stock_session_is_ongoing(market, now)
     return False
 
 

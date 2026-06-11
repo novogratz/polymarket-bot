@@ -52,10 +52,10 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 - No EOD flatten, no blanket stop-loss, no loss-sweep. The universal sweep realizes **winners only** and uses `max(smart, race)` resolved-exit thresholds (0.99) — it can never fire earlier than the race exit (fixed 2026-06-10 after a 0.97 front-run).
 - **Daily drawdown halt: disabled** (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0`). The per-trade confirmed SL is the risk control.
 
-**Excluded markets** (`models.py:is_excluded_market`, blanket across every lane):
+**Excluded markets** (`models.py:is_excluded_market`, across every lane):
 - **All crypto** — bitcoin/btc/ethereum/solana/dogecoin/xrp/cardano/litecoin/"crypto" + Up/Down binaries
-- **All stock market / equities (2026-06-11)** — indices & ETFs (S&P/SPY/Nasdaq/QQQ/Dow/DJIA/Russell/Nikkei/FTSE/DAX), big-cap tickers & company names (GOOGL/Google, AAPL/Apple, TSLA/Tesla, NVDA/Nvidia, MSFT/Microsoft, AMZN/Amazon, META, NFLX/Netflix, AMD, INTC — word-bounded regex `_STOCK_MARKET_RE` so "spy"≠"spying"), plus "stock market/price", "share price", "market cap", "wall street", and the `closes above/below $X` price-threshold pattern
-- **Esports** — counter-strike/valorant/league of legends/"LoL:"/dota/cs2/csgo/rainbow six/rocket league/overwatch + BO1/BO3/BO5
+- **Stock market / equities — ONGOING SESSION ONLY (2026-06-12, was a blanket ban)**: tradeable only Mon–Fri 09:30–16:00 ET *and* only for that day's close (`endDate` within 12 h). Overnight/weekend/multi-day stock bets stay excluded. Patterns: indices & ETFs (S&P/SPY/Nasdaq/QQQ/Dow/DJIA/…), big-cap tickers & companies (word-bounded `_STOCK_MARKET_RE`), equity terms, `closes above/below $X`
+- **Esports — LIVE GAMES ONLY (2026-06-12, was a blanket ban)**: tradeable only while the game is in progress (`gameStartTime` in the past, ≤ 8 h). Pre-game or unknown start stays excluded. Patterns: counter-strike/valorant/league of legends/"LoL:"/dota/cs2/csgo/rainbow six/rocket league/overwatch + BO1/BO3/BO5
 - temperature/weather (°C + °F), exact-score, O/U low-line (0.5/1.5/2.5/3.5) + high-line (5.5/6.5/7.5), Asian-handicap "Spread:", draw markets, halftime leading/score
 - `btc_edge` lane and `noise_fallback` are **disabled**.
 
