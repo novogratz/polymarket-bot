@@ -81,11 +81,13 @@ min_outcome_momentum_1h = -0.02
 # thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.
 max_spread = 0.04
 
-# 30% stake, up to 4 concurrent positions, 1% cash floor — stay fully deployed
-# across multiple markets rather than all-in on one. Dynamic sizing scales
-# up to 1.5× at <30min (handled in race_strategies.py).
+# 20% HARD CAP per bet (user 2026-06-10, was 30%). Per-bet target spreads the
+# available cash across the actionable opportunities (cash/N), so a busy window
+# funds every market instead of the first picks taking the cap; a slow market
+# gives each bet the full 20%. The <30min/<1h boost scales the spread share but
+# never pierces the cap (handled in race_strategies._dynamic_stake_target).
 stake_usd = 1.0
-stake_pct = 0.30
+stake_pct = 0.20
 max_orders_per_tick = 4
 cash_floor_pct = 0.01
 
