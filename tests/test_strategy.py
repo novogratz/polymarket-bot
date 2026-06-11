@@ -2744,6 +2744,74 @@ class JournalSuggestionsTests(unittest.TestCase):
             self.assertIn("id", suggestions[0])
 
 
+class ActionableCandidatesTests(unittest.TestCase):
+    """Regression for pick-slot burning (2026-06-10): with one Spurs/Knicks
+    position open, the four Spurs O/U lines outscored everything (soonest to
+    close), filled all race_max_orders_per_tick pick slots, and were then
+    skipped as duplicates — the 5th-ranked PPI market was never attempted.
+    Already-held markets must be dropped BEFORE the selector truncates."""
+
+    @staticmethod
+    def _candidate(market_id, question, slug, event_slug, token_id, hours, bid):
+        return Candidate(
+            market_id=market_id,
+            question=question,
+            slug=slug,
+            end_date=utc_now() + timedelta(hours=hours),
+            hours_to_close=hours,
+            liquidity=1500,
+            volume=2000,
+            outcome="Under",
+            price=bid,
+            token_id=token_id,
+            score=1,
+            url=f"https://polymarket.com/event/{event_slug}",
+            best_bid=bid,
+            best_ask=bid + 0.01,
+            tick_size=0.01,
+            accepts_orders=True,
+            event_slug=event_slug,
+        )
+
+    def test_held_event_does_not_burn_pick_slots(self):
+        from polymarket_bot.race_strategies import _actionable_candidates, select_grinder
+
+        spurs_lines = [
+            self._candidate(str(i), f"Spurs vs. Knicks: O/U 19{i}.5", f"spurs-knicks-ou-19{i}",
+                            "nba-sas-nyk-2026-06-10", f"tok-{i}", hours=0.5, bid=0.91)
+            for i in range(4)
+        ]
+        ppi = self._candidate("99", "Will PPI YoY be between 7.0% and 7.9% in May?",
+                              "ppi-yoy-70-79", "producer-price-index-ppi-yoy-may-2026",
+                              "tok-ppi", hours=6.0, bid=0.92)
+        eligible = [(c, 0.0) for c in spurs_lines + [ppi]]
+
+        portfolio = Portfolio(cash=900.0, positions=[{
+            "status": "open",
+            "token_id": "tok-0",
+            "market_id": "0",
+            "question": "Spurs vs. Knicks: O/U 196.5",
+            "event_slug": "nba-sas-nyk-2026-06-10",
+            "stake": 357.8,
+        }])
+
+        actionable = _actionable_candidates(eligible, portfolio)
+        self.assertEqual([c.market_id for c, _ in actionable], ["99"])
+
+        picks = select_grinder(actionable, 4)
+        self.assertEqual([c.market_id for c in picks], ["99"])
+
+    def test_nothing_held_keeps_all_candidates(self):
+        from polymarket_bot.race_strategies import _actionable_candidates
+
+        ppi = self._candidate("99", "Will PPI YoY be between 7.0% and 7.9% in May?",
+                              "ppi-yoy-70-79", "producer-price-index-ppi-yoy-may-2026",
+                              "tok-ppi", hours=6.0, bid=0.92)
+        eligible = [(ppi, 0.0)]
+        portfolio = Portfolio(cash=900.0, positions=[])
+        self.assertEqual(len(_actionable_candidates(eligible, portfolio)), 1)
+
+
 class ExcludedMarketTests(unittest.TestCase):
     def test_lol_prefix_titles_are_excluded(self):
         # Regression: Polymarket titles LoL markets "LoL: A vs B - Game N
