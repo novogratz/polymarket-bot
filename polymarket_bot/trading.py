@@ -644,7 +644,13 @@ def execute_live_trade(
         raise ValueError("candidate has no executable ask price")
     if candidate.tick_size is None or candidate.tick_size <= 0:
         raise ValueError("candidate has no tick size")
-    if portfolio.has_open_event_position(candidate):
+    # A top-up (same token already held) is exempt from the one-position-
+    # per-event guard — it grows that very position instead of opening a
+    # correlated second one. The caller bounds it with the per-position cap.
+    topup_position = (
+        portfolio.open_position_for_token(candidate.token_id) if candidate.token_id else None
+    )
+    if topup_position is None and portfolio.has_open_event_position(candidate):
         raise ValueError("duplicate_open_sports_event")
 
     entry_price = round(min(candidate.best_ask + candidate.tick_size, 0.99), 3)
@@ -717,8 +723,8 @@ def execute_live_trade(
     # can fill within the price guard, the exchange kills the whole order and
     # the bot buys nothing (2026-06-10: a $380 PPI buy bounced on a thin book
     # while smaller bots filled instantly). Cap the stake to the executable
-    # depth so the order can actually fill. No top-up later — the token-level
-    # dedup intentionally blocks averaging into an open position.
+    # depth so the order can actually fill; the race loop may later top up
+    # the position toward its per-position cap once the book refills.
     if not settings.dry_run and candidate.token_id:
         depth_usd = _executable_ask_depth_usd(client, str(candidate.token_id), entry_price)
         if depth_usd is not None and stake > depth_usd * _BOOK_DEPTH_SAFETY:
@@ -804,13 +810,18 @@ def execute_live_trade(
         # never-sell-below-entry floor, and the share count all drift
         # (2026-06-10 PPI: booked 0.954/$229.04 vs real 0.9496/$228.51).
         fill_usd, fill_price = _actual_buy_fill(response, stake, entry_price)
-        position = portfolio.record_live_position(
-            candidate,
-            fill_usd,
-            entry_price=fill_price,
-            order_id=order_id,
-            order_response=response,
-        )
+        if topup_position is not None:
+            position = portfolio.top_up_live_position(
+                str(candidate.token_id), fill_usd, fill_price, order_id=order_id
+            )
+        else:
+            position = portfolio.record_live_position(
+                candidate,
+                fill_usd,
+                entry_price=fill_price,
+                order_id=order_id,
+                order_response=response,
+            )
         if position is not None:
             if strategy:
                 position["strategy"] = strategy

@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Top-up lane — depth-capped entries can be completed**: when a buy fills below its sizing target because the book was thin (e.g. $229 of a $379 PPI target), the market stays actionable and later ticks may buy more of the *same token*, averaging stake/shares/entry into the existing position. Hard bound: the position's total cost basis never exceeds the per-position cap (`equity × race_stake_pct`, ~30%, min'd with the ceilings when set) — the cap is what bounds the old "$45 → $4 in 22 ticks" averaging spiral that the blanket token-dedup used to prevent; with `race_stake_pct ≤ 0` top-ups stay disabled. Each top-up must re-pass all entry filters and the book-depth cap; it is exempt from the one-position-per-event guard (it grows that very position) and does not inflate the per-event exposure count.
+
 ### Fixed
 
 - **Ledger books the true fill, not the price guard**: a filled BUY is now recorded with the actual USDC spent (`makingAmount`) and the real average fill price (`making/taking`) instead of the requested stake and the ask+tick price guard. Booking the guard overstated the entry (PPI 2026-06-10: 0.954/$229.04 booked vs 0.9496/$228.51 real), skewing the −25% SL trigger, the never-sell-below-entry floor, and the share count. Falls back to the request values when the response lacks fill fields.
