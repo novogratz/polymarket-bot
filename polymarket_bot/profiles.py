@@ -260,6 +260,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "tp_pct": ("POLYMARKET_RACE_TP_PCT", "float"),
         "sl_pct": ("POLYMARKET_RACE_SL_PCT", "float"),
         "sl_min_age_minutes": ("POLYMARKET_RACE_SL_MIN_AGE_MINUTES", "int"),
+        "sl_confirm_ticks": ("POLYMARKET_RACE_SL_CONFIRM_TICKS", "int"),
         "near_expiry_minutes": ("POLYMARKET_RACE_NEAR_EXPIRY_MINUTES", "int"),
         "resolved_exit_threshold": ("POLYMARKET_RACE_RESOLVED_EXIT_THRESHOLD", "float"),
         "contrarian_min_momentum": ("POLYMARKET_RACE_CONTRARIAN_MIN_MOMENTUM", "float"),
