@@ -3768,6 +3768,46 @@ class ExcludedMarketTests(unittest.TestCase):
         no_end = {"question": market["question"], "slug": market["slug"]}
         self.assertTrue(is_excluded_market(no_end, now=in_session))
 
+    def test_tweet_count_markets_banned_outright(self):
+        # User rule 2026-06-12 — the bot bought "Will Elon Musk post 240-259
+        # tweets from June 5 to June 12?" (week-long count, no convergence).
+        for market in (
+            {"question": "Will Elon Musk post 240-259 tweets from June 5 to June 12, 2026?",
+             "slug": "elon-musk-of-tweets-june-5-june-12"},
+            {"question": "Will Trump tweet about the Fed this week?",
+             "slug": "trump-tweet-about-fed"},
+        ):
+            self.assertTrue(is_excluded_market(market), market["question"])
+
+    def test_weekly_and_touch_stock_markets_banned_even_in_session(self):
+        # The bot bought "Will Airbnb, Inc. (ABNB) hit (LOW) $124 Week of
+        # June 8 2026?" on 2026-06-11 — ABNB wasn't in the ticker list and
+        # weekly/touch markets have no end-of-session convergence. Banned
+        # outright, session or not.
+        from datetime import datetime, timezone
+
+        in_session = datetime(2026, 6, 10, 18, 0, tzinfo=timezone.utc)  # Wed 14:00 ET
+        abnb = {"question": "Will Airbnb, Inc. (ABNB) hit (LOW) $124 Week of June 8 2026?",
+                "slug": "will-abnb-hit-week-of-june-8-2026",
+                "endDate": "2026-06-10T23:00:00+00:00"}
+        self.assertTrue(is_excluded_market(abnb, now=in_session))
+
+    def test_generic_paren_ticker_with_dollar_is_classified_stock(self):
+        # Tickers not in the enumerated list are caught by "(TICKER) … $".
+        from datetime import datetime, timezone
+
+        market = {"question": "Will Snowflake (SNOW) close above $310 on June 10?",
+                  "slug": "snowflake-close-above-310-june-10",
+                  "endDate": "2026-06-11T00:00:00+00:00"}
+        in_session = datetime(2026, 6, 10, 18, 0, tzinfo=timezone.utc)
+        after_hours = datetime(2026, 6, 10, 21, 30, tzinfo=timezone.utc)
+        self.assertFalse(is_excluded_market(market, now=in_session))
+        self.assertTrue(is_excluded_market(market, now=after_hours))
+        # No dollar sign → parenthesized acronyms alone don't classify:
+        politics = {"question": "Will the (GOP) keep the House majority?",
+                    "slug": "gop-house-majority-2026"}
+        self.assertFalse(is_excluded_market(politics, now=after_hours))
+
 
 if __name__ == "__main__":
     unittest.main()
