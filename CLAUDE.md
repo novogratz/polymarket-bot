@@ -37,15 +37,19 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 - spread ≤ 4¢, liquidity ≥ $500, 24 h volume ≥ $300
 - `max_day_change_pct = 0.10` — skip markets that moved >10% today (live-game gap risk)
 - `min_outcome_momentum = -0.05` — skip outcomes that fell >5% today (trending away from resolution)
+- **No `oneHourPriceChange` gate** (added + removed 2026-06-10): recently-moving markets stay tradeable — they are often the ones converging toward resolution. The 1h value is logged in the forward net only; a test pins that it can never exclude a market.
+- The scan paginates the Gamma API past its silent 100-row cap (~1,000–2,000 raw markets/tick) and held/pending/capped markets are removed **before** the top-4 pick truncation so they never burn slots.
+
+**Execution (2026-06-10):** FOK BUY with ask+1-tick guard, stake capped at 90% of the executable ask depth (no more FOK kills on thin books), true fill (`making/taking`) booked to the ledger. Depth-capped entries **top up** on later ticks toward the same 20% cap — each top-up re-passes all entry filters; one position per event otherwise.
 
 **Sizing (dynamic, 2026-06-10):** hard cap **20% of equity per bet** (`stake_pct = 0.20`); the per-bet target spreads available cash across the actionable opportunities (cash/N), so a busy window funds every market and a slow market gives each bet the full 20%. The <30 min/<1 h boost scales the spread share but never pierces the cap (`_dynamic_stake_target`). Depth-capped entries can be topped up later toward the same 20% cap. Scales automatically with the bankroll.
 
 **Exits** (`_execute_race_exits`):
 - **Resolved-exit** — sell at bid ≥ `resolved_exit_threshold` (0.99; raised from 0.97 on 2026-06-10 — drop to 0.98 if 0.99 rarely fills before resolution).
-- **Controlled stop-loss — −25%, confirmed over 3 consecutive ticks** (`sl_pct=0.25`, `sl_confirm_ticks=3`, min age 5 min). A one-tick thin-book phantom bid can never trigger it; the loss must persist. Tagged `race_stop_loss_confirmed`.
+- **Controlled stop-loss — −25%, confirmed over 3 consecutive ticks, SOCCER MONEYLINES ONLY** (`sl_pct=0.25`, `sl_confirm_ticks=3`, min age 5 min; gate `_is_soccer_moneyline_position`). A one-tick thin-book phantom bid can never trigger it; the loss must persist. O/U totals, elections, and everything else never stop out. Tagged `race_stop_loss_confirmed`.
 - **Never sell below entry** — hard floor in `trading.execute_live_sell`. The confirmed stop-loss is the **only** exempt path; every other path holds a losing position to natural on-chain resolution.
 - **Expiry** never force-closes a market that is still `acceptingOrders` — it confirms via a live lookup and uses `gameStartTime` (Gamma `endDate` is frequently set *before* kickoff for sports). A genuinely-resolved loser is written off locally ~8 h after expiry, no order.
-- No EOD flatten, no blanket stop-loss, no loss-sweep (the universal sweep realizes **winners** ≥ `resolved_exit_threshold` (0.99) only).
+- No EOD flatten, no blanket stop-loss, no loss-sweep. The universal sweep realizes **winners only** and uses `max(smart, race)` resolved-exit thresholds (0.99) — it can never fire earlier than the race exit (fixed 2026-06-10 after a 0.97 front-run).
 - **Daily drawdown halt: disabled** (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0`). The per-trade confirmed SL is the risk control.
 
 **Excluded markets** (`models.py:is_excluded_market`, blanket across every lane):
