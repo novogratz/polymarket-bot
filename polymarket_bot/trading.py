@@ -595,6 +595,40 @@ def choose_trade(candidates: list[Candidate], portfolio: Portfolio) -> Candidate
     return None
 
 
+# Fraction of the visible ask-side depth a FOK BUY may consume. The book can
+# move between the depth fetch and the order, so leave headroom; an
+# occasional kill on a fast book is fine — the cash redeploys next tick.
+_BOOK_DEPTH_SAFETY = 0.90
+
+
+def _executable_ask_depth_usd(client: Any, token_id: str, max_price: float) -> float | None:
+    """Dollar value sitting on the ask side at prices ≤ ``max_price``.
+
+    Reads the live CLOB book via whichever client exposes
+    ``get_order_book`` (the TradingSession's legacy client does). Returns
+    None when no book is available so callers fail open and keep the
+    pre-existing behavior.
+    """
+    try:
+        book_fn = getattr(client, "get_order_book", None)
+        if book_fn is None:
+            book_fn = getattr(getattr(client, "legacy_client", None), "get_order_book", None)
+        if book_fn is None:
+            return None
+        book = book_fn(token_id)
+        if not isinstance(book, dict):
+            return None
+        total = 0.0
+        for level in book.get("asks") or []:
+            price = float(level.get("price") or 0)
+            size = float(level.get("size") or 0)
+            if 0 < price <= max_price:
+                total += price * size
+        return total
+    except Exception:
+        return None
+
+
 def execute_live_trade(
     client: TradingSession,
     settings: Settings,
@@ -678,6 +712,29 @@ def execute_live_trade(
         raise ValueError("target exposure already reached or no cash available")
     if stake < minimum:
         raise ValueError(f"trade size {stake} is below Polymarket's $1 minimum")
+
+    # FOK orders are all-or-nothing: when the stake exceeds what the ask side
+    # can fill within the price guard, the exchange kills the whole order and
+    # the bot buys nothing (2026-06-10: a $380 PPI buy bounced on a thin book
+    # while smaller bots filled instantly). Cap the stake to the executable
+    # depth so the order can actually fill. No top-up later — the token-level
+    # dedup intentionally blocks averaging into an open position.
+    if not settings.dry_run and candidate.token_id:
+        depth_usd = _executable_ask_depth_usd(client, str(candidate.token_id), entry_price)
+        if depth_usd is not None and stake > depth_usd * _BOOK_DEPTH_SAFETY:
+            capped = round(depth_usd * _BOOK_DEPTH_SAFETY, 2)
+            floor_usd = max(minimum, settings.min_order_shares * entry_price)
+            if capped < floor_usd:
+                raise ValueError(
+                    f"book_too_thin: executable ask depth ${depth_usd:.2f} ≤ {entry_price} "
+                    f"cannot cover the ${floor_usd:.2f} minimum order"
+                )
+            if not settings.quiet:
+                print(
+                    f"   📉 Stake capped to book depth: ${stake:.2f} → ${capped:.2f} "
+                    f"(asks ≤ {entry_price}: ${depth_usd:.2f} × {_BOOK_DEPTH_SAFETY})"
+                )
+            stake = capped
 
     size = round(stake / entry_price, 6)
     if size < settings.min_order_shares:
