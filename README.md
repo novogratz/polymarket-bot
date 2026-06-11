@@ -43,7 +43,7 @@ Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet,
 
 ### 1. Scan
 
-Every Gamma market closing within the widest ladder rung (24 h cap), fetched with two orderings (soonest-closing + highest-volume) and **full pagination past the API's silent 100-row cap** — ~1,000–2,000+ raw markets per tick depending on time of day.
+Every Gamma market closing within the widest ladder rung (12 h cap), fetched with two orderings (soonest-closing + highest-volume) and **full pagination past the API's silent 100-row cap** — ~1,000–2,000+ raw markets per tick depending on time of day.
 
 ### 2. Excluded market types
 
@@ -70,7 +70,7 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | Parameter | Value (`grinder.toml [race]`) |
 |---|---|
 | Price band (ask) | 0.85 – 0.97 |
-| Time to close | **dynamic**: ≤ 4 h preferred; widens 4 → 6 → 8 → 10 → 12 → 24 h max only when nothing is actionable — nothing beyond 24 h |
+| Time to close | **dynamic**: ≤ 4 h preferred; widens 4 → 6 → 8 → 10 → 12 h max only when nothing is actionable — nothing beyond 12 h |
 | Max spread | ≤ 4¢ |
 | Min liquidity | $500 |
 | Min 24 h volume | $300 |
