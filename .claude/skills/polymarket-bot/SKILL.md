@@ -16,9 +16,11 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
 - **Entry:** ask ∈ **[0.85, 0.97]**, **dynamic window** ≤ 4 h preferred,
   widening 4 → 6 → 8 → 10 → **12 h max** only when nothing is actionable
-  (`max_hours=4`, `max_hours_cap=12`). **One bet per game**
-  (`_dedup_same_event`, `EVENT_EXPOSURE_CAP=1`); soccer prefers the
-  **under-4.5** line over the rest of the event. Spread ≤ 4¢, liquidity
+  (`max_hours=4`, `max_hours_cap=12`). **One bet per GAME**
+  (`_dedup_same_game` on date-truncated event slug + team names — one game
+  spans several Polymarket events; `_open_game_keys` blocks across ticks;
+  `EVENT_EXPOSURE_CAP=1`); soccer prefers the **under-4.5** line over the
+  rest of the game. Spread ≤ 4¢, liquidity
   ≥ $500, 24 h volume ≥ $300. NO price-movement gates (user 2026-06-10): day-
   change, day-momentum, and 1h gates all removed — fast movers stay tradeable,
   values logged in the forward net only, pinned by tests.

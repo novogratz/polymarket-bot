@@ -3437,6 +3437,84 @@ class SameEventDedupTests(unittest.TestCase):
 
         self.assertEqual(race_strategies.EVENT_EXPOSURE_CAP, 1)
 
+    # ── Cross-event game stacking (2026-06-11 regression) ────────────────
+    # Polymarket files one game under several events: the bot put $958 on
+    # Mexico–South Africa via three slugs (moneyline / -more-markets /
+    # -first-to-score). One game = one bet, whatever the event slug.
+
+    @staticmethod
+    def _mexico_trio():
+        def cand(mid, question, slug, event_slug, token, outcome, bid):
+            return Candidate(
+                market_id=mid, question=question, slug=slug,
+                end_date=utc_now() + timedelta(hours=1), hours_to_close=1,
+                liquidity=1500, volume=2000, outcome=outcome, price=bid,
+                token_id=token, score=1,
+                url=f"https://polymarket.com/event/{event_slug}",
+                best_bid=bid, best_ask=bid + 0.01, tick_size=0.01,
+                accepts_orders=True, event_slug=event_slug,
+            )
+        moneyline = cand("ml", "Will South Africa win on 2026-06-11?",
+                         "will-south-africa-win-on-2026-06-11",
+                         "fifwc-mex-rsa-2026-06-11", "tok-ml", "No", 0.90)
+        under = cand("u45", "Mexico vs. South Africa: O/U 4.5",
+                     "mexico-vs-south-africa-ou-45",
+                     "fifwc-mex-rsa-2026-06-11-more-markets", "tok-u45", "Under", 0.91)
+        first = cand("fts", "Mexico vs. South Africa: Neither team to score first?",
+                     "mexico-vs-south-africa-first-to-score",
+                     "fifwc-mex-rsa-2026-06-11-first-to-score", "tok-fts", "No", 0.94)
+        return moneyline, under, first
+
+    def test_one_game_across_three_event_slugs_keeps_only_under_45(self):
+        from polymarket_bot.race_strategies import _actionable_candidates
+
+        moneyline, under, first = self._mexico_trio()
+        empty = Portfolio(cash=1300.0, positions=[])
+        actionable = _actionable_candidates(
+            [(moneyline, 0.0), (under, 0.0), (first, 0.0)], empty, Settings()
+        )
+        self.assertEqual([c.market_id for c, _ in actionable], ["u45"])
+
+    def test_open_position_blocks_other_markets_of_same_game(self):
+        from polymarket_bot.race_strategies import _actionable_candidates
+
+        moneyline, under, first = self._mexico_trio()
+        holding_under = Portfolio(cash=900.0, positions=[{
+            "status": "open",
+            "token_id": "tok-u45",
+            "market_id": "u45",
+            "question": "Mexico vs. South Africa: O/U 4.5",
+            "event_slug": "fifwc-mex-rsa-2026-06-11-more-markets",
+            "stake": 372.09,
+        }])
+        # Top-ups disabled → even the held market drops; the moneyline and
+        # first-to-score (different event slugs, same game) must drop too.
+        actionable = _actionable_candidates(
+            [(moneyline, 0.0), (under, 0.0), (first, 0.0)],
+            holding_under,
+            Settings(race_stake_pct=0.0),
+        )
+        self.assertEqual(actionable, [])
+
+    def test_different_games_unaffected_by_game_keys(self):
+        from polymarket_bot.race_strategies import _actionable_candidates
+
+        def cand(mid, question, event_slug, token):
+            return Candidate(
+                market_id=mid, question=question, slug=mid,
+                end_date=utc_now() + timedelta(hours=1), hours_to_close=1,
+                liquidity=1500, volume=2000, outcome="Under", price=0.9,
+                token_id=token, score=1,
+                url=f"https://polymarket.com/event/{event_slug}",
+                best_bid=0.9, best_ask=0.91, tick_size=0.01,
+                accepts_orders=True, event_slug=event_slug,
+            )
+        a = cand("1", "France vs. Germany: O/U 4.5", "fifwc-fra-ger-2026-06-11-more-markets", "t1")
+        b = cand("2", "Brazil vs. Chile: O/U 4.5", "fifwc-bra-chi-2026-06-11-more-markets", "t2")
+        empty = Portfolio(cash=900.0, positions=[])
+        actionable = _actionable_candidates([(a, 0.0), (b, 0.0)], empty, Settings())
+        self.assertEqual(sorted(c.market_id for c, _ in actionable), ["1", "2"])
+
 
 class DynamicStakeTargetTests(unittest.TestCase):
     """Opportunity-spread sizing (user 2026-06-10): 20% of equity hard cap
