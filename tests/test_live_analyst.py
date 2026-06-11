@@ -175,5 +175,54 @@ class LiveAnalystStatsTests(unittest.TestCase):
         self.assertAlmostEqual(rows[0]["pnl"], 0.66)
 
 
+
+class OpenPositionExpiryTests(unittest.TestCase):
+    """User request 2026-06-11: POSITIONS OUVERTES sorted by expiry, each
+    line showing when the game finishes / the market expires."""
+
+    def test_positions_sorted_by_soonest_expiry_missing_dates_last(self):
+        import tempfile
+
+        def _no_api():
+            raise ValueError("hermetic test: no Data API")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            old = live_analyst.DATA_DIR
+            old_client = live_analyst._get_settings_and_client
+            live_analyst.DATA_DIR = data_dir
+            live_analyst._get_settings_and_client = _no_api
+            try:
+                (data_dir / "paper_state.json").write_text(json.dumps({"positions": [
+                    {"status": "open", "question": "late", "outcome": "No",
+                     "entry_price": 0.9, "shares": 10, "current_price": 0.95,
+                     "stake": 9.0, "end_date": "2026-06-11T20:00:00+00:00"},
+                    {"status": "open", "question": "no-date", "outcome": "No",
+                     "entry_price": 0.9, "shares": 10, "current_price": 0.99,
+                     "stake": 9.0},
+                    {"status": "open", "question": "soon", "outcome": "No",
+                     "entry_price": 0.9, "shares": 10, "current_price": 0.91,
+                     "stake": 9.0, "end_date": "2026-06-11T13:30:00+00:00"},
+                ]}))
+                rows = live_analyst.load_open_positions()
+            finally:
+                live_analyst.DATA_DIR = old
+                live_analyst._get_settings_and_client = old_client
+        self.assertEqual([r["question"] for r in rows], ["soon", "late", "no-date"])
+
+    def test_fmt_expiry_fr_future_past_and_missing(self):
+        from datetime import datetime, timezone
+        now = datetime(2026, 6, 11, 16, 0, tzinfo=timezone.utc)  # 12:00 ET
+        line = live_analyst._fmt_expiry_fr("2026-06-11T18:05:00+00:00", now=now)
+        self.assertIn("Fin prévue", line)
+        self.assertIn("14:05 ET", line)
+        self.assertIn("dans 2h05", line)
+        short = live_analyst._fmt_expiry_fr("2026-06-11T16:25:00+00:00", now=now)
+        self.assertIn("dans 25min", short)
+        past = live_analyst._fmt_expiry_fr("2026-06-11T15:00:00+00:00", now=now)
+        self.assertIn("Échéance passée", past)
+        self.assertEqual(live_analyst._fmt_expiry_fr(""), "")
+        self.assertEqual(live_analyst._fmt_expiry_fr("garbage"), "")
+
 if __name__ == "__main__":
     unittest.main()
