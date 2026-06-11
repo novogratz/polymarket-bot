@@ -2728,7 +2728,15 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
         Polymarket settles them without any sell order required.
     Losing positions are held until natural on-chain resolution.
     """
-    win_threshold = float(getattr(settings, "smart_resolved_exit_threshold", 0.97) or 0.97)
+    # The sweep must never realize a winner EARLIER than the per-strategy
+    # resolved-exit would: use the strictest configured threshold. PR #29
+    # raised race_resolved_exit_threshold to 0.99 but the sweep kept reading
+    # smart_resolved_exit_threshold's 0.97 default and front-ran the race
+    # exit (Spurs/Knicks O/U sold at 0.97 on 2026-06-10, 2¢ left on table).
+    win_threshold = max(
+        float(getattr(settings, "smart_resolved_exit_threshold", 0.97) or 0.97),
+        float(getattr(settings, "race_resolved_exit_threshold", 0.0) or 0.0),
+    )
     loss_threshold = 0.0  # unused — loss sweep disabled
     try:
         from .portfolio import Portfolio
