@@ -258,11 +258,11 @@ def _build_eligible_candidates(
         one_day_change = as_float(market.get("oneDayPriceChange"), default=0.0)
         if settings.race_max_day_change_pct > 0 and abs(one_day_change) > settings.race_max_day_change_pct:
             continue
-        # One-hour flux gate (2026-06-10, Pierre): a market can look calm on
-        # 24h change while a goal/news 20 minutes ago is moving it right now.
-        one_hour_change = as_float(market.get("oneHourPriceChange"), default=0.0)
-        if settings.race_max_hour_change_pct > 0 and abs(one_hour_change) > settings.race_max_hour_change_pct:
-            continue
+        # NOTE (2026-06-10): no oneHourPriceChange gate. A 1h flux filter was
+        # added and removed the same day — recently-moving markets are often
+        # exactly the ones converging toward resolution, and the user wants
+        # them tradeable. The field is still logged in the forward-observation
+        # net so its edge contribution can be measured before any future gate.
 
         for index, outcome in enumerate(outcomes):
             price = prices[index]
@@ -280,11 +280,6 @@ def _build_eligible_candidates(
             # Skip outcomes actively falling today — market moving away from
             # resolution is worse edge than one trending toward it.
             if outcome_momentum < settings.race_min_outcome_momentum:
-                continue
-            # Same check on the last hour: a fall that started recently
-            # doesn't show in the 24h number yet.
-            outcome_momentum_1h = one_hour_change if index == 0 else -one_hour_change
-            if outcome_momentum_1h < settings.race_min_outcome_momentum_1h:
                 continue
             candidate = Candidate(
                 market_id=market_id,
