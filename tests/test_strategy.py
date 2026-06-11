@@ -153,6 +153,110 @@ class StrategyTests(unittest.TestCase):
 
         self.assertEqual(_smart_discovery_keywords(settings), ["election", "weather", "fed"])
 
+    def test_live_buy_stake_capped_to_book_depth(self):
+        # Regression (2026-06-10): a $380 FOK buy on PPI bounced with
+        # "FOK orders are fully filled or killed" because the ask side
+        # couldn't fill the whole stake within the price guard. The stake
+        # must be capped to the executable depth so the order fills.
+        placed = {}
+
+        class FakeClient:
+            def live_available_balance(self):
+                return 900.0
+
+            def get_order_book(self, token_id):
+                # $150.40 of executable depth within the 0.954 guard
+                return {
+                    "asks": [
+                        {"price": "0.953", "size": "100"},  # $95.30
+                        {"price": "0.954", "size": "57.75"},  # $55.10
+                        {"price": "0.97", "size": "5000"},  # above guard — ignored
+                    ],
+                    "bids": [{"price": "0.92", "size": "50"}],
+                }
+
+            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
+                placed["amount"] = amount
+                return {"price": price, "amount": amount, "side": side}, {
+                    "success": True,
+                    "status": "matched",
+                    "orderID": "order-1",
+                    "makingAmount": str(amount),
+                }
+
+        candidate = Candidate(
+            market_id="ppi",
+            question="Will PPI YoY be between 7.0% and 7.9% in May?",
+            slug="ppi-yoy",
+            end_date=utc_now() + timedelta(hours=6),
+            hours_to_close=6,
+            liquidity=1300,
+            volume=2000,
+            outcome="No",
+            price=0.953,
+            token_id="tok-ppi",
+            score=1,
+            url="https://polymarket.com/event/ppi",
+            best_bid=0.921,
+            best_ask=0.953,
+            tick_size=0.001,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=900.0, positions=[])
+        result = execute_live_trade(
+            FakeClient(),
+            Settings(trade_fraction=0.95, min_order_shares=5.0),
+            candidate,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=500.0,
+        )
+
+        depth = 0.953 * 100 + 0.954 * 57.75  # $150.40 within the guard
+        self.assertLessEqual(placed["amount"], round(depth * 0.90, 2))
+        self.assertGreater(placed["amount"], 0)
+        self.assertTrue(result.response.get("success"))
+        self.assertAlmostEqual(portfolio.positions[0]["stake"], placed["amount"], places=2)
+
+    def test_live_buy_rejected_when_book_cannot_cover_minimum(self):
+        class FakeClient:
+            def live_available_balance(self):
+                return 900.0
+
+            def get_order_book(self, token_id):
+                return {"asks": [{"price": "0.953", "size": "3"}], "bids": []}  # $2.86 depth
+
+            def place_market_order(self, **kwargs):
+                raise AssertionError("order must not be sent on a too-thin book")
+
+        candidate = Candidate(
+            market_id="ppi",
+            question="Will PPI YoY be between 7.0% and 7.9% in May?",
+            slug="ppi-yoy",
+            end_date=utc_now() + timedelta(hours=6),
+            hours_to_close=6,
+            liquidity=1300,
+            volume=2000,
+            outcome="No",
+            price=0.953,
+            token_id="tok-ppi",
+            score=1,
+            url="https://polymarket.com/event/ppi",
+            best_bid=0.921,
+            best_ask=0.953,
+            tick_size=0.001,
+            accepts_orders=True,
+        )
+        with self.assertRaisesRegex(ValueError, "book_too_thin"):
+            execute_live_trade(
+                FakeClient(),
+                Settings(trade_fraction=0.95, min_order_shares=5.0),
+                candidate,
+                Portfolio(cash=900.0, positions=[]),
+                min_trade_usd=1.0,
+                max_trade_usd=500.0,
+            )
+
     def test_live_trade_respects_minimum_share_size(self):
         class FakeClient:
             def live_available_balance(self):
