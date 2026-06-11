@@ -61,10 +61,12 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   (bitcoin/btc/ethereum/solana/… + Up-Down),
   weather/°C/°F, exact-score, O/U low (0.5–3.5) + high (5.5+) lines, Asian-handicap
   "Spread:", draw markets, halftime markets.
+  Tweet-count markets banned outright (2026-06-12).
   **Conditional (2026-06-12, "ongoing only"):** esports tradeable ONLY while
   the game is live (gameStartTime past, ≤8h); stocks/indices tradeable ONLY
   during the regular NYSE session (Mon–Fri 09:30–16:00 ET) for that day's
-  close (endDate ≤12h). Otherwise both stay excluded.
+  close (endDate ≤12h) — weekly "Week of" / "hit (LOW)/(HIGH)" touch markets
+  banned outright; generic "(TICKER) … $" rule catches unlisted tickers.
 - **Disabled:** `btc_edge` lane, `noise_fallback`.
 
 ## Multi-bot layout
