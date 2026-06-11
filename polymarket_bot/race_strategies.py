@@ -2107,7 +2107,7 @@ def _entry_window_ladder(settings: Settings) -> list[float]:
 
 
 # One bet per game (2026-06-11, was 2): a second position on the same event
-# is never opened — _dedup_same_event collapses same-event picks before
+# is never opened — _dedup_same_game collapses same-game picks before
 # selection, this cap is the in-loop backstop.
 EVENT_EXPOSURE_CAP = 1
 
@@ -2123,38 +2123,110 @@ def _is_under_45_candidate(candidate: Candidate) -> bool:
     )
 
 
-def _dedup_same_event(
+# ── Game identity (2026-06-11) ───────────────────────────────────────────
+# Polymarket splits ONE game across SEVERAL events: the Mexico–South Africa
+# moneyline lived in `fifwc-mex-rsa-2026-06-11`, the O/U 4.5 in
+# `…-more-markets`, and the first-to-score special in `…-first-to-score` —
+# so the event-slug dedup let the bot stack $958 on a single game (three
+# positions, 2026-06-11 12:00 UTC). A game is identified by BOTH:
+#   - the event slug truncated at its date (`…-2026-06-11-more-markets` →
+#     `…-2026-06-11`), unifying the per-game satellite events;
+#   - the team names parsed from the question ("A vs. B: …" → both teams,
+#     "Will A win on YYYY-MM-DD?" → A), catching markets whose slugs share
+#     no prefix. Within the ≤12h entry window a team plays one game at most.
+_GAME_SLUG_BASE_RE = re.compile(r"^(.*?\d{4}-\d{2}-\d{2})")
+_VS_QUESTION_RE = re.compile(r"^\s*(.+?)\s+vs\.?\s+(.+?)\s*(?::|$)", re.IGNORECASE)
+_WIN_ON_DATE_RE = re.compile(r"^\s*will\s+(.+?)\s+win\s+on\s+\d{4}-\d{2}-\d{2}", re.IGNORECASE)
+
+
+def _game_keys(question: str, event_slug: str) -> set[str]:
+    """Identity keys for the game behind a market (empty for non-games).
+
+    The exact event slug is always included, so multi-market non-game events
+    (elections, indices) still collapse to one bet via the same mechanism.
+    """
+    keys: set[str] = set()
+    slug = str(event_slug or "").lower()
+    if slug:
+        keys.add(f"ev:{slug}")
+        m = _GAME_SLUG_BASE_RE.match(slug)
+        if m:
+            keys.add(f"slug:{m.group(1)}")
+    q = str(question or "").strip()
+    m = _VS_QUESTION_RE.match(q)
+    if m:
+        keys.add(f"team:{m.group(1).strip().lower()}")
+        keys.add(f"team:{m.group(2).strip().lower()}")
+    else:
+        m = _WIN_ON_DATE_RE.match(q)
+        if m:
+            keys.add(f"team:{m.group(1).strip().lower()}")
+    return keys
+
+
+def _candidate_game_keys(candidate: Candidate) -> set[str]:
+    return _game_keys(candidate.question or "", candidate.event_slug or "")
+
+
+def _open_game_keys(portfolio: Portfolio) -> set[str]:
+    """Game keys of every OPEN position — blocks a second bet on a game the
+    book already holds, across ticks and across satellite event slugs."""
+    keys: set[str] = set()
+    for position in portfolio.positions:
+        if position.get("status") != "open":
+            continue
+        keys |= _game_keys(
+            str(position.get("question") or ""), str(position.get("event_slug") or "")
+        )
+    return keys
+
+
+def _dedup_same_game(
     candidates: list[tuple[Candidate, float]],
 ) -> list[tuple[Candidate, float]]:
-    """One bet per game: keep a single candidate per event slug.
+    """One bet per game: keep a single candidate per game (NOT per event —
+    one game spans several Polymarket events, see `_game_keys`).
 
     User rule 2026-06-11: never take two bets on the same game. For soccer,
-    prioritize the under-4.5-goals market over everything else in the event
-    (moneyline, specials); otherwise keep the highest-bid (most resolved)
-    candidate. Candidates without an event slug pass through untouched.
+    prioritize the under-4.5-goals market over everything else in the game
+    (moneyline, first-to-score, specials); otherwise keep the highest-bid
+    (most resolved) candidate. Candidates with no keys pass through.
     """
-    best_by_event: dict[str, tuple[Candidate, float]] = {}
-    order: list[tuple[tuple[Candidate, float] | None, str | None]] = []
-    for entry in candidates:
+    chosen: list[tuple[Candidate, float]] = []
+    keys_by_index: dict[int, set[str]] = {}
+    claimed: dict[str, int] = {}
+    passthrough: list[tuple[int, tuple[Candidate, float]]] = []
+    for position_in_input, entry in enumerate(candidates):
         candidate, _ = entry
-        event = str(candidate.event_slug or "")
-        if not event:
-            order.append((entry, None))
+        keys = _candidate_game_keys(candidate)
+        if not keys:
+            passthrough.append((position_in_input, entry))
             continue
-        held = best_by_event.get(event)
-        if held is None:
-            best_by_event[event] = entry
-            order.append((None, event))
+        conflict = next((claimed[k] for k in keys if k in claimed), None)
+        if conflict is None:
+            index = len(chosen)
+            chosen.append(entry)
+            keys_by_index[index] = set(keys)
+            for k in keys:
+                claimed[k] = index
             continue
-        held_candidate, _ = held
+        held_candidate, _ = chosen[conflict]
         new_under = _is_under_45_candidate(candidate)
         held_under = _is_under_45_candidate(held_candidate)
         if (new_under and not held_under) or (
             new_under == held_under
             and (candidate.best_bid or 0.0) > (held_candidate.best_bid or 0.0)
         ):
-            best_by_event[event] = entry
-    return [best_by_event[event] if event else entry for entry, event in order]  # type: ignore[index]
+            chosen[conflict] = entry
+        # Either way the loser's keys now point at the winner, so a third
+        # market of the same game still conflicts.
+        keys_by_index[conflict] |= keys
+        for k in keys_by_index[conflict]:
+            claimed[k] = conflict
+    out = list(chosen)
+    for _, entry in passthrough:
+        out.append(entry)
+    return out
 
 
 def _actionable_candidates(
@@ -2180,6 +2252,7 @@ def _actionable_candidates(
     """
     equity = float(portfolio.summary().get("equity", portfolio.cash))
     cap = _position_cap_usd(settings, equity)
+    open_keys = _open_game_keys(portfolio)
     out: list[tuple[Candidate, float]] = []
     for c, m in eligible:
         if portfolio.has_pending_token(c.token_id):
@@ -2190,10 +2263,16 @@ def _actionable_candidates(
                 continue
         elif portfolio.has_open_event_position(c):
             continue
+        elif _candidate_game_keys(c) & open_keys:
+            # One bet per GAME across ticks (2026-06-11): an open position
+            # on any market of this game blocks every other market of the
+            # same game, even when Polymarket files them under different
+            # event slugs (moneyline vs -more-markets vs -first-to-score).
+            continue
         out.append((c, m))
-    # One bet per game (2026-06-11): collapse same-event candidates to a
+    # One bet per game within the tick: collapse same-game candidates to a
     # single pick, preferring soccer's under-4.5 line over the rest.
-    return _dedup_same_event(out)
+    return _dedup_same_game(out)
 
 
 def _run_race_tick(
@@ -2312,6 +2391,7 @@ def _run_race_tick(
 
     open_assets = _open_asset_keys(portfolio)
     executed: list[dict[str, Any]] = []
+    executed_game_keys: set[str] = set()
     rejected: list[dict[str, Any]] = []
     cash_floor = portfolio.summary().get("equity", 0) * settings.race_cash_floor_pct
 
@@ -2351,6 +2431,13 @@ def _run_race_tick(
         ev_slug = str(candidate.event_slug or "")
         if topup_pos is None and ev_slug and event_exposure.get(ev_slug, 0) >= EVENT_EXPOSURE_CAP:
             rejected.append({"question": candidate.question, "reason": f"event_exposure_cap:{ev_slug}"})
+            continue
+        # In-loop one-bet-per-game backstop (2026-06-11): a pick executed
+        # earlier THIS tick claims its game keys; same-game picks bounce
+        # even if they slipped past the upstream dedup.
+        cand_keys = _candidate_game_keys(candidate)
+        if topup_pos is None and cand_keys & executed_game_keys:
+            rejected.append({"question": candidate.question, "reason": "same_game_already_bet"})
             continue
         asset_key = _asset_key(candidate.question, candidate.event_slug or "", candidate.slug or "")
         cash_above_floor = max(0.0, portfolio.cash - cash_floor)
@@ -2404,6 +2491,7 @@ def _run_race_tick(
                 signal=signal_payload,
             )
             executed.append({"strategy": strategy_name, "order": result.order, "response": result.response, "signal": signal_payload})
+            executed_game_keys |= cand_keys
             if asset_key:
                 open_assets.add(asset_key)
             if ev_slug and topup_pos is None:
