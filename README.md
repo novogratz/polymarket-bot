@@ -39,27 +39,15 @@ Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet,
 
 ## Strategy
 
-**Thesis.** A binary market at ask 0.85–0.97 within ~6 hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0.
+**Thesis.** A binary market at ask 0.85–0.97 within ~6 hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0. Every tick (10 s) it runs the same deterministic pipeline: **scan → exclude → filter → rank → size → execute → manage exits**. No LLM is ever in this path.
 
-### Entry filters
+### 1. Scan
 
-| Parameter | Value (`grinder.toml [race]`) |
-|---|---|
-| Price band (ask) | 0.85 – 0.97 |
-| Time to close | ≤ 6 hours |
-| Max spread | ≤ 4¢ |
-| Min liquidity | $500 |
-| Min 24 h volume | $300 |
-| Max one-day price change | 10 % |
-| Min outcome momentum | −5 % |
+Every Gamma market closing within `max_hours` (6 h), fetched with two orderings (soonest-closing + highest-volume) and **full pagination past the API's silent 100-row cap** — ~1,000–2,000 raw markets per tick depending on time of day.
 
-> Exact values live in `configs/profiles/grinder.toml` and are the single source of truth — the table reflects the current live config but may be tuned over time (see [Self-improvement](#self-improvement)).
+### 2. Excluded market types
 
-The **price-stability gate** (max day change 10 %) blocks markets that moved significantly today — a live-game "No" sitting at 0.93 can collapse to 0.40 in a single tick when a goal is scored. The **momentum filter** (min −5 %) additionally skips outcomes that are actively falling today: a market at 0.91 that was at 0.96 this morning is trending *away* from resolution, not toward it.
-
-### Excluded market types
-
-These categories are blocked globally because a stop-loss cannot protect against gap moves:
+Blocked globally (`models.is_excluded_market`) because no exit can protect against their gap moves:
 
 | Pattern | Reason |
 |---|---|
@@ -71,21 +59,54 @@ These categories are blocked globally because a stop-loss cannot protect against
 | halftime leading / score | Resolves mid-game, gap risk |
 | `temperature`, `°c`, `°f` | Specific-degree weather, near-zero win rate in band |
 | **All crypto** — `bitcoin`/`btc`/`ethereum`/`solana`/`dogecoin`/`xrp`/… + Up/Down | Banned: volatile, no edge for this strategy |
-| **Esports** — `counter-strike`/`valorant`/`league of legends`/`dota`/… + `(bo3)`/`(bo5)` | Banned: in-series swings are uncatchable |
+| **Esports** — `counter-strike`/`valorant`/`league of legends`/`LoL:`/`dota`/… + `(bo1)`/`(bo3)`/`(bo5)` | Banned: in-series swings are uncatchable |
 
-### Sizing
+**Deliberately tradeable** (test-pinned, do not ban): elections, primaries, and mayoral races — a profitable lane despite occasional postponements — and fast-moving markets: there is **no `oneHourPriceChange` gate** (recently-moving markets are often the ones converging toward resolution; the 1h value is logged for offline analysis only).
 
-**Percentage of equity per trade** (`position_pct`), capped by `max_position_ceiling_pct` — no fixed dollar cap, so the stake scales automatically with the bankroll. Up to `max_orders_per_tick` new entries per tick, with a cash floor kept in reserve.
+### 3. Entry filters
 
-### Exits
+| Parameter | Value (`grinder.toml [race]`) |
+|---|---|
+| Price band (ask) | 0.85 – 0.97 |
+| Time to close | ≤ 6 hours |
+| Max spread | ≤ 4¢ |
+| Min liquidity | $500 |
+| Min 24 h volume | $300 |
+| Max one-day price change | 10 % |
+| Min outcome momentum (1 day) | −5 % |
+
+> Exact values live in `configs/profiles/grinder.toml` and are the single source of truth — the table reflects the current live config but may be tuned over time (see [Self-improvement](#self-improvement)).
+
+The **price-stability gate** (max day change 10 %) blocks markets that moved significantly today — a live-game "No" sitting at 0.93 can collapse to 0.40 in a single tick when a goal is scored. The **momentum filter** (min −5 %) additionally skips outcomes that are actively falling today: a market at 0.91 that was at 0.96 this morning is trending *away* from resolution, not toward it.
+
+### 4. Ranking & pick slots
+
+Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) and the top `max_orders_per_tick` (4) become this tick's picks. Markets that can never execute — token already held at its cap, order pending, or event already held — are removed **before** ranking, so they never burn pick slots.
+
+### 5. Sizing (dynamic, 20 % hard cap)
+
+- **Hard cap: 20 % of equity per bet** (`stake_pct = 0.20`) — never more on a single outcome, top-ups included.
+- **Opportunity spread:** the per-bet target is `min(cap, available cash / N)` where N = actionable markets this tick. A busy evening with 20 qualifying markets gets ~5 % each so all can be funded; a quiet window gives each bet the full 20 %. Time-of-day adaptivity is emergent from N.
+- **Near-resolution boost:** 1.5× under 30 min to close, 1.25× under 1 h — scales the spread share but can never pierce the 20 % cap.
+- No fixed dollar caps — everything scales with the bankroll.
+
+### 6. Execution
+
+- FOK market BUY with a price guard of ask + 1 tick (≤ 0.99).
+- **Stake capped to 90 % of the executable ask-side depth** within the guard, so big stakes fill what the book offers instead of being killed (`FOK orders are fully filled or killed`).
+- The ledger books the **true fill** (`makingAmount`/`takingAmount`), not the request — entry price, share count, and cash are exact.
+- **Top-ups:** a depth-capped entry keeps its market actionable; later ticks may buy more of the same token (re-passing every entry filter and the depth cap) until the position's total cost reaches the 20 % cap. One position per event otherwise.
+
+### 7. Exits
 
 | Condition | Code |
 |---|---|
 | Bid ≥ 0.99 | `race_big_win_resolved` — primary win exit (`resolved_exit_threshold`; raised from 0.97 on 2026-06-10, fallback 0.98) |
-| Down ≥ 25 % from entry, confirmed 3 consecutive ticks | `race_stop_loss_confirmed` — the one path allowed to sell below entry |
+| Cached price ≥ 0.99 after the market left the scan | `resolved_market_sweep_win` — winners-only sweep, same threshold (it can never fire earlier than the race exit) |
+| Down ≥ 25 % from entry, confirmed 3 consecutive ticks, **soccer moneylines only** ("Will <Team> win on <date>?") | `race_stop_loss_confirmed` — the one path allowed to sell below entry |
 | Genuinely-resolved loser ~8 h past expiry | written off locally (no order; settles on-chain) |
 
-**Never sell below entry** is a hard floor in `execute_live_sell` — the *only* exception is the **controlled stop-loss**, which fires at −25% only after the loss persists for 3 consecutive ticks (so a one-tick thin-book phantom bid can't dump a winner). There is no take-profit ladder, no EOD flatten, and no loss-sweep (the universal sweep realizes **winners** ≥ 0.99 only). The expiry path never force-closes a market that is still accepting orders (it uses a live lookup + `gameStartTime`, since Gamma `endDate` is often set before kickoff). The **daily drawdown halt is disabled** — the per-trade confirmed SL is the risk control.
+**Never sell below entry** is a hard floor in `execute_live_sell` — the *only* exception is the **controlled stop-loss**, which fires at −25 % only after the loss persists for 3 consecutive ticks (so a one-tick thin-book phantom bid can't dump a winner) and only on soccer moneylines; O/U totals, elections, and everything else ride to on-chain resolution. There is no take-profit ladder, no EOD flatten, and no loss-sweep. The expiry path never force-closes a market that is still accepting orders (it uses a live lookup + `gameStartTime`, since Gamma `endDate` is often set before kickoff). The **daily drawdown halt is disabled** — the per-trade confirmed SL is the risk control.
 
 ### Self-improvement
 

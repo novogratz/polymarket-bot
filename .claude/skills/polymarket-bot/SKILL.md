@@ -16,21 +16,30 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
 - **Entry:** ask ∈ **[0.85, 0.97]**, ≤ **6 h** to close, spread ≤ 4¢, liquidity
   ≥ $500, 24 h volume ≥ $300, |day change| ≤ 10 %, outcome momentum ≥ −5 %.
+  NO 1h-change gate (user 2026-06-10 — fast movers stay tradeable, logged only).
+  Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
+  dropped before pick-slot truncation.
 - **Sizing (dynamic):** hard cap **20% of equity per bet** (`stake_pct`); per-bet
   target = available cash spread across the actionable opportunities (cash/N),
   full cap when the market is slow. Near-resolution boost never pierces the cap.
   Depth-capped entries top up later toward the same cap.
 - **Exits:**
   - Resolved-exit: sell at bid ≥ `resolved_exit_threshold` (0.99; raised from 0.97 on 2026-06-10, fallback 0.98).
-  - **Controlled stop-loss: −25 %, confirmed over 3 consecutive ticks**
-    (`sl_pct`, `sl_confirm_ticks`) so a one-tick thin-book blip can't dump a
-    winner. Min age 5 min.
+  - **Controlled stop-loss: −25 %, confirmed over 3 consecutive ticks,
+    SOCCER MONEYLINES ONLY** (`sl_pct`, `sl_confirm_ticks`,
+    `_is_soccer_moneyline_position`). Min age 5 min. Everything else (O/U,
+    elections, …) rides to resolution.
   - **Hard rule: never sell below entry** (floor in `trading.execute_live_sell`).
     Only `race_stop_loss_confirmed` is exempt. Other losers ride to resolution.
-  - No EOD flatten, no loss-sweep (winners-only sweep ≥ 0.99), no blanket SL.
+  - No EOD flatten, no loss-sweep; the winners-only sweep uses
+    max(smart, race) thresholds (0.99) and can never front-run the race exit.
+  - FOK BUY capped to 90% of executable ask depth; true fill booked; depth-
+    capped entries top up later toward the 20% per-bet cap.
   - Expiry never force-closes a market still `acceptingOrders` (uses a live
     lookup + `gameStartTime`, since Gamma `endDate` is often pre-kickoff).
   - **Daily drawdown halt: disabled** (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0`).
+- **Tradeable by decision (test-pinned):** elections/primaries/mayoral races
+  and fast-moving markets (no 1h gate).
 - **Excluded markets (`models.is_excluded_market`):** ALL crypto
   (bitcoin/btc/ethereum/solana/… + Up-Down), esports (CS/valorant/"LoL:" + league of
   legends/dota/BO3/BO5),
