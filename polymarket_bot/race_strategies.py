@@ -1653,6 +1653,18 @@ def _execute_race_exits(
                 )
                 continue
 
+            # Winner floor (2026-06-10): the sell was refused because it
+            # would price a resolved winner below 0.99. Hold — never write
+            # off; the position retries next tick or settles at 1.00.
+            if "winner_floor" in exc_msg:
+                print(
+                    f"🛡️  {strategy_name} held '{position.get('question')}' — "
+                    f"winner floor refused a sub-0.99 sell; waiting for a real "
+                    f"0.99 bid or on-chain settlement.",
+                    flush=True,
+                )
+                continue
+
             # Auto-write-off: close locally when we can't get a SELL through.
             # Cases: past scheduled end_date (expired), resolved loser (≤0.05),
             # OR resolved winner (≥threshold) — markets that resolve BEFORE their

@@ -110,7 +110,7 @@ Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) a
 
 An **opt-in** autonomous loop (`scripts/auto_improve.py` + `.github/workflows/auto-improve.yml`) lets the bot tune its own strategy and ship the changes as auto-merged pull requests, driven by the Claude Code CLI. It is fenced so it can never harm the win rate:
 
-- **Entry/bet-selection is frozen** — the agent can only change *exit/sizing* knobs (`tp_pct`, `stake_pct`, `max_orders_per_tick`, `resolved_exit_threshold`, `max_hold_hours`), each hard-clamped. An audit aborts the run if any entry filter moves.
+- **Entry/bet-selection is frozen** — the agent can only change *exit/sizing* knobs (`tp_pct`, `stake_pct`, `max_orders_per_tick`, `max_hold_hours`), each hard-clamped; `resolved_exit_threshold` is pinned at 0.99 (winners sell at a real 0.99 bid or settle at 1.00). An audit aborts the run if any entry filter moves.
 - **A stop-loss can never be introduced.**
 - It edits only `grinder.toml`, never other profiles, `.env`, or source code.
 - A PR opens only after the unit-test suite passes, and auto-merges only when CI is green.

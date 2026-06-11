@@ -869,6 +869,71 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(result.order["price"], 0.99)
         self.assertEqual(position["exits"][0]["exit_price"], 0.99)
 
+    def test_live_sell_winner_floor_refuses_sub_099_resolved_exit(self):
+        # User rule 2026-06-10: resolved winners sell at 0.99, never 0.97/0.98.
+        # Any winner-exit reason carrying a sub-0.99 price must be refused so
+        # the position holds for a real 0.99 bid or on-chain settlement.
+        class TripwireClient:
+            def place_live_order(self, **_kwargs):
+                raise AssertionError("no order may be placed below the winner floor")
+
+        candidate = Candidate(
+            market_id="1",
+            question="Q",
+            slug="q",
+            end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1,
+            liquidity=1000,
+            volume=2000,
+            outcome="Yes",
+            price=0.97,
+            token_id="token",
+            score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.97,
+            best_ask=0.99,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+        position = {
+            "status": "open",
+            "live": True,
+            "market_id": "1",
+            "outcome": "Yes",
+            "token_id": "token",
+            "entry_price": 0.90,
+            "stake": 9.0,
+            "shares": 10.0,
+            "initial_shares": 10.0,
+        }
+        portfolio = Portfolio(cash=0.0, positions=[position])
+
+        for reason in ("race_big_win_resolved", "resolved_market_sweep_win"):
+            with self.assertRaisesRegex(ValueError, "winner_floor"):
+                execute_live_sell(
+                    TripwireClient(),
+                    Settings(min_order_shares=5.0, smart_min_sell_usd=1.0),
+                    candidate,
+                    portfolio,
+                    position,
+                    shares=10.0,
+                    reason=reason,
+                )
+        self.assertEqual(position["status"], "open")
+
+    def test_auto_improve_tuner_pins_resolved_exit_threshold_at_099(self):
+        # The offline self-tuner must never be able to lower the winner exit
+        # back into 0.95-0.98 territory (user rule 2026-06-10).
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "auto_improve",
+            Path(__file__).resolve().parent.parent / "scripts" / "auto_improve.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        self.assertEqual(mod.TUNABLE["race.resolved_exit_threshold"], (0.99, 0.99))
+
     def test_live_sell_allows_tiny_share_rounding_below_minimum(self):
         class FakeClient:
             def live_share_balance(self, token_id):
