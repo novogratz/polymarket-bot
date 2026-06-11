@@ -24,6 +24,7 @@ import time
 import traceback
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -468,15 +469,78 @@ def telegram_post(text: str, *, live: bool = True) -> bool:
         return False
 
 
+def _parse_end_date(end_iso: str) -> "datetime | None":
+    """ISO end date → aware datetime (UTC assumed when no tz). None on junk."""
+    raw = str(end_iso or "").strip()
+    if not raw:
+        return None
+    try:
+        d = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d
+    except ValueError:
+        return None
+
+
+def _position_end_sort_key(p: dict) -> float:
+    """Sort key: soonest expiry first; positions without a date go last."""
+    d = _parse_end_date(str(p.get("end_date") or ""))
+    return d.timestamp() if d is not None else float("inf")
+
+
+def _fmt_expiry_fr(end_iso: str, now: "datetime | None" = None) -> str:
+    """French expiry line for an open position: ET clock time + countdown.
+
+    Sports endDate is frequently set before kickoff on Gamma, so the wording
+    stays an estimate ("Fin prévue"). Empty string when no date is known.
+    """
+    d = _parse_end_date(end_iso)
+    if d is None:
+        return ""
+    if now is None:
+        now = datetime.now(timezone.utc)
+    try:
+        from zoneinfo import ZoneInfo
+        local = d.astimezone(ZoneInfo("America/New_York"))
+        clock = local.strftime("%H:%M ET")
+        if local.date() != now.astimezone(ZoneInfo("America/New_York")).date():
+            clock = local.strftime("%d/%m %H:%M ET")
+    except Exception:
+        clock = d.strftime("%d/%m %H:%M UTC")
+    delta = (d - now).total_seconds()
+    if delta <= 0:
+        return f"⌛ Échéance passée ({clock}) — résolution en cours"
+    minutes = int(delta // 60)
+    if minutes < 60:
+        rel = f"dans {minutes}min"
+    elif minutes < 48 * 60:
+        rel = f"dans {minutes // 60}h{minutes % 60:02d}"
+    else:
+        rel = f"dans {minutes // (24 * 60)}j"
+    return f"⏳ Fin prévue : {clock} ({rel})"
+
+
 def load_open_positions() -> list[dict]:
     """Read live open positions from Polymarket Data API (ground truth).
-    Falls back to paper_state.json if API unavailable."""
+    Falls back to paper_state.json if API unavailable.
+    Sorted by expiry — the position resolving soonest comes first."""
     try:
         settings, data_client = _get_settings_and_client()
         if not settings.funder_address:
             raise ValueError("no funder address")
         min_val = float(getattr(settings, "live_position_min_value_usd", 0.5) or 0.5)
         live_pos = data_client.positions(user=settings.funder_address)
+        # Ledger fallback for end dates — the Data API usually carries
+        # endDate, but the local ledger knows it even when the API omits it.
+        ledger_end: dict[str, str] = {}
+        try:
+            for lp in json.loads((DATA_DIR / "paper_state.json").read_text()).get("positions", []) or []:
+                tok = str(lp.get("token_id") or "")
+                if tok and lp.get("end_date"):
+                    ledger_end[tok] = str(lp.get("end_date"))
+        except Exception:
+            pass
         out = []
         for item in live_pos:
             try:
@@ -499,8 +563,11 @@ def load_open_positions() -> list[dict]:
                 "cost": initial_value, "mtm": cv,
                 "unr": unr, "unr_pct": unr_pct,
                 "slug": str(item.get("eventSlug") or item.get("slug") or ""),
+                "end_date": str(
+                    item.get("endDate") or ledger_end.get(str(item.get("asset") or "")) or ""
+                ),
             })
-        out.sort(key=lambda x: x["unr"], reverse=True)
+        out.sort(key=_position_end_sort_key)
         return out
     except Exception:
         pass
@@ -531,8 +598,9 @@ def load_open_positions() -> list[dict]:
             "cost": cost, "mtm": mtm,
             "unr": unr, "unr_pct": unr_pct,
             "slug": str(p.get("event_slug") or p.get("slug") or ""),
+            "end_date": str(p.get("end_date") or ""),
         })
-    out.sort(key=lambda x: x["unr"], reverse=True)
+    out.sort(key=_position_end_sort_key)
     return out
 
 
@@ -1058,6 +1126,9 @@ def cycle_once() -> None:
                 f"  {_mood(unr)} {_q(p.get('question') or '')} ({_bet_side(p.get('side'), p.get('question'))}) : "
                 f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${abs(unr):.2f})"
             )
+            expiry = _fmt_expiry_fr(str(p.get("end_date") or ""))
+            if expiry:
+                line += f"\n      {expiry}"
             url = _market_url(p)
             if url:
                 line += f"\n      [▶️ Voir le match]({url})"

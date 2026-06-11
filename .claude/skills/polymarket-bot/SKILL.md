@@ -80,7 +80,7 @@ Buy a heavily-favored binary outcome and ride it to resolution.
 The **only** Telegram message. Deterministic French "RAPPORT LIVE": fires on
 **startup**, then every `LIVE_ANALYST_CYCLE_SECONDS`, plus a daily 10:00 US/Eastern.
 Shows equity, **P&L since start (= equity − baseline)**, **total trades + win
-rate**, and open positions. No per-trade lists, no heartbeat, no BUY/SELL alerts.
+rate**, and open positions (sorted by expiry, each with its estimated end time). No per-trade lists, no heartbeat, no BUY/SELL alerts.
 
 ## Reset workflow — `scripts/fresh_start.py`
 
