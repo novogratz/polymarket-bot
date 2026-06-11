@@ -39,12 +39,12 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Widened 3→6h (2026-05-30): the scan only loads markets closing within
-# max_hours, so at 3h the 0.90-0.94 band was almost always empty (eligible:0
-# for 60+ ticks). 6h roughly doubles the candidate pool. Safe to widen now
-# because per-trade sizing is hard-capped at ~$10 (15%) — a wider-band loss
-# costs ~$10, not the account.
-max_hours = 6.0
+# Dynamic entry window (2026-06-11): prefer bets within 4h of resolution.
+# When the 4h window has no actionable candidate the scan widens in 2h steps
+# (4 → 6 → 8 → 10) and stops at the 12h cap. The Gamma load always covers
+# the cap so held positions beyond 4h keep being marked and managed.
+max_hours = 4.0
+max_hours_cap = 12.0
 scan_limit = 750
 
 min_liquidity_usd = 500.0
