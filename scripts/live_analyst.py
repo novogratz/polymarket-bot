@@ -24,7 +24,7 @@ import time
 import traceback
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -451,12 +451,15 @@ def telegram_post(text: str, *, live: bool = True) -> bool:
 
 
 def _parse_end_date(end_iso: str) -> "datetime | None":
-    """ISO end date → aware datetime (UTC assumed when no tz). None on junk."""
+    """ISO/Gamma date → aware datetime (UTC assumed when no tz). None on junk."""
     raw = str(end_iso or "").strip()
     if not raw:
         return None
+    raw = raw.replace("Z", "+00:00").replace(" ", "T")
+    if raw.endswith("+00"):
+        raw += ":00"
     try:
-        d = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        d = datetime.fromisoformat(raw)
         if d.tzinfo is None:
             d = d.replace(tzinfo=timezone.utc)
         return d
@@ -464,42 +467,114 @@ def _parse_end_date(end_iso: str) -> "datetime | None":
         return None
 
 
+# Typical pro game runs ~2h–2h30 incl. stoppage/overtime; used only as a
+# display/sort estimate next to the kickoff time.
+_GAME_LENGTH = timedelta(hours=2, minutes=45)
+
+
+def _is_date_only(d: "datetime") -> bool:
+    """Gamma stamps date-level markets at exactly midnight UTC — the real
+    cutoff time of day (e.g. a PPI print at 08:30 ET) is not in the API."""
+    u = d.astimezone(timezone.utc)
+    return u.hour == 0 and u.minute == 0 and u.second == 0
+
+
 def _position_end_sort_key(p: dict) -> float:
-    """Sort key: soonest expiry first; positions without a date go last."""
-    d = _parse_end_date(str(p.get("end_date") or ""))
-    return d.timestamp() if d is not None else float("inf")
+    """Soonest-to-resolve first. Sports sort by kickoff; date-only stamps by
+    end of that day; unknown dates last."""
+    gs = _parse_end_date(str(p.get("game_start") or ""))
+    if gs is not None:
+        return gs.timestamp()
+    end = _parse_end_date(str(p.get("end_date") or ""))
+    if end is None:
+        return float("inf")
+    if _is_date_only(end):
+        return (end + timedelta(hours=24)).timestamp()
+    return end.timestamp()
 
 
-def _fmt_expiry_fr(end_iso: str, now: "datetime | None" = None) -> str:
-    """French expiry line for an open position: ET clock time + countdown.
-
-    Sports endDate is frequently set before kickoff on Gamma, so the wording
-    stays an estimate ("Fin prévue"). Empty string when no date is known.
-    """
-    d = _parse_end_date(end_iso)
-    if d is None:
-        return ""
-    if now is None:
-        now = datetime.now(timezone.utc)
+def _et_clock(d: "datetime", now: "datetime") -> str:
     try:
         from zoneinfo import ZoneInfo
         local = d.astimezone(ZoneInfo("America/New_York"))
-        clock = local.strftime("%H:%M ET")
         if local.date() != now.astimezone(ZoneInfo("America/New_York")).date():
-            clock = local.strftime("%d/%m %H:%M ET")
+            return local.strftime("%d/%m %H:%M ET")
+        return local.strftime("%H:%M ET")
     except Exception:
-        clock = d.strftime("%d/%m %H:%M UTC")
-    delta = (d - now).total_seconds()
+        return d.strftime("%d/%m %H:%M UTC")
+
+
+def _rel_fr(target: "datetime", now: "datetime") -> str:
+    minutes = int(max((target - now).total_seconds(), 0) // 60)
+    if minutes < 60:
+        return f"dans {minutes}min"
+    if minutes < 48 * 60:
+        return f"dans {minutes // 60}h{minutes % 60:02d}"
+    return f"dans {minutes // (24 * 60)}j"
+
+
+def _fmt_expiry_fr(end_iso: str, game_start_iso: str = "", now: "datetime | None" = None) -> str:
+    """French end-of-market line for an open position.
+
+    Three sources, in reliability order:
+    - sports `gameStartTime` → kickoff + estimated end (kickoff + ~2h45);
+    - a timed `endDate` → exact ET clock + countdown;
+    - a date-only `endDate` (midnight-UTC Gamma stamp) → the DATE alone —
+      never a fabricated "20:00 ET" from the midnight timestamp.
+    Empty string when nothing is known.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    gs = _parse_end_date(game_start_iso)
+    if gs is not None:
+        # Sports: the kickoff is the one reliable timestamp — show that.
+        if now < gs:
+            return f"🏟 Coup d'envoi : {_et_clock(gs, now)} ({_rel_fr(gs, now)})"
+        if now < gs + _GAME_LENGTH:
+            return f"🏟 Match en cours (début {_et_clock(gs, now)})"
+        return "⌛ Match terminé — résolution en cours"
+    end = _parse_end_date(end_iso)
+    if end is None:
+        return ""
+    if _is_date_only(end):
+        day = end.astimezone(timezone.utc).strftime("%d/%m")
+        if now > end + timedelta(hours=24):
+            return f"⌛ Échéance passée (le {day}) — résolution en cours"
+        return f"📅 Expire le {day} (heure exacte non publiée)"
+    delta = (end - now).total_seconds()
+    clock = _et_clock(end, now)
     if delta <= 0:
         return f"⌛ Échéance passée ({clock}) — résolution en cours"
-    minutes = int(delta // 60)
-    if minutes < 60:
-        rel = f"dans {minutes}min"
-    elif minutes < 48 * 60:
-        rel = f"dans {minutes // 60}h{minutes % 60:02d}"
-    else:
-        rel = f"dans {minutes // (24 * 60)}j"
-    return f"⏳ Fin prévue : {clock} ({rel})"
+    return f"⏳ Fin prévue : {clock} ({_rel_fr(end, now)})"
+
+
+def _enrich_end_meta(positions: list[dict]) -> None:
+    """Attach `game_start` (and a fresher `end_date`) from Gamma, one batched
+    reverse-lookup by token. Sports endDate is often midnight-of-day while
+    gameStartTime is the real kickoff — the display prefers the kickoff.
+    Fail-open: on any error the positions keep whatever they already had."""
+    tokens = [str(p.get("token_id") or "") for p in positions if p.get("token_id")]
+    if not tokens:
+        return
+    try:
+        settings, _ = _get_settings_and_client()
+        from polymarket_bot.gamma import GammaClient
+        from polymarket_bot.models import parse_json_list
+        markets = GammaClient(settings.gamma_base_url).get_markets_by_clob_token_ids(tokens)
+        by_token: dict[str, dict] = {}
+        for m in markets:
+            for t in parse_json_list(m.get("clobTokenIds")):
+                by_token[str(t)] = m
+        for p in positions:
+            m = by_token.get(str(p.get("token_id") or ""))
+            if not m:
+                continue
+            if m.get("gameStartTime"):
+                p["game_start"] = str(m.get("gameStartTime"))
+            if m.get("endDate"):
+                p["end_date"] = str(m.get("endDate"))
+    except Exception:
+        pass
 
 
 def load_open_positions() -> list[dict]:
@@ -544,10 +619,12 @@ def load_open_positions() -> list[dict]:
                 "cost": initial_value, "mtm": cv,
                 "unr": unr, "unr_pct": unr_pct,
                 "slug": str(item.get("eventSlug") or item.get("slug") or ""),
+                "token_id": str(item.get("asset") or ""),
                 "end_date": str(
                     item.get("endDate") or ledger_end.get(str(item.get("asset") or "")) or ""
                 ),
             })
+        _enrich_end_meta(out)
         out.sort(key=_position_end_sort_key)
         return out
     except Exception:
@@ -579,8 +656,10 @@ def load_open_positions() -> list[dict]:
             "cost": cost, "mtm": mtm,
             "unr": unr, "unr_pct": unr_pct,
             "slug": str(p.get("event_slug") or p.get("slug") or ""),
+            "token_id": str(p.get("token_id") or ""),
             "end_date": str(p.get("end_date") or ""),
         })
+    _enrich_end_meta(out)
     out.sort(key=_position_end_sort_key)
     return out
 
@@ -1109,7 +1188,9 @@ def cycle_once() -> None:
                 f"  {_mood(unr)} {_q(p.get('question') or '')} ({_bet_side(p.get('side'), p.get('question'))}) : "
                 f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${abs(unr):.2f})"
             )
-            expiry = _fmt_expiry_fr(str(p.get("end_date") or ""))
+            expiry = _fmt_expiry_fr(
+                str(p.get("end_date") or ""), str(p.get("game_start") or "")
+            )
             if expiry:
                 line += f"\n      {expiry}"
             url = _market_url(p)
