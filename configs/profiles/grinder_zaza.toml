@@ -64,11 +64,9 @@ min_volume_24h_usd = 300.0
 min_price = 0.88
 max_price = 0.97
 
-max_day_change_pct = 1.0
 
 # Momentum filter: skip outcomes that fell >10% today.
 # A market at 0.91 that was 0.96 this morning is trending away from resolution.
-min_outcome_momentum = -0.10
 
 # Spread 2¢ → 4¢ (2026-05-30): the wider 0.85-0.97 band includes slightly
 # thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.
