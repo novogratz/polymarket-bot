@@ -109,6 +109,43 @@ class Portfolio:
             for position in self.positions
         )
 
+    def open_position_for_token(self, token_id: str | None) -> dict[str, Any] | None:
+        if not token_id:
+            return None
+        for position in self.positions:
+            if position.get("token_id") == token_id and position.get("status") == "open":
+                return position
+        return None
+
+    def top_up_live_position(
+        self,
+        token_id: str,
+        fill_usd: float,
+        fill_price: float,
+        *,
+        order_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Average an additional fill into an existing open position.
+
+        Used when an entry was depth-capped below its sizing target and the
+        book later offered more liquidity: stake and shares grow, and
+        entry_price becomes the volume-weighted average. The caller enforces
+        the per-position cap — this method only does the bookkeeping.
+        """
+        position = self.open_position_for_token(token_id)
+        if position is None or fill_usd <= 0 or fill_price <= 0:
+            return None
+        added_shares = fill_usd / fill_price
+        new_stake = float(position.get("stake") or 0.0) + fill_usd
+        new_shares = float(position.get("shares") or 0.0) + added_shares
+        position["stake"] = round(new_stake, 4)
+        position["shares"] = new_shares
+        position["entry_price"] = round(new_stake / new_shares, 4) if new_shares > 0 else fill_price
+        if order_id:
+            position["topup_order_ids"] = list(position.get("topup_order_ids") or []) + [order_id]
+        self.cash = round(max(0.0, self.cash - fill_usd), 2)
+        return position
+
     def has_pending_token(self, token_id: str | None) -> bool:
         if not token_id:
             return False

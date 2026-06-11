@@ -3025,7 +3025,8 @@ class ActionableCandidatesTests(unittest.TestCase):
             "stake": 357.8,
         }])
 
-        actionable = _actionable_candidates(eligible, portfolio)
+        # race_stake_pct=0 disables the top-up lane → held markets all drop.
+        actionable = _actionable_candidates(eligible, portfolio, Settings(race_stake_pct=0.0))
         self.assertEqual([c.market_id for c, _ in actionable], ["99"])
 
         picks = select_grinder(actionable, 4)
@@ -3039,7 +3040,106 @@ class ActionableCandidatesTests(unittest.TestCase):
                               "tok-ppi", hours=6.0, bid=0.92)
         eligible = [(ppi, 0.0)]
         portfolio = Portfolio(cash=900.0, positions=[])
-        self.assertEqual(len(_actionable_candidates(eligible, portfolio)), 1)
+        self.assertEqual(len(_actionable_candidates(eligible, portfolio, Settings())), 1)
+
+    def test_held_token_stays_actionable_while_below_position_cap(self):
+        # Top-up lane (2026-06-10): a depth-capped entry ($229 of a $379
+        # target) keeps its market actionable so later ticks can complete
+        # the position — but only up to equity × race_stake_pct.
+        from polymarket_bot.race_strategies import _actionable_candidates
+
+        ppi = self._candidate("99", "Will PPI YoY be between 7.0% and 7.9% in May?",
+                              "ppi-yoy-70-79", "producer-price-index-ppi-yoy-may-2026",
+                              "tok-ppi", hours=6.0, bid=0.92)
+        eligible = [(ppi, 0.0)]
+        portfolio = Portfolio(cash=900.0, positions=[{
+            "status": "open",
+            "token_id": "tok-ppi",
+            "market_id": "99",
+            "question": "Will PPI YoY be between 7.0% and 7.9% in May?",
+            "event_slug": "producer-price-index-ppi-yoy-may-2026",
+            "stake": 229.0,
+        }])
+        # equity = 900 + 229 = 1129. cap @30% = 338.7 → room $109.7 → kept.
+        # (ceiling_usd=0 mirrors the live profiles, where it is disabled.)
+        kept = _actionable_candidates(
+            eligible, portfolio,
+            Settings(race_stake_pct=0.30, smart_max_position_ceiling_usd=0.0),
+        )
+        self.assertEqual([c.market_id for c, _ in kept], ["99"])
+        # cap @20% = 225.8 < stake → no room → dropped.
+        dropped = _actionable_candidates(
+            eligible, portfolio,
+            Settings(race_stake_pct=0.20, smart_max_position_ceiling_usd=0.0),
+        )
+        self.assertEqual(dropped, [])
+
+    def test_top_up_live_position_averages_the_fill(self):
+        portfolio = Portfolio(cash=661.86, positions=[{
+            "status": "open",
+            "token_id": "tok-ppi",
+            "market_id": "99",
+            "question": "Will PPI YoY be between 7.0% and 7.9% in May?",
+            "event_slug": "producer-price-index-ppi-yoy-may-2026",
+            "stake": 228.51,
+            "shares": 240.64842,
+            "entry_price": 0.9496,
+        }])
+
+        pos = portfolio.top_up_live_position("tok-ppi", 100.0, 0.96, order_id="order-2")
+
+        self.assertIsNotNone(pos)
+        self.assertAlmostEqual(pos["stake"], 328.51, places=2)
+        self.assertAlmostEqual(pos["shares"], 240.64842 + 100.0 / 0.96, places=4)
+        self.assertAlmostEqual(pos["entry_price"], 328.51 / (240.64842 + 100.0 / 0.96), places=4)
+        self.assertAlmostEqual(portfolio.cash, 561.86, places=2)
+        self.assertEqual(pos["topup_order_ids"], ["order-2"])
+        self.assertEqual(len(portfolio.positions), 1)
+
+    def test_execute_live_trade_tops_up_held_token(self):
+        # Same token already held → the buy must average into the existing
+        # position (no duplicate_open_sports_event despite the same event).
+        class FakeClient:
+            def live_available_balance(self):
+                return 661.86
+
+            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
+                return {"price": price, "amount": amount, "side": side}, {
+                    "success": True,
+                    "status": "matched",
+                    "orderID": "order-2",
+                    "makingAmount": "100.0",
+                    "takingAmount": "104.16",
+                }
+
+        candidate = self._candidate("99", "Will PPI YoY be between 7.0% and 7.9% in May?",
+                                    "ppi-yoy-70-79", "producer-price-index-ppi-yoy-may-2026",
+                                    "tok-ppi", hours=5.0, bid=0.95)
+        portfolio = Portfolio(cash=661.86, positions=[{
+            "status": "open",
+            "token_id": "tok-ppi",
+            "market_id": "99",
+            "question": "Will PPI YoY be between 7.0% and 7.9% in May?",
+            "event_slug": "producer-price-index-ppi-yoy-may-2026",
+            "stake": 228.51,
+            "shares": 240.64842,
+            "entry_price": 0.9496,
+        }])
+
+        execute_live_trade(
+            FakeClient(),
+            Settings(trade_fraction=0.95, min_order_shares=5.0),
+            candidate,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=110.0,
+        )
+
+        self.assertEqual(len(portfolio.positions), 1)
+        pos = portfolio.positions[0]
+        self.assertAlmostEqual(pos["stake"], 328.51, places=2)
+        self.assertAlmostEqual(pos["shares"], 240.64842 + 104.16, places=2)
+        self.assertAlmostEqual(portfolio.cash, 561.86, places=2)
 
 
 class ExcludedMarketTests(unittest.TestCase):

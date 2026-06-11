@@ -2000,11 +2000,33 @@ def _run_btc_edge_pass(
         return []
 
 
+# Smallest top-up worth sending: below this the 5-share exchange minimum
+# and the book fetch aren't worth the order.
+_TOPUP_MIN_USD = 5.0
+
+
+def _position_cap_usd(settings: Settings, equity: float) -> float:
+    """Maximum total cost basis allowed on one position.
+
+    The per-trade sizing target (equity × race_stake_pct, ~30%) doubles as
+    the per-position cap: a depth-capped entry may be completed by top-ups
+    on later ticks, but one bet never concentrates more than a single full
+    stake on one outcome. Min'd with the configured ceilings when set.
+    """
+    cap = equity * settings.race_stake_pct
+    if settings.smart_max_position_ceiling_pct > 0:
+        cap = min(cap, equity * settings.smart_max_position_ceiling_pct)
+    if settings.smart_max_position_ceiling_usd > 0:
+        cap = min(cap, settings.smart_max_position_ceiling_usd)
+    return max(0.0, cap)
+
+
 def _actionable_candidates(
-    eligible: list[tuple[Candidate, float]], portfolio: Portfolio
+    eligible: list[tuple[Candidate, float]], portfolio: Portfolio, settings: Settings
 ) -> list[tuple[Candidate, float]]:
-    """Drop candidates that can never execute this tick: token already open,
-    order pending, or blocked by the one-position-per-event guard.
+    """Drop candidates that can never execute this tick: order pending,
+    blocked by the one-position-per-event guard, or a held token with no
+    top-up room left under the per-position cap.
 
     Must run BEFORE the selector — it returns only the top
     race_max_orders_per_tick candidates, so a slot spent on an already-held
@@ -2013,14 +2035,27 @@ def _actionable_candidates(
     highest score) filled every pick slot tick after tick while the
     5th-ranked PPI market was never attempted; other bots without the
     Spurs position took it immediately.
+
+    A held token whose cost basis still sits below the cap stays actionable
+    (top-up lane, 2026-06-10): when a buy was depth-capped under its sizing
+    target, the bot may complete the position once the book refills — it
+    re-passes the same entry filters each time, so a top-up is just a new
+    qualifying bet on the same outcome.
     """
-    return [
-        (c, m)
-        for c, m in eligible
-        if not portfolio.has_open_token(c.token_id)
-        and not portfolio.has_pending_token(c.token_id)
-        and not portfolio.has_open_event_position(c)
-    ]
+    equity = float(portfolio.summary().get("equity", portfolio.cash))
+    cap = _position_cap_usd(settings, equity)
+    out: list[tuple[Candidate, float]] = []
+    for c, m in eligible:
+        if portfolio.has_pending_token(c.token_id):
+            continue
+        open_pos = portfolio.open_position_for_token(c.token_id)
+        if open_pos is not None:
+            if cap - float(open_pos.get("stake") or 0.0) < _TOPUP_MIN_USD:
+                continue
+        elif portfolio.has_open_event_position(c):
+            continue
+        out.append((c, m))
+    return out
 
 
 def _run_race_tick(
@@ -2091,7 +2126,7 @@ def _run_race_tick(
             eligible = eligible + mirror_extra
             _step(settings, f"   eligible (+{len(mirror_extra)} mirror): {len(eligible)}")
 
-    actionable = _actionable_candidates(eligible, portfolio)
+    actionable = _actionable_candidates(eligible, portfolio, settings)
     if len(actionable) < len(eligible):
         _step(
             settings,
@@ -2137,19 +2172,24 @@ def _run_race_tick(
         if portfolio.has_pending_token(candidate.token_id):
             rejected.append({"question": candidate.question, "reason": "pending_order"})
             continue
-        # Token-level dedup. Without this, the same token gets re-bought
-        # every tick because each BUY just averages into the existing CLOB
-        # position — event_exposure (counted by ledger position records)
-        # never increments, so the per-event cap is useless against
-        # stacking on the same outcome. Real-world impact: $45 → $4 in
-        # 22 ticks when the race scanner re-picks the same 3 markets each
-        # tick. Exits still run separately, so a TP/SL on the position
-        # can fire and free the token for future entries.
-        if portfolio.has_open_token(candidate.token_id):
-            rejected.append({"question": candidate.question, "reason": "duplicate_open_token"})
-            continue
+        # Top-up lane (2026-06-10): a token already held may be bought again
+        # to complete a depth-capped entry, but only while the position's
+        # total cost basis sits below the per-position cap
+        # (equity × race_stake_pct). The cap is what bounds the old
+        # "$45 → $4 in 22 ticks" averaging spiral that a blanket token
+        # dedup used to prevent — without it (race_stake_pct ≤ 0) top-ups
+        # stay disabled entirely.
+        topup_pos = portfolio.open_position_for_token(candidate.token_id)
+        topup_room = 0.0
+        if topup_pos is not None:
+            equity_now = float(portfolio.summary().get("equity", portfolio.cash))
+            cap = _position_cap_usd(settings, equity_now)
+            topup_room = cap - float(topup_pos.get("stake") or 0.0)
+            if cap <= 0 or topup_room < _TOPUP_MIN_USD:
+                rejected.append({"question": candidate.question, "reason": "topup_cap_reached"})
+                continue
         ev_slug = str(candidate.event_slug or "")
-        if ev_slug and event_exposure.get(ev_slug, 0) >= EVENT_EXPOSURE_CAP:
+        if topup_pos is None and ev_slug and event_exposure.get(ev_slug, 0) >= EVENT_EXPOSURE_CAP:
             rejected.append({"question": candidate.question, "reason": f"event_exposure_cap:{ev_slug}"})
             continue
         asset_key = _asset_key(candidate.question, candidate.event_slug or "", candidate.slug or "")
@@ -2182,6 +2222,8 @@ def _run_race_tick(
         if settings.smart_max_position_ceiling_usd > 0:
             target = min(target, settings.smart_max_position_ceiling_usd)
         stake = min(target, cash_above_floor)
+        if topup_pos is not None:
+            stake = min(stake, topup_room)
         # Enforce Polymarket's 5-share minimum. At small bankrolls the
         # race_stake_pct alone may produce fewer than 5 shares; bump the
         # stake to exactly what's needed and skip if cash can't cover it.
@@ -2225,7 +2267,9 @@ def _run_race_tick(
             executed.append({"strategy": strategy_name, "order": result.order, "response": result.response, "signal": signal_payload})
             if asset_key:
                 open_assets.add(asset_key)
-            if ev_slug:
+            if ev_slug and topup_pos is None:
+                # A top-up grows an existing position record — counting it
+                # again would inflate the per-event exposure tally.
                 event_exposure[ev_slug] = event_exposure.get(ev_slug, 0) + 1
             portfolio.save(settings.state_path)
             # Dry grinder publishes its fresh BUY for the live bot to mirror.
