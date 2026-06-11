@@ -58,12 +58,13 @@ Buy a heavily-favored binary outcome and ride it to resolution.
 - **Tradeable by decision (test-pinned):** elections/primaries/mayoral races
   and fast-moving markets (no 1h gate).
 - **Excluded markets (`models.is_excluded_market`):** ALL crypto
-  (bitcoin/btc/ethereum/solana/… + Up-Down), **ALL stock market/equities
-  (2026-06-11: S&P/SPY/Nasdaq/QQQ/Dow + big-cap tickers/companies via
-  word-bounded `_STOCK_MARKET_RE` + "closes above/below $X")**, esports
-  (CS/valorant/"LoL:" + league of legends/dota/BO3/BO5),
+  (bitcoin/btc/ethereum/solana/… + Up-Down),
   weather/°C/°F, exact-score, O/U low (0.5–3.5) + high (5.5+) lines, Asian-handicap
   "Spread:", draw markets, halftime markets.
+  **Conditional (2026-06-12, "ongoing only"):** esports tradeable ONLY while
+  the game is live (gameStartTime past, ≤8h); stocks/indices tradeable ONLY
+  during the regular NYSE session (Mon–Fri 09:30–16:00 ET) for that day's
+  close (endDate ≤12h). Otherwise both stay excluded.
 - **Disabled:** `btc_edge` lane, `noise_fallback`.
 
 ## Multi-bot layout
