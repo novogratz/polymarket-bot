@@ -224,5 +224,47 @@ class OpenPositionExpiryTests(unittest.TestCase):
         self.assertEqual(live_analyst._fmt_expiry_fr(""), "")
         self.assertEqual(live_analyst._fmt_expiry_fr("garbage"), "")
 
+    def test_date_only_end_shows_date_never_a_fake_clock_time(self):
+        # Gamma stamps date-level markets at midnight UTC; June 12 00:00 UTC
+        # used to render as "11/06 20:00 ET" — a fabricated time. Show the
+        # date alone.
+        from datetime import datetime, timezone
+        now = datetime(2026, 6, 11, 16, 0, tzinfo=timezone.utc)
+        line = live_analyst._fmt_expiry_fr("2026-06-12T00:00:00+00:00", now=now)
+        self.assertIn("Expire le 12/06", line)
+        self.assertNotIn("ET", line)
+        # Recently-past date-only stamp (e.g. PPI print morning-of): not
+        # declared past until a full day beyond the stamp.
+        recent = live_analyst._fmt_expiry_fr("2026-06-11T00:00:00+00:00", now=now)
+        self.assertIn("Expire le 11/06", recent)
+        old = live_analyst._fmt_expiry_fr("2026-06-09T00:00:00+00:00", now=now)
+        self.assertIn("Échéance passée", old)
+
+    def test_sports_show_kickoff_not_end_date(self):
+        from datetime import datetime, timezone
+        kickoff = "2026-06-11T18:00:00+00:00"   # 14:00 ET
+        end_date = "2026-06-11T00:00:00+00:00"  # useless midnight stamp
+        before = live_analyst._fmt_expiry_fr(
+            end_date, kickoff, now=datetime(2026, 6, 11, 16, 0, tzinfo=timezone.utc))
+        self.assertIn("Coup d'envoi : 14:00 ET", before)
+        self.assertIn("dans 2h00", before)
+        during = live_analyst._fmt_expiry_fr(
+            end_date, kickoff, now=datetime(2026, 6, 11, 19, 0, tzinfo=timezone.utc))
+        self.assertIn("Match en cours", during)
+        after = live_analyst._fmt_expiry_fr(
+            end_date, kickoff, now=datetime(2026, 6, 11, 22, 0, tzinfo=timezone.utc))
+        self.assertIn("Match terminé", after)
+
+    def test_sort_kickoff_before_dateonly_next_day(self):
+        # Mexico (kickoff this afternoon) must sort before PPI (date-only
+        # stamp of today = resolves through tomorrow morning) and Israel
+        # (date-only tomorrow).
+        mexico = {"game_start": "2026-06-11T18:00:00+00:00",
+                  "end_date": "2026-06-11T00:00:00+00:00"}
+        ppi = {"end_date": "2026-06-11T00:00:00+00:00"}
+        israel = {"end_date": "2026-06-12T00:00:00+00:00"}
+        ordered = sorted([israel, ppi, mexico], key=live_analyst._position_end_sort_key)
+        self.assertEqual(ordered, [mexico, ppi, israel])
+
 if __name__ == "__main__":
     unittest.main()
