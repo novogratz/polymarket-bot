@@ -629,6 +629,35 @@ def _executable_ask_depth_usd(client: Any, token_id: str, max_price: float) -> f
         return None
 
 
+def live_best_bid(client: Any, token_id: str) -> float | None:
+    """Best bid currently resting on the live CLOB book for ``token_id``.
+
+    Gamma's flipped market-level quote and the data-API ``curPrice`` both lag
+    the book near resolution (2026-06-10: winners with a real 0.99 bid showed
+    0.95 in the exit loop and never fired the resolved exit). The live book is
+    the executable truth. Returns None when no book is available so callers
+    fail open and keep the cached price.
+    """
+    try:
+        book_fn = getattr(client, "get_order_book", None)
+        if book_fn is None:
+            book_fn = getattr(getattr(client, "legacy_client", None), "get_order_book", None)
+        if book_fn is None:
+            return None
+        book = book_fn(token_id)
+        if not isinstance(book, dict):
+            return None
+        best = 0.0
+        for level in book.get("bids") or []:
+            price = float(level.get("price") or 0)
+            size = float(level.get("size") or 0)
+            if size > 0 and price > best:
+                best = price
+        return best if best > 0 else None
+    except Exception:
+        return None
+
+
 def execute_live_trade(
     client: TradingSession,
     settings: Settings,

@@ -25,7 +25,11 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   full cap when the market is slow. Near-resolution boost never pierces the cap.
   Depth-capped entries top up later toward the same cap.
 - **Exits:**
-  - Resolved-exit: sell at bid ≥ `resolved_exit_threshold` (0.99; raised from 0.97 on 2026-06-10, fallback 0.98).
+  - Resolved-exit: sell at **live CLOB book** bid ≥ `resolved_exit_threshold`
+    (0.98 since 2026-06-10). The exit loop probes the live book per position
+    (`live_best_bid`) — Gamma quotes/`curPrice` lag and held winners past 0.99.
+    Sell is a marketable limit at min(bid, 0.99): a 0.99 bid fills at 0.99,
+    a 0.98 bid closes at 0.98. Probe fail-open → cached price.
   - **Controlled stop-loss: −25 %, confirmed over 3 consecutive ticks,
     SOCCER MONEYLINES ONLY** (`sl_pct`, `sl_confirm_ticks`,
     `_is_soccer_moneyline_position`). Min age 5 min. Everything else (O/U,
@@ -33,7 +37,7 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   - **Hard rule: never sell below entry** (floor in `trading.execute_live_sell`).
     Only `race_stop_loss_confirmed` is exempt. Other losers ride to resolution.
   - No EOD flatten, no loss-sweep; the winners-only sweep uses
-    max(smart, race) thresholds (0.99) and can never front-run the race exit.
+    max(smart, race) thresholds (0.98) and can never front-run the race exit.
   - FOK BUY capped to 90% of executable ask depth; true fill booked; depth-
     capped entries top up later toward the 20% per-bet cap.
   - Expiry never force-closes a market still `acceptingOrders` (uses a live

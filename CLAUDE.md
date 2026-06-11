@@ -43,11 +43,11 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 **Sizing (dynamic, 2026-06-10):** hard cap **20% of equity per bet** (`stake_pct = 0.20`); the per-bet target spreads available cash across the actionable opportunities (cash/N), so a busy window funds every market and a slow market gives each bet the full 20%. The <30 min/<1 h boost scales the spread share but never pierces the cap (`_dynamic_stake_target`). Depth-capped entries can be topped up later toward the same 20% cap. Scales automatically with the bankroll.
 
 **Exits** (`_execute_race_exits`):
-- **Resolved-exit** — sell at bid ≥ `resolved_exit_threshold` (0.99; raised from 0.97 on 2026-06-10 — drop to 0.98 if 0.99 rarely fills before resolution).
+- **Resolved-exit** — sell at **live CLOB book** bid ≥ `resolved_exit_threshold` (0.98 since 2026-06-10; was briefly 0.99). The exit loop probes the live book per open position (`live_best_bid` in `trading.py`) because Gamma's flipped quote and the synced `curPrice` lag the book — winners with a real 0.99 bid showed 0.95 and were never sold. The sell is a marketable limit at min(bid, 0.99): a 0.99 bid fills at 0.99, a 0.98 bid closes at 0.98. Probe fail-open → cached price, retry next tick.
 - **Controlled stop-loss — −25%, confirmed over 3 consecutive ticks, SOCCER MONEYLINES ONLY** (`sl_pct=0.25`, `sl_confirm_ticks=3`, min age 5 min; gate `_is_soccer_moneyline_position`). A one-tick thin-book phantom bid can never trigger it; the loss must persist. O/U totals, elections, and everything else never stop out. Tagged `race_stop_loss_confirmed`.
 - **Never sell below entry** — hard floor in `trading.execute_live_sell`. The confirmed stop-loss is the **only** exempt path; every other path holds a losing position to natural on-chain resolution.
 - **Expiry** never force-closes a market that is still `acceptingOrders` — it confirms via a live lookup and uses `gameStartTime` (Gamma `endDate` is frequently set *before* kickoff for sports). A genuinely-resolved loser is written off locally ~8 h after expiry, no order.
-- No EOD flatten, no blanket stop-loss, no loss-sweep. The universal sweep realizes **winners only** and uses `max(smart, race)` resolved-exit thresholds (0.99) — it can never fire earlier than the race exit (fixed 2026-06-10 after a 0.97 front-run).
+- No EOD flatten, no blanket stop-loss, no loss-sweep. The universal sweep realizes **winners only** and uses `max(smart, race)` resolved-exit thresholds (0.98) — it can never fire earlier than the race exit (fixed 2026-06-10 after a 0.97 front-run).
 - **Daily drawdown halt: disabled** (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0`). The per-trade confirmed SL is the risk control.
 
 **Excluded markets** (`models.py:is_excluded_market`, blanket across every lane):
@@ -130,7 +130,7 @@ When changing strategy/filters/sizing/exits: edit **both** `grinder.toml` and `g
 1. Load short-expiry Gamma markets (within `max_hours`).
 2. Build eligible candidates (entry filters + exclusions); log a wide forward-observation net.
 3. Sync live Polymarket positions into the ledger; refresh live USDC cash.
-4. Run exits: resolved-exit (≥0.99), confirmed −25% SL, expiry/open-market handling, winners-only sweep.
+4. Run exits: live-book bid probe + resolved-exit (≥0.98), confirmed −25% SL, expiry/open-market handling, winners-only sweep.
 5. (Daily drawdown halt — disabled.)
 6. Place new grinder picks with percentage sizing toward the cash floor.
 7. Persist portfolio + write journal entries for any closed positions.

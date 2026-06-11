@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.85–0.97) within ~6 hours of resolution and holds until the market prints near-final value (bid ≥ 0.99), with a controlled −25% confirmed stop-loss and a hard "never sell below entry" floor. Crypto and esports markets are excluded. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.85–0.97) within ~6 hours of resolution and holds until the market prints near-final value (live book bid ≥ 0.98, sold at up to 0.99), with a controlled −25% confirmed stop-loss and a hard "never sell below entry" floor. Crypto and esports markets are excluded. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -99,8 +99,8 @@ Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) a
 
 | Condition | Code |
 |---|---|
-| Bid ≥ 0.99 | `race_big_win_resolved` — primary win exit (`resolved_exit_threshold`; raised from 0.97 on 2026-06-10, fallback 0.98) |
-| Cached price ≥ 0.99 after the market left the scan | `resolved_market_sweep_win` — winners-only sweep, same threshold (it can never fire earlier than the race exit) |
+| **Live book** bid ≥ 0.98 | `race_big_win_resolved` — primary win exit (`resolved_exit_threshold`); the marketable sell goes out at min(bid, 0.99), so a 0.99 bid fills at 0.99 and a 0.98 bid closes at 0.98 |
+| Cached price ≥ 0.98 after the market left the scan | `resolved_market_sweep_win` — winners-only sweep, same threshold (it can never fire earlier than the race exit) |
 | Down ≥ 25 % from entry, confirmed 3 consecutive ticks, **soccer moneylines only** ("Will <Team> win on <date>?") | `race_stop_loss_confirmed` — the one path allowed to sell below entry |
 | Genuinely-resolved loser ~8 h past expiry | written off locally (no order; settles on-chain) |
 
