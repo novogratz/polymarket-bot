@@ -115,11 +115,18 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     # score is 0-0 late, then gaps to 0 on any goal. Same gap profile.
     "end in a draw",
     "win or draw",
+    # Tweet-count markets (2026-06-12, user rule): "Will Elon Musk post
+    # 240-259 tweets from June 5 to June 12?" — a week-long count with no
+    # convergence signal; one posting spree flips the bracket. Banned.
+    "tweet",
 )
 _EXCLUDED_SLUG_SUBSTRINGS = (
     "updown",
     "up-or-down",
     "exact-score",
+    # Tweet-count slug markers (2026-06-12).
+    "-tweets",
+    "of-tweets",
     # Crypto slug markers (all crypto banned 2026-06-03).
     "bitcoin",
     "btc",
@@ -212,8 +219,20 @@ _STOCK_MARKET_RE = re.compile(
     r"spy|qqq|voo|djia|nasdaq|nikkei|ftse|dax"
     r"|googl?|aapl|tsla|nvda|msft|amzn|nflx|amd|intc"
     r"|google|alphabet|apple|tesla|nvidia|microsoft|amazon|netflix|meta"
+    r"|airbnb|abnb|uber|coinbase|palantir|pltr|robinhood|hood"
     r")\b"
 )
+
+# Generic stock-title rule: a parenthesized 2-5 letter UPPERCASE ticker plus
+# a dollar amount — "Will Airbnb, Inc. (ABNB) hit (LOW) $124 Week of June 8?"
+# slipped past the enumerated tickers (2026-06-12). The $ requirement keeps
+# "(GOP)"-style politics and sports titles out.
+_PAREN_TICKER_RE = re.compile(r"\([A-Z]{2,5}\)")
+
+# Weekly / path-dependent stock markets are banned OUTRIGHT, session or not:
+# "Week of" ranges and "hit (LOW)/(HIGH)" touch markets can flip on any
+# intraday print — there is no end-of-session convergence to ride.
+_STOCK_ALWAYS_BANNED_SUBSTRINGS = ("week of", "hit (low)", "hit (high)")
 
 
 def _parse_market_dt(raw: Any) -> datetime | None:
@@ -291,13 +310,20 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
     )
     if is_esports:
         return not _esports_game_is_live(market, now)
+    raw_q = str(market.get("question") or "")
     is_stock = (
         any(pat in q for pat in _STOCK_QUESTION_SUBSTRINGS)
         or any(pat in slug for pat in _STOCK_SLUG_SUBSTRINGS)
         or bool(_STOCK_MARKET_RE.search(q))
         or bool(_STOCK_MARKET_RE.search(slug))
+        or (bool(_PAREN_TICKER_RE.search(raw_q)) and "$" in raw_q)
     )
     if is_stock:
+        # Weekly ranges / intraday touch markets: banned outright — no
+        # end-of-session convergence to ride (ABNB "hit (LOW) $124 Week of
+        # June 8" slipped in on 2026-06-11 and bled while the bot held it).
+        if any(pat in q for pat in _STOCK_ALWAYS_BANNED_SUBSTRINGS):
+            return True
         return not _stock_session_is_ongoing(market, now)
     return False
 

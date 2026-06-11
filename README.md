@@ -60,7 +60,8 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | `temperature`, `°c`, `°f` | Specific-degree weather, near-zero win rate in band |
 | **All crypto** — `bitcoin`/`btc`/`ethereum`/`solana`/`dogecoin`/`xrp`/… + Up/Down | Banned: volatile, no edge for this strategy |
 | **Esports** — `counter-strike`/`valorant`/`league of legends`/`LoL:`/`dota`/… + `(bo1)`/`(bo3)`/`(bo5)` | **Live games only** (2026-06-12): tradeable while the game is in progress (`gameStartTime` past, ≤ 8 h); pre-game/unknown start banned |
-| **Stock market / equities** — S&P/`SPY`/Nasdaq/`QQQ`/Dow/DJIA + big-cap tickers & companies (word-bounded) + `closes above/below $X` | **Ongoing session only** (2026-06-12): tradeable Mon–Fri 09:30–16:00 ET for that day's close; overnight/weekend/multi-day banned |
+| **Stock market / equities** — S&P/`SPY`/Nasdaq/`QQQ`/Dow/DJIA + big-cap tickers & companies (word-bounded) + `closes above/below $X` + generic `(TICKER) … $` | **Ongoing session only** (2026-06-12): tradeable Mon–Fri 09:30–16:00 ET for that day's close; overnight/weekend/multi-day banned; weekly "Week of" / `hit (LOW)/(HIGH)` touch markets banned outright |
+| **Tweet-count markets** — `tweet` + `-tweets`/`of-tweets` slugs | Banned outright (2026-06-12): week-long counts, no convergence signal |
 
 **Deliberately tradeable** (test-pinned, do not ban): elections, primaries, and mayoral races — a profitable lane despite occasional postponements — and **fast-moving markets**: there are no `oneDayPriceChange` or `oneHourPriceChange` gates (recently-moving markets are often the ones converging toward resolution; both values are logged for offline analysis only).
 
