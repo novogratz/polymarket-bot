@@ -32,7 +32,7 @@ A merged change reaches a live bot the next time that bot restarts and reloads
 | `race.tp_pct` | 0.05–1.0 | take-profit (1.0 = ride to resolution) |
 | `race.stake_pct` | 0.10–0.60 | position size per trade |
 | `race.max_orders_per_tick` | 1–5 | concurrency / sizing spread |
-| `race.resolved_exit_threshold` | 0.95–0.99 | winner exit price |
+| `race.resolved_exit_threshold` | pinned 0.99 | winner exit price (user rule 2026-06-10: winners sell at a real 0.99 bid or settle at 1.00 — never tunable below 0.99) |
 | `exits.max_hold_hours` | 1.0–4.5 | max-hold backstop |
 
 **Frozen forever (never tunable):**

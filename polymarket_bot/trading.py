@@ -964,6 +964,19 @@ def execute_live_sell(
 
     sell_price = round(min(max(candidate.best_bid, candidate.tick_size), 0.99), 3)
 
+    # ── WINNER FLOOR (2026-06-10) — resolved winners sell at 0.99, period ──
+    # User rule after the sweep printed 0.97/0.98 exits: a winner exit must
+    # never go out below 0.99. The race exit already triggers only on a real
+    # 0.99 live-book bid, so this floor is a backstop against any future
+    # path (or mis-tuned threshold) trying to dump a resolved winner cheap.
+    # The position is simply held — it retries next tick or settles at 1.00.
+    WINNER_FLOOR_REASONS = {"race_big_win_resolved", "resolved_market_sweep_win"}
+    if reason in WINNER_FLOOR_REASONS and sell_price < 0.99:
+        raise ValueError(
+            f"winner_floor: refuse to sell resolved winner @ {sell_price} < 0.99 "
+            f"(reason={reason}) — hold for a real 0.99 bid or on-chain settlement"
+        )
+
     # ── HARD LOSS FLOOR (2026-05-31) — NEVER sell below the purchase price ──
     # Per explicit user rule: a winning/favorite position must never be
     # force-sold at a loss into a thin-book / phantom bid (the bug that dumped
