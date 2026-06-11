@@ -7,6 +7,7 @@ plus the timezone-aware datetime parsing helpers used throughout the bot
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -115,6 +116,24 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "(bo1)",
     "(bo3)",
     "(bo5)",
+    # Stock market / equities (2026-06-11, user rule): never bet on stock,
+    # index, or share-price markets (the grinder bought "S&P 500 (SPY)
+    # closes above $725" on 2026-06-10). Safe plain substrings here; short
+    # tickers needing word boundaries live in _STOCK_MARKET_RE below.
+    "s&p",
+    "dow jones",
+    "russell 2000",
+    "stock market",
+    "stock price",
+    "share price",
+    "market cap",
+    "wall street",
+    # Price-threshold close markets ("X closes above $725 on June 10?") —
+    # the stock/index/commodity pattern; crypto is already banned above.
+    "closes above $",
+    "close above $",
+    "closes below $",
+    "close below $",
 )
 _EXCLUDED_SLUG_SUBSTRINGS = (
     "updown",
@@ -135,6 +154,21 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     "ethereum",
     "solana",
     "crypto",
+    # Stock market slug markers (2026-06-11).
+    "stock-market",
+    "sp500",
+    "s-and-p",
+)
+
+# Stock tickers and company names need word boundaries — plain substrings
+# would false-positive ("spy" in "spying", "meta" in "metal"). Lowercased
+# question AND slug are both checked (hyphens count as word breaks).
+_STOCK_MARKET_RE = re.compile(
+    r"\b(?:"
+    r"spy|qqq|voo|djia|nasdaq|nikkei|ftse|dax"
+    r"|googl?|aapl|tsla|nvda|msft|amzn|nflx|amd|intc"
+    r"|google|alphabet|apple|tesla|nvidia|microsoft|amazon|netflix|meta"
+    r")\b"
 )
 
 
@@ -147,12 +181,16 @@ def is_excluded_market(market: dict[str, Any]) -> bool:
       weather fails constantly even at 0.94.
     - Exact-score live sports: gaps on goals, SL can't catch them.
     - O/U 0.5 soccer: any-goal binary, same gap risk.
+    - Stock market / equities (2026-06-11): indices, ETFs, tickers,
+      company stocks, and price-threshold close markets.
     """
     q = str(market.get("question") or "").lower()
     if any(pat in q for pat in _EXCLUDED_QUESTION_SUBSTRINGS):
         return True
     slug = str(market.get("slug") or "").lower()
     if any(pat in slug for pat in _EXCLUDED_SLUG_SUBSTRINGS):
+        return True
+    if _STOCK_MARKET_RE.search(q) or _STOCK_MARKET_RE.search(slug):
         return True
     return False
 

@@ -60,6 +60,7 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | `temperature`, `°c`, `°f` | Specific-degree weather, near-zero win rate in band |
 | **All crypto** — `bitcoin`/`btc`/`ethereum`/`solana`/`dogecoin`/`xrp`/… + Up/Down | Banned: volatile, no edge for this strategy |
 | **Esports** — `counter-strike`/`valorant`/`league of legends`/`LoL:`/`dota`/… + `(bo1)`/`(bo3)`/`(bo5)` | Banned: in-series swings are uncatchable |
+| **All stock market / equities** — S&P/`SPY`/Nasdaq/`QQQ`/Dow/DJIA + big-cap tickers & companies (`GOOGL`/Google, `AAPL`/Apple, `TSLA`/Tesla, `NVDA`/Nvidia, …, word-bounded) + `closes above/below $X` | Banned (user rule 2026-06-11): no edge on equities price thresholds |
 
 **Deliberately tradeable** (test-pinned, do not ban): elections, primaries, and mayoral races — a profitable lane despite occasional postponements — and **fast-moving markets**: there are no `oneDayPriceChange` or `oneHourPriceChange` gates (recently-moving markets are often the ones converging toward resolution; both values are logged for offline analysis only).
 

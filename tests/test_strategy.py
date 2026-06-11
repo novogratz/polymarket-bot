@@ -3580,6 +3580,42 @@ class ExcludedMarketTests(unittest.TestCase):
         ):
             self.assertFalse(is_excluded_market(market), market["question"])
 
+    def test_stock_market_excluded(self):
+        # User rule 2026-06-11: never bet on stock-market markets (the bot
+        # bought "S&P 500 (SPY) closes above $725" on 2026-06-10).
+        for market in (
+            {"question": "S&P 500 (SPY) closes above $725 on June 10?",
+             "slug": "sp-500-spy-closes-above-725-on-june-10"},
+            {"question": "Google (GOOGL) closes above $200 on June 30?",
+             "slug": "google-googl-closes-above-200"},
+            {"question": "Will Tesla stock close above $400 this week?",
+             "slug": "tesla-stock-close-above-400"},
+            {"question": "Nasdaq 100 (QQQ) closes below $530 on June 12?",
+             "slug": "nasdaq-100-qqq-closes-below-530"},
+            {"question": "Will Apple (AAPL) hit a $5T market cap in 2026?",
+             "slug": "apple-aapl-5t-market-cap-2026"},
+            {"question": "Will the Dow Jones close above 50,000 in June?",
+             "slug": "dow-jones-close-above-50000-june"},
+            {"question": "Will Nvidia beat earnings expectations?",
+             "slug": "nvidia-earnings-q2-2026"},
+            # Slug-only marker (question scrubbed of keywords).
+            {"question": "Closes above the strike on Friday?",
+             "slug": "msft-weekly-close-above-strike"},
+        ):
+            self.assertTrue(is_excluded_market(market), market["question"])
+
+    def test_stock_ticker_word_boundary_no_false_positives(self):
+        # Short tickers are word-bounded: "spy" must not ban spy thrillers,
+        # "meta" must not ban metal, "dax" must not ban Dexter etc.
+        for market in (
+            {"question": "Will the spying scandal force a minister to resign?",
+             "slug": "spying-scandal-minister-resign"},
+            {"question": "Will the metal band win the Eurovision final?",
+             "slug": "eurovision-metal-band-final"},
+            {"question": "Will France win on 2026-06-11?", "slug": "fra-win-2026-06-11"},
+        ):
+            self.assertFalse(is_excluded_market(market), market["question"])
+
 
 if __name__ == "__main__":
     unittest.main()
