@@ -3726,6 +3726,48 @@ class ExcludedMarketTests(unittest.TestCase):
         ):
             self.assertFalse(is_excluded_market(market), market["question"])
 
+    # ── Conditional re-allow (user 2026-06-12): "ongoing only" ────────────
+
+    def test_esports_allowed_only_while_game_is_live(self):
+        from datetime import datetime, timezone
+
+        now = datetime(2026, 6, 12, 18, 0, tzinfo=timezone.utc)
+        base = {"question": "LoL: Solary vs Eintracht Spandau - Game 1 Winner",
+                "slug": "lol-solary-vs-eintracht-spandau-game-1-winner"}
+        live = dict(base, gameStartTime="2026-06-12T17:00:00+00:00")     # 1h in
+        pregame = dict(base, gameStartTime="2026-06-12T19:00:00+00:00")  # +1h
+        stale = dict(base, gameStartTime="2026-06-12T06:00:00+00:00")    # 12h ago
+        self.assertFalse(is_excluded_market(live, now=now))
+        self.assertTrue(is_excluded_market(pregame, now=now))
+        self.assertTrue(is_excluded_market(stale, now=now))
+        self.assertTrue(is_excluded_market(base, now=now))  # unknown start
+
+    def test_stocks_allowed_only_during_ongoing_session_for_same_day_close(self):
+        from datetime import datetime, timezone
+
+        market = {"question": "Apple (AAPL) closes above $290 on June 10?",
+                  "slug": "apple-aapl-closes-above-290-june-10",
+                  "endDate": "2026-06-11T00:00:00+00:00"}
+        # Wednesday 2026-06-10 14:00 ET, market ends tonight → allowed.
+        in_session = datetime(2026, 6, 10, 18, 0, tzinfo=timezone.utc)
+        self.assertFalse(is_excluded_market(market, now=in_session))
+        # Same day 17:00 ET (after the close) → excluded.
+        after_hours = datetime(2026, 6, 10, 21, 0, tzinfo=timezone.utc)
+        self.assertTrue(is_excluded_market(market, now=after_hours))
+        # 09:00 ET (pre-open) → excluded.
+        pre_open = datetime(2026, 6, 10, 13, 0, tzinfo=timezone.utc)
+        self.assertTrue(is_excluded_market(market, now=pre_open))
+        # Saturday 2026-06-13 in-session hours → excluded.
+        weekend = datetime(2026, 6, 13, 18, 0, tzinfo=timezone.utc)
+        weekend_market = dict(market, endDate="2026-06-14T00:00:00+00:00")
+        self.assertTrue(is_excluded_market(weekend_market, now=weekend))
+        # In session but a multi-day stock bet (ends in 3 days) → excluded.
+        far = dict(market, endDate="2026-06-13T00:00:00+00:00")
+        self.assertTrue(is_excluded_market(far, now=in_session))
+        # No endDate at all → excluded even in session.
+        no_end = {"question": market["question"], "slug": market["slug"]}
+        self.assertTrue(is_excluded_market(no_end, now=in_session))
+
 
 if __name__ == "__main__":
     unittest.main()
