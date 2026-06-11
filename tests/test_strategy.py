@@ -218,6 +218,79 @@ class StrategyTests(unittest.TestCase):
         self.assertTrue(result.response.get("success"))
         self.assertAlmostEqual(portfolio.positions[0]["stake"], placed["amount"], places=2)
 
+    def test_partial_depth_buy_leaves_cash_for_next_market(self):
+        # End-to-end of the 2026-06-10 scenario: the book only offers ~$30
+        # on the first market, so the bot must take the $30 AND keep the
+        # remaining cash deployable into the next opportunity (different
+        # event) instead of bouncing the whole stake or locking up.
+        placed = []
+
+        class FakeClient:
+            def __init__(self):
+                self.balance = 900.0
+
+            def live_available_balance(self):
+                return self.balance
+
+            def get_order_book(self, token_id):
+                if token_id == "tok-thin":
+                    return {"asks": [{"price": "0.95", "size": "35"}], "bids": []}  # $33.25 depth
+                return {"asks": [{"price": "0.95", "size": "5000"}], "bids": []}  # deep
+
+            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
+                self.balance -= amount
+                placed.append((candidate.token_id, amount))
+                return {"price": price, "amount": amount, "side": side}, {
+                    "success": True,
+                    "status": "matched",
+                    "orderID": f"order-{len(placed)}",
+                    "makingAmount": str(amount),
+                }
+
+        def _cand(market_id, token_id, event_slug):
+            return Candidate(
+                market_id=market_id,
+                question=f"Will {market_id} resolve Yes?",
+                slug=market_id,
+                end_date=utc_now() + timedelta(hours=5),
+                hours_to_close=5,
+                liquidity=1300,
+                volume=2000,
+                outcome="No",
+                price=0.949,
+                token_id=token_id,
+                score=1,
+                url=f"https://polymarket.com/event/{event_slug}",
+                best_bid=0.92,
+                best_ask=0.949,
+                tick_size=0.001,
+                accepts_orders=True,
+                event_slug=event_slug,
+            )
+
+        client = FakeClient()
+        portfolio = Portfolio(cash=900.0, positions=[])
+        settings = Settings(trade_fraction=0.95, min_order_shares=5.0)
+
+        thin = _cand("ppi", "tok-thin", "ppi-yoy-may-2026")
+        other = _cand("cpi", "tok-deep", "cpi-yoy-may-2026")
+
+        first = execute_live_trade(
+            client, settings, thin, portfolio, min_trade_usd=1.0, max_trade_usd=380.0
+        )
+        second = execute_live_trade(
+            client, settings, other, portfolio, min_trade_usd=1.0, max_trade_usd=380.0
+        )
+
+        self.assertTrue(first.response.get("success"))
+        self.assertTrue(second.response.get("success"))
+        # First buy took only what the book offered (≤ 90% of $33.25)…
+        self.assertLessEqual(placed[0][1], round(0.95 * 35 * 0.90, 2))
+        # …and the next market still got a full-size stake from the rest.
+        self.assertEqual(placed[1][0], "tok-deep")
+        self.assertGreater(placed[1][1], 300.0)
+        self.assertEqual(len(portfolio.positions), 2)
+
     def test_live_buy_rejected_when_book_cannot_cover_minimum(self):
         class FakeClient:
             def live_available_balance(self):
