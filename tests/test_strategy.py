@@ -3314,6 +3314,130 @@ class ActionableCandidatesTests(unittest.TestCase):
         self.assertAlmostEqual(portfolio.cash, 561.86, places=2)
 
 
+class DynamicEntryWindowTests(unittest.TestCase):
+    """User rule 2026-06-11: prefer bets ≤4h from resolution; if nothing is
+    actionable, widen the window 4 → 6 → 8 → 10 and stop at 12h max."""
+
+    def test_entry_window_ladder_steps_by_2h_to_the_cap(self):
+        from polymarket_bot.race_strategies import _entry_window_ladder
+
+        ladder = _entry_window_ladder(Settings(race_max_hours=4.0, race_max_hours_cap=12.0))
+        self.assertEqual(ladder, [4.0, 6.0, 8.0, 10.0, 12.0])
+
+    def test_entry_window_ladder_disabled_without_cap(self):
+        from polymarket_bot.race_strategies import _entry_window_ladder
+
+        self.assertEqual(_entry_window_ladder(Settings(race_max_hours=4.0)), [4.0])
+        self.assertEqual(
+            _entry_window_ladder(Settings(race_max_hours=4.0, race_max_hours_cap=3.0)),
+            [4.0],
+        )
+
+    def test_narrow_window_preferred_wide_used_only_when_empty(self):
+        from polymarket_bot.race_strategies import (
+            _actionable_candidates,
+            _entry_window_ladder,
+        )
+
+        def pick_window(eligible, portfolio, settings):
+            ladder = _entry_window_ladder(settings)
+            actionable, used = [], ladder[0]
+            for used in ladder:
+                subset = [(c, m) for c, m in eligible if (c.hours_to_close or 0.0) <= used]
+                actionable = _actionable_candidates(subset, portfolio, settings)
+                if actionable:
+                    break
+            return actionable, used
+
+        near = ActionableCandidatesTests._candidate(
+            "1", "Will France win on 2026-06-11?", "france-win", "ev-near", "tok-1",
+            hours=3.0, bid=0.92,
+        )
+        far = ActionableCandidatesTests._candidate(
+            "2", "Will CPI YoY be 3.1% in June?", "cpi-31", "ev-far", "tok-2",
+            hours=7.5, bid=0.93,
+        )
+        settings = Settings(race_max_hours=4.0, race_max_hours_cap=12.0)
+        empty = Portfolio(cash=100.0, positions=[])
+
+        # A 3h candidate exists → stay at the 4h window; the 7.5h one waits.
+        actionable, used = pick_window([(near, 0.0), (far, 0.0)], empty, settings)
+        self.assertEqual(used, 4.0)
+        self.assertEqual([c.market_id for c, _ in actionable], ["1"])
+
+        # Nothing ≤4h or ≤6h → the 8h rung catches the 7.5h candidate.
+        actionable, used = pick_window([(far, 0.0)], empty, settings)
+        self.assertEqual(used, 8.0)
+        self.assertEqual([c.market_id for c, _ in actionable], ["2"])
+
+        # Nothing within the 12h cap → no bet, the ladder stops.
+        nothing = ActionableCandidatesTests._candidate(
+            "3", "Will X happen?", "x", "ev-x", "tok-3", hours=14.0, bid=0.92,
+        )
+        actionable, used = pick_window([(nothing, 0.0)], empty, settings)
+        self.assertEqual(used, 12.0)
+        self.assertEqual(actionable, [])
+
+
+class SameEventDedupTests(unittest.TestCase):
+    """User rule 2026-06-11: one bet per game; for soccer prefer the
+    under-4.5-goals market over everything else in the event."""
+
+    def test_soccer_under_45_beats_moneyline_either_order(self):
+        from polymarket_bot.race_strategies import _actionable_candidates
+
+        moneyline = Candidate(
+            market_id="ml", question="Will Nantes win on 2026-06-11?",
+            slug="nantes-win", end_date=utc_now() + timedelta(hours=2),
+            hours_to_close=2, liquidity=1500, volume=2000, outcome="Yes",
+            price=0.94, token_id="tok-ml", score=1,
+            url="https://polymarket.com/event/fc-nantes-vs-psg",
+            best_bid=0.94, best_ask=0.95, tick_size=0.01, accepts_orders=True,
+            event_slug="fc-nantes-vs-psg",
+        )
+        under = Candidate(
+            market_id="u45", question="FC Nantes vs. PSG: O/U 4.5",
+            slug="nantes-psg-ou-45", end_date=utc_now() + timedelta(hours=2),
+            hours_to_close=2, liquidity=1500, volume=2000, outcome="Under",
+            price=0.90, token_id="tok-u45", score=1,
+            url="https://polymarket.com/event/fc-nantes-vs-psg",
+            best_bid=0.90, best_ask=0.91, tick_size=0.01, accepts_orders=True,
+            event_slug="fc-nantes-vs-psg",
+        )
+        empty = Portfolio(cash=100.0, positions=[])
+        for ordering in ([moneyline, under], [under, moneyline]):
+            actionable = _actionable_candidates(
+                [(c, 0.0) for c in ordering], empty, Settings()
+            )
+            self.assertEqual([c.market_id for c, _ in actionable], ["u45"])
+
+    def test_non_soccer_same_event_keeps_single_highest_bid(self):
+        from polymarket_bot.race_strategies import _actionable_candidates
+
+        a = ActionableCandidatesTests._candidate(
+            "1", "Spurs vs. Knicks: O/U 196.5", "ou-196", "nba-sas-nyk", "tok-1",
+            hours=1.0, bid=0.91,
+        )
+        b = ActionableCandidatesTests._candidate(
+            "2", "Spurs vs. Knicks: O/U 198.5", "ou-198", "nba-sas-nyk", "tok-2",
+            hours=1.0, bid=0.93,
+        )
+        other = ActionableCandidatesTests._candidate(
+            "3", "Will PPI YoY be 7.4% in May?", "ppi", "ppi-may", "tok-3",
+            hours=2.0, bid=0.92,
+        )
+        empty = Portfolio(cash=100.0, positions=[])
+        actionable = _actionable_candidates(
+            [(a, 0.0), (b, 0.0), (other, 0.0)], empty, Settings()
+        )
+        self.assertEqual(sorted(c.market_id for c, _ in actionable), ["2", "3"])
+
+    def test_event_exposure_cap_is_one(self):
+        from polymarket_bot import race_strategies
+
+        self.assertEqual(race_strategies.EVENT_EXPOSURE_CAP, 1)
+
+
 class DynamicStakeTargetTests(unittest.TestCase):
     """Opportunity-spread sizing (user 2026-06-10): 20% of equity hard cap
     per bet; with N actionable markets each bet targets cash/N; a slow

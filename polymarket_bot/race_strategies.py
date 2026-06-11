@@ -42,10 +42,10 @@ def _step(settings: Settings, msg: str) -> None:
         print(msg, flush=True)
 
 
-def _load_short_expiry_markets(settings: Settings) -> list[dict[str, Any]]:
+def _load_short_expiry_markets(settings: Settings, max_hours: float | None = None) -> list[dict[str, Any]]:
     client = GammaClient(settings.gamma_base_url)
     now = utc_now()
-    horizon = now + timedelta(hours=settings.race_max_hours)
+    horizon = now + timedelta(hours=max_hours if max_hours is not None else settings.race_max_hours)
     batches: list[list[dict[str, Any]]] = []
     for kwargs in (
         {
@@ -200,17 +200,19 @@ def _log_forward_observations(markets: list[dict[str, Any]], settings: Settings)
 def _build_eligible_candidates(
     markets: list[dict[str, Any]],
     settings: Settings,
+    max_hours: float | None = None,
 ) -> list[tuple[Candidate, float]]:
     """Per-outcome candidate with a momentum signal attached for ranking.
 
     Returns ``(candidate, momentum_for_this_outcome)``. Momentum is the
     YES-side ``oneDayPriceChange`` flipped for the NO side. Caller picks
     whichever sign matches their thesis (contrarian flips, favorite
-    ignores momentum entirely).
+    ignores momentum entirely). ``max_hours`` overrides the base window for
+    the dynamic entry-window ladder.
     """
     now = utc_now()
     earliest = now + timedelta(minutes=5)
-    horizon = now + timedelta(hours=settings.race_max_hours)
+    horizon = now + timedelta(hours=max_hours if max_hours is not None else settings.race_max_hours)
     out: list[tuple[Candidate, float]] = []
     for market in markets:
         if is_excluded_market(market):
@@ -2086,6 +2088,75 @@ def _dynamic_stake_target(
     return target
 
 
+def _entry_window_ladder(settings: Settings) -> list[float]:
+    """Hour windows to try, narrowest first: base, then +2h steps to the cap.
+
+    User rule 2026-06-11: prefer bets within 4h of resolution; if nothing is
+    actionable there, widen to 6, 8, 10 and stop at 12 max. With
+    ``race_max_hours_cap`` ≤ base (or 0) the ladder is just [base] — the
+    pre-existing fixed-window behavior.
+    """
+    base = max(float(settings.race_max_hours), 0.5)
+    cap = float(settings.race_max_hours_cap or 0.0)
+    ladder = [base]
+    hours = base
+    while cap > hours + 1e-9:
+        hours = min(hours + 2.0, cap)
+        ladder.append(hours)
+    return ladder
+
+
+# One bet per game (2026-06-11, was 2): a second position on the same event
+# is never opened — _dedup_same_event collapses same-event picks before
+# selection, this cap is the in-loop backstop.
+EVENT_EXPOSURE_CAP = 1
+
+# Soccer totals: the only O/U line the exclusion filters allow is 4.5, so a
+# "… : O/U 4.5" question with the Under outcome is the soccer under-4.5 bet.
+_UNDER_45_RE = re.compile(r"(?:o/u|over/under)\s*4\.5\b")
+
+
+def _is_under_45_candidate(candidate: Candidate) -> bool:
+    return (
+        bool(_UNDER_45_RE.search(str(candidate.question or "").lower()))
+        and str(candidate.outcome or "").strip().lower() == "under"
+    )
+
+
+def _dedup_same_event(
+    candidates: list[tuple[Candidate, float]],
+) -> list[tuple[Candidate, float]]:
+    """One bet per game: keep a single candidate per event slug.
+
+    User rule 2026-06-11: never take two bets on the same game. For soccer,
+    prioritize the under-4.5-goals market over everything else in the event
+    (moneyline, specials); otherwise keep the highest-bid (most resolved)
+    candidate. Candidates without an event slug pass through untouched.
+    """
+    best_by_event: dict[str, tuple[Candidate, float]] = {}
+    order: list[tuple[tuple[Candidate, float] | None, str | None]] = []
+    for entry in candidates:
+        candidate, _ = entry
+        event = str(candidate.event_slug or "")
+        if not event:
+            order.append((entry, None))
+            continue
+        held = best_by_event.get(event)
+        if held is None:
+            best_by_event[event] = entry
+            order.append((None, event))
+            continue
+        held_candidate, _ = held
+        new_under = _is_under_45_candidate(candidate)
+        held_under = _is_under_45_candidate(held_candidate)
+        if (new_under and not held_under) or (
+            new_under == held_under
+            and (candidate.best_bid or 0.0) > (held_candidate.best_bid or 0.0)
+        ):
+            best_by_event[event] = entry
+    return [best_by_event[event] if event else entry for entry, event in order]  # type: ignore[index]
+
+
 def _actionable_candidates(
     eligible: list[tuple[Candidate, float]], portfolio: Portfolio, settings: Settings
 ) -> list[tuple[Candidate, float]]:
@@ -2120,7 +2191,9 @@ def _actionable_candidates(
         elif portfolio.has_open_event_position(c):
             continue
         out.append((c, m))
-    return out
+    # One bet per game (2026-06-11): collapse same-event candidates to a
+    # single pick, preferring soccer's under-4.5 line over the rest.
+    return _dedup_same_event(out)
 
 
 def _run_race_tick(
@@ -2129,9 +2202,13 @@ def _run_race_tick(
     select_fn,
 ) -> dict[str, Any]:
     print(f"▶  {strategy_name} tick start", flush=True)
-    markets = _load_short_expiry_markets(settings)
-    _step(settings, f"   markets: {len(markets)} raw")
-    eligible = _build_eligible_candidates(markets, settings)
+    # Dynamic entry window (2026-06-11): scan out to the ladder cap so held
+    # positions beyond the base window still get marked/managed, then pick
+    # entries from the narrowest window that has actionable candidates.
+    ladder = _entry_window_ladder(settings)
+    markets = _load_short_expiry_markets(settings, max_hours=ladder[-1])
+    _step(settings, f"   markets: {len(markets)} raw (≤{ladder[-1]:.0f}h)")
+    eligible = _build_eligible_candidates(markets, settings, max_hours=ladder[-1])
     _step(settings, f"   eligible: {len(eligible)}")
     obs = _log_forward_observations(markets, settings)
     if obs:
@@ -2191,11 +2268,26 @@ def _run_race_tick(
             eligible = eligible + mirror_extra
             _step(settings, f"   eligible (+{len(mirror_extra)} mirror): {len(eligible)}")
 
-    actionable = _actionable_candidates(eligible, portfolio, settings)
+    # Walk the window ladder: take the narrowest window with actionable
+    # candidates (4h preferred; widen 6 → 8 → 10 → 12 only when empty).
+    actionable: list[tuple[Candidate, float]] = []
+    window_hours = ladder[0]
+    for window_hours in ladder:
+        subset = [
+            (c, m) for c, m in eligible if (c.hours_to_close or 0.0) <= window_hours
+        ]
+        actionable = _actionable_candidates(subset, portfolio, settings)
+        if actionable:
+            break
+    if len(ladder) > 1:
+        _step(
+            settings,
+            f"   entry window: ≤{window_hours:.0f}h → {len(actionable)} actionable",
+        )
     if len(actionable) < len(eligible):
         _step(
             settings,
-            f"   actionable: {len(actionable)}/{len(eligible)} (already-held markets excluded from pick slots)",
+            f"   actionable: {len(actionable)}/{len(eligible)} (already-held/duplicate-event markets excluded from pick slots)",
         )
 
     # Opportunity count drives per-bet sizing: many actionable markets →
@@ -2231,7 +2323,6 @@ def _run_race_tick(
             ev = str(pos.get("event_slug") or "")
             if ev:
                 event_exposure[ev] = event_exposure.get(ev, 0) + 1
-    EVENT_EXPOSURE_CAP = 2
 
     for candidate in picks:
         if len(executed) >= settings.race_max_orders_per_tick:
