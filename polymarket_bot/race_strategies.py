@@ -267,9 +267,13 @@ def _build_eligible_candidates(
             else "https://polymarket.com"
         )
         hours_to_close = max((end_date - now).total_seconds() / 3600.0, 0.0)
+        # NOTE (2026-06-10): no price-movement gates. The day-change gate
+        # (>10% moved today) and the day-momentum floor (falling >5% today)
+        # were removed along with the short-lived 1h gates — recently-moving
+        # markets are often exactly the ones converging toward resolution and
+        # the user wants them tradeable. one_day_change is still computed for
+        # the selector momentum tuple and the forward-observation log.
         one_day_change = as_float(market.get("oneDayPriceChange"), default=0.0)
-        if settings.race_max_day_change_pct > 0 and abs(one_day_change) > settings.race_max_day_change_pct:
-            continue
         # NOTE (2026-06-10): no oneHourPriceChange gate. A 1h flux filter was
         # added and removed the same day — recently-moving markets are often
         # exactly the ones converging toward resolution, and the user wants
@@ -289,10 +293,6 @@ def _build_eligible_candidates(
             if spread < 0 or spread > settings.race_max_spread:
                 continue
             outcome_momentum = one_day_change if index == 0 else -one_day_change
-            # Skip outcomes actively falling today — market moving away from
-            # resolution is worse edge than one trending toward it.
-            if outcome_momentum < settings.race_min_outcome_momentum:
-                continue
             candidate = Candidate(
                 market_id=market_id,
                 question=question,
