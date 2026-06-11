@@ -577,6 +577,34 @@ def _enrich_end_meta(positions: list[dict]) -> None:
         pass
 
 
+def _ledger_entry_lookup() -> dict:
+    """token_id and (slug, outcome) -> (entry_price, stake) from
+    paper_state.json. Used when the Data API hasn't indexed a fresh position
+    yet (avgPrice=0 for the first minutes after a fill) — without this the
+    report books the entire current value as profit ("0.00 -> 0.92")."""
+    lookup: dict = {}
+    paper_state = DATA_DIR / "paper_state.json"
+    try:
+        state = json.loads(paper_state.read_text())
+    except Exception:
+        return lookup
+    for p in state.get("positions", []) or []:
+        if p.get("status") != "open":
+            continue
+        entry = float(p.get("entry_price") or 0)
+        stake = float(p.get("stake") or p.get("size_usd") or 0)
+        if entry <= 0:
+            continue
+        token = str(p.get("token_id") or "")
+        if token:
+            lookup[token] = (entry, stake)
+        slug = str(p.get("slug") or p.get("event_slug") or "")
+        outcome = str(p.get("outcome") or "")
+        if slug:
+            lookup[(slug, outcome)] = (entry, stake)
+    return lookup
+
+
 def load_open_positions() -> list[dict]:
     """Read live open positions from Polymarket Data API (ground truth).
     Falls back to paper_state.json if API unavailable.
@@ -609,6 +637,21 @@ def load_open_positions() -> list[dict]:
             avg_price = float(item.get("avgPrice") or 0)
             cur_price = float(item.get("curPrice") or avg_price)
             initial_value = float(item.get("initialValue") or size * avg_price)
+            if avg_price <= 0:
+                # Data API lag on fresh fills: avgPrice=0 would show the whole
+                # position value as unrealized profit. Use the ledger's entry.
+                led = _ledger_entry_lookup()
+                hit = led.get(str(item.get("asset") or "")) or led.get(
+                    (str(item.get("eventSlug") or item.get("slug") or ""),
+                     str(item.get("outcome") or ""))
+                )
+                if hit:
+                    avg_price, stake = hit
+                    initial_value = stake if stake > 0 else size * avg_price
+                else:
+                    # Last resort: no ledger entry either — treat cost as the
+                    # current value so PnL reads 0 instead of +100%.
+                    initial_value = cv
             unr = cv - initial_value
             unr_pct = (unr / initial_value * 100) if initial_value else 0
             out.append({
