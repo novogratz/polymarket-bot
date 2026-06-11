@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- **One-hour flux gates** (`oneHourPriceChange`, suggested by Pierre): the entry filters only looked at `oneDayPriceChange`, so a market calm over 24h but spiking *right now* (goal scored, breaking news 20 min ago) still qualified. Two new knobs mirroring the day gates: `max_hour_change_pct` (skip markets that moved >5% in the last hour) and `min_outcome_momentum_1h` (skip outcomes that fell >2% in the last hour), set in both grinder profiles, disabled by default elsewhere, frozen for the auto-improver, and logged in the forward-observation net.
 - **Top-up lane — depth-capped entries can be completed**: when a buy fills below its sizing target because the book was thin (e.g. $229 of a $379 PPI target), the market stays actionable and later ticks may buy more of the *same token*, averaging stake/shares/entry into the existing position. Hard bound: the position's total cost basis never exceeds the per-position cap (`equity × race_stake_pct`, ~30%, min'd with the ceilings when set) — the cap is what bounds the old "$45 → $4 in 22 ticks" averaging spiral that the blanket token-dedup used to prevent; with `race_stake_pct ≤ 0` top-ups stay disabled. Each top-up must re-pass all entry filters and the book-depth cap; it is exempt from the one-position-per-event guard (it grows that very position) and does not inflate the per-event exposure count.
 
 ### Fixed

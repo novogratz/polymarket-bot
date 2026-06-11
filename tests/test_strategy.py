@@ -3142,6 +3142,79 @@ class ActionableCandidatesTests(unittest.TestCase):
         self.assertAlmostEqual(portfolio.cash, 561.86, places=2)
 
 
+class OneHourChangeFilterTests(unittest.TestCase):
+    """oneHourPriceChange gates (2026-06-10): a market calm over 24h can be
+    in active flux right now — the 1h change catches what the day change
+    hides."""
+
+    @staticmethod
+    def _market(one_hour=0.0, one_day=0.0):
+        end = (utc_now() + timedelta(hours=2)).isoformat()
+        return {
+            "id": "m1",
+            "question": "Will Foo win on 2026-06-11?",
+            "slug": "foo-win",
+            "endDate": end,
+            "acceptingOrders": True,
+            "liquidity": "2000",
+            "volume24hr": "5000",
+            "bestBid": 0.90,
+            "bestAsk": 0.92,
+            "orderPriceMinTickSize": 0.01,
+            "outcomes": '["Yes", "No"]',
+            "outcomePrices": '["0.91", "0.09"]',
+            "clobTokenIds": '["tok-yes", "tok-no"]',
+            "oneDayPriceChange": one_day,
+            "oneHourPriceChange": one_hour,
+        }
+
+    @staticmethod
+    def _settings(**kw):
+        base = dict(
+            race_min_price=0.85, race_max_price=0.97, race_max_hours=6.0,
+            race_max_spread=0.04, race_min_liquidity_usd=500, race_min_volume_24h_usd=300,
+        )
+        base.update(kw)
+        return Settings(**base)
+
+    def test_calm_market_passes(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        eligible = _build_eligible_candidates(
+            [self._market(one_hour=0.01)],
+            self._settings(race_max_hour_change_pct=0.05),
+        )
+        self.assertEqual(len(eligible), 1)
+
+    def test_market_spiking_this_hour_is_skipped(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        eligible = _build_eligible_candidates(
+            [self._market(one_hour=0.08)],  # calm 24h, but ±8% in the last hour
+            self._settings(race_max_hour_change_pct=0.05),
+        )
+        self.assertEqual(eligible, [])
+
+    def test_outcome_falling_this_hour_is_skipped(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        # YES fell 3% in the last hour → blocked by the 1h momentum floor.
+        eligible = _build_eligible_candidates(
+            [self._market(one_hour=-0.03)],
+            self._settings(race_min_outcome_momentum_1h=-0.02),
+        )
+        self.assertEqual([c.outcome for c, _ in eligible], [])
+
+    def test_disabled_gate_keeps_old_behavior(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        eligible = _build_eligible_candidates(
+            [self._market(one_hour=0.20)],
+            self._settings(),  # both 1h knobs at their disabled defaults
+        )
+        self.assertEqual(len(eligible), 1)
+
+
 class ExcludedMarketTests(unittest.TestCase):
     def test_lol_prefix_titles_are_excluded(self):
         # Regression: Polymarket titles LoL markets "LoL: A vs B - Game N
