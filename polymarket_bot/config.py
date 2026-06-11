@@ -314,9 +314,15 @@ class Settings:
     # Race strategies — shared knobs for random/contrarian/favorite control bots.
     race_max_hours: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MAX_HOURS", 4.0))
     # Dynamic entry window (2026-06-11): when the base race_max_hours window
-    # yields no actionable candidate, the scan widens in 2h steps up to this
-    # cap (4 → 6 → 8 → 10 → 12). 0 or ≤ race_max_hours disables the ladder.
+    # yields no actionable candidate, the scan widens in 2h steps to 12h,
+    # then jumps straight to this cap (4 → 6 → 8 → 10 → 12 → 24). 0 or
+    # ≤ race_max_hours disables the ladder.
     race_max_hours_cap: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MAX_HOURS_CAP", 0.0))
+    # Final ladder rung (2026-06-12): when even the cap window is empty,
+    # extend to the end of TOMORROW (UTC) so daily markets ("Will X be Y on
+    # <date>?", stamped midnight UTC like the Trump-approval one) stay
+    # reachable. Off by default.
+    race_daily_expiry_fallback: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_DAILY_EXPIRY_FALLBACK", False))
     race_scan_limit: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_SCAN_LIMIT", 500))
     race_min_liquidity_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_LIQUIDITY_USD", 500.0))
     race_min_volume_24h_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_VOLUME_24H_USD", 200.0))
