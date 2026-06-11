@@ -2012,6 +2012,29 @@ def _run_btc_edge_pass(
         return []
 
 
+def _actionable_candidates(
+    eligible: list[tuple[Candidate, float]], portfolio: Portfolio
+) -> list[tuple[Candidate, float]]:
+    """Drop candidates that can never execute this tick: token already open,
+    order pending, or blocked by the one-position-per-event guard.
+
+    Must run BEFORE the selector — it returns only the top
+    race_max_orders_per_tick candidates, so a slot spent on an already-held
+    market evicts the next-best actionable one from the tick entirely.
+    Seen live on 2026-06-10: four Spurs/Knicks O/U lines (soonest to close,
+    highest score) filled every pick slot tick after tick while the
+    5th-ranked PPI market was never attempted; other bots without the
+    Spurs position took it immediately.
+    """
+    return [
+        (c, m)
+        for c, m in eligible
+        if not portfolio.has_open_token(c.token_id)
+        and not portfolio.has_pending_token(c.token_id)
+        and not portfolio.has_open_event_position(c)
+    ]
+
+
 def _run_race_tick(
     settings: Settings,
     strategy_name: str,
@@ -2080,7 +2103,14 @@ def _run_race_tick(
             eligible = eligible + mirror_extra
             _step(settings, f"   eligible (+{len(mirror_extra)} mirror): {len(eligible)}")
 
-    picks = select_fn(eligible)
+    actionable = _actionable_candidates(eligible, portfolio)
+    if len(actionable) < len(eligible):
+        _step(
+            settings,
+            f"   actionable: {len(actionable)}/{len(eligible)} (already-held markets excluded from pick slots)",
+        )
+
+    picks = select_fn(actionable)
 
     # Noise fallback: if the selector returned nothing AND there are no
     # open positions, fire a random eligible candidate so the strategy
@@ -2092,8 +2122,8 @@ def _run_race_tick(
         and eligible
     ):
         open_count = sum(1 for p in portfolio.positions if p.get("status") == "open" and p.get("live"))
-        if open_count == 0:
-            picks = random.sample([c for c, _ in eligible], min(1, len(eligible)))
+        if open_count == 0 and actionable:
+            picks = random.sample([c for c, _ in actionable], min(1, len(actionable)))
             fallback_used = True
 
     open_assets = _open_asset_keys(portfolio)
