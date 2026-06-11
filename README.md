@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.85–0.97) within ~6 hours of resolution and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −25% confirmed stop-loss and a hard "never sell below entry" floor. Crypto and esports markets are excluded. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.85–0.97) close to resolution (4 h window, widening to 12 h max when quiet) and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −25% confirmed stop-loss and a hard "never sell below entry" floor. Crypto and esports markets are excluded. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -39,11 +39,11 @@ Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet,
 
 ## Strategy
 
-**Thesis.** A binary market at ask 0.85–0.97 within ~6 hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0. Every tick (10 s) it runs the same deterministic pipeline: **scan → exclude → filter → rank → size → execute → manage exits**. No LLM is ever in this path.
+**Thesis.** A binary market at ask 0.85–0.97 within a few hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0. Every tick (10 s) it runs the same deterministic pipeline: **scan → exclude → filter → rank → size → execute → manage exits**. No LLM is ever in this path.
 
 ### 1. Scan
 
-Every Gamma market closing within `max_hours` (6 h), fetched with two orderings (soonest-closing + highest-volume) and **full pagination past the API's silent 100-row cap** — ~1,000–2,000 raw markets per tick depending on time of day.
+Every Gamma market closing within the 12 h ladder cap (`max_hours_cap`), fetched with two orderings (soonest-closing + highest-volume) and **full pagination past the API's silent 100-row cap** — ~1,000–2,000+ raw markets per tick depending on time of day.
 
 ### 2. Excluded market types
 
@@ -68,7 +68,7 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | Parameter | Value (`grinder.toml [race]`) |
 |---|---|
 | Price band (ask) | 0.85 – 0.97 |
-| Time to close | ≤ 6 hours |
+| Time to close | **dynamic**: ≤ 4 h preferred; widens 4 → 6 → 8 → 10 → 12 h max only when nothing is actionable |
 | Max spread | ≤ 4¢ |
 | Min liquidity | $500 |
 | Min 24 h volume | $300 |
@@ -79,7 +79,7 @@ There are **no price-movement gates** (removed 2026-06-10): markets that moved t
 
 ### 4. Ranking & pick slots
 
-Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) and the top `max_orders_per_tick` (4) become this tick's picks. Markets that can never execute — token already held at its cap, order pending, or event already held — are removed **before** ranking, so they never burn pick slots.
+Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) and the top `max_orders_per_tick` (4) become this tick's picks. Markets that can never execute — token already held at its cap, order pending, or event already held — are removed **before** ranking, so they never burn pick slots. **One bet per game:** same-event candidates collapse to a single pick before ranking (`EVENT_EXPOSURE_CAP = 1` backstops in the execution loop); for soccer the **under-4.5-goals** market is preferred over everything else in the event.
 
 ### 5. Sizing (dynamic, 20 % hard cap)
 
