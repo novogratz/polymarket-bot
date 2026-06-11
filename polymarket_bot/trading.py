@@ -797,10 +797,17 @@ def execute_live_trade(
 
     order_id = response.get("orderID") if isinstance(response, dict) else None
     if _is_filled_buy_response(response):
+        # Record the TRUE fill, not the request: makingAmount is the USDC
+        # actually spent and takingAmount the shares received, so the avg
+        # fill price is making/taking. Booking the price *guard* (ask + tick)
+        # instead overstates the entry — the -25% SL trigger, the
+        # never-sell-below-entry floor, and the share count all drift
+        # (2026-06-10 PPI: booked 0.954/$229.04 vs real 0.9496/$228.51).
+        fill_usd, fill_price = _actual_buy_fill(response, stake, entry_price)
         position = portfolio.record_live_position(
             candidate,
-            stake,
-            entry_price=entry_price,
+            fill_usd,
+            entry_price=fill_price,
             order_id=order_id,
             order_response=response,
         )
@@ -839,8 +846,8 @@ def execute_live_trade(
             notifications.notify_trade_buy(
                 market_title=title,
                 token_id=str(candidate.token_id or ""),
-                price=float(entry_price),
-                size_usd=float(stake),
+                price=float(fill_price),
+                size_usd=float(fill_usd),
                 signal=signal_payload,
                 outcome=str(candidate.outcome or ""),
                 market_url=market_url,
@@ -849,6 +856,23 @@ def execute_live_trade(
         except Exception as exc:
             print(f"[notif] trade_buy hook failed: {exc}", file=sys.stderr, flush=True)
     return LiveTradeResult(order=order, response=response, candidate=candidate)
+
+
+def _actual_buy_fill(response: Any, fallback_stake: float, fallback_price: float) -> tuple[float, float]:
+    """True (usd_spent, avg_price) of a filled BUY from the order response.
+
+    On a BUY market order ``makingAmount`` is the collateral spent and
+    ``takingAmount`` the shares received. Falls back to the requested stake
+    and price guard when the fields are missing or unparsable.
+    """
+    try:
+        making = float(response.get("makingAmount"))
+        taking = float(response.get("takingAmount"))
+        if making > 0 and taking > 0:
+            return round(making, 2), round(making / taking, 4)
+    except (TypeError, ValueError, AttributeError):
+        pass
+    return fallback_stake, fallback_price
 
 
 def _is_filled_buy_response(response: Any) -> bool:

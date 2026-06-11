@@ -291,6 +291,59 @@ class StrategyTests(unittest.TestCase):
         self.assertGreater(placed[1][1], 300.0)
         self.assertEqual(len(portfolio.positions), 2)
 
+    def test_position_records_true_fill_not_price_guard(self):
+        # Regression (2026-06-10 PPI): the ledger booked the price guard
+        # (0.954, $229.04) while the real fill was making=$228.51 for
+        # taking=240.648 shares (avg 0.9496). Entry-relative math (SL
+        # trigger, never-sell-below-entry floor) and share counts must use
+        # the true fill from the order response.
+        class FakeClient:
+            def live_available_balance(self):
+                return 900.0
+
+            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
+                return {"price": price, "amount": amount, "side": side}, {
+                    "success": True,
+                    "status": "matched",
+                    "orderID": "order-1",
+                    "makingAmount": "228.509999",
+                    "takingAmount": "240.64842",
+                }
+
+        candidate = Candidate(
+            market_id="ppi",
+            question="Will PPI YoY be between 7.0% and 7.9% in May?",
+            slug="ppi-yoy",
+            end_date=utc_now() + timedelta(hours=5),
+            hours_to_close=5,
+            liquidity=1300,
+            volume=2000,
+            outcome="No",
+            price=0.953,
+            token_id="tok-ppi",
+            score=1,
+            url="https://polymarket.com/event/ppi",
+            best_bid=0.925,
+            best_ask=0.953,
+            tick_size=0.001,
+            accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=900.0, positions=[])
+        execute_live_trade(
+            FakeClient(),
+            Settings(trade_fraction=0.95, min_order_shares=5.0),
+            candidate,
+            portfolio,
+            min_trade_usd=1.0,
+            max_trade_usd=380.0,
+        )
+
+        pos = portfolio.positions[0]
+        self.assertAlmostEqual(pos["stake"], 228.51, places=2)
+        self.assertAlmostEqual(pos["entry_price"], 0.9496, places=4)
+        self.assertAlmostEqual(pos["shares"], 228.51 / 0.9496, places=2)
+        self.assertAlmostEqual(portfolio.cash, 900.0 - 228.51, places=2)
+
     def test_live_buy_rejected_when_book_cannot_cover_minimum(self):
         class FakeClient:
             def live_available_balance(self):
