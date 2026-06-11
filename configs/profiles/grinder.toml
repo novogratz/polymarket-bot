@@ -41,13 +41,14 @@ enabled = false
 [race]
 # Dynamic entry window (2026-06-11/12): prefer bets within 4h of resolution.
 # When the 4h window has no actionable candidate the scan widens in 2h steps
-# (4 → 6 → 8 → 10 → 12), then jumps to 24h and STOPS. The end-of-tomorrow
-# daily-expiry rung was turned OFF the same day it shipped (user 2026-06-12):
-# it bought ~36h holds (Trump approval, Israel airspace) that sat overnight —
-# nothing beyond 24h, ever. The Gamma load always covers the widest rung so
-# held positions keep being marked and managed.
+# and STOPS AT 12h (4 → 6 → 8 → 10 → 12) — user 2026-06-12: "i need bets for
+# today and max 4 6 8 12h". The 24h rung and the end-of-tomorrow daily rung
+# were both reverted the day they shipped (they bought overnight holds:
+# Trump approval, Israel airspace by-June-13). A by-tomorrow market becomes
+# tradeable only once it is within 12h of its end. The Gamma load always
+# covers the widest rung so held positions keep being marked and managed.
 max_hours = 4.0
-max_hours_cap = 24.0
+max_hours_cap = 12.0
 daily_expiry_fallback = false
 scan_limit = 750
 

@@ -19,6 +19,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **Entry cap tightened to 12 h — nothing beyond, ever** (user 2026-06-12: "i need bets for today and max 4 6 8 12h"): `max_hours_cap` 24 → **12** in both profiles after the 24 h rung bought an overnight "Israel closes airspace by June 13" ~26 h before its end. Ladder: 4 → 6 → 8 → 10 → 12 and stops. A by-tomorrow market becomes tradeable only once it is within 12 h of its end (e.g. a June-13 daily from Saturday ~noon).
+
 - **Daily-expiry fallback OFF — nothing beyond 24 h, ever** (user 2026-06-12, same-day revert of the end-of-tomorrow rung): the fallback bought ~36 h holds (Trump approval Jun 12, Israel airspace Jun 12) that sat overnight against the "resolve fast" thesis. `daily_expiry_fallback = false` in both profiles; the ladder is 4 → 6 → 8 → 10 → 12 → 24 h and stops. The knob and code stay for explicit re-enabling.
 
 - **Tweet-count markets banned + stock-detection gaps closed** (2026-06-12): the bot bought "Will Elon Musk post 240-259 tweets from June 5 to June 12?" and "Will Airbnb, Inc. (ABNB) hit (LOW) $124 Week of June 8 2026?" on 2026-06-11 — tweet counts were never a banned category, and ABNB matched no stock pattern. Now: (1) any `tweet` market is banned outright; (2) `_STOCK_MARKET_RE` gains ABNB/Airbnb, UBER, Coinbase, PLTR, Robinhood/HOOD, plus a generic rule classifying any "(TICKER) … $" title as stock (the `$` requirement keeps "(GOP)" politics out); (3) **weekly "Week of" ranges and "hit (LOW)/(HIGH)" touch markets are banned outright**, session or not — a touch market can flip on any intraday print, there is no end-of-session convergence to ride. Both real markets pinned as regression tests.
