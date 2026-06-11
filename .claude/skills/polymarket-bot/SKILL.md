@@ -15,9 +15,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
 - **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1) and
   `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
 - **Entry:** ask ∈ **[0.85, 0.97]**, **dynamic window** ≤ 4 h preferred,
-  widening 4 → 6 → 8 → 10 → 12 → **24 h**, then end of tomorrow (UTC) for
-  daily markets, only when nothing is actionable (`max_hours=4`,
-  `max_hours_cap=24`, `daily_expiry_fallback`). **One bet per GAME**
+  widening 4 → 6 → 8 → 10 → 12 → **24 h max** only when nothing is
+  actionable — nothing beyond 24 h, ever (`max_hours=4`, `max_hours_cap=24`,
+  `daily_expiry_fallback=false` since 2026-06-12). **One bet per GAME**
   (`_dedup_same_game` on date-truncated event slug + team names — one game
   spans several Polymarket events; `_open_game_keys` blocks across ticks;
   `EVENT_EXPOSURE_CAP=1`); soccer prefers the **under-4.5** line over the
