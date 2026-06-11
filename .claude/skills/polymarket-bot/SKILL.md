@@ -15,8 +15,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
 - **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1) and
   `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
 - **Entry:** ask ∈ **[0.85, 0.97]**, ≤ **6 h** to close, spread ≤ 4¢, liquidity
-  ≥ $500, 24 h volume ≥ $300, |day change| ≤ 10 %, outcome momentum ≥ −5 %.
-  NO 1h-change gate (user 2026-06-10 — fast movers stay tradeable, logged only).
+  ≥ $500, 24 h volume ≥ $300. NO price-movement gates (user 2026-06-10): day-
+  change, day-momentum, and 1h gates all removed — fast movers stay tradeable,
+  values logged in the forward net only, pinned by tests.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
   dropped before pick-slot truncation.
 - **Sizing (dynamic):** hard cap **20% of equity per bet** (`stake_pct`); per-bet

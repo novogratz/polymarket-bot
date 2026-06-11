@@ -61,7 +61,7 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | **All crypto** — `bitcoin`/`btc`/`ethereum`/`solana`/`dogecoin`/`xrp`/… + Up/Down | Banned: volatile, no edge for this strategy |
 | **Esports** — `counter-strike`/`valorant`/`league of legends`/`LoL:`/`dota`/… + `(bo1)`/`(bo3)`/`(bo5)` | Banned: in-series swings are uncatchable |
 
-**Deliberately tradeable** (test-pinned, do not ban): elections, primaries, and mayoral races — a profitable lane despite occasional postponements — and fast-moving markets: there is **no `oneHourPriceChange` gate** (recently-moving markets are often the ones converging toward resolution; the 1h value is logged for offline analysis only).
+**Deliberately tradeable** (test-pinned, do not ban): elections, primaries, and mayoral races — a profitable lane despite occasional postponements — and **fast-moving markets**: there are no `oneDayPriceChange` or `oneHourPriceChange` gates (recently-moving markets are often the ones converging toward resolution; both values are logged for offline analysis only).
 
 ### 3. Entry filters
 
@@ -72,12 +72,10 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | Max spread | ≤ 4¢ |
 | Min liquidity | $500 |
 | Min 24 h volume | $300 |
-| Max one-day price change | 10 % |
-| Min outcome momentum (1 day) | −5 % |
 
 > Exact values live in `configs/profiles/grinder.toml` and are the single source of truth — the table reflects the current live config but may be tuned over time (see [Self-improvement](#self-improvement)).
 
-The **price-stability gate** (max day change 10 %) blocks markets that moved significantly today — a live-game "No" sitting at 0.93 can collapse to 0.40 in a single tick when a goal is scored. The **momentum filter** (min −5 %) additionally skips outcomes that are actively falling today: a market at 0.91 that was at 0.96 this morning is trending *away* from resolution, not toward it.
+There are **no price-movement gates** (removed 2026-06-10): markets that moved today or in the last hour, and outcomes that are falling, all stay tradeable — fast movers are often exactly the ones converging toward resolution. `oneDayPriceChange`/`oneHourPriceChange` are logged in the forward-observation net for offline analysis only, and tests pin that neither value can ever exclude a market. The gap-risk protection comes from the category exclusions above, not from movement filters.
 
 ### 4. Ranking & pick slots
 

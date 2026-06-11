@@ -64,7 +64,6 @@ INT_KEYS = {"race.max_orders_per_tick"}
 # simply absent from TUNABLE, so _apply never writes them.
 FROZEN_ENTRY = [
     "race.min_price", "race.max_price", "race.max_spread", "race.max_hours",
-    "race.max_day_change_pct", "race.min_outcome_momentum",
     "race.min_liquidity_usd", "race.min_volume_24h_usd",
 ]
 
