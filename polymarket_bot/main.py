@@ -2081,6 +2081,10 @@ def _append_trade_journal(settings: Settings, position: dict[str, object], reaso
         "strategy": position.get("strategy"),
         "exit_reason": reason,
         "entry_price": entry_price,
+        # record_live_exit stores the realized exit price in current_price;
+        # without this field race exits journaled as "exit None" and the
+        # Telegram report had to reconstruct the exit from the PnL.
+        "exit_price": position.get("exit_price") or position.get("current_price"),
         "initial_shares": initial_shares,
         "cost_basis": cost_basis,
         "realized_pnl": realized_pnl,
@@ -2565,7 +2569,11 @@ def _sweep_sell_live(settings: Settings, position: dict, price: float, shares: f
             return None
         tick_size = float(position.get("tick_size") or 0.001)
         neg_risk = bool(position.get("neg_risk") or False)
-        sell_price = round(min(price, 0.99), 3)
+        # Winner floor (2026-06-10): the sweep only handles WIN-resolved
+        # positions, and a resolved winner sells at 0.99 — never 0.97/0.98.
+        # The trigger threshold is ≥ 0.99 so price is already there; clamping
+        # both ways makes the rule structural.
+        sell_price = round(min(max(price, 0.99), 0.99), 3)
         # Minimal stub — place_live_order only reads token_id, tick_size, neg_risk
         stub = _types.SimpleNamespace(token_id=token_id, tick_size=tick_size, neg_risk=neg_risk)
         order, response = client.place_live_order(

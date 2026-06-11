@@ -60,5 +60,28 @@ class TestJournalPersistenceScore(unittest.TestCase):
             self.assertAlmostEqual(entry.get("persistence_score", 0.0), 0.0)
 
 
+
+
+class JournalExitPriceTests(unittest.TestCase):
+    def test_journal_entry_records_exit_price(self) -> None:
+        # Race exits journaled as "exit None" because _append_trade_journal
+        # never wrote the price; the Telegram report had to reconstruct it
+        # from the PnL. record_live_exit stores it in current_price.
+        with TemporaryDirectory() as tmp:
+            journal = Path(tmp) / "journal.jsonl"
+            settings = Settings(trade_journal_path=journal, quiet=True)
+            position = {
+                "market_id": "m1",
+                "question": "Q",
+                "outcome": "Yes",
+                "entry_price": 0.92,
+                "current_price": 0.99,
+                "realized_pnl": 1.75,
+                "initial_shares": 25.0,
+            }
+            _append_trade_journal(settings, position, reason="race_big_win_resolved")
+            entry = json.loads(journal.read_text().splitlines()[0])
+            self.assertAlmostEqual(entry["exit_price"], 0.99)
+
 if __name__ == "__main__":
     unittest.main()
