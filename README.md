@@ -80,7 +80,7 @@ There are **no price-movement gates** (removed 2026-06-10): markets that moved t
 
 ### 4. Ranking & pick slots
 
-Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) and the top `max_orders_per_tick` (4) become this tick's picks. Markets that can never execute — token already held at its cap, order pending, or event already held — are removed **before** ranking, so they never burn pick slots. **One bet per game:** same-event candidates collapse to a single pick before ranking (`EVENT_EXPOSURE_CAP = 1` backstops in the execution loop); for soccer the **under-4.5-goals** market is preferred over everything else in the event.
+Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) and the top `max_orders_per_tick` (4) become this tick's picks. Markets that can never execute — token already held at its cap, order pending, or event already held — are removed **before** ranking, so they never burn pick slots. **One bet per game:** a game is identified by its date-truncated event slug and the team names in the question (one game spans several Polymarket events — moneyline, `-more-markets`, `-first-to-score`); same-game candidates collapse to a single pick before ranking, an open position on the game blocks all its other markets, and the execution loop backstops same-tick repeats. For soccer the **under-4.5-goals** market is preferred over everything else in the game.
 
 ### 5. Sizing (dynamic, 20 % hard cap)
 

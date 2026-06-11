@@ -15,8 +15,10 @@ name: auto-improve
 
 on:
   workflow_dispatch: {}
-  schedule:
-    - cron: "17 6 * * *"   # 06:17 UTC daily; remove this block to disable
+  # Daily schedule DISABLED 2026-06-11 (user request) — re-add the block
+  # below to reactivate:
+  # schedule:
+  #   - cron: "17 6 * * *"   # 06:17 UTC daily
 
 permissions:
   contents: write
