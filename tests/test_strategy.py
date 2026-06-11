@@ -3142,6 +3142,42 @@ class ActionableCandidatesTests(unittest.TestCase):
         self.assertAlmostEqual(portfolio.cash, 561.86, places=2)
 
 
+class DynamicStakeTargetTests(unittest.TestCase):
+    """Opportunity-spread sizing (user 2026-06-10): 20% of equity hard cap
+    per bet; with N actionable markets each bet targets cash/N; a slow
+    market gives each bet the full cap."""
+
+    @staticmethod
+    def _settings():
+        return Settings(race_stake_pct=0.20, smart_max_position_ceiling_usd=0.0)
+
+    def test_slow_market_uses_the_full_cap(self):
+        from polymarket_bot.race_strategies import _dynamic_stake_target
+
+        target = _dynamic_stake_target(self._settings(), 1000.0, 800.0, 1, 3.0)
+        self.assertAlmostEqual(target, 200.0)  # 20% of equity, not 800
+
+    def test_busy_window_spreads_cash_across_opportunities(self):
+        from polymarket_bot.race_strategies import _dynamic_stake_target
+
+        target = _dynamic_stake_target(self._settings(), 1000.0, 800.0, 20, 3.0)
+        self.assertAlmostEqual(target, 40.0)  # 800 / 20
+
+    def test_cap_holds_even_with_few_opportunities_and_deep_cash(self):
+        from polymarket_bot.race_strategies import _dynamic_stake_target
+
+        target = _dynamic_stake_target(self._settings(), 1000.0, 800.0, 2, 3.0)
+        self.assertAlmostEqual(target, 200.0)  # 800/2=400 → capped at 20%
+
+    def test_near_resolution_boost_scales_share_but_never_pierces_cap(self):
+        from polymarket_bot.race_strategies import _dynamic_stake_target
+
+        boosted = _dynamic_stake_target(self._settings(), 1000.0, 800.0, 20, 0.4)
+        self.assertAlmostEqual(boosted, 60.0)  # (800/20) × 1.5
+        capped = _dynamic_stake_target(self._settings(), 1000.0, 800.0, 3, 0.4)
+        self.assertAlmostEqual(capped, 200.0)  # (800/3)×1.5=400 → cap
+
+
 class OneHourChangeFilterTests(unittest.TestCase):
     """oneHourPriceChange gates (2026-06-10): a market calm over 24h can be
     in active flux right now — the 1h change catches what the day change
