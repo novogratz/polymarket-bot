@@ -346,6 +346,13 @@ class Settings:
     # -1.0 = disabled. -0.05 = skip outcomes falling >5% today (market moving
     # away from resolution — worse edge than a stable or rising market).
     race_min_outcome_momentum: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_OUTCOME_MOMENTUM", -1.0))
+    # Same gates on Gamma's oneHourPriceChange: a market that moved >X in the
+    # LAST HOUR is in active flux right now (live game, breaking news) even
+    # when its 24h change looks calm. 0.0 = disabled. Grinder sets 0.05.
+    race_max_hour_change_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MAX_HOUR_CHANGE_PCT", 0.0))
+    # Minimum one-hour outcome momentum. -1.0 = disabled. -0.02 = skip
+    # outcomes that fell >2% in the last hour (turning away from resolution).
+    race_min_outcome_momentum_1h: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_OUTCOME_MOMENTUM_1H", -1.0))
     # Binary intra-market arbitrage: buy both YES and NO when their combined
     # ask cost < threshold → guaranteed profit regardless of resolution.
     # 0.0 = disabled. Grinder sets to 0.97 (min 3% guaranteed profit).
