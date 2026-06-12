@@ -62,6 +62,7 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | **Esports** — `counter-strike`/`valorant`/`league of legends`/`LoL:`/`mobile legends`/`dota`/… + `(bo1)`/`(bo3)`/`(bo5)` | **League of Legends only, live games only, ask ≥ 0.92** (2026-06-12): every other title (incl. Mobile Legends) banned outright; LoL tradeable only in progress (`gameStartTime` past, ≤ 8 h) |
 | **All stock market / equities** — S&P/`SPY`/Nasdaq/`QQQ`/Dow/DJIA + big-cap tickers & companies (word-bounded) + `closes above/below $X` + generic `(TICKER) … $` | **Banned outright** (re-banned 2026-06-12 after a one-day in-session experiment) |
 | **Tweet-count markets** — `tweet` + `-tweets`/`of-tweets` slugs | Banned outright (2026-06-12): week-long counts, no convergence signal |
+| **League of Ireland soccer** — `irl1-` slug prefix | Banned outright (2026-06-12) |
 
 **Deliberately tradeable** (test-pinned, do not ban): elections, primaries, and mayoral races — a profitable lane despite occasional postponements — and **fast-moving markets**: there are no `oneDayPriceChange` or `oneHourPriceChange` gates (recently-moving markets are often the ones converging toward resolution; both values are logged for offline analysis only).
 
