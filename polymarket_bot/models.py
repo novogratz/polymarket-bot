@@ -165,11 +165,9 @@ _ESPORTS_ALLOWED_SLUG_SUBSTRINGS = (
     "lol-",
 )
 
-# Per-lane entry floors (user 2026-06-12): the fast lanes need MORE certainty
-# than the global price band, not less — esports never below 0.92, stocks
-# never below 0.90.
+# Per-lane entry floor (user 2026-06-12): the esports lane needs MORE
+# certainty than the global price band, not less — never below 0.92.
 ESPORTS_MIN_ASK = 0.92
-STOCK_MIN_ASK = 0.90
 _ESPORTS_QUESTION_SUBSTRINGS = (
     "counter-strike",
     "esports",
@@ -210,12 +208,11 @@ _ESPORTS_SLUG_SUBSTRINGS = (
 )
 _ESPORTS_LIVE_MAX_HOURS = 8.0
 
-# ── Stock market — ONGOING TRADING SESSION ONLY (2026-06-12) ─────────────
-# Blanket-banned 2026-06-11 after the SPY buy. User re-allowed 2026-06-12 ON
-# ONE CONDITION: only during the ongoing day's regular NYSE session
-# (Mon–Fri 09:30–16:00 ET) and only for THAT day's close (market end within
-# _STOCK_SAME_DAY_MAX_HOURS) — an in-session same-day close converges to the
-# 16:00 print. Overnight, weekends, and multi-day stock bets stay excluded.
+# ── Stock market — BANNED OUTRIGHT (re-banned 2026-06-12) ────────────────
+# Blanket-banned 2026-06-11 after the SPY buy, conditionally re-allowed
+# in-session 2026-06-12, then re-banned entirely the same day (user:
+# "lets also remove stock market bro everywhere"). All equities, indices,
+# ETFs, and price-threshold markets are excluded, always.
 _STOCK_QUESTION_SUBSTRINGS = (
     "s&p",
     "dow jones",
@@ -237,7 +234,6 @@ _STOCK_SLUG_SUBSTRINGS = (
     "sp500",
     "s-and-p",
 )
-_STOCK_SAME_DAY_MAX_HOURS = 12.0
 
 # Stock tickers and company names need word boundaries — plain substrings
 # would false-positive ("spy" in "spying", "meta" in "metal"). Lowercased
@@ -257,10 +253,6 @@ _STOCK_MARKET_RE = re.compile(
 # "(GOP)"-style politics and sports titles out.
 _PAREN_TICKER_RE = re.compile(r"\([A-Z]{2,5}\)")
 
-# Weekly / path-dependent stock markets are banned OUTRIGHT, session or not:
-# "Week of" ranges and "hit (LOW)/(HIGH)" touch markets can flip on any
-# intraday print — there is no end-of-session convergence to ride.
-_STOCK_ALWAYS_BANNED_SUBSTRINGS = ("week of", "hit (low)", "hit (high)")
 
 
 def _parse_market_dt(raw: Any) -> datetime | None:
@@ -286,25 +278,6 @@ def _esports_game_is_live(market: dict[str, Any], now: datetime) -> bool:
         return False
     hours_running = (now - start).total_seconds() / 3600.0
     return 0.0 <= hours_running <= _ESPORTS_LIVE_MAX_HOURS
-
-
-def _stock_session_is_ongoing(market: dict[str, Any], now: datetime) -> bool:
-    """True only during the regular NYSE session AND for that day's close."""
-    try:
-        from zoneinfo import ZoneInfo
-        et = now.astimezone(ZoneInfo("America/New_York"))
-    except Exception:
-        return False
-    if et.weekday() >= 5:  # Sat/Sun
-        return False
-    minutes = et.hour * 60 + et.minute
-    if not (9 * 60 + 30 <= minutes < 16 * 60):  # 09:30-16:00 ET
-        return False
-    end = _parse_market_dt(market.get("endDate"))
-    if end is None:
-        return False
-    hours_to_end = (end - now).total_seconds() / 3600.0
-    return 0.0 <= hours_to_end <= _STOCK_SAME_DAY_MAX_HOURS
 
 
 def is_esports_text(question: str, slug: str = "") -> bool:
@@ -351,14 +324,15 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
     - Exact-score live sports: gaps on goals, SL can't catch them.
     - O/U 0.5 soccer: any-goal binary, same gap risk.
 
-    Conditionally allowed (2026-06-12, user rule — "ongoing only"):
+    Conditionally allowed (2026-06-12, user rule):
     - Esports: ONLY League of Legends, and ONLY while the game is live
       (gameStartTime in the past, within _ESPORTS_LIVE_MAX_HOURS). Other
       titles (Mobile Legends, Counter-Strike, Valorant, Dota, …),
       pre-game, or unknown start -> excluded.
-    - Stock market / equities: tradeable ONLY during the ongoing regular
-      NYSE session (Mon-Fri 09:30-16:00 ET) and only for that day's close.
-      Overnight, weekends, multi-day -> excluded.
+
+    Stock market / equities: banned OUTRIGHT (re-banned 2026-06-12 after a
+    one-day in-session experiment) — indices, ETFs, tickers, company
+    stocks, price-threshold closes, weekly ranges, touch markets.
     """
     q = str(market.get("question") or "").lower()
     if any(pat in q for pat in _EXCLUDED_QUESTION_SUBSTRINGS):
@@ -389,12 +363,8 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
         or (bool(_PAREN_TICKER_RE.search(raw_q)) and "$" in raw_q)
     )
     if is_stock:
-        # Weekly ranges / intraday touch markets: banned outright — no
-        # end-of-session convergence to ride (ABNB "hit (LOW) $124 Week of
-        # June 8" slipped in on 2026-06-11 and bled while the bot held it).
-        if any(pat in q for pat in _STOCK_ALWAYS_BANNED_SUBSTRINGS):
-            return True
-        return not _stock_session_is_ongoing(market, now)
+        # Re-banned outright 2026-06-12 (user) — no session window, ever.
+        return True
     return False
 
 
