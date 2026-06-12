@@ -3867,36 +3867,23 @@ class ExcludedMarketTests(unittest.TestCase):
         normal = _build_eligible_candidates([stock_market(0.86)], settings)
         self.assertEqual([c.best_ask for c, _ in normal], [0.86])
 
-        # Stock floor 0.90 — classification check via is_stock_text.
-        from polymarket_bot.models import STOCK_MIN_ASK, is_stock_text
-        self.assertEqual(STOCK_MIN_ASK, 0.90)
+        # Stocks are banned outright (re-banned 2026-06-12) — classification
+        # still works and feeds the ban.
+        from polymarket_bot.models import is_stock_text
         self.assertTrue(is_stock_text("Will Apple (AAPL) close above $290 on June 12?", ""))
 
-    def test_stocks_allowed_only_during_ongoing_session_for_same_day_close(self):
+    def test_stocks_banned_outright_even_in_session(self):
+        # Re-banned 2026-06-12 (user) after a one-day in-session experiment:
+        # no session window, ever — even mid-session for a same-day close.
         from datetime import datetime, timezone
 
         market = {"question": "Apple (AAPL) closes above $290 on June 10?",
                   "slug": "apple-aapl-closes-above-290-june-10",
                   "endDate": "2026-06-11T00:00:00+00:00"}
-        # Wednesday 2026-06-10 14:00 ET, market ends tonight → allowed.
         in_session = datetime(2026, 6, 10, 18, 0, tzinfo=timezone.utc)
-        self.assertFalse(is_excluded_market(market, now=in_session))
-        # Same day 17:00 ET (after the close) → excluded.
         after_hours = datetime(2026, 6, 10, 21, 0, tzinfo=timezone.utc)
+        self.assertTrue(is_excluded_market(market, now=in_session))
         self.assertTrue(is_excluded_market(market, now=after_hours))
-        # 09:00 ET (pre-open) → excluded.
-        pre_open = datetime(2026, 6, 10, 13, 0, tzinfo=timezone.utc)
-        self.assertTrue(is_excluded_market(market, now=pre_open))
-        # Saturday 2026-06-13 in-session hours → excluded.
-        weekend = datetime(2026, 6, 13, 18, 0, tzinfo=timezone.utc)
-        weekend_market = dict(market, endDate="2026-06-14T00:00:00+00:00")
-        self.assertTrue(is_excluded_market(weekend_market, now=weekend))
-        # In session but a multi-day stock bet (ends in 3 days) → excluded.
-        far = dict(market, endDate="2026-06-13T00:00:00+00:00")
-        self.assertTrue(is_excluded_market(far, now=in_session))
-        # No endDate at all → excluded even in session.
-        no_end = {"question": market["question"], "slug": market["slug"]}
-        self.assertTrue(is_excluded_market(no_end, now=in_session))
 
     def test_tweet_count_markets_banned_outright(self):
         # User rule 2026-06-12 — the bot bought "Will Elon Musk post 240-259
@@ -3923,20 +3910,19 @@ class ExcludedMarketTests(unittest.TestCase):
         self.assertTrue(is_excluded_market(abnb, now=in_session))
 
     def test_generic_paren_ticker_with_dollar_is_classified_stock(self):
-        # Tickers not in the enumerated list are caught by "(TICKER) … $".
+        # Tickers not in the enumerated list are caught by "(TICKER) … $"
+        # — and stocks are banned outright.
         from datetime import datetime, timezone
 
         market = {"question": "Will Snowflake (SNOW) close above $310 on June 10?",
                   "slug": "snowflake-close-above-310-june-10",
                   "endDate": "2026-06-11T00:00:00+00:00"}
         in_session = datetime(2026, 6, 10, 18, 0, tzinfo=timezone.utc)
-        after_hours = datetime(2026, 6, 10, 21, 30, tzinfo=timezone.utc)
-        self.assertFalse(is_excluded_market(market, now=in_session))
-        self.assertTrue(is_excluded_market(market, now=after_hours))
+        self.assertTrue(is_excluded_market(market, now=in_session))
         # No dollar sign → parenthesized acronyms alone don't classify:
         politics = {"question": "Will the (GOP) keep the House majority?",
                     "slug": "gop-house-majority-2026"}
-        self.assertFalse(is_excluded_market(politics, now=after_hours))
+        self.assertFalse(is_excluded_market(politics, now=in_session))
 
 
 if __name__ == "__main__":
