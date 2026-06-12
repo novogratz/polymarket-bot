@@ -2407,6 +2407,47 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(position["status"], "open")
         self.assertEqual(client.sells, [])
 
+    def test_fast_lane_winner_exit_fires_at_098(self):
+        # User 2026-06-12: esports and stock markets exit at 0.98 — their
+        # in-play/in-session books rarely print 0.99 before close. A CS
+        # position with a real 0.98 bid must sell (other lanes hold, see
+        # test_race_resolved_exit_holds_at_098_bid).
+        import tempfile
+        from polymarket_bot.race_strategies import _execute_race_exits
+
+        candidate = Candidate(
+            market_id="cs", question="Counter-Strike: Marsborne vs F5 Esports (BO3) - Playoffs",
+            slug="cs-marsborne-f5", end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1, liquidity=1500, volume=2000, outcome="Marsborne",
+            price=0.95, token_id="tok-cs", score=1,
+            url="https://polymarket.com/event/cs-marsborne-f5",
+            best_bid=0.95, best_ask=0.97, tick_size=0.01, accepts_orders=True,
+            event_slug="cs-marsborne-f5",
+        )
+        portfolio = Portfolio(cash=1.0, positions=[])
+        position = portfolio.record_live_position(candidate, 4.7, entry_price=0.91)
+        position["strategy"] = "grinder"
+        position["current_price"] = 0.95
+
+        client = self._LiveBookClient(bids=[{"price": "0.98", "size": "500"}])
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            exits = _execute_race_exits(
+                client,
+                Settings(
+                    dry_run=False, min_order_shares=5.0,
+                    race_resolved_exit_threshold=0.99,
+                    race_sl_min_age_minutes=15, quiet=True,
+                    state_path=base / "paper_state.json",
+                    trade_journal_path=base / "trade_journal.jsonl",
+                ),
+                portfolio, [candidate], "grinder",
+            )
+        self.assertEqual(len(exits), 1)
+        self.assertEqual(exits[0]["reason"], "race_big_win_resolved")
+        self.assertEqual(position["status"], "closed")
+        self.assertAlmostEqual(client.sells[0]["price"], 0.98)
+
     def test_race_resolved_exit_book_probe_fails_open(self):
         # Book unavailable → keep the stale price and do nothing (no sell,
         # no writeoff): the position must stay open for the next tick.

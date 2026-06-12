@@ -21,7 +21,7 @@ from typing import Any
 
 from . import notifications
 from .config import Settings
-from .models import Candidate
+from .models import Candidate, is_fast_lane_text
 from .portfolio import Portfolio
 from .polymarket import ApiCreds, PolymarketClient
 
@@ -970,11 +970,22 @@ def execute_live_sell(
     # 0.99 live-book bid, so this floor is a backstop against any future
     # path (or mis-tuned threshold) trying to dump a resolved winner cheap.
     # The position is simply held — it retries next tick or settles at 1.00.
+    # FAST LANES (2026-06-12): esports and stock markets get a 0.98 floor —
+    # in-play/in-session books rarely print a 0.99 bid before the market
+    # closes, so winners there sell at 0.98 instead of riding blind.
     WINNER_FLOOR_REASONS = {"race_big_win_resolved", "resolved_market_sweep_win"}
-    if reason in WINNER_FLOOR_REASONS and sell_price < 0.99:
+    winner_floor = (
+        0.98
+        if is_fast_lane_text(
+            str(position.get("question") or ""),
+            str(position.get("event_slug") or position.get("slug") or ""),
+        )
+        else 0.99
+    )
+    if reason in WINNER_FLOOR_REASONS and sell_price < winner_floor:
         raise ValueError(
-            f"winner_floor: refuse to sell resolved winner @ {sell_price} < 0.99 "
-            f"(reason={reason}) — hold for a real 0.99 bid or on-chain settlement"
+            f"winner_floor: refuse to sell resolved winner @ {sell_price} < {winner_floor} "
+            f"(reason={reason}) — hold for a real {winner_floor} bid or on-chain settlement"
         )
 
     # ── HARD LOSS FLOOR (2026-05-31) — NEVER sell below the purchase price ──
