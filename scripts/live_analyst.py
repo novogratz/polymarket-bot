@@ -605,6 +605,40 @@ def _ledger_entry_lookup() -> dict:
     return lookup
 
 
+def load_redeemable_positions() -> list[dict]:
+    """Resolved positions with real money waiting for redemption.
+
+    Polymarket auto-redeems winners (observed on this account: every
+    overnight win settled to cash without a claim), so this list is empty
+    in normal operation. When something DOES sit here, the operator needs
+    to know — the event page is already delisted, so the report is the
+    only place it stays visible. Losing-side dust (value 0) is ignored.
+    """
+    try:
+        settings, data_client = _get_settings_and_client()
+        if not settings.funder_address:
+            return []
+        out = []
+        for item in data_client.positions(user=settings.funder_address):
+            try:
+                size = float(item.get("size") or 0)
+                value = float(item.get("currentValue") or 0)
+            except (TypeError, ValueError):
+                continue
+            if not item.get("redeemable") or size <= 0 or value < 1.0:
+                continue
+            out.append({
+                "question": str(item.get("title") or "?"),
+                "side": str(item.get("outcome") or "?"),
+                "shares": size,
+                "value": value,
+            })
+        out.sort(key=lambda x: -x["value"])
+        return out
+    except Exception:
+        return []
+
+
 def load_open_positions() -> list[dict]:
     """Read live open positions from Polymarket Data API (ground truth).
     Falls back to paper_state.json if API unavailable.
@@ -1212,6 +1246,22 @@ def cycle_once() -> None:
                 f"  {mood} {s}${abs(pnl):.2f} ({s}{abs(pct):.1f}%)  {detail}\n"
                 f"      {_q(r.get('question') or '')}"
             )
+        parts.append("")
+
+    redeemable = load_redeemable_positions()
+    if redeemable:
+        total = sum(r["value"] for r in redeemable)
+        parts.append(
+            f"*💰 GAINS RÉSOLUS EN ATTENTE DE PAIEMENT ({len(redeemable)}) : ${total:.2f}*"
+        )
+        for r in redeemable:
+            parts.append(
+                f"  ✅ {_q(r['question'])} ({_bet_side(r['side'], r['question'])}) : "
+                f"{r['shares']:.1f} parts → ${r['value']:.2f}"
+            )
+        parts.append(
+            "  _Paiement automatique en cours — si toujours là au prochain rapport, réclamer sur polymarket.com/portfolio_"
+        )
         parts.append("")
 
     if open_pos:

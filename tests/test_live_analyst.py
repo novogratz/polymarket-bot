@@ -266,5 +266,46 @@ class OpenPositionExpiryTests(unittest.TestCase):
         ordered = sorted([israel, ppi, mexico], key=live_analyst._position_end_sort_key)
         self.assertEqual(ordered, [mexico, ppi, israel])
 
+
+class RedeemableWatchdogTests(unittest.TestCase):
+    """User request 2026-06-12: surface resolved-but-unpaid positions in the
+    report. Losing-side dust (value 0) and sub-$1 remainders are ignored."""
+
+    def test_redeemable_positions_filtered_and_sorted(self):
+        class FakeDC:
+            def positions(self, user):
+                return [
+                    {"title": "Won market", "outcome": "Under", "size": 295.35,
+                     "currentValue": 295.35, "redeemable": True},
+                    {"title": "Losing dust", "outcome": "Yes", "size": 14580,
+                     "currentValue": 0, "redeemable": True},
+                    {"title": "Still open", "outcome": "No", "size": 100,
+                     "currentValue": 92.0, "redeemable": False},
+                    {"title": "Small winner", "outcome": "Over", "size": 5,
+                     "currentValue": 5.0, "redeemable": True},
+                ]
+
+        class FakeSettings:
+            funder_address = "0xabc"
+
+        old = live_analyst._get_settings_and_client
+        live_analyst._get_settings_and_client = lambda: (FakeSettings(), FakeDC())
+        try:
+            rows = live_analyst.load_redeemable_positions()
+        finally:
+            live_analyst._get_settings_and_client = old
+        self.assertEqual([r["question"] for r in rows], ["Won market", "Small winner"])
+        self.assertAlmostEqual(rows[0]["value"], 295.35)
+
+    def test_fails_open_on_api_error(self):
+        def _boom():
+            raise ValueError("no api")
+        old = live_analyst._get_settings_and_client
+        live_analyst._get_settings_and_client = _boom
+        try:
+            self.assertEqual(live_analyst.load_redeemable_positions(), [])
+        finally:
+            live_analyst._get_settings_and_client = old
+
 if __name__ == "__main__":
     unittest.main()
