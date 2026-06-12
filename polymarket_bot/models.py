@@ -135,6 +135,11 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     # Handicap slug markers (2026-06-12).
     "game-handicap",
     "map-handicap",
+    # League of Ireland / Premier Division (Ireland) — banned 2026-06-12
+    # (user rule). Every market of that championship carries the "irl1-"
+    # slug prefix (e.g. irl1-der-boh-2026-06-12-total-4pt5); the question
+    # has no league marker, so the slug is the identifier.
+    "irl1-",
     # Crypto slug markers (all crypto banned 2026-06-03).
     "bitcoin",
     "btc",
