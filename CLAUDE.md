@@ -6,6 +6,25 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path.** The only sanctioned LLM use is the *offline* `auto_improve` self-tuner (see Safety), which never touches the live loop.
 
+## Windows restart procedure (2026-06-01)
+
+Running the bot on Windows (Git Bash) requires two env fixes before calling `run_live_70.sh`:
+
+1. **`uv` not in Bash PATH** — `uv` installs to `~/.local/bin/` which Git Bash doesn't include. Fix: `export PATH="$HOME/.local/bin:$PATH"`.
+2. **Emoji UnicodeEncodeError** — Windows cp1252 terminal codec can't encode emoji (▶, 🤖, etc.) used in bot output. Fix: `export PYTHONIOENCODING=utf-8`.
+
+**Canonical restart command (Windows Git Bash):**
+```bash
+export PATH="$HOME/.local/bin:$PATH" && export PYTHONIOENCODING=utf-8 && bash scripts/run_live_70.sh
+```
+
+The Zaza bot (wife's account) runs from its own clone — `cd ~/polymarket-bot-zaza && bash scripts/run_live_zaza.sh` (the launcher aborts if run from any other clone).
+
+To kill all running bot processes first (PowerShell):
+```powershell
+Stop-Process -Name python -Force -ErrorAction SilentlyContinue; Stop-Process -Name bash -Force -ErrorAction SilentlyContinue
+```
+
 ## New machine / fresh account setup
 
 1. **Install uv**: `curl -LsSf https://astral.sh/uv/install.sh | sh` → open a new terminal.

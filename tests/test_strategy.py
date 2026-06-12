@@ -3772,9 +3772,11 @@ class ExcludedMarketTests(unittest.TestCase):
         ):
             self.assertFalse(is_excluded_market(market), market["question"])
 
-    # ── Conditional re-allow (user 2026-06-12): "ongoing only" ────────────
+    # ── Outright bans (user 2026-06-12, final): esports + stocks ──────────
 
-    def test_esports_allowed_only_while_game_is_live(self):
+    def test_esports_banned_outright_even_live(self):
+        # User 2026-06-12 (final): esports banned completely — the brief
+        # live-only and LoL-only re-allows from the same day are gone.
         from datetime import datetime, timezone
 
         now = datetime(2026, 6, 12, 18, 0, tzinfo=timezone.utc)
@@ -3782,15 +3784,13 @@ class ExcludedMarketTests(unittest.TestCase):
                 "slug": "lol-solary-vs-eintracht-spandau-game-1-winner"}
         live = dict(base, gameStartTime="2026-06-12T17:00:00+00:00")     # 1h in
         pregame = dict(base, gameStartTime="2026-06-12T19:00:00+00:00")  # +1h
-        stale = dict(base, gameStartTime="2026-06-12T06:00:00+00:00")    # 12h ago
-        self.assertFalse(is_excluded_market(live, now=now))
+        self.assertTrue(is_excluded_market(live, now=now))
         self.assertTrue(is_excluded_market(pregame, now=now))
-        self.assertTrue(is_excluded_market(stale, now=now))
         self.assertTrue(is_excluded_market(base, now=now))  # unknown start
 
-    def test_esports_only_league_of_legends_qualifies(self):
-        # User 2026-06-12 (twice): only League of Legends — Mobile Legends,
-        # Counter-Strike, and every other title are banned outright, even live.
+    def test_esports_every_title_banned(self):
+        # Counter-Strike, Valorant, Mobile Legends, LoL — all banned, live
+        # or not.
         from datetime import datetime, timezone
 
         now = datetime(2026, 6, 12, 18, 0, tzinfo=timezone.utc)
@@ -3805,11 +3805,10 @@ class ExcludedMarketTests(unittest.TestCase):
             {"question": "Mobile Legends: ONIC vs Blacklist - Game 3 Winner",
              "slug": "mobile-legends-onic-vs-blacklist-game-3",
              "gameStartTime": live_start},
+            {"question": "LoL: T1 vs Gen.G - Game 2 Winner",
+             "slug": "lol-t1-vs-geng-game-2", "gameStartTime": live_start},
         ):
             self.assertTrue(is_excluded_market(market, now=now), market["question"])
-        lol_live = {"question": "LoL: T1 vs Gen.G - Game 2 Winner",
-                    "slug": "lol-t1-vs-geng-game-2", "gameStartTime": live_start}
-        self.assertFalse(is_excluded_market(lol_live, now=now))
 
     def test_game_handicap_markets_banned_even_for_live_lol(self):
         # "Game Handicap: HLE (-2.5) vs T1 (+2.5)" slipped past the "Spread:"
@@ -3823,9 +3822,10 @@ class ExcludedMarketTests(unittest.TestCase):
                   "gameStartTime": "2026-06-12T17:00:00+00:00"}
         self.assertTrue(is_excluded_market(market, now=now))
 
-    def test_fast_lane_entry_floors_esports_092_stocks_090(self):
-        # User 2026-06-12: esports never below ask 0.92, stocks never below
-        # ask 0.90 — the fast lanes need MORE certainty, not less.
+    def test_fast_lane_markets_never_reach_eligibility(self):
+        # Esports and stocks are banned at is_excluded_market level — they
+        # can never become eligible candidates, whatever the ask. The esports
+        # lane floor (ESPORTS_MIN_ASK) is a dead-letter backstop.
         from polymarket_bot.race_strategies import _build_eligible_candidates
 
         def lol_market(ask):
@@ -3845,20 +3845,13 @@ class ExcludedMarketTests(unittest.TestCase):
 
         settings = Settings(race_min_price=0.85, race_max_price=0.97,
                             race_max_spread=0.04, race_max_hours=4.0)
-        too_cheap = _build_eligible_candidates([lol_market(0.90)], settings)
-        ok = _build_eligible_candidates([lol_market(0.93)], settings)
-        self.assertEqual(too_cheap, [])
-        self.assertEqual([c.best_ask for c, _ in ok], [0.93])
+        for ask in (0.90, 0.93, 0.96):
+            self.assertEqual(_build_eligible_candidates([lol_market(ask)], settings), [])
 
-        def stock_market(ask):
-            # Wednesday in-session same-day close; pass `now`-free path by
-            # making it end soon — is_excluded_market uses the real clock,
-            # so keep this test on the floor logic only via a soccer-free
-            # stock title plus a session-independent check: floor applies
-            # BEFORE exclusion gating in eligibility, so use min ask only.
+        def normal_market(ask):
             end = (utc_now() + timedelta(hours=2)).isoformat()
             return {
-                "id": f"stk-{ask}", "question": "Will France win on 2026-06-12?",
+                "id": f"fra-{ask}", "question": "Will France win on 2026-06-12?",
                 "slug": f"fra-{ask}", "endDate": end, "acceptingOrders": True,
                 "liquidity": 1500, "volume24hr": 2000,
                 "bestBid": round(ask - 0.02, 2), "bestAsk": ask,
@@ -3868,8 +3861,8 @@ class ExcludedMarketTests(unittest.TestCase):
                 "clobTokenIds": '["tok-a", "tok-b"]',
             }
 
-        # Non-fast-lane markets keep the global 0.85 floor.
-        normal = _build_eligible_candidates([stock_market(0.86)], settings)
+        # Non-fast-lane markets keep the global 0.85 floor and stay eligible.
+        normal = _build_eligible_candidates([normal_market(0.86)], settings)
         self.assertEqual([c.best_ask for c, _ in normal], [0.86])
 
         # Stocks are banned outright (re-banned 2026-06-12) — classification
