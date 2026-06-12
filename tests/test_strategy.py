@@ -3806,6 +3806,18 @@ class ExcludedMarketTests(unittest.TestCase):
                     "slug": "lol-t1-vs-geng-game-2", "gameStartTime": live_start}
         self.assertFalse(is_excluded_market(lol_live, now=now))
 
+    def test_game_handicap_markets_banned_even_for_live_lol(self):
+        # "Game Handicap: HLE (-2.5) vs T1 (+2.5)" slipped past the "Spread:"
+        # pattern and was bought pre-game at 0.889 (2026-06-12). Handicaps
+        # are spread markets — banned outright, even for a live LoL game.
+        from datetime import datetime, timezone
+
+        now = datetime(2026, 6, 12, 18, 0, tzinfo=timezone.utc)
+        market = {"question": "Game Handicap: HLE (-2.5) vs T1 (+2.5)",
+                  "slug": "lol-game-handicap-hle-t1",
+                  "gameStartTime": "2026-06-12T17:00:00+00:00"}
+        self.assertTrue(is_excluded_market(market, now=now))
+
     def test_fast_lane_entry_floors_esports_092_stocks_090(self):
         # User 2026-06-12: esports never below ask 0.92, stocks never below
         # ask 0.90 — the fast lanes need MORE certainty, not less.

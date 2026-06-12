@@ -92,8 +92,13 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "o/u 7.5",
     # Spread/handicap markets: gap risk identical to exact-score.
     # A single goal swings AH spreads by 0.40+ in one tick, SL can't catch it.
-    # "Spread:" prefix covers all Asian handicap markets on Polymarket.
+    # "Spread:" prefix covers all Asian handicap markets on Polymarket;
+    # "Game Handicap:" is the esports variant that slipped through on
+    # 2026-06-12 ("Game Handicap: HLE (-2.5) vs T1 (+2.5)", bought pre-game
+    # at 0.889 — banned outright, even for LoL).
     "spread:",
+    "game handicap",
+    "map handicap",
     # Draw markets: binary coin-flip at 0.15–0.30 that spikes to 0.90+ when
     # score is 0-0 late, then gaps to 0 on any goal. Same gap profile.
     "end in a draw",
@@ -110,6 +115,9 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     # Tweet-count slug markers (2026-06-12).
     "-tweets",
     "of-tweets",
+    # Handicap slug markers (2026-06-12).
+    "game-handicap",
+    "map-handicap",
     # Crypto slug markers (all crypto banned 2026-06-03).
     "bitcoin",
     "btc",
