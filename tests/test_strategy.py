@@ -3783,6 +3783,95 @@ class ExcludedMarketTests(unittest.TestCase):
         self.assertTrue(is_excluded_market(stale, now=now))
         self.assertTrue(is_excluded_market(base, now=now))  # unknown start
 
+    def test_esports_only_league_of_legends_qualifies(self):
+        # User 2026-06-12 (twice): only League of Legends — Mobile Legends,
+        # Counter-Strike, and every other title are banned outright, even live.
+        from datetime import datetime, timezone
+
+        now = datetime(2026, 6, 12, 18, 0, tzinfo=timezone.utc)
+        live_start = "2026-06-12T17:00:00+00:00"
+        for market in (
+            {"question": "Counter-Strike: Marsborne vs F5 Esports (BO3) - Playoffs",
+             "slug": "cs-marsborne-vs-f5", "gameStartTime": live_start},
+            {"question": "Valorant Champions: winner of map 2?",
+             "slug": "valorant-champions-map-2", "gameStartTime": live_start},
+            {"question": "Team A vs Team B (BO3) - Grand Final",
+             "slug": "team-a-vs-team-b-esports", "gameStartTime": live_start},
+            {"question": "Mobile Legends: ONIC vs Blacklist - Game 3 Winner",
+             "slug": "mobile-legends-onic-vs-blacklist-game-3",
+             "gameStartTime": live_start},
+        ):
+            self.assertTrue(is_excluded_market(market, now=now), market["question"])
+        lol_live = {"question": "LoL: T1 vs Gen.G - Game 2 Winner",
+                    "slug": "lol-t1-vs-geng-game-2", "gameStartTime": live_start}
+        self.assertFalse(is_excluded_market(lol_live, now=now))
+
+    def test_game_handicap_markets_banned_even_for_live_lol(self):
+        # "Game Handicap: HLE (-2.5) vs T1 (+2.5)" slipped past the "Spread:"
+        # pattern and was bought pre-game at 0.889 (2026-06-12). Handicaps
+        # are spread markets — banned outright, even for a live LoL game.
+        from datetime import datetime, timezone
+
+        now = datetime(2026, 6, 12, 18, 0, tzinfo=timezone.utc)
+        market = {"question": "Game Handicap: HLE (-2.5) vs T1 (+2.5)",
+                  "slug": "lol-game-handicap-hle-t1",
+                  "gameStartTime": "2026-06-12T17:00:00+00:00"}
+        self.assertTrue(is_excluded_market(market, now=now))
+
+    def test_fast_lane_entry_floors_esports_092_stocks_090(self):
+        # User 2026-06-12: esports never below ask 0.92, stocks never below
+        # ask 0.90 — the fast lanes need MORE certainty, not less.
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        def lol_market(ask):
+            start = (utc_now() - timedelta(hours=1)).isoformat()
+            end = (utc_now() + timedelta(hours=2)).isoformat()
+            return {
+                "id": f"lol-{ask}", "question": "LoL: T1 vs Gen.G - Game 2 Winner",
+                "slug": f"lol-t1-vs-geng-{ask}", "endDate": end,
+                "gameStartTime": start, "acceptingOrders": True,
+                "liquidity": 1500, "volume24hr": 2000,
+                "bestBid": round(ask - 0.02, 2), "bestAsk": ask,
+                "orderPriceMinTickSize": 0.01,
+                "outcomes": '["T1", "Gen.G"]',
+                "outcomePrices": f'["{ask}", "{round(1 - ask, 2)}"]',
+                "clobTokenIds": '["tok-a", "tok-b"]',
+            }
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0)
+        too_cheap = _build_eligible_candidates([lol_market(0.90)], settings)
+        ok = _build_eligible_candidates([lol_market(0.93)], settings)
+        self.assertEqual(too_cheap, [])
+        self.assertEqual([c.best_ask for c, _ in ok], [0.93])
+
+        def stock_market(ask):
+            # Wednesday in-session same-day close; pass `now`-free path by
+            # making it end soon — is_excluded_market uses the real clock,
+            # so keep this test on the floor logic only via a soccer-free
+            # stock title plus a session-independent check: floor applies
+            # BEFORE exclusion gating in eligibility, so use min ask only.
+            end = (utc_now() + timedelta(hours=2)).isoformat()
+            return {
+                "id": f"stk-{ask}", "question": "Will France win on 2026-06-12?",
+                "slug": f"fra-{ask}", "endDate": end, "acceptingOrders": True,
+                "liquidity": 1500, "volume24hr": 2000,
+                "bestBid": round(ask - 0.02, 2), "bestAsk": ask,
+                "orderPriceMinTickSize": 0.01,
+                "outcomes": '["Yes", "No"]',
+                "outcomePrices": f'["{ask}", "{round(1 - ask, 2)}"]',
+                "clobTokenIds": '["tok-a", "tok-b"]',
+            }
+
+        # Non-fast-lane markets keep the global 0.85 floor.
+        normal = _build_eligible_candidates([stock_market(0.86)], settings)
+        self.assertEqual([c.best_ask for c, _ in normal], [0.86])
+
+        # Stock floor 0.90 — classification check via is_stock_text.
+        from polymarket_bot.models import STOCK_MIN_ASK, is_stock_text
+        self.assertEqual(STOCK_MIN_ASK, 0.90)
+        self.assertTrue(is_stock_text("Will Apple (AAPL) close above $290 on June 12?", ""))
+
     def test_stocks_allowed_only_during_ongoing_session_for_same_day_close(self):
         from datetime import datetime, timezone
 

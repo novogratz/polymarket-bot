@@ -30,7 +30,19 @@ from typing import Any
 from . import notifications
 from .config import Settings
 from .gamma import GammaClient
-from .models import Candidate, as_float, is_excluded_market, is_fast_lane_text, parse_dt, parse_json_list, utc_now
+from .models import (
+    ESPORTS_MIN_ASK,
+    STOCK_MIN_ASK,
+    Candidate,
+    as_float,
+    is_esports_text,
+    is_excluded_market,
+    is_fast_lane_text,
+    is_stock_text,
+    parse_dt,
+    parse_json_list,
+    utc_now,
+)
 from .news_strategy import _asset_key, _event_slug, _quote_for_outcome
 from .portfolio import Portfolio
 from .pricing import _fetch_clob_quotes, ensure_open_positions_in_pool
@@ -270,6 +282,14 @@ def _build_eligible_candidates(
         # them tradeable. The field is still logged in the forward-observation
         # net so its edge contribution can be measured before any future gate.
 
+        # Per-lane entry floors (user 2026-06-12): fast lanes need MORE
+        # certainty than the global band — esports ≥ 0.92, stocks ≥ 0.90.
+        lane_min_price = settings.race_min_price
+        if is_esports_text(question, slug):
+            lane_min_price = max(lane_min_price, ESPORTS_MIN_ASK)
+        elif is_stock_text(question, slug):
+            lane_min_price = max(lane_min_price, STOCK_MIN_ASK)
+
         for index, outcome in enumerate(outcomes):
             price = prices[index]
             if price <= 0.0 or price >= 1.0:
@@ -277,7 +297,7 @@ def _build_eligible_candidates(
             best_bid, best_ask = _quote_for_outcome(index, 2, market_best_bid, market_best_ask)
             if best_bid is None or best_ask is None:
                 continue
-            if best_ask < settings.race_min_price or best_ask > settings.race_max_price:
+            if best_ask < lane_min_price or best_ask > settings.race_max_price:
                 continue
             spread = best_ask - best_bid
             if spread < 0 or spread > settings.race_max_spread:
