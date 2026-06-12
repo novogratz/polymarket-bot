@@ -109,8 +109,13 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "o/u 7.5",
     # Spread/handicap markets: gap risk identical to exact-score.
     # A single goal swings AH spreads by 0.40+ in one tick, SL can't catch it.
-    # "Spread:" prefix covers all Asian handicap markets on Polymarket.
+    # "Spread:" prefix covers all Asian handicap markets on Polymarket;
+    # "Game Handicap:" is the esports variant that slipped through on
+    # 2026-06-12 ("Game Handicap: HLE (-2.5) vs T1 (+2.5)", bought pre-game
+    # at 0.889 — banned outright, even for LoL).
     "spread:",
+    "game handicap",
+    "map handicap",
     # Draw markets: binary coin-flip at 0.15–0.30 that spikes to 0.90+ when
     # score is 0-0 late, then gaps to 0 on any goal. Same gap profile.
     "end in a draw",
@@ -127,6 +132,9 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     # Tweet-count slug markers (2026-06-12).
     "-tweets",
     "of-tweets",
+    # Handicap slug markers (2026-06-12).
+    "game-handicap",
+    "map-handicap",
     # Crypto slug markers (all crypto banned 2026-06-03).
     "bitcoin",
     "btc",
@@ -142,16 +150,34 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     "crypto",
 )
 
-# ── Esports — LIVE GAMES ONLY (2026-06-12, was a blanket ban) ─────────────
-# Blanket-banned 2026-05-31 (thin/volatile pre-game books; the FENNEL LoL
-# buy). User re-allowed them 2026-06-12 ON ONE CONDITION: the game must be
-# IN PROGRESS (gameStartTime in the past) — an in-play favorite is converging
-# to resolution. Pre-game, missing gameStartTime, or a start so old the
-# series must be over (> _ESPORTS_LIVE_MAX_HOURS) stays excluded.
+# ── Esports — LEAGUE OF LEGENDS ONLY, LIVE GAMES ONLY ────────────────────
+# Blanket-banned 2026-05-31; re-allowed live-only 2026-06-12; narrowed twice
+# the same day (user): ONLY League of Legends qualifies — Mobile Legends,
+# Counter-Strike, and every other title are banned outright. LoL still
+# requires the game to be IN PROGRESS (gameStartTime in the past, within
+# _ESPORTS_LIVE_MAX_HOURS) and an ask ≥ ESPORTS_MIN_ASK (0.92).
+_ESPORTS_ALLOWED_QUESTION_SUBSTRINGS = (
+    "league of legends",
+    "lol:",
+)
+_ESPORTS_ALLOWED_SLUG_SUBSTRINGS = (
+    "league-of-legends",
+    "lol-",
+)
+
+# Per-lane entry floors (user 2026-06-12): the fast lanes need MORE certainty
+# than the global price band, not less — esports never below 0.92, stocks
+# never below 0.90.
+ESPORTS_MIN_ASK = 0.92
+STOCK_MIN_ASK = 0.90
 _ESPORTS_QUESTION_SUBSTRINGS = (
     "counter-strike",
     "esports",
     "dota 2",
+    "valorant",
+    "mobile legends",
+    "mlbb",
+    "league of legends",
     # "LoL:" title prefix — Polymarket LoL markets are titled
     # "LoL: <team> vs <team> - Game N Winner", not "League of Legends".
     "lol:",
@@ -177,6 +203,8 @@ _ESPORTS_SLUG_SUBSTRINGS = (
     "valorant",
     "league-of-legends",
     "lol-",
+    "mobile-legends",
+    "mlbb",
     "dota",
     "esports",
 )
@@ -279,20 +307,19 @@ def _stock_session_is_ongoing(market: dict[str, Any], now: datetime) -> bool:
     return 0.0 <= hours_to_end <= _STOCK_SAME_DAY_MAX_HOURS
 
 
-def is_fast_lane_text(question: str, slug: str = "") -> bool:
-    """True for esports and stock/index markets — the 'fast lanes'.
-
-    These in-play / in-session markets resolve on a clock measured in
-    minutes-to-hours and their books rarely print a 0.99 bid before the
-    market closes; the winner exit for them is 0.98 (user 2026-06-12)
-    instead of the standard 0.99.
-    """
+def is_esports_text(question: str, slug: str = "") -> bool:
+    """True for any esports market (allowed title or not)."""
     q = str(question or "").lower()
     s = str(slug or "").lower()
-    if any(pat in q for pat in _ESPORTS_QUESTION_SUBSTRINGS) or any(
+    return any(pat in q for pat in _ESPORTS_QUESTION_SUBSTRINGS) or any(
         pat in s for pat in _ESPORTS_SLUG_SUBSTRINGS
-    ):
-        return True
+    )
+
+
+def is_stock_text(question: str, slug: str = "") -> bool:
+    """True for any stock/index/equity market."""
+    q = str(question or "").lower()
+    s = str(slug or "").lower()
     raw_q = str(question or "")
     return (
         any(pat in q for pat in _STOCK_QUESTION_SUBSTRINGS)
@@ -301,6 +328,17 @@ def is_fast_lane_text(question: str, slug: str = "") -> bool:
         or bool(_STOCK_MARKET_RE.search(s))
         or (bool(_PAREN_TICKER_RE.search(raw_q)) and "$" in raw_q)
     )
+
+
+def is_fast_lane_text(question: str, slug: str = "") -> bool:
+    """True for esports and stock/index markets — the 'fast lanes'.
+
+    These in-play / in-session markets resolve on a clock measured in
+    minutes-to-hours and their books rarely print a 0.99 bid before the
+    market closes; the winner exit for them is 0.98 (user 2026-06-12)
+    instead of the standard 0.99.
+    """
+    return is_esports_text(question, slug) or is_stock_text(question, slug)
 
 
 def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> bool:
@@ -314,9 +352,10 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
     - O/U 0.5 soccer: any-goal binary, same gap risk.
 
     Conditionally allowed (2026-06-12, user rule — "ongoing only"):
-    - Esports: tradeable ONLY while the game is live (gameStartTime in the
-      past, within _ESPORTS_LIVE_MAX_HOURS). Pre-game or unknown start ->
-      excluded.
+    - Esports: ONLY League of Legends, and ONLY while the game is live
+      (gameStartTime in the past, within _ESPORTS_LIVE_MAX_HOURS). Other
+      titles (Mobile Legends, Counter-Strike, Valorant, Dota, …),
+      pre-game, or unknown start -> excluded.
     - Stock market / equities: tradeable ONLY during the ongoing regular
       NYSE session (Mon-Fri 09:30-16:00 ET) and only for that day's close.
       Overnight, weekends, multi-day -> excluded.
@@ -333,6 +372,13 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
         pat in slug for pat in _ESPORTS_SLUG_SUBSTRINGS
     )
     if is_esports:
+        allowed_game = any(
+            pat in q for pat in _ESPORTS_ALLOWED_QUESTION_SUBSTRINGS
+        ) or any(pat in slug for pat in _ESPORTS_ALLOWED_SLUG_SUBSTRINGS)
+        if not allowed_game:
+            # Only LoL and Mobile Legends qualify (user 2026-06-12) —
+            # Counter-Strike, Valorant, Dota, … are banned outright.
+            return True
         return not _esports_game_is_live(market, now)
     raw_q = str(market.get("question") or "")
     is_stock = (
