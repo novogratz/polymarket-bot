@@ -118,16 +118,30 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     "crypto",
 )
 
-# ── Esports — LIVE GAMES ONLY (2026-06-12, was a blanket ban) ─────────────
-# Blanket-banned 2026-05-31 (thin/volatile pre-game books; the FENNEL LoL
-# buy). User re-allowed them 2026-06-12 ON ONE CONDITION: the game must be
-# IN PROGRESS (gameStartTime in the past) — an in-play favorite is converging
-# to resolution. Pre-game, missing gameStartTime, or a start so old the
-# series must be over (> _ESPORTS_LIVE_MAX_HOURS) stays excluded.
+# ── Esports — LoL / Mobile Legends ONLY, LIVE GAMES ONLY ─────────────────
+# Blanket-banned 2026-05-31; re-allowed live-only 2026-06-12; narrowed the
+# same day (user): ONLY League of Legends and Mobile Legends qualify —
+# Counter-Strike and every other title are banned outright. The allowed
+# games still require the game to be IN PROGRESS (gameStartTime in the
+# past, within _ESPORTS_LIVE_MAX_HOURS).
+_ESPORTS_ALLOWED_QUESTION_SUBSTRINGS = (
+    "league of legends",
+    "lol:",
+    "mobile legends",
+    "mlbb",
+)
+_ESPORTS_ALLOWED_SLUG_SUBSTRINGS = (
+    "league-of-legends",
+    "lol-",
+    "mobile-legends",
+    "mlbb",
+)
 _ESPORTS_QUESTION_SUBSTRINGS = (
     "counter-strike",
     "esports",
     "valorant",
+    "mobile legends",
+    "mlbb",
     "league of legends",
     # "LoL:" title prefix — Polymarket LoL markets are titled
     # "LoL: <team> vs <team> - Game N Winner", not "League of Legends".
@@ -149,6 +163,8 @@ _ESPORTS_SLUG_SUBSTRINGS = (
     "valorant",
     "league-of-legends",
     "lol-",
+    "mobile-legends",
+    "mlbb",
     "dota",
     "esports",
 )
@@ -286,9 +302,10 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
     - O/U 0.5 soccer: any-goal binary, same gap risk.
 
     Conditionally allowed (2026-06-12, user rule — "ongoing only"):
-    - Esports: tradeable ONLY while the game is live (gameStartTime in the
-      past, within _ESPORTS_LIVE_MAX_HOURS). Pre-game or unknown start ->
-      excluded.
+    - Esports: ONLY League of Legends / Mobile Legends, and ONLY while the
+      game is live (gameStartTime in the past, within
+      _ESPORTS_LIVE_MAX_HOURS). Other titles (Counter-Strike, Valorant,
+      Dota, …), pre-game, or unknown start -> excluded.
     - Stock market / equities: tradeable ONLY during the ongoing regular
       NYSE session (Mon-Fri 09:30-16:00 ET) and only for that day's close.
       Overnight, weekends, multi-day -> excluded.
@@ -305,6 +322,13 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
         pat in slug for pat in _ESPORTS_SLUG_SUBSTRINGS
     )
     if is_esports:
+        allowed_game = any(
+            pat in q for pat in _ESPORTS_ALLOWED_QUESTION_SUBSTRINGS
+        ) or any(pat in slug for pat in _ESPORTS_ALLOWED_SLUG_SUBSTRINGS)
+        if not allowed_game:
+            # Only LoL and Mobile Legends qualify (user 2026-06-12) —
+            # Counter-Strike, Valorant, Dota, … are banned outright.
+            return True
         return not _esports_game_is_live(market, now)
     raw_q = str(market.get("question") or "")
     is_stock = (

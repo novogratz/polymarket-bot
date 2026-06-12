@@ -3783,6 +3783,30 @@ class ExcludedMarketTests(unittest.TestCase):
         self.assertTrue(is_excluded_market(stale, now=now))
         self.assertTrue(is_excluded_market(base, now=now))  # unknown start
 
+    def test_esports_only_lol_and_mobile_legends_qualify(self):
+        # User 2026-06-12: only LoL and Mobile Legends — Counter-Strike and
+        # every other title are banned outright, even live.
+        from datetime import datetime, timezone
+
+        now = datetime(2026, 6, 12, 18, 0, tzinfo=timezone.utc)
+        live_start = "2026-06-12T17:00:00+00:00"
+        cs_live = {"question": "Counter-Strike: Marsborne vs F5 Esports (BO3) - Playoffs",
+                   "slug": "cs-marsborne-vs-f5", "gameStartTime": live_start}
+        valorant_live = {"question": "Valorant Champions: winner of map 2?",
+                         "slug": "valorant-champions-map-2", "gameStartTime": live_start}
+        bo3_unknown_title = {"question": "Team A vs Team B (BO3) - Grand Final",
+                             "slug": "team-a-vs-team-b-esports", "gameStartTime": live_start}
+        self.assertTrue(is_excluded_market(cs_live, now=now))
+        self.assertTrue(is_excluded_market(valorant_live, now=now))
+        self.assertTrue(is_excluded_market(bo3_unknown_title, now=now))
+
+        mlbb_live = {"question": "Mobile Legends: ONIC vs Blacklist - Game 3 Winner",
+                     "slug": "mobile-legends-onic-vs-blacklist-game-3",
+                     "gameStartTime": live_start}
+        mlbb_pregame = dict(mlbb_live, gameStartTime="2026-06-12T19:00:00+00:00")
+        self.assertFalse(is_excluded_market(mlbb_live, now=now))
+        self.assertTrue(is_excluded_market(mlbb_pregame, now=now))
+
     def test_stocks_allowed_only_during_ongoing_session_for_same_day_close(self):
         from datetime import datetime, timezone
 

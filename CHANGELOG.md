@@ -19,6 +19,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **Esports narrowed to LoL + Mobile Legends only** (user 2026-06-12, same day as the live-only re-allow): only League of Legends (`LoL:`) and Mobile Legends (MLBB) markets qualify for the live-game lane — **Counter-Strike, Valorant, Dota, and every other title (incl. generic BO1/BO3/BO5 markers) are banned outright**, live or not. Mobile Legends added to the recognition patterns (it previously matched nothing). Test-pinned: live CS/Valorant/unknown-BO3 banned, live MLBB allowed, pre-game MLBB banned.
+
 - **Fast-lane winner exit at 0.98 — esports + stocks** (user 2026-06-12): in-play esports and in-session stock books rarely print a 0.99 bid before the market closes, so winners there sat unsold until settlement risk crept back in. Esports and stock positions (`is_fast_lane_text` on question/slug) now trigger the resolved exit at a live-book bid ≥ **0.98** and the winner floor accepts 0.98 for them; every other lane keeps the strict 0.99 rule (test-pinned both ways).
 
 - **Entry cap tightened to 12 h — nothing beyond, ever** (user 2026-06-12: "i need bets for today and max 4 6 8 12h"): `max_hours_cap` 24 → **12** in both profiles after the 24 h rung bought an overnight "Israel closes airspace by June 13" ~26 h before its end. Ladder: 4 → 6 → 8 → 10 → 12 and stops. A by-tomorrow market becomes tradeable only once it is within 12 h of its end (e.g. a June-13 daily from Saturday ~noon).

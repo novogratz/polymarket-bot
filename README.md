@@ -59,7 +59,7 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | halftime leading / score | Resolves mid-game, gap risk |
 | `temperature`, `°c`, `°f` | Specific-degree weather, near-zero win rate in band |
 | **All crypto** — `bitcoin`/`btc`/`ethereum`/`solana`/`dogecoin`/`xrp`/… + Up/Down | Banned: volatile, no edge for this strategy |
-| **Esports** — `counter-strike`/`valorant`/`league of legends`/`LoL:`/`dota`/… + `(bo1)`/`(bo3)`/`(bo5)` | **Live games only** (2026-06-12): tradeable while the game is in progress (`gameStartTime` past, ≤ 8 h); pre-game/unknown start banned |
+| **Esports** — `counter-strike`/`valorant`/`league of legends`/`LoL:`/`mobile legends`/`dota`/… + `(bo1)`/`(bo3)`/`(bo5)` | **LoL + Mobile Legends only, live games only** (2026-06-12): every other title banned outright; the allowed games tradeable only while in progress (`gameStartTime` past, ≤ 8 h) |
 | **Stock market / equities** — S&P/`SPY`/Nasdaq/`QQQ`/Dow/DJIA + big-cap tickers & companies (word-bounded) + `closes above/below $X` + generic `(TICKER) … $` | **Ongoing session only** (2026-06-12): tradeable Mon–Fri 09:30–16:00 ET for that day's close; overnight/weekend/multi-day banned; weekly "Week of" / `hit (LOW)/(HIGH)` touch markets banned outright |
 | **Tweet-count markets** — `tweet` + `-tweets`/`of-tweets` slugs | Banned outright (2026-06-12): week-long counts, no convergence signal |
 
