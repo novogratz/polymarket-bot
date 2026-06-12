@@ -395,5 +395,9 @@ class Settings:
             ("mirror_state_path", "data/mirror_state.json", "data/dry_run_mirror_state.json"),
         )
         for attr, live_default, dry_run_value in swaps:
-            if str(getattr(self, attr)) == live_default:
+            # Path comparison, not string: str(Path("data/x")) renders with
+            # backslashes on Windows and never matched the forward-slash
+            # literal, so dry-run wrote straight into the LIVE ledger files
+            # (observed 2026-06-11: a --dry-run sell closed a live position).
+            if getattr(self, attr) == Path(live_default):
                 object.__setattr__(self, attr, Path(dry_run_value))

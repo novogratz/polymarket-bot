@@ -108,7 +108,10 @@ class CliAutoLoopFlagsTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         settings = loop_mock.call_args.args[0]
         self.assertTrue(settings.dry_run)
-        self.assertTrue(str(settings.state_path).endswith("data/dry_runs/default/state.json"))
+        # normalize separators — str(Path) renders backslashes on Windows
+        self.assertTrue(
+            str(settings.state_path).replace("\\", "/").endswith("data/dry_runs/default/state.json")
+        )
 
 
 import tempfile

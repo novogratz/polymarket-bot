@@ -2769,21 +2769,26 @@ class AutoTunerTests(unittest.TestCase):
 
 
 class SettingsDryRunTests(unittest.TestCase):
+    # Path() comparisons, not str(): str(Path) renders backslashes on Windows
+    # and the string-equality version of these tests (and the swap itself,
+    # fixed 2026-06-11) silently never matched there.
     def test_live_mode_uses_default_paths(self):
+        from pathlib import Path
         s = Settings(dry_run=False)
-        self.assertEqual(str(s.state_path), "data/paper_state.json")
-        self.assertEqual(str(s.trade_journal_path), "data/trade_journal.jsonl")
-        self.assertEqual(str(s.strategy_overrides_path), "data/strategy_overrides.json")
-        self.assertEqual(str(s.tick_state_path), "data/last_tick.json")
-        self.assertEqual(str(s.tick_history_path), "data/tick_history.jsonl")
+        self.assertEqual(s.state_path, Path("data/paper_state.json"))
+        self.assertEqual(s.trade_journal_path, Path("data/trade_journal.jsonl"))
+        self.assertEqual(s.strategy_overrides_path, Path("data/strategy_overrides.json"))
+        self.assertEqual(s.tick_state_path, Path("data/last_tick.json"))
+        self.assertEqual(s.tick_history_path, Path("data/tick_history.jsonl"))
 
     def test_dry_run_swaps_all_data_paths(self):
+        from pathlib import Path
         s = Settings(dry_run=True)
-        self.assertEqual(str(s.state_path), "data/dry_run_state.json")
-        self.assertEqual(str(s.trade_journal_path), "data/dry_run_journal.jsonl")
-        self.assertEqual(str(s.strategy_overrides_path), "data/dry_run_strategy_overrides.json")
-        self.assertEqual(str(s.tick_state_path), "data/dry_run_last_tick.json")
-        self.assertEqual(str(s.tick_history_path), "data/dry_run_tick_history.jsonl")
+        self.assertEqual(s.state_path, Path("data/dry_run_state.json"))
+        self.assertEqual(s.trade_journal_path, Path("data/dry_run_journal.jsonl"))
+        self.assertEqual(s.strategy_overrides_path, Path("data/dry_run_strategy_overrides.json"))
+        self.assertEqual(s.tick_state_path, Path("data/dry_run_last_tick.json"))
+        self.assertEqual(s.tick_history_path, Path("data/dry_run_tick_history.jsonl"))
 
     def test_dry_run_preserves_explicit_custom_paths(self):
         from pathlib import Path
@@ -2795,11 +2800,11 @@ class SettingsDryRunTests(unittest.TestCase):
             tick_state_path=Path("/tmp/custom_tick.json"),
             tick_history_path=Path("/tmp/custom_hist.jsonl"),
         )
-        self.assertEqual(str(s.state_path), "/tmp/custom_state.json")
-        self.assertEqual(str(s.trade_journal_path), "/tmp/custom_journal.jsonl")
-        self.assertEqual(str(s.strategy_overrides_path), "/tmp/custom_over.json")
-        self.assertEqual(str(s.tick_state_path), "/tmp/custom_tick.json")
-        self.assertEqual(str(s.tick_history_path), "/tmp/custom_hist.jsonl")
+        self.assertEqual(s.state_path, Path("/tmp/custom_state.json"))
+        self.assertEqual(s.trade_journal_path, Path("/tmp/custom_journal.jsonl"))
+        self.assertEqual(s.strategy_overrides_path, Path("/tmp/custom_over.json"))
+        self.assertEqual(s.tick_state_path, Path("/tmp/custom_tick.json"))
+        self.assertEqual(s.tick_history_path, Path("/tmp/custom_hist.jsonl"))
 
 
 class LossCooldownTests(unittest.TestCase):

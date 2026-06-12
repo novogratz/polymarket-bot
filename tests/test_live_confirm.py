@@ -128,7 +128,8 @@ class BuildLiveRecapTests(unittest.TestCase):
         self.assertIn("0.18", text)
         self.assertIn("min_consensus", text)
         self.assertIn("stop_loss", text)
-        self.assertIn("data/paper_state.json", text)
+        # normalize separators — the recap prints str(Path), backslashes on Windows
+        self.assertIn("data/paper_state.json", text.replace("\\", "/"))
 
     def test_recap_without_funder_address(self):
         settings = Settings()
