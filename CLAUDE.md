@@ -84,6 +84,7 @@ The **only** Telegram message the live stack sends — deterministic, no AI. A F
 - **Capital:** equity + **P&L since start = equity − baseline** ("depuis le début")
 - **Total trades + win rate** (count + %, V/D)
 - **Open positions** — sorted by expiry (soonest first), each with its estimated end time (`⏳ Fin prévue : HH:MM ET (dans XhYY)`)
+- **Redemption watchdog** — resolved positions with real value still awaiting payout (`redeemable: true`, value ≥ $1) are listed as `💰 GAINS RÉSOLUS EN ATTENTE DE PAIEMENT`; Polymarket auto-redeems, so this section is empty in normal operation — anything persisting two reports means claim manually on polymarket.com/portfolio
 
 No per-trade lists, no `💓 Bilan` heartbeat, no BUY/SELL alerts (all `TELEGRAM_ALERT_*=0` in the launchers). The all-time figure is equity-vs-baseline (not realized-from-entry), so a re-based account never shows phantom losses.
 
