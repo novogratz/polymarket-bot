@@ -3806,6 +3806,24 @@ class ExcludedMarketTests(unittest.TestCase):
                     "slug": "lol-t1-vs-geng-game-2", "gameStartTime": live_start}
         self.assertFalse(is_excluded_market(lol_live, now=now))
 
+    def test_league_of_ireland_banned(self):
+        # User rule 2026-06-12: no League of Ireland (Premier Division
+        # Ireland) bets. The question carries no league marker — the "irl1-"
+        # slug prefix is the identifier (both real markets pinned).
+        for market in (
+            {"question": "Derry City FC vs. Bohemians Dublin FC: O/U 4.5",
+             "slug": "irl1-der-boh-2026-06-12-total-4pt5"},
+            {"question": "Shelbourne FC vs. Shamrock Rovers: O/U 4.5",
+             "slug": "irl1-she-sha-2026-06-12-total-4pt5"},
+            {"question": "Will Shelbourne FC win on 2026-06-12?",
+             "slug": "irl1-she-sha-2026-06-12"},
+        ):
+            self.assertTrue(is_excluded_market(market), market["slug"])
+        # Other leagues' O/U 4.5 stay tradeable.
+        self.assertFalse(is_excluded_market(
+            {"question": "Málaga CF vs. UD Las Palmas: O/U 4.5",
+             "slug": "esp2-mal-lpa-2026-06-12-total-4pt5"}))
+
     def test_game_handicap_markets_banned_even_for_live_lol(self):
         # "Game Handicap: HLE (-2.5) vs T1 (+2.5)" slipped past the "Spread:"
         # pattern and was bought pre-game at 0.889 (2026-06-12). Handicaps
