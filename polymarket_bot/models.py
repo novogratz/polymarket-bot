@@ -251,6 +251,30 @@ def _stock_session_is_ongoing(market: dict[str, Any], now: datetime) -> bool:
     return 0.0 <= hours_to_end <= _STOCK_SAME_DAY_MAX_HOURS
 
 
+def is_fast_lane_text(question: str, slug: str = "") -> bool:
+    """True for esports and stock/index markets — the 'fast lanes'.
+
+    These in-play / in-session markets resolve on a clock measured in
+    minutes-to-hours and their books rarely print a 0.99 bid before the
+    market closes; the winner exit for them is 0.98 (user 2026-06-12)
+    instead of the standard 0.99.
+    """
+    q = str(question or "").lower()
+    s = str(slug or "").lower()
+    if any(pat in q for pat in _ESPORTS_QUESTION_SUBSTRINGS) or any(
+        pat in s for pat in _ESPORTS_SLUG_SUBSTRINGS
+    ):
+        return True
+    raw_q = str(question or "")
+    return (
+        any(pat in q for pat in _STOCK_QUESTION_SUBSTRINGS)
+        or any(pat in s for pat in _STOCK_SLUG_SUBSTRINGS)
+        or bool(_STOCK_MARKET_RE.search(q))
+        or bool(_STOCK_MARKET_RE.search(s))
+        or (bool(_PAREN_TICKER_RE.search(raw_q)) and "$" in raw_q)
+    )
+
+
 def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> bool:
     """True for market types excluded from every strategy.
 

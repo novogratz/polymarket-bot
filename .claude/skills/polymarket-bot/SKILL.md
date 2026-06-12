@@ -44,10 +44,11 @@ Buy a heavily-favored binary outcome and ride it to resolution.
     elections, …) rides to resolution.
   - **Hard rule: never sell below entry** (floor in `trading.execute_live_sell`).
     Only `race_stop_loss_confirmed` is exempt. Other losers ride to resolution.
-  - **Winner floor (0.99)**: winner-exit orders below 0.99 are refused
-    (`winner_floor` in `execute_live_sell`, sweep clamped to 0.99, tuner
-    bounds pinned (0.99, 0.99)) — resolved winners sell at 0.99 or settle
-    at 1.00, never 0.97/0.98.
+  - **Winner floor (0.99; 0.98 fast lanes)**: winner-exit orders below the
+    floor are refused (`winner_floor` in `execute_live_sell`, sweep clamped
+    to 0.99, tuner bounds pinned). **Esports + stocks exit at 0.98**
+    (`is_fast_lane_text`, 2026-06-12) — in-play/in-session books rarely
+    print 0.99. Everything else: 0.99 or settlement.
   - No EOD flatten, no loss-sweep; the winners-only sweep uses
     max(smart, race) thresholds (0.99) and can never front-run the race exit.
   - FOK BUY capped to 90% of executable ask depth; true fill booked; depth-

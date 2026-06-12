@@ -101,7 +101,7 @@ Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) a
 
 | Condition | Code |
 |---|---|
-| **Live book** bid ≥ 0.99 | `race_big_win_resolved` — primary win exit (`resolved_exit_threshold`); the exit probes the live CLOB bid each tick (Gamma quotes lag). A 0.98 bid is NOT enough — the displayed "98¢" is usually the midpoint, and settlement pays 1.00, so the bot holds for a real 0.99 bid or resolution |
+| **Live book** bid ≥ 0.99 (≥ **0.98 for esports/stocks**) | `race_big_win_resolved` — primary win exit; the exit probes the live CLOB bid each tick (Gamma quotes lag). Outside the fast lanes a 0.98 bid is NOT enough — settlement pays 1.00, so the bot holds for a real 0.99 bid or resolution. Esports/stock books rarely print 0.99 before close, so those exit at 0.98 (2026-06-12) |
 | Cached price ≥ 0.99 after the market left the scan | `resolved_market_sweep_win` — winners-only sweep, same threshold (it can never fire earlier than the race exit) |
 | Down ≥ 25 % from entry, confirmed 3 consecutive ticks, **soccer moneylines only** ("Will <Team> win on <date>?") | `race_stop_loss_confirmed` — the one path allowed to sell below entry |
 | Genuinely-resolved loser ~8 h past expiry | written off locally (no order; settles on-chain) |

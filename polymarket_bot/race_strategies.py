@@ -30,7 +30,7 @@ from typing import Any
 from . import notifications
 from .config import Settings
 from .gamma import GammaClient
-from .models import Candidate, as_float, is_excluded_market, parse_dt, parse_json_list, utc_now
+from .models import Candidate, as_float, is_excluded_market, is_fast_lane_text, parse_dt, parse_json_list, utc_now
 from .news_strategy import _asset_key, _event_slug, _quote_for_outcome
 from .portfolio import Portfolio
 from .pricing import _fetch_clob_quotes, ensure_open_positions_in_pool
@@ -1499,9 +1499,16 @@ def _execute_race_exits(
                         )
                         # fall through to normal exit logic
 
+        # Fast lanes (2026-06-12): esports and stock markets exit at 0.98 —
+        # in-play/in-session books rarely print a 0.99 bid before close.
+        resolved_threshold = settings.race_resolved_exit_threshold
+        if resolved_threshold > 0 and is_fast_lane_text(
+            str(position.get("question") or ""),
+            str(position.get("event_slug") or position.get("slug") or ""),
+        ):
+            resolved_threshold = min(resolved_threshold, 0.98)
         position_resolved = (
-            settings.race_resolved_exit_threshold > 0
-            and position_price >= settings.race_resolved_exit_threshold
+            resolved_threshold > 0 and position_price >= resolved_threshold
         )
         if candidate is None and position_resolved and token_id:
             candidate = Candidate(
@@ -1540,10 +1547,7 @@ def _execute_race_exits(
         position["peak_pnl_pct"] = max(
             float(position.get("peak_pnl_pct", current_pnl_pct)), current_pnl_pct
         )
-        if (
-            settings.race_resolved_exit_threshold > 0
-            and candidate.best_bid >= settings.race_resolved_exit_threshold
-        ):
+        if resolved_threshold > 0 and candidate.best_bid >= resolved_threshold:
             plan = {"reason": "race_big_win_resolved", "shares": float(position.get("shares", 0.0))}
         else:
             # eod_close REMOVED (2026-05-31): it flattened EVERY open position
