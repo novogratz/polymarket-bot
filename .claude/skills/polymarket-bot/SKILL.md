@@ -20,8 +20,8 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   `daily_expiry_fallback=false`; user 2026-06-12). **One bet per GAME**
   (`_dedup_same_game` on date-truncated event slug + team names — one game
   spans several Polymarket events; `_open_game_keys` blocks across ticks;
-  `EVENT_EXPOSURE_CAP=1`); soccer prefers the **under-4.5** line over the
-  rest of the game. Spread ≤ 4¢, liquidity
+  `EVENT_EXPOSURE_CAP=1`); keeps the single best (highest-bid) candidate
+  per game (the soccer under-4.5 priority was dropped 2026-06-14). Spread ≤ 4¢, liquidity
   ≥ $500, 24 h volume ≥ $300. NO price-movement gates (user 2026-06-10): day-
   change, day-momentum, and 1h gates all removed — fast movers stay tradeable,
   values logged in the forward net only, pinned by tests.

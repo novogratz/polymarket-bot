@@ -3453,10 +3453,13 @@ class DynamicEntryWindowTests(unittest.TestCase):
 
 
 class SameEventDedupTests(unittest.TestCase):
-    """User rule 2026-06-11: one bet per game; for soccer prefer the
-    under-4.5-goals market over everything else in the event."""
+    """User rule 2026-06-11/14: one bet per game; keep the single best
+    (highest-bid) candidate. The soccer under-4.5 priority was dropped
+    2026-06-14 — just take the best bet for each game."""
 
-    def test_soccer_under_45_beats_moneyline_either_order(self):
+    def test_best_bid_wins_per_game_no_under_45_priority(self):
+        # User 2026-06-14: no more under-4.5 preference. The moneyline at
+        # 0.94 beats the under-4.5 at 0.90 purely on bid, either order.
         from polymarket_bot.race_strategies import _actionable_candidates
 
         moneyline = Candidate(
@@ -3482,7 +3485,7 @@ class SameEventDedupTests(unittest.TestCase):
             actionable = _actionable_candidates(
                 [(c, 0.0) for c in ordering], empty, Settings()
             )
-            self.assertEqual([c.market_id for c, _ in actionable], ["u45"])
+            self.assertEqual([c.market_id for c, _ in actionable], ["ml"])
 
     def test_non_soccer_same_event_keeps_single_highest_bid(self):
         from polymarket_bot.race_strategies import _actionable_candidates
@@ -3538,7 +3541,9 @@ class SameEventDedupTests(unittest.TestCase):
                      "fifwc-mex-rsa-2026-06-11-first-to-score", "tok-fts", "No", 0.94)
         return moneyline, under, first
 
-    def test_one_game_across_three_event_slugs_keeps_only_under_45(self):
+    def test_one_game_across_three_event_slugs_keeps_single_best_bid(self):
+        # One game across three event slugs collapses to ONE bet — the
+        # highest bid (first-to-score @ 0.94), no under-4.5 priority.
         from polymarket_bot.race_strategies import _actionable_candidates
 
         moneyline, under, first = self._mexico_trio()
@@ -3546,7 +3551,7 @@ class SameEventDedupTests(unittest.TestCase):
         actionable = _actionable_candidates(
             [(moneyline, 0.0), (under, 0.0), (first, 0.0)], empty, Settings()
         )
-        self.assertEqual([c.market_id for c, _ in actionable], ["u45"])
+        self.assertEqual([c.market_id for c, _ in actionable], ["fts"])
 
     def test_open_position_blocks_other_markets_of_same_game(self):
         from polymarket_bot.race_strategies import _actionable_candidates
