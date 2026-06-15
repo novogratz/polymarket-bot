@@ -3361,12 +3361,12 @@ class EntryWindowStartOrCloseTests(unittest.TestCase):
 
     def _market(self, mid, *, end_h, start_h=None):
         m = {
-            "id": mid, "question": f"Team {mid} vs Rival: O/U 4.5",
-            "slug": f"team-{mid}-ou45", "acceptingOrders": True,
+            "id": mid, "question": f"Will Team {mid} win on 2026-06-14?",
+            "slug": f"team-{mid}-win", "acceptingOrders": True,
             "liquidity": 1500, "volume24hr": 2000,
             "bestBid": 0.91, "bestAsk": 0.92, "orderPriceMinTickSize": 0.01,
-            "outcomes": '["Over", "Under"]', "outcomePrices": '["0.08", "0.92"]',
-            "clobTokenIds": f'["tok-{mid}-o", "tok-{mid}-u"]',
+            "outcomes": '["Yes", "No"]', "outcomePrices": '["0.92", "0.08"]',
+            "clobTokenIds": f'["tok-{mid}-y", "tok-{mid}-n"]',
             "endDate": (utc_now() + timedelta(hours=end_h)).isoformat(),
         }
         if start_h is not None:
@@ -3633,10 +3633,12 @@ class DoubleDownTests(unittest.TestCase):
     the 10% cap. Generalized from soccer Under-4.5 to every grinder market."""
 
     def _under45(self, ask):
+        # A tradeable favorite (moneyline) — O/U 4.5 is banned since 2026-06-14,
+        # and the double-down skips excluded markets, so use a non-banned one.
         return Candidate(
-            market_id="u45", question="FC Nantes vs. PSG: O/U 4.5",
-            slug="nantes-psg-ou-45", end_date=utc_now() + timedelta(hours=2),
-            hours_to_close=2, liquidity=1500, volume=2000, outcome="Under",
+            market_id="u45", question="Will PSG win on 2026-06-14?",
+            slug="psg-win-2026-06-14", end_date=utc_now() + timedelta(hours=2),
+            hours_to_close=2, liquidity=1500, volume=2000, outcome="Yes",
             price=ask, token_id="tok-u45", score=1,
             url="https://polymarket.com/event/fc-nantes-vs-psg",
             best_bid=round(ask - 0.01, 2), best_ask=ask, tick_size=0.01,
@@ -3901,7 +3903,6 @@ class ExcludedMarketTests(unittest.TestCase):
     def test_regular_sports_not_excluded(self):
         for market in (
             {"question": "Will Nigeria win on 2026-06-10?", "slug": "fif-nga-2026-06-10"},
-            {"question": "Málaga CF vs. UD Las Palmas: O/U 4.5", "slug": "malaga-las-palmas-more-markets"},
             {"question": "Will PPI YoY be between 7.0% and 7.9% in May?", "slug": "producer-price-index-ppi-yoy-may-2026"},
             {"question": "Will annual inflation be 4.1% in May?", "slug": "annual-inflation-may-2026"},
         ):
@@ -3995,10 +3996,25 @@ class ExcludedMarketTests(unittest.TestCase):
              "slug": "irl1-she-sha-2026-06-12"},
         ):
             self.assertTrue(is_excluded_market(market), market["slug"])
-        # Other leagues' O/U 4.5 stay tradeable.
+        # Other leagues' moneylines stay tradeable (O/U 4.5 itself is banned
+        # everywhere since 2026-06-14, regardless of league).
         self.assertFalse(is_excluded_market(
+            {"question": "Will Málaga CF win on 2026-06-12?",
+             "slug": "esp2-mal-lpa-2026-06-12"}))
+
+    def test_ou_45_banned_everywhere(self):
+        # Data-driven ban 2026-06-14: O/U 4.5 Unders were 80% of all losses
+        # (3 worst trades ever). The last open O/U line is now closed.
+        for market in (
+            {"question": "Sweden vs. Tunisia: O/U 4.5", "slug": "fifwc-swe-tun-ou-45"},
             {"question": "Málaga CF vs. UD Las Palmas: O/U 4.5",
-             "slug": "esp2-mal-lpa-2026-06-12-total-4pt5"}))
+             "slug": "esp2-mal-lpa-2026-06-12-total-4pt5"},
+            {"question": "Team A vs Team B: Over/Under 4.5", "slug": "ab-ou-4pt5"},
+        ):
+            self.assertTrue(is_excluded_market(market), market["question"])
+        # The moneyline of the same game stays tradeable.
+        self.assertFalse(is_excluded_market(
+            {"question": "Will Sweden win on 2026-06-14?", "slug": "fifwc-swe-tun-win"}))
 
     def test_game_handicap_markets_banned_even_for_live_lol(self):
         # "Game Handicap: HLE (-2.5) vs T1 (+2.5)" slipped past the "Spread:"
