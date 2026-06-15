@@ -31,9 +31,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   target = available cash spread across the actionable opportunities (cash/N),
   full cap when the market is slow. Near-resolution boost never pierces the cap.
   Depth-capped entries top up later toward the same cap.
-  **Under-4.5 double-down (2026-06-14):** a held O/U 4.5 Under whose live
-  ask dips 1–8¢ below entry is bought up once toward the 10% cap
-  (`_execute_double_downs`, `race_double_down_enabled`).
+  **Dip double-down (2026-06-14):** ANY held position whose live ask
+  dips 1–8¢ below entry (e.g. 0.96 → 0.89) is bought up once toward the
+  10% cap (`_execute_double_downs`, `race_double_down_enabled`).
 - **Exits:**
   - Resolved-exit: sell at **live CLOB book** bid ≥ `resolved_exit_threshold`
     (**0.97**, user 2026-06-14 "as we had before"; was 0.99). The exit
