@@ -63,7 +63,7 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | **All O/U goal totals** — `o/u 0.5`…`o/u 7.5` incl. **`o/u 4.5`** | Banned outright; 4.5 added 2026-06-14 (loss audit: O/U 4.5 Unders = 80% of all losses, 3 worst trades ever) |
 | **All stock market / equities** — S&P/`SPY`/Nasdaq/`QQQ`/Dow/DJIA + big-cap tickers & companies (word-bounded) + `closes above/below $X` + generic `(TICKER) … $` | **Banned outright** (re-banned 2026-06-12 after a one-day in-session experiment) |
 | **Tweet-count markets** — `tweet` + `-tweets`/`of-tweets` slugs | Banned outright (2026-06-12): week-long counts, no convergence signal |
-| **YouTube view/subscriber counts** — `youtube`/`mrbeast` + word-bounded `views` | Banned outright (2026-06-14): view totals have no convergence signal |
+| **YouTube views + entertainment ("Divertissement")** — `youtube`/`mrbeast`/`views` + awards/box-office/charts/streaming/social-metrics | Banned outright (2026-06-14): no convergence edge, jumps on hype |
 | **League of Ireland soccer** — `irl1-` slug prefix | Banned outright (2026-06-12) |
 
 **Deliberately tradeable** (test-pinned, do not ban): elections, primaries, and mayoral races — a profitable lane despite occasional postponements — and **fast-moving markets**: there are no `oneDayPriceChange` or `oneHourPriceChange` gates (recently-moving markets are often the ones converging toward resolution; both values are logged for offline analysis only).
