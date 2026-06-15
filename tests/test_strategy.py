@@ -4105,10 +4105,36 @@ class ExcludedMarketTests(unittest.TestCase):
         ):
             self.assertTrue(is_excluded_market(market), market["question"])
 
+    def test_entertainment_markets_banned(self):
+        # User 2026-06-14: block "Divertissement" — awards, box office, charts,
+        # streaming, social metrics. No convergence edge.
+        for market in (
+            {"question": "Will the movie gross $200M opening weekend?", "slug": "movie-200m"},
+            {"question": "Who wins Best Picture at the Academy Awards?", "slug": "best-picture"},
+            {"question": "Will the album hit #1 on Billboard?", "slug": "album-billboard-1"},
+            {"question": "Will the song pass 1B Spotify streams?", "slug": "spotify-1b"},
+            {"question": "Will the creator reach 10M subscribers by July?", "slug": "creator-10m-subs"},
+            {"question": "Will the film win the Palme d'Or?", "slug": "palme-dor"},
+            {"question": "Will the Netflix show be #1 this week?", "slug": "netflix-1"},
+        ):
+            self.assertTrue(is_excluded_market(market), market["question"])
+
+    def test_entertainment_ban_keeps_winners_tradeable(self):
+        # The audit's winning lanes must NOT be caught: AI-model markets,
+        # geopolitics, golf, WNBA, soccer moneylines/specials.
+        for market in (
+            {"question": "Will claude-opus-4-6 be the best AI model on June 13?", "slug": "best-ai-model"},
+            {"question": "Will Sam Burns win the 2026 RBC Canadian Open?", "slug": "rbc-canadian-open"},
+            {"question": "Will Israel close its airspace by June 12?", "slug": "israel-airspace"},
+            {"question": "Washington Mystics vs. New York Liberty", "slug": "wnba-mys-nyl"},
+            {"question": "Will Sweden win on 2026-06-14?", "slug": "swe-win"},
+        ):
+            self.assertFalse(is_excluded_market(market), market["question"])
+
     def test_views_word_boundary_no_false_positives(self):
         for market in (
-            {"question": "Will the movie get positive reviews this weekend?",
-             "slug": "movie-reviews-weekend"},
+            {"question": "Will the candidate get positive reviews after the debate?",
+             "slug": "candidate-reviews-debate"},
             {"question": "Will the candidate do 3 interviews before the vote?",
              "slug": "candidate-interviews"},
         ):

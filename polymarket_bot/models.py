@@ -136,6 +136,30 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "youtube",
     "mrbeast",
     "mr beast",
+    # Entertainment / pop-culture ("Divertissement", 2026-06-14, user rule):
+    # awards, box office, charts, streaming, and social-metric markets — no
+    # convergence edge, they jump on hype. Name-collision-safe terms only
+    # (e.g. "academy award"/"best picture" instead of bare "oscar").
+    "box office",
+    "rotten tomatoes",
+    "academy award",
+    "best picture",
+    "grammy",
+    "emmy",
+    "golden globe",
+    "palme d'or",
+    "tony award",
+    "billboard",
+    "spotify",
+    "tiktok",
+    "subscribers",
+    "followers",
+    "streams",
+    "netflix",
+    "movie",
+    "film",
+    "album",
+    "celebrity",
 )
 _EXCLUDED_SLUG_SUBSTRINGS = (
     "updown",
