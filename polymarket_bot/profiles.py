@@ -257,6 +257,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "max_spread": ("POLYMARKET_RACE_MAX_SPREAD", "float"),
         "stake_usd": ("POLYMARKET_RACE_STAKE_USD", "float"),
         "stake_pct": ("POLYMARKET_RACE_STAKE_PCT", "float"),
+        "initial_stake_pct": ("POLYMARKET_RACE_INITIAL_STAKE_PCT", "float"),
         "double_down_enabled": ("POLYMARKET_RACE_DOUBLE_DOWN_ENABLED", "bool"),
         "double_down_min_dip": ("POLYMARKET_RACE_DOUBLE_DOWN_MIN_DIP", "float"),
         "double_down_max_dip": ("POLYMARKET_RACE_DOUBLE_DOWN_MAX_DIP", "float"),
