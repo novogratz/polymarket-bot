@@ -71,7 +71,7 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | Parameter | Value (`grinder.toml [race]`) |
 |---|---|
 | Price band (ask) | 0.85 – 0.97 |
-| Time to close | **≤ 4 h — hard maximum** (user 2026-06-14; the 6/8/10/12 h ladder is disabled via `max_hours_cap = 0`) |
+| Entry window | **game starts OR market closes within ≤ 4 h** (user 2026-06-14); dynamic widening disabled (`max_hours_cap = 0`) |
 | Max spread | ≤ 4¢ |
 | Min liquidity | $500 |
 | Min 24 h volume | $300 |
