@@ -63,7 +63,8 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   and fast-moving markets (no 1h gate).
 - **Excluded markets (`models.is_excluded_market`):** ALL crypto
   (bitcoin/btc/ethereum/solana/… + Up-Down),
-  weather/°C/°F, exact-score, O/U low (0.5–3.5) + high (5.5+) lines, Asian-handicap
+  weather/°C/°F, exact-score, **ALL O/U goal totals (0.5–7.5 incl. 4.5 — banned
+  2026-06-14, 80% of losses)**, Asian-handicap
   "Spread:", draw markets, halftime markets, League of Ireland soccer
   (`irl1-` slug prefix, 2026-06-12).
   Tweet-count markets banned outright (2026-06-12).

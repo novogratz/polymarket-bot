@@ -60,6 +60,7 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | `temperature`, `°c`, `°f` | Specific-degree weather, near-zero win rate in band |
 | **All crypto** — `bitcoin`/`btc`/`ethereum`/`solana`/`dogecoin`/`xrp`/… + Up/Down | Banned: volatile, no edge for this strategy |
 | **Esports** — `counter-strike`/`valorant`/`league of legends`/`LoL:`/`mobile legends`/`dota`/… + `(bo1)`/`(bo3)`/`(bo5)` | **League of Legends only, live games only, ask ≥ 0.92** (2026-06-12): every other title (incl. Mobile Legends) banned outright; LoL tradeable only in progress (`gameStartTime` past, ≤ 8 h) |
+| **All O/U goal totals** — `o/u 0.5`…`o/u 7.5` incl. **`o/u 4.5`** | Banned outright; 4.5 added 2026-06-14 (loss audit: O/U 4.5 Unders = 80% of all losses, 3 worst trades ever) |
 | **All stock market / equities** — S&P/`SPY`/Nasdaq/`QQQ`/Dow/DJIA + big-cap tickers & companies (word-bounded) + `closes above/below $X` + generic `(TICKER) … $` | **Banned outright** (re-banned 2026-06-12 after a one-day in-session experiment) |
 | **Tweet-count markets** — `tweet` + `-tweets`/`of-tweets` slugs | Banned outright (2026-06-12): week-long counts, no convergence signal |
 | **League of Ireland soccer** — `irl1-` slug prefix | Banned outright (2026-06-12) |
