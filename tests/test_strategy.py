@@ -3771,6 +3771,27 @@ class DynamicStakeTargetTests(unittest.TestCase):
         target = _dynamic_stake_target(self._settings(), 1000.0, 800.0, 2, 3.0)
         self.assertAlmostEqual(target, 200.0)  # 800/2=400 → capped at 20%
 
+    def test_initial_stake_pct_caps_fresh_entries_below_hard_cap(self):
+        # User 2026-06-14: fresh entries target initial_stake_pct (5%) so the
+        # dip double-down has headroom up to the hard race_stake_pct cap (10%).
+        from polymarket_bot.race_strategies import (
+            _dynamic_stake_target, _entry_cap_usd, _position_cap_usd,
+        )
+        s = Settings(race_stake_pct=0.10, race_initial_stake_pct=0.05,
+                     smart_max_position_ceiling_usd=0.0)
+        # Slow market, deep cash → entry targets the 5% INITIAL cap, not 10%.
+        self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 1, 3.0), 50.0)
+        self.assertAlmostEqual(_entry_cap_usd(s, 1000.0), 50.0)
+        # The hard per-position cap (double-down ceiling) stays 10%.
+        self.assertAlmostEqual(_position_cap_usd(s, 1000.0), 100.0)
+        # Headroom for the double-down = 100 - 50 = 50.
+
+        # Disabled (0 or ≥ cap) → entry targets the full cap, old behavior.
+        s_off = Settings(race_stake_pct=0.10, race_initial_stake_pct=0.0,
+                         smart_max_position_ceiling_usd=0.0)
+        self.assertAlmostEqual(_entry_cap_usd(s_off, 1000.0), 100.0)
+        self.assertAlmostEqual(_dynamic_stake_target(s_off, 1000.0, 800.0, 1, 3.0), 100.0)
+
     def test_near_resolution_boost_scales_share_but_never_pierces_cap(self):
         from polymarket_bot.race_strategies import _dynamic_stake_target
 
