@@ -56,6 +56,8 @@ Winners ride to 0.99, the live report shows every full-size trade again, and the
 
 ### Changed
 
+- **Soccer under-4.5 priority dropped** (user 2026-06-14): the one-bet-per-game dedup (`_dedup_same_game`) no longer prefers the under-4.5-goals market — it simply keeps the single highest-bid (most-resolved) candidate per game, like every other sport. One bet per game is unchanged. Dead `_is_under_45_candidate`/`_UNDER_45_RE` removed.
+
 - **Per-bet cap 20% → 10% + entry window hard-capped at 4h** (user 2026-06-14): `stake_pct` 0.20 → **0.10** in both profiles (the self-tuner's `race.stake_pct` upper bound is pinned to 0.10 so an auto-PR can never raise it back); and `max_hours_cap` → **0**, which makes `_entry_window_ladder` return a single `[4h]` rung — the 6/8/10/12h widening is OFF and nothing beyond 4h is ever scanned or entered.
 
 - **Resolved-exit raised 0.97 → 0.99** (`resolved_exit_threshold` in both `grinder.toml` and `grinder_b.toml`) — winners ride closer to settlement before the bot realizes them; the winners-only sweep follows the same threshold. Fallback to 0.98 if 0.99 rarely fills before resolution.
