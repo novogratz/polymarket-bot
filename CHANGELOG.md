@@ -20,6 +20,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **YouTube view/subscriber-count markets banned** (user 2026-06-14, after losing a MrBeast view-count bet): `is_excluded_market` now blocks `youtube`/`mrbeast`/`mr beast` titles and a word-bounded `\bviews\b` view-count rule — "reviews" and "interviews" stay tradeable (no word boundary before the 'v'), pinned by tests. View totals have no convergence signal and jump unpredictably.
+
 - **League of Ireland soccer banned** (user 2026-06-12): every Premier Division (Ireland) market carries the `irl1-` slug prefix — the whole championship is excluded (the question text has no league marker, so the slug is the identifier). Both live markets from tonight pinned as regression tests; other leagues' O/U 4.5 markets pinned as still tradeable.
 
 - **Stock market re-banned outright** (user 2026-06-12, ending the same-day in-session experiment): all equities/indices/ETFs/price-threshold markets are excluded again, always — the session gate, the same-day window, and the 0.90 stock entry floor are removed; every detection pattern (tickers, companies, generic `(TICKER) … $`, weekly/touch) stays and now feeds the unconditional ban. Esports (LoL-only, live, ≥0.92) unchanged.

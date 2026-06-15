@@ -107,6 +107,12 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     # 240-259 tweets from June 5 to June 12?" — a week-long count with no
     # convergence signal; one posting spree flips the bracket. Banned.
     "tweet",
+    # YouTube view/subscriber-count markets (2026-06-14, user rule — lost a
+    # MrBeast view-count bet): "Will <video> reach X views by <date>?" —
+    # a view total has no convergence signal and jumps unpredictably.
+    "youtube",
+    "mrbeast",
+    "mr beast",
 )
 _EXCLUDED_SLUG_SUBSTRINGS = (
     "updown",
@@ -118,6 +124,10 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     # Handicap slug markers (2026-06-12).
     "game-handicap",
     "map-handicap",
+    # YouTube view-count slug markers (2026-06-14).
+    "youtube",
+    "mrbeast",
+    "-views-",
     # League of Ireland / Premier Division (Ireland) — banned 2026-06-12
     # (user rule). Every market of that championship carries the "irl1-"
     # slug prefix (e.g. irl1-der-boh-2026-06-12-total-4pt5); the question
@@ -228,6 +238,11 @@ _STOCK_MARKET_RE = re.compile(
 # "(GOP)"-style politics and sports titles out.
 _PAREN_TICKER_RE = re.compile(r"\([A-Z]{2,5}\)")
 
+# YouTube/social view-count markets (2026-06-14): a standalone "views" word
+# (\bviews\b) is the view-count tell — "reviews"/"interviews" do NOT match
+# (no word boundary before the 'v'), so only true view-count titles are hit.
+_VIEW_COUNT_RE = re.compile(r"\bviews\b")
+
 
 
 def _parse_market_dt(raw: Any) -> datetime | None:
@@ -314,6 +329,8 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
         return True
     slug = str(market.get("slug") or "").lower()
     if any(pat in slug for pat in _EXCLUDED_SLUG_SUBSTRINGS):
+        return True
+    if _VIEW_COUNT_RE.search(q):
         return True
     if now is None:
         now = datetime.now(timezone.utc)
