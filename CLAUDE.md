@@ -65,12 +65,12 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 **Under-4.5 double-down (2026-06-14):** when a held soccer `O/U 4.5` Under position's LIVE ask dips 1–8¢ below its entry (`_execute_double_downs`), the bot buys more of the same outcome — averaging the cost basis down on a near-certain bet that got cheaper. Once per position (`doubled_down` flag), only while the ask stays in the price band, never past the 10% per-bet cap. A goal craters an Under far past 8¢ → no add. Off unless `race_double_down_enabled`.
 
 **Exits** (`_execute_race_exits`):
-- **Resolved-exit** — sell at **live CLOB book** bid ≥ `resolved_exit_threshold` (0.99; briefly 0.98 on 2026-06-10, reverted same day — a displayed "98¢" is usually the midpoint with a real bid at 0.96x, and settlement pays 1.00, so a 0.98 sale gives up real cents on near-settled bets). The exit loop probes the live book per open position (`live_best_bid` in `trading.py`) because Gamma's flipped quote and the synced `curPrice` lag the book — winners with a real 0.99 bid showed 0.95 and were never sold. Probe fail-open → cached price, retry next tick.
+- **Resolved-exit** — sell at **live CLOB book** bid ≥ `resolved_exit_threshold` (**0.97**, user 2026-06-14 "as we had before"; was 0.99). The exit loop probes the live book per open position (`live_best_bid` in `trading.py`) because Gamma's flipped quote and the synced `curPrice` lag the book. Probe fail-open → cached price, retry next tick.
 - **Controlled stop-loss — −25%, confirmed over 3 consecutive ticks, SOCCER MONEYLINES ONLY** (`sl_pct=0.25`, `sl_confirm_ticks=3`, min age 5 min; gate `_is_soccer_moneyline_position`). A one-tick thin-book phantom bid can never trigger it; the loss must persist. O/U totals, elections, and everything else never stop out. Tagged `race_stop_loss_confirmed`.
 - **Never sell below entry** — hard floor in `trading.execute_live_sell`. The confirmed stop-loss is the **only** exempt path; every other path holds a losing position to natural on-chain resolution.
-- **Winner floor (0.99; 0.98 fast lanes)** — `execute_live_sell` refuses winner-reason orders below the floor (the position holds instead), `_sweep_sell_live` clamps to 0.99, and the self-tuner's `resolved_exit_threshold` bounds are pinned to (0.99, 0.99). **Fast lanes (2026-06-12): esports + stock markets exit and floor at 0.98** (`is_fast_lane_text`) — their in-play/in-session books rarely print a 0.99 bid before close. Everything else sells at 0.99 or settles at 1.00.
+- **Winner floor (0.97)** — `execute_live_sell` refuses winner-reason orders below **0.97** (the position holds instead), `_sweep_sell_live` clamps to 0.97, and the self-tuner's `resolved_exit_threshold` bounds are pinned to (0.97, 0.97). One flat floor across every lane (user 2026-06-14, reverting the 0.99/0.98-fast-lane scheme).
 - **Expiry** never force-closes a market that is still `acceptingOrders` — it confirms via a live lookup and uses `gameStartTime` (Gamma `endDate` is frequently set *before* kickoff for sports). A genuinely-resolved loser is written off locally ~8 h after expiry, no order.
-- No EOD flatten, no blanket stop-loss, no loss-sweep. The universal sweep realizes **winners only** and uses `max(smart, race)` resolved-exit thresholds (0.99) — it can never fire earlier than the race exit (fixed 2026-06-10 after a 0.97 front-run).
+- No EOD flatten, no blanket stop-loss, no loss-sweep. The universal sweep realizes **winners only** and uses `max(smart, race)` resolved-exit thresholds (0.97) — it can never fire earlier than the race exit.
 - **Daily drawdown halt: disabled** (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0`). The per-trade confirmed SL is the risk control.
 
 **Excluded markets** (`models.py:is_excluded_market`, across every lane):
@@ -157,7 +157,7 @@ When changing strategy/filters/sizing/exits: edit **both** `grinder.toml` and `g
 1. Load short-expiry Gamma markets (out to the widest ladder rung).
 2. Build eligible candidates (entry filters + exclusions); log a wide forward-observation net. Entries use the 4 h window (ladder disabled); same-game picks collapse to one (best bid wins).
 3. Sync live Polymarket positions into the ledger; refresh live USDC cash.
-4. Run exits: live-book bid probe + resolved-exit (≥0.99), confirmed −25% SL, expiry/open-market handling, winners-only sweep.
+4. Run exits: live-book bid probe + resolved-exit (≥0.97), confirmed −25% SL, expiry/open-market handling, winners-only sweep.
 5. (Daily drawdown halt — disabled.)
 6. Place new grinder picks with percentage sizing toward the cash floor.
 7. Persist portfolio + write journal entries for any closed positions.

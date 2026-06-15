@@ -2569,11 +2569,10 @@ def _sweep_sell_live(settings: Settings, position: dict, price: float, shares: f
             return None
         tick_size = float(position.get("tick_size") or 0.001)
         neg_risk = bool(position.get("neg_risk") or False)
-        # Winner floor (2026-06-10): the sweep only handles WIN-resolved
-        # positions, and a resolved winner sells at 0.99 — never 0.97/0.98.
-        # The trigger threshold is ≥ 0.99 so price is already there; clamping
-        # both ways makes the rule structural.
-        sell_price = round(min(max(price, 0.99), 0.99), 3)
+        # Winner floor: the sweep only handles WIN-resolved positions; sell
+        # at the live price but never below 0.97 (user 2026-06-14, was 0.99),
+        # capped at 0.99.
+        sell_price = round(min(max(price, 0.97), 0.99), 3)
         # Minimal stub — place_live_order only reads token_id, tick_size, neg_risk
         stub = _types.SimpleNamespace(token_id=token_id, tick_size=tick_size, neg_risk=neg_risk)
         order, response = client.place_live_order(

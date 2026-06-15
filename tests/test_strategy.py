@@ -869,10 +869,10 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(result.order["price"], 0.99)
         self.assertEqual(position["exits"][0]["exit_price"], 0.99)
 
-    def test_live_sell_winner_floor_refuses_sub_099_resolved_exit(self):
-        # User rule 2026-06-10: resolved winners sell at 0.99, never 0.97/0.98.
-        # Any winner-exit reason carrying a sub-0.99 price must be refused so
-        # the position holds for a real 0.99 bid or on-chain settlement.
+    def test_live_sell_winner_floor_refuses_sub_097_resolved_exit(self):
+        # User 2026-06-14: winner floor back to 0.97 (was 0.99). A winner-exit
+        # reason carrying a sub-0.97 price must be refused so the position
+        # holds for a real 0.97 bid or on-chain settlement. A 0.97 bid sells.
         class TripwireClient:
             def place_live_order(self, **_kwargs):
                 raise AssertionError("no order may be placed below the winner floor")
@@ -886,12 +886,12 @@ class StrategyTests(unittest.TestCase):
             liquidity=1000,
             volume=2000,
             outcome="Yes",
-            price=0.97,
+            price=0.95,
             token_id="token",
             score=1,
             url="https://polymarket.com/event/q",
-            best_bid=0.97,
-            best_ask=0.99,
+            best_bid=0.95,
+            best_ask=0.97,
             tick_size=0.01,
             accepts_orders=True,
         )
@@ -921,9 +921,9 @@ class StrategyTests(unittest.TestCase):
                 )
         self.assertEqual(position["status"], "open")
 
-    def test_auto_improve_tuner_pins_resolved_exit_threshold_at_099(self):
-        # The offline self-tuner must never be able to lower the winner exit
-        # back into 0.95-0.98 territory (user rule 2026-06-10).
+    def test_auto_improve_tuner_pins_resolved_exit_threshold_at_097(self):
+        # User 2026-06-14: winner exit pinned at 0.97 — the tuner must never
+        # move it off 0.97.
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
@@ -932,7 +932,7 @@ class StrategyTests(unittest.TestCase):
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        self.assertEqual(mod.TUNABLE["race.resolved_exit_threshold"], (0.99, 0.99))
+        self.assertEqual(mod.TUNABLE["race.resolved_exit_threshold"], (0.97, 0.97))
 
     def test_live_sell_allows_tiny_share_rounding_below_minimum(self):
         class FakeClient:
