@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.85–0.97) close to resolution (4 h window, widening to 12 h max when quiet) and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −25% confirmed stop-loss and a hard "never sell below entry" floor. Crypto and esports markets are excluded. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.85–0.97) close to resolution (4 h window, hard maximum) and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −25% confirmed stop-loss and a hard "never sell below entry" floor. Crypto and esports markets are excluded. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -43,7 +43,7 @@ Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet,
 
 ### 1. Scan
 
-Every Gamma market closing within the widest ladder rung (12 h cap), fetched with two orderings (soonest-closing + highest-volume) and **full pagination past the API's silent 100-row cap** — ~1,000–2,000+ raw markets per tick depending on time of day.
+Every Gamma market closing within the 4 h window (hard max), fetched with two orderings (soonest-closing + highest-volume) and **full pagination past the API's silent 100-row cap** — ~1,000–2,000+ raw markets per tick depending on time of day.
 
 ### 2. Excluded market types
 
@@ -71,7 +71,7 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | Parameter | Value (`grinder.toml [race]`) |
 |---|---|
 | Price band (ask) | 0.85 – 0.97 |
-| Time to close | **dynamic**: ≤ 4 h preferred; widens 4 → 6 → 8 → 10 → 12 h max only when nothing is actionable — nothing beyond 12 h |
+| Time to close | **≤ 4 h — hard maximum** (user 2026-06-14; the 6/8/10/12 h ladder is disabled via `max_hours_cap = 0`) |
 | Max spread | ≤ 4¢ |
 | Min liquidity | $500 |
 | Min 24 h volume | $300 |
@@ -84,11 +84,11 @@ There are **no price-movement gates** (removed 2026-06-10): markets that moved t
 
 Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) and the top `max_orders_per_tick` (4) become this tick's picks. Markets that can never execute — token already held at its cap, order pending, or event already held — are removed **before** ranking, so they never burn pick slots. **One bet per game:** a game is identified by its date-truncated event slug and the team names in the question (one game spans several Polymarket events — moneyline, `-more-markets`, `-first-to-score`); same-game candidates collapse to a single pick before ranking, an open position on the game blocks all its other markets, and the execution loop backstops same-tick repeats. For soccer the **under-4.5-goals** market is preferred over everything else in the game.
 
-### 5. Sizing (dynamic, 20 % hard cap)
+### 5. Sizing (dynamic, 10 % hard cap)
 
-- **Hard cap: 20 % of equity per bet** (`stake_pct = 0.20`) — never more on a single outcome, top-ups included.
-- **Opportunity spread:** the per-bet target is `min(cap, available cash / N)` where N = actionable markets this tick. A busy evening with 20 qualifying markets gets ~5 % each so all can be funded; a quiet window gives each bet the full 20 %. Time-of-day adaptivity is emergent from N.
-- **Near-resolution boost:** 1.5× under 30 min to close, 1.25× under 1 h — scales the spread share but can never pierce the 20 % cap.
+- **Hard cap: 10 % of equity per bet** (`stake_pct = 0.10`; lowered from 20 % on 2026-06-14) — never more on a single outcome, top-ups included.
+- **Opportunity spread:** the per-bet target is `min(cap, available cash / N)` where N = actionable markets this tick. A busy evening with many qualifying markets splits the cash so all can be funded; a quiet window gives each bet the full 10 %. Time-of-day adaptivity is emergent from N.
+- **Near-resolution boost:** 1.5× under 30 min to close, 1.25× under 1 h — scales the spread share but can never pierce the 10 % cap.
 - No fixed dollar caps — everything scales with the bankroll.
 
 ### 6. Execution
@@ -96,7 +96,7 @@ Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) a
 - FOK market BUY with a price guard of ask + 1 tick (≤ 0.99).
 - **Stake capped to 90 % of the executable ask-side depth** within the guard, so big stakes fill what the book offers instead of being killed (`FOK orders are fully filled or killed`).
 - The ledger books the **true fill** (`makingAmount`/`takingAmount`), not the request — entry price, share count, and cash are exact.
-- **Top-ups:** a depth-capped entry keeps its market actionable; later ticks may buy more of the same token (re-passing every entry filter and the depth cap) until the position's total cost reaches the 20 % cap. One position per event otherwise.
+- **Top-ups:** a depth-capped entry keeps its market actionable; later ticks may buy more of the same token (re-passing every entry filter and the depth cap) until the position's total cost reaches the 10 % cap. One position per event otherwise.
 
 ### 7. Exits
 

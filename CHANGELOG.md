@@ -56,6 +56,8 @@ Winners ride to 0.99, the live report shows every full-size trade again, and the
 
 ### Changed
 
+- **Per-bet cap 20% → 10% + entry window hard-capped at 4h** (user 2026-06-14): `stake_pct` 0.20 → **0.10** in both profiles (the self-tuner's `race.stake_pct` upper bound is pinned to 0.10 so an auto-PR can never raise it back); and `max_hours_cap` → **0**, which makes `_entry_window_ladder` return a single `[4h]` rung — the 6/8/10/12h widening is OFF and nothing beyond 4h is ever scanned or entered.
+
 - **Resolved-exit raised 0.97 → 0.99** (`resolved_exit_threshold` in both `grinder.toml` and `grinder_b.toml`) — winners ride closer to settlement before the bot realizes them; the winners-only sweep follows the same threshold. Fallback to 0.98 if 0.99 rarely fills before resolution.
 - **LIVE REPORT — `POSITIONS OUVERTES`**: each open position now shows a 🟢/🔴 light (winning vs. losing on unrealized P&L) and a **`▶️ Voir le match`** link to the Polymarket event page (`eventSlug` from the Data API). The section header carries the **overall unrealized P&L** (`🟢/🔴 ±$X`) next to the count.
 

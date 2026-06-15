@@ -43,16 +43,14 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Dynamic entry window (2026-06-11/12): prefer bets within 4h of resolution.
-# When the 4h window has no actionable candidate the scan widens in 2h steps
-# and STOPS AT 12h (4 → 6 → 8 → 10 → 12) — user 2026-06-12: "i need bets for
-# today and max 4 6 8 12h". The 24h rung and the end-of-tomorrow daily rung
-# were both reverted the day they shipped (they bought overnight holds:
-# Trump approval, Israel airspace by-June-13). A by-tomorrow market becomes
-# tradeable only once it is within 12h of its end. The Gamma load always
-# covers the widest rung so held positions keep being marked and managed.
+# Entry window: 4h MAX, hard (user 2026-06-14: "only bet on things expiring
+# in 4 hours maximum - never bet on more than 4 hours"). The dynamic ladder
+# is OFF — max_hours_cap = 0 makes the ladder a single [4h] rung, so nothing
+# beyond 4h is ever scanned or entered. (The 6/8/10/12h widening that ran
+# 2026-06-11..14 is disabled; flip max_hours_cap back above max_hours to
+# re-enable it.)
 max_hours = 4.0
-max_hours_cap = 12.0
+max_hours_cap = 0.0
 daily_expiry_fallback = false
 scan_limit = 750
 
@@ -76,10 +74,10 @@ max_spread = 0.04
 # 20% HARD CAP per bet (user 2026-06-10, was 30%). Per-bet target spreads the
 # available cash across the actionable opportunities (cash/N), so a busy window
 # funds every market instead of the first picks taking the cap; a slow market
-# gives each bet the full 20%. The <30min/<1h boost scales the spread share but
+# gives each bet the full 10%. The <30min/<1h boost scales the spread share but
 # never pierces the cap (handled in race_strategies._dynamic_stake_target).
 stake_usd = 1.0
-stake_pct = 0.20
+stake_pct = 0.10
 max_orders_per_tick = 4
 cash_floor_pct = 0.01
 
