@@ -78,6 +78,12 @@ max_spread = 0.04
 # never pierces the cap (handled in race_strategies._dynamic_stake_target).
 stake_usd = 1.0
 stake_pct = 0.10
+# Under-4.5 double-down (user 2026-06-14): add to a held soccer O/U 4.5
+# Under position when its live ask dips 1-8c below entry, once per
+# position, never past the 10% per-bet cap.
+double_down_enabled = true
+double_down_min_dip = 0.01
+double_down_max_dip = 0.08
 max_orders_per_tick = 4
 cash_floor_pct = 0.01
 
