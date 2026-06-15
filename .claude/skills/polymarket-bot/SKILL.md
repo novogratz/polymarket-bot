@@ -14,9 +14,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
 
 - **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1) and
   `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
-- **Entry:** ask ∈ **[0.85, 0.97]**, **dynamic window** ≤ 4 h preferred,
-  widening 4 → 6 → 8 → 10 → **12 h max** only when nothing is
-  actionable — nothing beyond 12 h, ever (`max_hours=4`, `max_hours_cap=12`,
+- **Entry:** ask ∈ **[0.85, 0.97]**, **≤ 4 h to close — hard maximum**
+  (user 2026-06-14; the 6/8/10/12 h ladder is OFF via `max_hours_cap=0`),
+  nothing beyond 4 h ever (`max_hours=4`,
   `daily_expiry_fallback=false`; user 2026-06-12). **One bet per GAME**
   (`_dedup_same_game` on date-truncated event slug + team names — one game
   spans several Polymarket events; `_open_game_keys` blocks across ticks;
@@ -27,7 +27,7 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   values logged in the forward net only, pinned by tests.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
   dropped before pick-slot truncation.
-- **Sizing (dynamic):** hard cap **20% of equity per bet** (`stake_pct`); per-bet
+- **Sizing (dynamic):** hard cap **10% of equity per bet** (`stake_pct`; lowered from 20% 2026-06-14); per-bet
   target = available cash spread across the actionable opportunities (cash/N),
   full cap when the market is slow. Near-resolution boost never pierces the cap.
   Depth-capped entries top up later toward the same cap.
@@ -52,7 +52,7 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   - No EOD flatten, no loss-sweep; the winners-only sweep uses
     max(smart, race) thresholds (0.99) and can never front-run the race exit.
   - FOK BUY capped to 90% of executable ask depth; true fill booked; depth-
-    capped entries top up later toward the 20% per-bet cap.
+    capped entries top up later toward the 10% per-bet cap.
   - Expiry never force-closes a market still `acceptingOrders` (uses a live
     lookup + `gameStartTime`, since Gamma `endDate` is often pre-kickoff).
   - **Daily drawdown halt: disabled** (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0`).
