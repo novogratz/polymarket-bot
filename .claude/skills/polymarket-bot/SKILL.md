@@ -25,8 +25,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   ≥ $500, 24 h volume ≥ $300. NO price-movement gates (user 2026-06-10): day-
   change, day-momentum, and 1h gates all removed — fast movers stay tradeable,
   values logged in the forward net only, pinned by tests.
-  Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
-  dropped before pick-slot truncation.
+  Scan reads the **top 100 markets** per ordering (`scan_limit=100`, user
+  2026-06-15 — single Gamma page, no pagination); held/pending/capped markets
+  are dropped before pick-slot truncation.
 - **Sizing (dynamic):** hard cap **15% of equity per bet** (`stake_pct`; raised from 10% 2026-06-14); fresh entries open at
   the lower `initial_stake_pct` (5%) so the dip double-down has headroom to
   fill toward the 10% cap; per-bet

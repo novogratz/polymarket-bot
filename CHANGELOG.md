@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **Scan reverted to the top 100 markets** (user 2026-06-15): `scan_limit` 750 → **100** in all live profiles (`grinder.toml`, `grinder_b.toml`, `grinder_zaza.toml`) — a single Gamma page per ordering (soonest-closing / highest-volume), no pagination. The scan no longer walks ~1,000–2,000 raw markets per tick.
+
 ### Added
 
 - **Initial-entry size below the hard cap, so the double-down has room** (user 2026-06-14): new `race_initial_stake_pct` (5% in both profiles) sizes a FRESH entry — and any passive top-up — to 5% of equity, reserving the headroom up to the 10% hard cap (`race_stake_pct`) for the dip double-down to fill. Without this, opportunity-spread sizing put every bet straight at the 10% cap on a small bankroll, leaving the double-down $0 of room (it could never fire). `_entry_cap_usd` (entries/passive top-ups) vs `_position_cap_usd` (hard cap / double-down ceiling); `initial_stake_pct = 0` or ≥ cap restores the old single-cap behavior.

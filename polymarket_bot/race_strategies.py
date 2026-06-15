@@ -2329,7 +2329,7 @@ def _actionable_candidates(
             continue
         out.append((c, m))
     # One bet per game within the tick: collapse same-game candidates to a
-    # single pick, preferring soccer's under-4.5 line over the rest.
+    # single pick, keeping the highest-bid (most resolved) market.
     return _dedup_same_game(out)
 
 

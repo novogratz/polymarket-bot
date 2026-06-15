@@ -43,7 +43,7 @@ Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet,
 
 ### 1. Scan
 
-Every Gamma market closing within the 4 h window (hard max), fetched with two orderings (soonest-closing + highest-volume) and **full pagination past the API's silent 100-row cap** — ~1,000–2,000+ raw markets per tick depending on time of day.
+Gamma markets closing within the 4 h window (hard max), fetched with two orderings (soonest-closing + highest-volume), capped at the **top 100 markets per ordering** (`scan_limit=100`, user 2026-06-15 — a single Gamma page, no pagination).
 
 ### 2. Excluded market types
 

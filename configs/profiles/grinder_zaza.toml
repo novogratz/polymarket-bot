@@ -49,7 +49,9 @@ enabled = false
 # because per-trade sizing is hard-capped at ~$10 (15%) — a wider-band loss
 # costs ~$10, not the account.
 max_hours = 8.0
-scan_limit = 750
+# Top 100 markets only (user 2026-06-15, was 750): a single Gamma page per
+# ordering, no pagination.
+scan_limit = 100
 
 min_liquidity_usd = 500.0
 min_volume_24h_usd = 300.0
