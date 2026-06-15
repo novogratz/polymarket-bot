@@ -77,10 +77,10 @@ max_spread = 0.04
 # gives each bet the full 10%. The <30min/<1h boost scales the spread share but
 # never pierces the cap (handled in race_strategies._dynamic_stake_target).
 stake_usd = 1.0
-# 10% = the HARD per-position cap. Fresh entries open at the lower
+# 15% = the HARD per-position cap (user 2026-06-14, was 10%). Fresh entries open at the lower
 # initial_stake_pct (5%) and the dip double-down fills the reserved
-# headroom up to 10% — so the double-down always has room to add.
-stake_pct = 0.10
+# headroom up to 15% — so the double-down always has room to add.
+stake_pct = 0.15
 initial_stake_pct = 0.05
 # Under-4.5 double-down (user 2026-06-14): add to a held soccer O/U 4.5
 # Under position when its live ask dips 1-8c below entry, once per
