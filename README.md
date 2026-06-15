@@ -105,7 +105,7 @@ Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) a
 
 | Condition | Code |
 |---|---|
-| **Live book** bid ≥ 0.97 | `race_big_win_resolved` — primary win exit (`resolved_exit_threshold`, user 2026-06-14; was 0.99); the exit probes the live CLOB bid each tick (Gamma quotes lag). Held below 0.97 → rides to settlement at 1.00 |
+| **Live book** bid ≥ `min(0.99, max(0.97, entry + 0.02))` | `race_big_win_resolved` — primary win exit. **Dynamic TP (2026-06-15):** the exit must clear the entry by `min_profit_margin` (2¢), so a 0.97 entry sells at 0.99, never break-even; a 0.87 entry exits at 0.97. Probes the live CLOB bid each tick; above 0.99 rides to settlement at 1.00 |
 | Cached price ≥ 0.97 after the market left the scan | `resolved_market_sweep_win` — winners-only sweep, same threshold (it can never fire earlier than the race exit) |
 | Down ≥ 25 % from entry, confirmed 3 consecutive ticks, **soccer moneylines only** ("Will <Team> win on <date>?") | `race_stop_loss_confirmed` — the one path allowed to sell below entry |
 | Genuinely-resolved loser ~8 h past expiry | written off locally (no order; settles on-chain) |
