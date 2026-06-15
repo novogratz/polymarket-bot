@@ -21,6 +21,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **Entertainment / "Divertissement" markets banned** (user 2026-06-14): awards (academy award, best picture, grammy, emmy, golden globe, palme d'or, tony award), box office / rotten tomatoes, music charts (billboard, spotify, album, streams), streaming (netflix, tiktok), social metrics (subscribers, followers), and movie/film/celebrity — no convergence edge, they jump on hype. Name-collision-safe terms only (e.g. "academy award"/"best picture" not bare "oscar"). The audit confirmed only one entertainment market ever traded (the MrBeast view bet, already banned), so zero winners are lost; the strategy's actual winning lanes (moneylines, geopolitics, AI-model markets, golf, WNBA) are pinned tradeable.
+
 - **O/U 4.5 goal-total markets banned (data-driven)** (user 2026-06-14): a loss audit of the realized trades showed **O/U 4.5 Unders were 80% of all losses ($765 of $960)** and the three worst trades ever (Derry −$277, US-Paraguay −$266, FC Lahti −$194 — each bigger than total profit) — textbook gap risk (an Under at 0.94 craters to $0 on the goal that crosses the line). 4.5 was the only O/U line still allowed; now every O/U goal total (0.5–7.5) is banned. The dip double-down also skips excluded markets, so existing O/U 4.5 holds are never topped up.
 
 - **YouTube view/subscriber-count markets banned** (user 2026-06-14, after losing a MrBeast view-count bet): `is_excluded_market` now blocks `youtube`/`mrbeast`/`mr beast` titles and a word-bounded `\bviews\b` view-count rule — "reviews" and "interviews" stay tradeable (no word boundary before the 'v'), pinned by tests. View totals have no convergence signal and jump unpredictably.
