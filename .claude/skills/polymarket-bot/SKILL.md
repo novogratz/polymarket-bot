@@ -39,7 +39,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   feed) is bought up once toward the 10% cap (`_execute_double_downs`,
   `race_double_down_enabled`).
 - **Exits:**
-  - Resolved-exit: sell at **live CLOB book** bid ≥ `resolved_exit_threshold`
+  - Resolved-exit: sell at **live CLOB book** bid ≥ a dynamic per-position
+    threshold `min(0.99, max(resolved_exit_threshold, entry + min_profit_margin))`
+    (2026-06-15: 0.97 entry → 0.99 exit, never break-even); else `resolved_exit_threshold`
     (**0.97**, user 2026-06-14 "as we had before"; was 0.99). The exit
     loop probes the live book per position (`live_best_bid`) — Gamma
     quotes/`curPrice` lag. Probe fail-open → cached price.

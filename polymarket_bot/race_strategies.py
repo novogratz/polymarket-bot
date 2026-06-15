@@ -1544,6 +1544,15 @@ def _execute_race_exits(
             str(position.get("event_slug") or position.get("slug") or ""),
         ):
             resolved_threshold = min(resolved_threshold, 0.98)
+        # Dynamic take-profit (user 2026-06-15): the exit must clear the entry
+        # by race_min_profit_margin, capped at 0.99 — so a 0.97 entry sells at
+        # 0.99, never at break-even. If the required bid never prints, the
+        # position simply rides to on-chain settlement at 1.00.
+        pos_entry = float(position.get("entry_price", 0.0) or 0.0)
+        if resolved_threshold > 0 and pos_entry > 0:
+            resolved_threshold = min(
+                0.99, max(resolved_threshold, pos_entry + settings.race_min_profit_margin)
+            )
         position_resolved = (
             resolved_threshold > 0 and position_price >= resolved_threshold
         )

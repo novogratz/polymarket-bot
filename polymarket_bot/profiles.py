@@ -269,6 +269,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "sl_confirm_ticks": ("POLYMARKET_RACE_SL_CONFIRM_TICKS", "int"),
         "near_expiry_minutes": ("POLYMARKET_RACE_NEAR_EXPIRY_MINUTES", "int"),
         "resolved_exit_threshold": ("POLYMARKET_RACE_RESOLVED_EXIT_THRESHOLD", "float"),
+        "min_profit_margin": ("POLYMARKET_RACE_MIN_PROFIT_MARGIN", "float"),
         "contrarian_min_momentum": ("POLYMARKET_RACE_CONTRARIAN_MIN_MOMENTUM", "float"),
         "favorite_min_bid": ("POLYMARKET_RACE_FAVORITE_MIN_BID", "float"),
         "breakout_min_momentum": ("POLYMARKET_RACE_BREAKOUT_MIN_MOMENTUM", "float"),

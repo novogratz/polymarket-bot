@@ -2771,13 +2771,20 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
             cur_f = float(cur)
         except (TypeError, ValueError):
             continue
-        # Only sweep WIN side (price at or above resolution threshold).
-        # Loss side (price near 0) is NEVER swept — see docstring above.
-        if cur_f < win_threshold:
-            continue
         entry = float(position.get("entry_price") or 0.0)
         shares = float(position.get("shares") or 0.0)
         if entry <= 0 or shares <= 0:
+            continue
+        # Only sweep WIN side (price at or above resolution threshold).
+        # Loss side (price near 0) is NEVER swept — see docstring above.
+        # Dynamic take-profit (user 2026-06-15): require the price to clear
+        # the entry by race_min_profit_margin (capped 0.99) so the sweep can't
+        # close a high-entry favorite at break-even before the race exit would.
+        effective_threshold = win_threshold
+        margin = float(getattr(settings, "race_min_profit_margin", 0.0) or 0.0)
+        if margin > 0:
+            effective_threshold = min(0.99, max(win_threshold, entry + margin))
+        if cur_f < effective_threshold:
             continue
         cost_basis = float(position.get("stake") or position.get("cost_basis") or (entry * shares))
         reason = "resolved_market_sweep_win"

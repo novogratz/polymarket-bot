@@ -348,6 +348,11 @@ class Settings:
     race_double_down_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_DOUBLE_DOWN_ENABLED", False))
     race_double_down_min_dip: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_DOUBLE_DOWN_MIN_DIP", 0.01))
     race_double_down_min_price: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_DOUBLE_DOWN_MIN_PRICE", 0.60))
+    # Dynamic take-profit margin (user 2026-06-15): the resolved-exit must
+    # clear the entry by at least this, capped at 0.99 — so a high-entry
+    # favorite (e.g. 0.97) sells at 0.99, never at break-even. The effective
+    # exit threshold = min(0.99, max(resolved_exit_threshold, entry + margin)).
+    race_min_profit_margin: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_PROFIT_MARGIN", 0.02))
     race_max_orders_per_tick: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_MAX_ORDERS_PER_TICK", 3))
     race_cash_floor_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_CASH_FLOOR_PCT", 0.10))
     race_tp_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_TP_PCT", 0.25))
