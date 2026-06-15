@@ -3360,6 +3360,39 @@ class ActionableCandidatesTests(unittest.TestCase):
         self.assertAlmostEqual(portfolio.cash, 561.86, places=2)
 
 
+class EntryWindowStartOrCloseTests(unittest.TestCase):
+    """User rule 2026-06-14: keep a market only if its game STARTS within the
+    next max_hours OR it CLOSES within the next max_hours."""
+
+    def _market(self, mid, *, end_h, start_h=None):
+        m = {
+            "id": mid, "question": f"Team {mid} vs Rival: O/U 4.5",
+            "slug": f"team-{mid}-ou45", "acceptingOrders": True,
+            "liquidity": 1500, "volume24hr": 2000,
+            "bestBid": 0.91, "bestAsk": 0.92, "orderPriceMinTickSize": 0.01,
+            "outcomes": '["Over", "Under"]', "outcomePrices": '["0.08", "0.92"]',
+            "clobTokenIds": f'["tok-{mid}-o", "tok-{mid}-u"]',
+            "endDate": (utc_now() + timedelta(hours=end_h)).isoformat(),
+        }
+        if start_h is not None:
+            m["gameStartTime"] = (utc_now() + timedelta(hours=start_h)).isoformat()
+        return m
+
+    def test_keeps_close_soon_or_start_soon_drops_the_rest(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0)
+        markets = [
+            self._market("close3", end_h=3.0),                  # closes in 3h ✓
+            self._market("start2", end_h=6.0, start_h=2.0),     # starts in 2h ✓
+            self._market("inprog", end_h=6.0, start_h=-1.0),    # started, closes 6h ✗
+            self._market("late", end_h=7.0),                    # closes in 7h ✗
+        ]
+        ids = {c.market_id for c, _ in _build_eligible_candidates(markets, settings)}
+        self.assertEqual(ids, {"close3", "start2"})
+
+
 class DynamicEntryWindowTests(unittest.TestCase):
     """User rule 2026-06-11: prefer bets ≤4h from resolution; if nothing is
     actionable, widen the window 4 → 6 → 8 → 10 and stop at 12h max."""

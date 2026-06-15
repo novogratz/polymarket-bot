@@ -240,7 +240,16 @@ def _build_eligible_candidates(
         if is_excluded_market(market):
             continue
         end_date = parse_dt(market.get("endDate"))
-        if end_date is None or end_date < earliest or end_date > horizon:
+        if end_date is None:
+            continue
+        # Entry window (user 2026-06-14): keep a market only if its GAME
+        # STARTS within the next ``max_hours`` OR it CLOSES within the next
+        # ``max_hours``. A game in progress that doesn't close inside the
+        # window is dropped — only fast-resolving bets qualify.
+        game_start = parse_dt(market.get("gameStartTime"))
+        closes_soon = earliest <= end_date <= horizon
+        starts_soon = game_start is not None and now <= game_start <= horizon
+        if not (closes_soon or starts_soon):
             continue
         if not bool(market.get("acceptingOrders")):
             continue

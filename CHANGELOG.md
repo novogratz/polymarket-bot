@@ -56,6 +56,8 @@ Winners ride to 0.99, the live report shows every full-size trade again, and the
 
 ### Changed
 
+- **Entry window = game starts OR market closes within 4h** (user 2026-06-14): `_build_eligible_candidates` now keeps a market only when its `gameStartTime` is within the next `max_hours` OR its `endDate` is — a game already in progress that doesn't close inside the window is dropped. The dynamic widening ladder stays disabled (`max_hours_cap=0`).
+
 - **Resolved-exit / winner floor reverted to 0.97** (user 2026-06-14, "sell at 0.97 as we had before"): `resolved_exit_threshold` 0.99 → **0.97** in both profiles; the `execute_live_sell` winner floor, the `_sweep_sell_live` clamp, and the self-tuner pin all move to 0.97 (one flat floor — the 0.99 + 0.98-fast-lane scheme is gone). The live-book bid probe is unchanged.
 
 - **Soccer under-4.5 priority dropped** (user 2026-06-14): the one-bet-per-game dedup (`_dedup_same_game`) no longer prefers the under-4.5-goals market — it simply keeps the single highest-bid (most-resolved) candidate per game, like every other sport. One bet per game is unchanged. Dead `_is_under_45_candidate`/`_UNDER_45_RE` removed.

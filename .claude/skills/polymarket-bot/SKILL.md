@@ -14,9 +14,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
 
 - **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1) and
   `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
-- **Entry:** ask ∈ **[0.85, 0.97]**, **≤ 4 h to close — hard maximum**
-  (user 2026-06-14; the 6/8/10/12 h ladder is OFF via `max_hours_cap=0`),
-  nothing beyond 4 h ever (`max_hours=4`,
+- **Entry:** ask ∈ **[0.85, 0.97]**, **game starts OR market closes within
+  ≤ 4 h** (user 2026-06-14; dynamic widening OFF via `max_hours_cap=0`),
+  (`max_hours=4`,
   `daily_expiry_fallback=false`; user 2026-06-12). **One bet per GAME**
   (`_dedup_same_game` on date-truncated event slug + team names — one game
   spans several Polymarket events; `_open_game_keys` blocks across ticks;
