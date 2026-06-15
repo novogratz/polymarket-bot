@@ -81,12 +81,19 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "halftime score",
     "half-time score",
     "leading at half",
-    # O/U low-line soccer: 1-3 goals flip the bet instantly.
+    # ALL O/U goal-total lines banned (o/u 4.5 added 2026-06-14, data-driven):
+    # the loss audit showed O/U 4.5 Unders were 80% of all realized losses
+    # ($765 of $960) and the three worst trades ever (Derry -$277, US-Paraguay
+    # -$266, FC Lahti -$194 — each bigger than total profit). An Under sits at
+    # 0.94 looking safe, then craters to $0 on the goal that crosses the line:
+    # textbook gap risk the strategy is meant to avoid. 4.5 was the only O/U
+    # line still allowed — now closed.
     "o/u 0.5",
     "o/u 1.5",
     "o/u 2.5",
     "o/u 3.5",
-    # O/U 5.5+ high-line: rare but catastrophic if 6+ goals scored.
+    "o/u 4.5",
+    "over/under 4.5",
     "o/u 5.5",
     "o/u 6.5",
     "o/u 7.5",
@@ -124,6 +131,10 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     # Handicap slug markers (2026-06-12).
     "game-handicap",
     "map-handicap",
+    # O/U 4.5 goal-total slug markers (2026-06-14, data-driven ban).
+    "-total-4pt5",
+    "-ou-45",
+    "ou-4pt5",
     # YouTube view-count slug markers (2026-06-14).
     "youtube",
     "mrbeast",

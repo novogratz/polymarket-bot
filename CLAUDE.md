@@ -61,7 +61,7 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 - **YouTube view/subscriber-count markets** — banned outright (2026-06-14, lost a MrBeast view bet): `youtube`/`mrbeast` + a word-bounded `\bviews\b` rule ("reviews"/"interviews" stay safe)
 - **League of Ireland soccer banned (2026-06-12)** — every Premier Division (Ireland) market carries the `irl1-` slug prefix; the whole championship is excluded (live O/U positions slid mid-game with no league marker in the question)
 - **Esports — LEAGUE OF LEGENDS ONLY, LIVE GAMES ONLY, ask ≥ 0.92 (2026-06-12)**: only LoL ("LoL:") qualifies, only while the game is in progress (`gameStartTime` in the past, ≤ 8 h), and only at ask ≥ **0.92** (`ESPORTS_MIN_ASK`). **Every other title — Mobile Legends, Counter-Strike, Valorant, Dota, CS2, Rainbow Six, Rocket League, Overwatch, generic BO1/BO3/BO5 — is banned outright**, live or not
-- temperature/weather (°C + °F), exact-score, O/U low-line (0.5/1.5/2.5/3.5) + high-line (5.5/6.5/7.5), Asian-handicap "Spread:", draw markets, halftime leading/score
+- temperature/weather (°C + °F), exact-score, **ALL O/U goal-total lines (0.5/1.5/2.5/3.5/4.5/5.5/6.5/7.5)** — 4.5 banned 2026-06-14 after a loss audit showed O/U 4.5 Unders were 80% of all losses (3 worst trades ever) — Asian-handicap "Spread:"/"Game Handicap:", draw markets, halftime leading/score
 - `btc_edge` lane and `noise_fallback` are **disabled**.
 
 ## Multi-bot layout

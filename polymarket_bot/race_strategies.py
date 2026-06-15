@@ -2358,6 +2358,13 @@ def _execute_double_downs(
             continue
         if position.get("doubled_down"):
             continue
+        # Never add to a now-excluded category (e.g. an O/U 4.5 hold after the
+        # 2026-06-14 ban): adding to a banned lane defeats the ban's purpose.
+        if is_excluded_market({
+            "question": position.get("question"),
+            "slug": position.get("event_slug") or position.get("slug"),
+        }):
+            continue
         token_id = position.get("token_id")
         candidate = by_token.get(token_id)
         if candidate is None or candidate.best_ask is None or not candidate.token_id:
