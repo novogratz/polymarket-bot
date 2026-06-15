@@ -2146,6 +2146,17 @@ def _entry_window_ladder(settings: Settings, now: Any = None) -> list[float]:
 # selection, this cap is the in-loop backstop.
 EVENT_EXPOSURE_CAP = 1
 
+# Soccer totals: the only O/U line the exclusion filters allow is 4.5, so a
+# "… : O/U 4.5" question with the Under outcome is the soccer under-4.5 bet.
+_UNDER_45_RE = re.compile(r"(?:o/u|over/under)\s*4\.5\b")
+
+
+def _is_under_45(question: Any, outcome: Any) -> bool:
+    return (
+        bool(_UNDER_45_RE.search(str(question or "").lower()))
+        and str(outcome or "").strip().lower() == "under"
+    )
+
 # ── Game identity (2026-06-11) ───────────────────────────────────────────
 # Polymarket splits ONE game across SEVERAL events: the Mexico–South Africa
 # moneyline lived in `fifwc-mex-rsa-2026-06-11`, the O/U 4.5 in
@@ -2293,6 +2304,93 @@ def _actionable_candidates(
     return _dedup_same_game(out)
 
 
+def _execute_double_downs(
+    client: Any,
+    settings: Settings,
+    portfolio: Portfolio,
+    pool: list[Candidate],
+    strategy_name: str,
+) -> list[dict[str, Any]]:
+    """Double down on a dipped Under-4.5 position (user 2026-06-14).
+
+    When an OPEN soccer "O/U 4.5" Under position's LIVE ask has dipped a bit
+    below its (volume-weighted) entry price, buy more of the same outcome —
+    averaging the cost basis down on a near-certain bet that just got
+    cheaper. Strictly bounded:
+      - once per position (``doubled_down`` flag);
+      - dip in [min_dip, max_dip] — a real dip, not noise, and not a
+        collapse (a goal craters an Under far past max_dip → no add);
+      - live ask still inside the entry price band;
+      - the add never pushes total cost past the per-position cap (the 10%
+        per-bet equity cap), so the user's hard sizing ceiling holds.
+    """
+    if not getattr(settings, "race_double_down_enabled", False):
+        return []
+    by_token = {c.token_id: c for c in pool if c.token_id}
+    equity = float(portfolio.summary().get("equity", portfolio.cash))
+    cap = _position_cap_usd(settings, equity)
+    cash_floor = equity * settings.race_cash_floor_pct
+    out: list[dict[str, Any]] = []
+    for position in list(portfolio.positions):
+        if position.get("status") != "open" or not position.get("live"):
+            continue
+        if str(position.get("strategy") or "") not in (strategy_name, "live_sync"):
+            continue
+        if position.get("doubled_down"):
+            continue
+        if not _is_under_45(position.get("question"), position.get("outcome")):
+            continue
+        token_id = position.get("token_id")
+        candidate = by_token.get(token_id)
+        if candidate is None or candidate.best_ask is None or not candidate.token_id:
+            continue
+        ask = float(candidate.best_ask)
+        entry = float(position.get("entry_price") or 0.0)
+        if entry <= 0:
+            continue
+        dip = entry - ask
+        if dip < settings.race_double_down_min_dip or dip > settings.race_double_down_max_dip:
+            continue
+        if ask < settings.race_min_price or ask > settings.race_max_price:
+            continue
+        room = cap - float(position.get("stake") or 0.0)
+        add = min(room, max(0.0, portfolio.cash - cash_floor))
+        if add < _TOPUP_MIN_USD:
+            continue
+        try:
+            result = execute_live_trade(
+                client, settings, candidate, portfolio,
+                min_trade_usd=1.0, max_trade_usd=add,
+                strategy=strategy_name,
+                signal={"question": candidate.question, "tag": f"{strategy_name}_double_down"},
+            )
+            position["doubled_down"] = True
+            portfolio.save(settings.state_path)
+            out.append({
+                "market_id": position.get("market_id"),
+                "question": position.get("question"),
+                "action": "double_down",
+                "reason": "under45_double_down",
+                "dip": round(dip, 4),
+                "add_usd": round(add, 2),
+                "order": result.order,
+                "response": result.response,
+            })
+            print(
+                f"⏬ {strategy_name} double-down on '{position.get('question')}' "
+                f"— ask {ask:.3f} dipped {dip*100:.1f}¢ below entry {entry:.3f}, "
+                f"added ${add:.2f} toward the cap.",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"⚠️  {strategy_name} double-down skipped on "
+                f"'{position.get('question')}': {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+    return out
+
+
 def _run_race_tick(
     settings: Settings,
     strategy_name: str,
@@ -2329,6 +2427,17 @@ def _run_race_tick(
         except Exception as exc:
             print(f"   live cash refresh failed: {type(exc).__name__}: {exc}")
 
+    # Under-4.5 double-down (user 2026-06-14): add to a dipped Under-4.5
+    # position before placing new entries, bounded by the per-position cap.
+    double_downs = _execute_double_downs(client, settings, portfolio, pool, strategy_name)
+    if double_downs:
+        _step(settings, f"   double-downs: {len(double_downs)}")
+        if not settings.dry_run:
+            try:
+                portfolio.cash = round(client.live_available_balance(), 2)
+            except Exception:
+                pass
+
     # Daily drawdown gate — block new entries when realized PnL today
     # is ≤ -X% of starting equity. Existing positions still run exits.
     if settings.race_daily_drawdown_pct > 0:
@@ -2349,6 +2458,7 @@ def _run_race_tick(
                 "trades": [],
                 "orders_placed": 0,
                 "exits": exits,
+                "double_downs": double_downs,
                 "rejected_signals": [],
                 "scan_counts": {"raw_markets": len(markets), "eligible": len(eligible), "picks": 0},
                 "summary": portfolio.summary(),
@@ -2555,6 +2665,7 @@ def _run_race_tick(
         "trades": executed,
         "orders_placed": len(executed),
         "exits": exits,
+        "double_downs": double_downs,
         "rejected_signals": rejected,
         "arb_trades": arb_results,
         "btc_trades": btc_trades,
