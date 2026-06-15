@@ -331,6 +331,13 @@ class Settings:
     race_max_spread: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MAX_SPREAD", 0.05))
     race_stake_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_STAKE_USD", 5.0))
     race_stake_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_STAKE_PCT", 0.15))
+    # Initial-entry size as a fraction of equity (user 2026-06-14): a FRESH
+    # entry (and any passive top-up) targets this, leaving headroom up to the
+    # full race_stake_pct cap for the dip double-down to fill. 0 or
+    # ≥ race_stake_pct disables the reservation (entries target the full cap,
+    # old behavior). Example: initial 0.05 + cap 0.10 → open at 5%, double
+    # down to 10% on a dip.
+    race_initial_stake_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_INITIAL_STAKE_PCT", 0.0))
     # Dip double-down (user 2026-06-14): when an OPEN position's live ask
     # dips at least ``min_dip`` below its entry AND is still "alive" (ask ≥
     # ``min_price``, default 0.60), buy more (average down) toward the

@@ -27,7 +27,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   values logged in the forward net only, pinned by tests.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
   dropped before pick-slot truncation.
-- **Sizing (dynamic):** hard cap **10% of equity per bet** (`stake_pct`; lowered from 20% 2026-06-14); per-bet
+- **Sizing (dynamic):** hard cap **10% of equity per bet** (`stake_pct`); fresh entries open at
+  the lower `initial_stake_pct` (5%) so the dip double-down has headroom to
+  fill toward the 10% cap; per-bet
   target = available cash spread across the actionable opportunities (cash/N),
   full cap when the market is slow. Near-resolution boost never pierces the cap.
   Depth-capped entries top up later toward the same cap.

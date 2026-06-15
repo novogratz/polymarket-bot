@@ -2066,12 +2066,11 @@ _TOPUP_MIN_USD = 5.0
 
 
 def _position_cap_usd(settings: Settings, equity: float) -> float:
-    """Maximum total cost basis allowed on one position.
+    """HARD maximum total cost basis allowed on one position.
 
-    The per-trade sizing target (equity × race_stake_pct, ~30%) doubles as
-    the per-position cap: a depth-capped entry may be completed by top-ups
-    on later ticks, but one bet never concentrates more than a single full
-    stake on one outcome. Min'd with the configured ceilings when set.
+    ``equity × race_stake_pct`` (the 10% per-bet cap) — the absolute ceiling
+    a position can ever reach, only fully filled via the dip double-down.
+    Min'd with the configured ceilings when set.
     """
     cap = equity * settings.race_stake_pct
     if settings.smart_max_position_ceiling_pct > 0:
@@ -2079,6 +2078,21 @@ def _position_cap_usd(settings: Settings, equity: float) -> float:
     if settings.smart_max_position_ceiling_usd > 0:
         cap = min(cap, settings.smart_max_position_ceiling_usd)
     return max(0.0, cap)
+
+
+def _entry_cap_usd(settings: Settings, equity: float) -> float:
+    """Cost-basis ceiling for a FRESH entry and any passive top-up.
+
+    When ``race_initial_stake_pct`` is set (0 < it < race_stake_pct), entries
+    and passive top-ups target ``equity × initial_stake_pct`` (e.g. 5%),
+    reserving the headroom up to the full ``_position_cap_usd`` (10%) for the
+    dip double-down. Otherwise this equals the hard cap (old behavior).
+    """
+    initial = float(getattr(settings, "race_initial_stake_pct", 0.0) or 0.0)
+    hard = _position_cap_usd(settings, equity)
+    if initial <= 0.0 or initial >= settings.race_stake_pct:
+        return hard
+    return min(hard, max(0.0, equity * initial))
 
 
 def _dynamic_stake_target(
@@ -2099,7 +2113,9 @@ def _dynamic_stake_target(
     - The near-resolution boost (1.5× under 30 min, 1.25× under 1 h)
       scales the spread share but can never pierce the cap.
     """
-    per_bet_cap = equity * settings.race_stake_pct
+    # Entries (and passive top-ups) target the INITIAL cap; the dip
+    # double-down later fills the reserved headroom up to the hard cap.
+    per_bet_cap = _entry_cap_usd(settings, equity)
     spread_share = cash_above_floor / max(1, n_opportunities)
     h2c = hours_to_close if hours_to_close is not None else 99.0
     if h2c < 0.5:
@@ -2279,7 +2295,9 @@ def _actionable_candidates(
     qualifying bet on the same outcome.
     """
     equity = float(portfolio.summary().get("equity", portfolio.cash))
-    cap = _position_cap_usd(settings, equity)
+    # Passive top-up uses the ENTRY cap (initial %); the headroom up to the
+    # hard cap is reserved for the dip double-down only.
+    cap = _entry_cap_usd(settings, equity)
     open_keys = _open_game_keys(portfolio)
     out: list[tuple[Candidate, float]] = []
     for c, m in eligible:
@@ -2555,7 +2573,9 @@ def _run_race_tick(
         topup_room = 0.0
         if topup_pos is not None:
             equity_now = float(portfolio.summary().get("equity", portfolio.cash))
-            cap = _position_cap_usd(settings, equity_now)
+            # Passive top-up fills only to the ENTRY cap; the dip double-down
+            # owns the headroom up to the hard per-position cap.
+            cap = _entry_cap_usd(settings, equity_now)
             topup_room = cap - float(topup_pos.get("stake") or 0.0)
             if cap <= 0 or topup_room < _TOPUP_MIN_USD:
                 rejected.append({"question": candidate.question, "reason": "topup_cap_reached"})
