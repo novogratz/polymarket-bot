@@ -3594,6 +3594,109 @@ class SameEventDedupTests(unittest.TestCase):
         self.assertEqual(sorted(c.market_id for c, _ in actionable), ["1", "2"])
 
 
+class DoubleDownTests(unittest.TestCase):
+    """User rule 2026-06-14: when a held Under-4.5 position's live ask dips a
+    bit below entry, double down (buy more) — once, bounded by the 10% cap."""
+
+    def _under45(self, ask):
+        return Candidate(
+            market_id="u45", question="FC Nantes vs. PSG: O/U 4.5",
+            slug="nantes-psg-ou-45", end_date=utc_now() + timedelta(hours=2),
+            hours_to_close=2, liquidity=1500, volume=2000, outcome="Under",
+            price=ask, token_id="tok-u45", score=1,
+            url="https://polymarket.com/event/fc-nantes-vs-psg",
+            best_bid=round(ask - 0.01, 2), best_ask=ask, tick_size=0.01,
+            accepts_orders=True, event_slug="fc-nantes-vs-psg",
+        )
+
+    def _settings(self, **over):
+        base = dict(dry_run=True, min_order_shares=5.0, race_stake_pct=0.20,
+                    race_min_price=0.85, race_max_price=0.97, race_cash_floor_pct=0.0,
+                    race_double_down_enabled=True, quiet=True)
+        base.update(over)
+        return Settings(**base)
+
+    def test_dipped_under45_doubles_down_once(self):
+        from polymarket_bot.race_strategies import _execute_double_downs
+
+        entry_cand = self._under45(0.93)  # entry ask
+        portfolio = Portfolio(cash=1000.0, positions=[])
+        pos = portfolio.record_live_position(entry_cand, 40.0, entry_price=0.93)
+        pos["strategy"] = "grinder"
+
+        client = build_client(Settings(dry_run=True))
+        # Live ask dipped to 0.90 (3¢ below entry) → double down.
+        dipped = self._under45(0.90)
+        stake_before = float(pos["stake"])
+        outs = _execute_double_downs(client, self._settings(), portfolio, [dipped], "grinder")
+        self.assertEqual(len(outs), 1)
+        self.assertEqual(outs[0]["reason"], "under45_double_down")
+        self.assertTrue(pos.get("doubled_down"))
+        self.assertGreater(float(pos["stake"]), stake_before)
+        # cost basis never exceeds the 10% cap... here cap = equity*0.20.
+
+        # Second run: already doubled → no-op.
+        outs2 = _execute_double_downs(client, self._settings(), portfolio, [dipped], "grinder")
+        self.assertEqual(outs2, [])
+
+    def test_no_double_down_when_not_dipped_or_collapsed(self):
+        from polymarket_bot.race_strategies import _execute_double_downs
+
+        client = build_client(Settings(dry_run=True))
+        for ask in (0.94, 0.935, 0.80):  # above entry, <1¢ dip, >8¢ collapse
+            entry_cand = self._under45(0.93)
+            portfolio = Portfolio(cash=1000.0, positions=[])
+            pos = portfolio.record_live_position(entry_cand, 40.0, entry_price=0.93)
+            pos["strategy"] = "grinder"
+            outs = _execute_double_downs(
+                client, self._settings(), portfolio, [self._under45(ask)], "grinder")
+            self.assertEqual(outs, [], f"ask={ask}")
+            self.assertFalse(pos.get("doubled_down"), f"ask={ask}")
+
+    def test_no_double_down_for_non_under45(self):
+        from polymarket_bot.race_strategies import _execute_double_downs
+
+        moneyline = Candidate(
+            market_id="ml", question="Will Nantes win on 2026-06-14?",
+            slug="nantes-win", end_date=utc_now() + timedelta(hours=2),
+            hours_to_close=2, liquidity=1500, volume=2000, outcome="Yes",
+            price=0.93, token_id="tok-ml", score=1,
+            url="https://polymarket.com/event/fc-nantes-vs-psg",
+            best_bid=0.92, best_ask=0.93, tick_size=0.01, accepts_orders=True,
+            event_slug="fc-nantes-vs-psg",
+        )
+        portfolio = Portfolio(cash=1000.0, positions=[])
+        pos = portfolio.record_live_position(moneyline, 40.0, entry_price=0.93)
+        pos["strategy"] = "grinder"
+        dipped = Candidate(
+            market_id="ml", question="Will Nantes win on 2026-06-14?",
+            slug="nantes-win", end_date=utc_now() + timedelta(hours=2),
+            hours_to_close=2, liquidity=1500, volume=2000, outcome="Yes",
+            price=0.90, token_id="tok-ml", score=1,
+            url="https://polymarket.com/event/fc-nantes-vs-psg",
+            best_bid=0.89, best_ask=0.90, tick_size=0.01, accepts_orders=True,
+            event_slug="fc-nantes-vs-psg",
+        )
+        outs = _execute_double_downs(
+            client=build_client(Settings(dry_run=True)),
+            settings=self._settings(), portfolio=portfolio, pool=[dipped],
+            strategy_name="grinder")
+        self.assertEqual(outs, [])
+
+    def test_disabled_by_default(self):
+        from polymarket_bot.race_strategies import _execute_double_downs
+
+        entry_cand = self._under45(0.93)
+        portfolio = Portfolio(cash=1000.0, positions=[])
+        pos = portfolio.record_live_position(entry_cand, 40.0, entry_price=0.93)
+        pos["strategy"] = "grinder"
+        outs = _execute_double_downs(
+            build_client(Settings(dry_run=True)),
+            self._settings(race_double_down_enabled=False),
+            portfolio, [self._under45(0.90)], "grinder")
+        self.assertEqual(outs, [])
+
+
 class DynamicStakeTargetTests(unittest.TestCase):
     """Opportunity-spread sizing (user 2026-06-10): 20% of equity hard cap
     per bet; with N actionable markets each bet targets cash/N; a slow
