@@ -2330,11 +2330,11 @@ def _execute_double_downs(
     cheaper. Applies to every grinder market, not only soccer Under-4.5.
     Strictly bounded:
       - once per position (``doubled_down`` flag);
-      - dip in [min_dip, max_dip] — a real dip, not noise, and not a
-        collapse (a big adverse move past max_dip → no add, so we never
-        catch a falling knife);
-      - live ask still inside the entry price band [min_price, max_price]
-        (a position that fell out of the band is never topped up);
+      - the ask dipped at least ``min_dip`` below entry (a real dip);
+      - the ask is still "alive" — ≥ ``min_price`` (0.60), the proxy for
+        "the bet is still going well" (user 2026-06-14, Sweden-Tunisia
+        Under: double down while the cote is still above 0.6). Below the
+        floor the bet has turned and is never topped up;
       - the add never pushes total cost past the per-position cap (the 10%
         per-bet equity cap), so the user's hard sizing ceiling holds.
     """
@@ -2361,9 +2361,13 @@ def _execute_double_downs(
         if entry <= 0:
             continue
         dip = entry - ask
-        if dip < settings.race_double_down_min_dip or dip > settings.race_double_down_max_dip:
+        # Dipped at all, and still "alive" — ask ≥ min_price (0.60). The
+        # 0.60 floor is the proxy for "the bet is still going well" (user
+        # 2026-06-14, Sweden-Tunisia Under: double down while the cote is
+        # still above 0.6); below it the bet has turned and we never add.
+        if dip < settings.race_double_down_min_dip:
             continue
-        if ask < settings.race_min_price or ask > settings.race_max_price:
+        if ask < settings.race_double_down_min_price:
             continue
         room = cap - float(position.get("stake") or 0.0)
         add = min(room, max(0.0, portfolio.cash - cash_floor))

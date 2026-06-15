@@ -89,7 +89,7 @@ Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) a
 - **Hard cap: 10 % of equity per bet** (`stake_pct = 0.10`; lowered from 20 % on 2026-06-14) — never more on a single outcome, top-ups included.
 - **Opportunity spread:** the per-bet target is `min(cap, available cash / N)` where N = actionable markets this tick. A busy evening with many qualifying markets splits the cash so all can be funded; a quiet window gives each bet the full 10 %. Time-of-day adaptivity is emergent from N.
 - **Near-resolution boost:** 1.5× under 30 min to close, 1.25× under 1 h — scales the spread share but can never pierce the 10 % cap.
-- **Dip double-down:** any held position whose **live ask dips 1–8¢ below entry** (e.g. 0.96 → 0.89) is bought up once toward the 10 % cap — averaging the cost basis down on a favorite that got cheaper; a bigger adverse move past 8¢ → no add (never catch a falling knife). Enabled via `double_down_enabled`.
+- **Dip double-down:** any held position whose **live ask has dipped below entry and is still ≥ 0.60** is bought up once toward the 10 % cap — averaging the cost basis down while the bet is still going well (the 0.60 floor is the proxy for "few goals / cote still high"; the bot has no live-score feed). Below 0.60 the bet has turned → no add. Enabled via `double_down_enabled`.
 - No fixed dollar caps — everything scales with the bankroll.
 
 ### 6. Execution
