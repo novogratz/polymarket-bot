@@ -2167,16 +2167,6 @@ def _entry_window_ladder(settings: Settings, now: Any = None) -> list[float]:
 # selection, this cap is the in-loop backstop.
 EVENT_EXPOSURE_CAP = 1
 
-# Soccer totals: the only O/U line the exclusion filters allow is 4.5, so a
-# "… : O/U 4.5" question with the Under outcome is the soccer under-4.5 bet.
-_UNDER_45_RE = re.compile(r"(?:o/u|over/under)\s*4\.5\b")
-
-
-def _is_under_45(question: Any, outcome: Any) -> bool:
-    return (
-        bool(_UNDER_45_RE.search(str(question or "").lower()))
-        and str(outcome or "").strip().lower() == "under"
-    )
 
 # ── Game identity (2026-06-11) ───────────────────────────────────────────
 # Polymarket splits ONE game across SEVERAL events: the Mexico–South Africa
@@ -2332,16 +2322,19 @@ def _execute_double_downs(
     pool: list[Candidate],
     strategy_name: str,
 ) -> list[dict[str, Any]]:
-    """Double down on a dipped Under-4.5 position (user 2026-06-14).
+    """Double down on ANY dipped open position (user 2026-06-14).
 
-    When an OPEN soccer "O/U 4.5" Under position's LIVE ask has dipped a bit
-    below its (volume-weighted) entry price, buy more of the same outcome —
-    averaging the cost basis down on a near-certain bet that just got
-    cheaper. Strictly bounded:
+    When an OPEN position's LIVE ask has dipped a bit below its
+    (volume-weighted) entry price — e.g. 0.96 → 0.89 — buy more of the same
+    outcome, averaging the cost basis down on a favorite that just got
+    cheaper. Applies to every grinder market, not only soccer Under-4.5.
+    Strictly bounded:
       - once per position (``doubled_down`` flag);
       - dip in [min_dip, max_dip] — a real dip, not noise, and not a
-        collapse (a goal craters an Under far past max_dip → no add);
-      - live ask still inside the entry price band;
+        collapse (a big adverse move past max_dip → no add, so we never
+        catch a falling knife);
+      - live ask still inside the entry price band [min_price, max_price]
+        (a position that fell out of the band is never topped up);
       - the add never pushes total cost past the per-position cap (the 10%
         per-bet equity cap), so the user's hard sizing ceiling holds.
     """
@@ -2358,8 +2351,6 @@ def _execute_double_downs(
         if str(position.get("strategy") or "") not in (strategy_name, "live_sync"):
             continue
         if position.get("doubled_down"):
-            continue
-        if not _is_under_45(position.get("question"), position.get("outcome")):
             continue
         token_id = position.get("token_id")
         candidate = by_token.get(token_id)
@@ -2391,7 +2382,7 @@ def _execute_double_downs(
                 "market_id": position.get("market_id"),
                 "question": position.get("question"),
                 "action": "double_down",
-                "reason": "under45_double_down",
+                "reason": "dip_double_down",
                 "dip": round(dip, 4),
                 "add_usd": round(add, 2),
                 "order": result.order,

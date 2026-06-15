@@ -3633,8 +3633,9 @@ class SameEventDedupTests(unittest.TestCase):
 
 
 class DoubleDownTests(unittest.TestCase):
-    """User rule 2026-06-14: when a held Under-4.5 position's live ask dips a
-    bit below entry, double down (buy more) — once, bounded by the 10% cap."""
+    """User rule 2026-06-14: when ANY held position's live ask dips a bit
+    below entry (e.g. 0.96 → 0.89), double down (buy more) — once, bounded by
+    the 10% cap. Generalized from soccer Under-4.5 to every grinder market."""
 
     def _under45(self, ask):
         return Candidate(
@@ -3654,7 +3655,7 @@ class DoubleDownTests(unittest.TestCase):
         base.update(over)
         return Settings(**base)
 
-    def test_dipped_under45_doubles_down_once(self):
+    def test_dipped_position_doubles_down_once(self):
         from polymarket_bot.race_strategies import _execute_double_downs
 
         entry_cand = self._under45(0.93)  # entry ask
@@ -3668,10 +3669,9 @@ class DoubleDownTests(unittest.TestCase):
         stake_before = float(pos["stake"])
         outs = _execute_double_downs(client, self._settings(), portfolio, [dipped], "grinder")
         self.assertEqual(len(outs), 1)
-        self.assertEqual(outs[0]["reason"], "under45_double_down")
+        self.assertEqual(outs[0]["reason"], "dip_double_down")
         self.assertTrue(pos.get("doubled_down"))
         self.assertGreater(float(pos["stake"]), stake_before)
-        # cost basis never exceeds the 10% cap... here cap = equity*0.20.
 
         # Second run: already doubled → no-op.
         outs2 = _execute_double_downs(client, self._settings(), portfolio, [dipped], "grinder")
@@ -3691,35 +3691,31 @@ class DoubleDownTests(unittest.TestCase):
             self.assertEqual(outs, [], f"ask={ask}")
             self.assertFalse(pos.get("doubled_down"), f"ask={ask}")
 
-    def test_no_double_down_for_non_under45(self):
+    def test_dipped_non_soccer_also_doubles_down(self):
+        # User 2026-06-14: the double-down applies to ANY dipped favorite, not
+        # only soccer Under-4.5 — a moneyline that slid 0.96 → 0.89 qualifies.
         from polymarket_bot.race_strategies import _execute_double_downs
 
-        moneyline = Candidate(
-            market_id="ml", question="Will Nantes win on 2026-06-14?",
-            slug="nantes-win", end_date=utc_now() + timedelta(hours=2),
-            hours_to_close=2, liquidity=1500, volume=2000, outcome="Yes",
-            price=0.93, token_id="tok-ml", score=1,
-            url="https://polymarket.com/event/fc-nantes-vs-psg",
-            best_bid=0.92, best_ask=0.93, tick_size=0.01, accepts_orders=True,
-            event_slug="fc-nantes-vs-psg",
-        )
+        def ml(ask):
+            return Candidate(
+                market_id="ml", question="Will Nantes win on 2026-06-14?",
+                slug="nantes-win", end_date=utc_now() + timedelta(hours=2),
+                hours_to_close=2, liquidity=1500, volume=2000, outcome="Yes",
+                price=ask, token_id="tok-ml", score=1,
+                url="https://polymarket.com/event/fc-nantes-vs-psg",
+                best_bid=round(ask - 0.01, 2), best_ask=ask, tick_size=0.01,
+                accepts_orders=True, event_slug="fc-nantes-vs-psg",
+            )
         portfolio = Portfolio(cash=1000.0, positions=[])
-        pos = portfolio.record_live_position(moneyline, 40.0, entry_price=0.93)
+        pos = portfolio.record_live_position(ml(0.96), 40.0, entry_price=0.96)
         pos["strategy"] = "grinder"
-        dipped = Candidate(
-            market_id="ml", question="Will Nantes win on 2026-06-14?",
-            slug="nantes-win", end_date=utc_now() + timedelta(hours=2),
-            hours_to_close=2, liquidity=1500, volume=2000, outcome="Yes",
-            price=0.90, token_id="tok-ml", score=1,
-            url="https://polymarket.com/event/fc-nantes-vs-psg",
-            best_bid=0.89, best_ask=0.90, tick_size=0.01, accepts_orders=True,
-            event_slug="fc-nantes-vs-psg",
-        )
         outs = _execute_double_downs(
             client=build_client(Settings(dry_run=True)),
-            settings=self._settings(), portfolio=portfolio, pool=[dipped],
+            settings=self._settings(), portfolio=portfolio, pool=[ml(0.89)],
             strategy_name="grinder")
-        self.assertEqual(outs, [])
+        self.assertEqual(len(outs), 1)
+        self.assertEqual(outs[0]["reason"], "dip_double_down")
+        self.assertTrue(pos.get("doubled_down"))
 
     def test_disabled_by_default(self):
         from polymarket_bot.race_strategies import _execute_double_downs
