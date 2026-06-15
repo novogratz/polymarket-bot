@@ -667,7 +667,10 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(result.order["amount"], 50.0)
         self.assertEqual(portfolio.positions[0]["stake"], 50.0)
 
-    def test_live_trade_does_not_record_resting_buy_order(self):
+    def test_live_resting_buy_records_pending_not_position(self):
+        # A "live"/resting BUY (success, no fill yet) records NO position but
+        # DOES record a pending order — so the dedup blocks re-buying it every
+        # tick (2026-06-15 drain fix). Killed FOKs are handled separately.
         class FakeClient:
             def live_available_balance(self):
                 return 20.0
@@ -711,7 +714,7 @@ class StrategyTests(unittest.TestCase):
         )
 
         self.assertEqual(portfolio.positions, [])
-        self.assertEqual(portfolio.pending_orders or [], [])
+        self.assertTrue(portfolio.has_pending_token("token"))
 
     def test_live_trade_does_not_record_unfilled_fok(self):
         class FakeClient:
@@ -2218,6 +2221,44 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(result.response.get("status"), "matched")
         self.assertEqual(len(portfolio.positions), 1)
         self.assertEqual(portfolio.positions[0]["shares"], 5.0)
+
+    def test_unfilled_delayed_buy_records_pending_blocks_rebuy(self):
+        # Regression (2026-06-15): an in-play BUY returning status="delayed"
+        # (success=true, empty making/taking) is NOT filled, but it DOES
+        # settle on-chain. It must be recorded PENDING so the dedup guard
+        # blocks re-buying the same market every tick — the bug that stacked
+        # ~$48 of duplicate "submission No" FOKs and drained $89 → $40.
+        class DelayedClient:
+            def live_available_balance(self):
+                return 100.0
+
+            def place_market_order(self, *, candidate, amount, price, side="BUY"):
+                return (
+                    {"side": side, "amount": amount, "price": price},
+                    {"success": True, "orderID": "0xdelayed",
+                     "status": "delayed", "makingAmount": "", "takingAmount": ""},
+                )
+
+        candidate = Candidate(
+            market_id="ufc", question="Will the fight be won by submission?",
+            slug="ufc-submission", end_date=utc_now() + timedelta(hours=2),
+            hours_to_close=2, liquidity=3700, volume=5000, outcome="No",
+            price=0.85, token_id="tok-ufc", score=1,
+            url="https://polymarket.com/event/ufc",
+            best_bid=0.82, best_ask=0.85, tick_size=0.01, accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=100.0, positions=[])
+        result = execute_live_trade(
+            DelayedClient(),
+            Settings(dry_run=False, min_order_shares=5.0, race_stake_pct=0.15, quiet=True),
+            candidate, portfolio, min_trade_usd=1.0, max_trade_usd=10.0,
+            strategy="grinder",
+        )
+        # No open position recorded (not filled)…
+        self.assertEqual([p for p in portfolio.positions if p.get("status") == "open"], [])
+        # …but a pending order IS, so the next tick can't re-buy.
+        self.assertTrue(portfolio.has_pending_token("tok-ufc"))
+        self.assertEqual(result.response.get("status"), "delayed")
 
     def test_race_resolved_exit_ignores_min_age(self):
         from polymarket_bot.race_strategies import _execute_race_exits

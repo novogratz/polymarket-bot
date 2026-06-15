@@ -895,6 +895,44 @@ def execute_live_trade(
             )
         except Exception as exc:
             print(f"[notif] trade_buy hook failed: {exc}", file=sys.stderr, flush=True)
+    elif (
+        isinstance(response, dict)
+        and response.get("success")
+        and order_id
+        and topup_position is None
+        and str(response.get("status") or "").lower() in _WORKING_BUY_STATUSES
+    ):
+        # ── ACCEPTED-BUT-NOT-FILLED, STILL WORKING → record PENDING ────────
+        # An in-play order can return status="delayed"/"live" (matching
+        # deferred or resting): success=true with an orderID but empty
+        # making/taking. It is NOT filled yet, but it DOES settle on-chain
+        # moments later. Without tracking it as pending, the next tick's
+        # has_pending_token() guard sees nothing and re-buys the SAME market
+        # every tick, stacking duplicate orders until the wallet drains
+        # (2026-06-15: ~$48 of duplicate "submission No" FOKs, $89→$40 while
+        # the ledger showed one $4.30 position). Recording it pending blocks
+        # the re-buy; _sync_live_positions promotes it to a real position once
+        # it settles, and _cancel_stale_pending_orders frees the token after
+        # the TTL if it never does. A KILLED FOK ("unmatched"/"killed") is NOT
+        # working and bought nothing, so it is left unrecorded (safe to retry).
+        size = round(stake / entry_price, 6) if entry_price > 0 else 0.0
+        portfolio.record_pending_order(
+            candidate,
+            stake,
+            entry_price=entry_price,
+            size=size,
+            order_id=order_id,
+            order_response=response,
+            strategy=strategy,
+            signal=signal if isinstance(signal, dict) else None,
+        )
+        if not settings.quiet:
+            print(
+                f"   ⏳ order accepted but not filled (status="
+                f"{response.get('status')}) — recorded pending; will not re-buy "
+                f"'{candidate.question}' until it settles or expires.",
+                flush=True,
+            )
     return LiveTradeResult(order=order, response=response, candidate=candidate)
 
 
@@ -913,6 +951,13 @@ def _actual_buy_fill(response: Any, fallback_stake: float, fallback_price: float
     except (TypeError, ValueError, AttributeError):
         pass
     return fallback_stake, fallback_price
+
+
+# BUY statuses that mean the order is accepted and STILL WORKING (not yet
+# filled, but will/may settle on-chain) — recorded pending to block re-buys.
+# "matched" = filled (handled by _is_filled_buy_response); "unmatched"/
+# "killed"/"canceled" = terminal-unfilled, bought nothing, left unrecorded.
+_WORKING_BUY_STATUSES = {"delayed", "live", "pending", "open"}
 
 
 def _is_filled_buy_response(response: Any) -> bool:

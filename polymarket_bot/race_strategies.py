@@ -2448,6 +2448,18 @@ def _run_race_tick(
     portfolio.mark_to_market(pool)
 
     client = build_client(settings)
+
+    # Expire stale pending orders (2026-06-15): a delayed/accepted-but-unfilled
+    # BUY is held as pending so the dedup guard blocks re-buying the same
+    # market every tick. If it never settles (killed in-play), free the token
+    # after the TTL so the lane isn't blocked forever.
+    if not settings.dry_run:
+        try:
+            from .main import _cancel_stale_pending_orders
+            _cancel_stale_pending_orders(client, settings, portfolio)
+        except Exception as exc:
+            print(f"   stale-pending cleanup failed: {type(exc).__name__}: {exc}")
+
     exits = _execute_race_exits(client, settings, portfolio, pool, strategy_name)
 
     if not settings.dry_run:
