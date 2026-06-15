@@ -2146,18 +2146,6 @@ def _entry_window_ladder(settings: Settings, now: Any = None) -> list[float]:
 # selection, this cap is the in-loop backstop.
 EVENT_EXPOSURE_CAP = 1
 
-# Soccer totals: the only O/U line the exclusion filters allow is 4.5, so a
-# "… : O/U 4.5" question with the Under outcome is the soccer under-4.5 bet.
-_UNDER_45_RE = re.compile(r"(?:o/u|over/under)\s*4\.5\b")
-
-
-def _is_under_45_candidate(candidate: Candidate) -> bool:
-    return (
-        bool(_UNDER_45_RE.search(str(candidate.question or "").lower()))
-        and str(candidate.outcome or "").strip().lower() == "under"
-    )
-
-
 # ── Game identity (2026-06-11) ───────────────────────────────────────────
 # Polymarket splits ONE game across SEVERAL events: the Mexico–South Africa
 # moneyline lived in `fifwc-mex-rsa-2026-06-11`, the O/U 4.5 in
@@ -2222,10 +2210,10 @@ def _dedup_same_game(
     """One bet per game: keep a single candidate per game (NOT per event —
     one game spans several Polymarket events, see `_game_keys`).
 
-    User rule 2026-06-11: never take two bets on the same game. For soccer,
-    prioritize the under-4.5-goals market over everything else in the game
-    (moneyline, first-to-score, specials); otherwise keep the highest-bid
-    (most resolved) candidate. Candidates with no keys pass through.
+    User rule 2026-06-11/14: never take two bets on the same game; keep the
+    single best (highest-bid, i.e. most-resolved) candidate per game. The
+    soccer under-4.5 priority was dropped 2026-06-14 — just take the best
+    bet for each game. Candidates with no keys pass through.
     """
     chosen: list[tuple[Candidate, float]] = []
     keys_by_index: dict[int, set[str]] = {}
@@ -2246,12 +2234,7 @@ def _dedup_same_game(
                 claimed[k] = index
             continue
         held_candidate, _ = chosen[conflict]
-        new_under = _is_under_45_candidate(candidate)
-        held_under = _is_under_45_candidate(held_candidate)
-        if (new_under and not held_under) or (
-            new_under == held_under
-            and (candidate.best_bid or 0.0) > (held_candidate.best_bid or 0.0)
-        ):
+        if (candidate.best_bid or 0.0) > (held_candidate.best_bid or 0.0):
             chosen[conflict] = entry
         # Either way the loser's keys now point at the winner, so a third
         # market of the same game still conflicts.
