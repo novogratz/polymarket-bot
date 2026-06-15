@@ -4038,6 +4038,27 @@ class ExcludedMarketTests(unittest.TestCase):
         self.assertTrue(is_excluded_market(market, now=in_session))
         self.assertTrue(is_excluded_market(market, now=after_hours))
 
+    def test_youtube_view_count_markets_banned(self):
+        # User rule 2026-06-14 (lost a MrBeast view-count bet).
+        for market in (
+            {"question": "Will MrBeast's new video reach 100 million views by June 20?",
+             "slug": "mrbeast-video-100m-views-june-20"},
+            {"question": "How many views will the trailer get in 24h?",
+             "slug": "trailer-views-24h"},
+            {"question": "Will the YouTube debate stream pass 5M views?",
+             "slug": "youtube-debate-stream-5m"},
+        ):
+            self.assertTrue(is_excluded_market(market), market["question"])
+
+    def test_views_word_boundary_no_false_positives(self):
+        for market in (
+            {"question": "Will the movie get positive reviews this weekend?",
+             "slug": "movie-reviews-weekend"},
+            {"question": "Will the candidate do 3 interviews before the vote?",
+             "slug": "candidate-interviews"},
+        ):
+            self.assertFalse(is_excluded_market(market), market["question"])
+
     def test_tweet_count_markets_banned_outright(self):
         # User rule 2026-06-12 — the bot bought "Will Elon Musk post 240-259
         # tweets from June 5 to June 12?" (week-long count, no convergence).
