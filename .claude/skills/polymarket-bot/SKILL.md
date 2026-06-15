@@ -63,7 +63,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   weather/°C/°F, exact-score, O/U low (0.5–3.5) + high (5.5+) lines, Asian-handicap
   "Spread:", draw markets, halftime markets, League of Ireland soccer
   (`irl1-` slug prefix, 2026-06-12).
-  Tweet-count markets banned outright (2026-06-12).
+  Tweet-count markets banned outright (2026-06-12); YouTube view/
+  subscriber-count markets banned outright (2026-06-14: `youtube`/`mrbeast`
+  + word-bounded `views`).
   **ALL stock market/equities banned outright** (re-banned 2026-06-12;
   generic "(TICKER) … $" rule catches unlisted tickers).
   **Conditional (2026-06-12):** esports = **League of Legends ONLY**
