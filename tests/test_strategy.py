@@ -2305,6 +2305,72 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(position["status"], "closed")
         self.assertAlmostEqual(float(position["realized_pnl"]), 0.25)
 
+    def test_dynamic_tp_high_entry_needs_profit_margin(self):
+        # User 2026-06-15: a high-entry favorite must clear entry by the
+        # profit margin, not exit at break-even. Entry 0.97 → required 0.99.
+        from polymarket_bot.race_strategies import _execute_race_exits
+
+        def run(bid):
+            candidate = Candidate(
+                market_id="1", question="Will Cabo Verde win on 2026-06-15?",
+                slug="cabo-verde-win", end_date=utc_now() + timedelta(hours=1),
+                hours_to_close=1, liquidity=1000, volume=2000, outcome="Yes",
+                price=bid, token_id="token", score=1,
+                url="https://polymarket.com/event/q",
+                best_bid=bid, best_ask=min(bid + 0.01, 1.0), tick_size=0.01,
+                accepts_orders=True,
+            )
+            portfolio = Portfolio(cash=1.0, positions=[])
+            position = portfolio.record_live_position(candidate, 9.7, entry_price=0.97)
+            position["strategy"] = "grinder"
+            position["current_price"] = bid
+            return _execute_race_exits(
+                build_client(Settings(dry_run=True)),
+                Settings(dry_run=True, min_order_shares=5.0,
+                         race_resolved_exit_threshold=0.97,
+                         race_min_profit_margin=0.02,
+                         race_sl_min_age_minutes=15, quiet=True),
+                portfolio, [candidate], "grinder",
+            ), position
+
+        # Bid at 0.97 == entry → break-even → must NOT sell.
+        exits, pos = run(0.97)
+        self.assertEqual(exits, [])
+        self.assertEqual(pos["status"], "open")
+        # Bid at 0.99 (entry + 2¢) → sells for a real profit.
+        exits, pos = run(0.99)
+        self.assertEqual(len(exits), 1)
+        self.assertEqual(exits[0]["reason"], "race_big_win_resolved")
+        self.assertEqual(pos["status"], "closed")
+
+    def test_dynamic_tp_low_entry_keeps_097_exit(self):
+        # A normal-entry favorite (0.87) still exits at the configured 0.97
+        # (0.87 + 2¢ = 0.89 < 0.97, so the global threshold governs).
+        from polymarket_bot.race_strategies import _execute_race_exits
+
+        candidate = Candidate(
+            market_id="1", question="Will France win on 2026-06-15?",
+            slug="france-win", end_date=utc_now() + timedelta(hours=1),
+            hours_to_close=1, liquidity=1000, volume=2000, outcome="Yes",
+            price=0.97, token_id="token", score=1,
+            url="https://polymarket.com/event/q",
+            best_bid=0.97, best_ask=0.99, tick_size=0.01, accepts_orders=True,
+        )
+        portfolio = Portfolio(cash=1.0, positions=[])
+        position = portfolio.record_live_position(candidate, 8.7, entry_price=0.87)
+        position["strategy"] = "grinder"
+        position["current_price"] = 0.97
+        exits = _execute_race_exits(
+            build_client(Settings(dry_run=True)),
+            Settings(dry_run=True, min_order_shares=5.0,
+                     race_resolved_exit_threshold=0.97,
+                     race_min_profit_margin=0.02,
+                     race_sl_min_age_minutes=15, quiet=True),
+            portfolio, [candidate], "grinder",
+        )
+        self.assertEqual(len(exits), 1)
+        self.assertEqual(exits[0]["reason"], "race_big_win_resolved")
+
     def test_race_resolved_exit_uses_position_price_when_pool_quote_missing(self):
         from polymarket_bot.race_strategies import _execute_race_exits
 

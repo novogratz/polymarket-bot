@@ -111,6 +111,9 @@ sl_confirm_ticks = 3
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.97
+# Dynamic TP (2026-06-15): exit must clear entry by this, capped 0.99 —
+# a 0.97 entry sells at 0.99, never break-even.
+min_profit_margin = 0.02
 
 # Binary arb disabled (set arb_threshold = 0.97 to re-enable).
 # Sizing now uses proportional stakes (larger stake on the expensive/likely
