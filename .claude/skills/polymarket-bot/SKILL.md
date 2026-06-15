@@ -36,24 +36,21 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   (`_execute_double_downs`, `race_double_down_enabled`).
 - **Exits:**
   - Resolved-exit: sell at **live CLOB book** bid ≥ `resolved_exit_threshold`
-    (0.99; briefly 0.98 on 2026-06-10, reverted — "98¢" on the site is usually
-    the midpoint with a real bid at 0.96x, and settlement pays 1.00). The exit
+    (**0.97**, user 2026-06-14 "as we had before"; was 0.99). The exit
     loop probes the live book per position (`live_best_bid`) — Gamma
-    quotes/`curPrice` lag and held winners past 0.99. Probe fail-open →
-    cached price.
+    quotes/`curPrice` lag. Probe fail-open → cached price.
   - **Controlled stop-loss: −25 %, confirmed over 3 consecutive ticks,
     SOCCER MONEYLINES ONLY** (`sl_pct`, `sl_confirm_ticks`,
     `_is_soccer_moneyline_position`). Min age 5 min. Everything else (O/U,
     elections, …) rides to resolution.
   - **Hard rule: never sell below entry** (floor in `trading.execute_live_sell`).
     Only `race_stop_loss_confirmed` is exempt. Other losers ride to resolution.
-  - **Winner floor (0.99; 0.98 fast lanes)**: winner-exit orders below the
-    floor are refused (`winner_floor` in `execute_live_sell`, sweep clamped
-    to 0.99, tuner bounds pinned). **Esports + stocks exit at 0.98**
-    (`is_fast_lane_text`, 2026-06-12) — in-play/in-session books rarely
-    print 0.99. Everything else: 0.99 or settlement.
+  - **Winner floor (0.97)**: winner-exit orders below **0.97** are refused
+    (`winner_floor` in `execute_live_sell`, sweep clamped to 0.97, tuner
+    pinned (0.97, 0.97)). One flat floor across every lane (user 2026-06-14;
+    was 0.99/0.98-fast-lane).
   - No EOD flatten, no loss-sweep; the winners-only sweep uses
-    max(smart, race) thresholds (0.99) and can never front-run the race exit.
+    max(smart, race) thresholds (0.97) and can never front-run the race exit.
   - FOK BUY capped to 90% of executable ask depth; true fill booked; depth-
     capped entries top up later toward the 10% per-bet cap.
   - Expiry never force-closes a market still `acceptingOrders` (uses a live

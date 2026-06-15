@@ -21,7 +21,7 @@ from typing import Any
 
 from . import notifications
 from .config import Settings
-from .models import Candidate, is_fast_lane_text
+from .models import Candidate
 from .portfolio import Portfolio
 from .polymarket import ApiCreds, PolymarketClient
 
@@ -964,28 +964,17 @@ def execute_live_sell(
 
     sell_price = round(min(max(candidate.best_bid, candidate.tick_size), 0.99), 3)
 
-    # ── WINNER FLOOR (2026-06-10) — resolved winners sell at 0.99, period ──
-    # User rule after the sweep printed 0.97/0.98 exits: a winner exit must
-    # never go out below 0.99. The race exit already triggers only on a real
-    # 0.99 live-book bid, so this floor is a backstop against any future
-    # path (or mis-tuned threshold) trying to dump a resolved winner cheap.
-    # The position is simply held — it retries next tick or settles at 1.00.
-    # FAST LANES (2026-06-12): esports and stock markets get a 0.98 floor —
-    # in-play/in-session books rarely print a 0.99 bid before the market
-    # closes, so winners there sell at 0.98 instead of riding blind.
+    # ── WINNER FLOOR — resolved winners never sell below 0.97 ──────────────
+    # A winner exit must never dump a resolved position cheap; it is held
+    # (retries next tick or settles at 1.00) until the bid reaches the floor.
+    # Floor history: 0.97 → 0.99 (2026-06-10) → back to 0.97 (user 2026-06-14,
+    # "sell at 0.97 as we had before"). One flat floor across every lane.
+    WINNER_FLOOR = 0.97
     WINNER_FLOOR_REASONS = {"race_big_win_resolved", "resolved_market_sweep_win"}
-    winner_floor = (
-        0.98
-        if is_fast_lane_text(
-            str(position.get("question") or ""),
-            str(position.get("event_slug") or position.get("slug") or ""),
-        )
-        else 0.99
-    )
-    if reason in WINNER_FLOOR_REASONS and sell_price < winner_floor:
+    if reason in WINNER_FLOOR_REASONS and sell_price < WINNER_FLOOR:
         raise ValueError(
-            f"winner_floor: refuse to sell resolved winner @ {sell_price} < {winner_floor} "
-            f"(reason={reason}) — hold for a real {winner_floor} bid or on-chain settlement"
+            f"winner_floor: refuse to sell resolved winner @ {sell_price} < {WINNER_FLOOR} "
+            f"(reason={reason}) — hold for a real {WINNER_FLOOR} bid or on-chain settlement"
         )
 
     # ── HARD LOSS FLOOR (2026-05-31) — NEVER sell below the purchase price ──

@@ -106,7 +106,7 @@ sl_pct = 0.25            # -25% confirmed SL, soccer moneyline only
 sl_confirm_ticks = 3
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
-resolved_exit_threshold = 0.99
+resolved_exit_threshold = 0.97
 
 # Binary arb disabled (set arb_threshold = 0.97 to re-enable).
 # Sizing now uses proportional stakes (larger stake on the expensive/likely
