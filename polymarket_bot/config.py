@@ -331,14 +331,16 @@ class Settings:
     race_max_spread: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MAX_SPREAD", 0.05))
     race_stake_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_STAKE_USD", 5.0))
     race_stake_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_STAKE_PCT", 0.15))
-    # Under-4.5 double-down (user 2026-06-14): when an OPEN soccer "O/U 4.5"
-    # Under position dips a bit below its entry ask, buy more (average down)
-    # toward the per-position cap — once per position, only while the live
-    # ask stays in [entry - max_dip, entry - min_dip] AND in the price band.
-    # The 10% per-bet cap is never breached. Off unless enabled in the profile.
+    # Dip double-down (user 2026-06-14): when an OPEN position's live ask
+    # dips at least ``min_dip`` below its entry AND is still "alive" (ask ≥
+    # ``min_price``, default 0.60), buy more (average down) toward the
+    # per-position cap — once per position. The 0.60 floor is the
+    # deterministic proxy for "the bet is still going well" (a low-scoring
+    # Under stays priced high; the bot has no live-score feed). The 10%
+    # per-bet cap is never breached. Off unless enabled in the profile.
     race_double_down_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_DOUBLE_DOWN_ENABLED", False))
     race_double_down_min_dip: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_DOUBLE_DOWN_MIN_DIP", 0.01))
-    race_double_down_max_dip: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_DOUBLE_DOWN_MAX_DIP", 0.08))
+    race_double_down_min_price: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_DOUBLE_DOWN_MIN_PRICE", 0.60))
     race_max_orders_per_tick: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_MAX_ORDERS_PER_TICK", 3))
     race_cash_floor_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_CASH_FLOOR_PCT", 0.10))
     race_tp_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_TP_PCT", 0.25))

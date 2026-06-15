@@ -3672,11 +3672,12 @@ class DoubleDownTests(unittest.TestCase):
         outs2 = _execute_double_downs(client, self._settings(), portfolio, [dipped], "grinder")
         self.assertEqual(outs2, [])
 
-    def test_no_double_down_when_not_dipped_or_collapsed(self):
+    def test_no_double_down_above_entry_or_below_price_floor(self):
         from polymarket_bot.race_strategies import _execute_double_downs
 
         client = build_client(Settings(dry_run=True))
-        for ask in (0.94, 0.935, 0.80):  # above entry, <1¢ dip, >8¢ collapse
+        # above entry (no dip), <1¢ dip, and below the 0.60 alive-floor.
+        for ask in (0.94, 0.925, 0.55):
             entry_cand = self._under45(0.93)
             portfolio = Portfolio(cash=1000.0, positions=[])
             pos = portfolio.record_live_position(entry_cand, 40.0, entry_price=0.93)
@@ -3685,6 +3686,23 @@ class DoubleDownTests(unittest.TestCase):
                 client, self._settings(), portfolio, [self._under45(ask)], "grinder")
             self.assertEqual(outs, [], f"ask={ask}")
             self.assertFalse(pos.get("doubled_down"), f"ask={ask}")
+
+    def test_double_down_on_big_dip_while_still_above_060(self):
+        # User 2026-06-14 (Sweden-Tunisia Under): double down while the cote
+        # is still above 0.6, even on a big dip (0.93 → 0.70). The old 8¢
+        # max-dip cap is gone — only the 0.60 alive-floor gates the size.
+        from polymarket_bot.race_strategies import _execute_double_downs
+
+        entry_cand = self._under45(0.93)
+        portfolio = Portfolio(cash=1000.0, positions=[])
+        pos = portfolio.record_live_position(entry_cand, 40.0, entry_price=0.93)
+        pos["strategy"] = "grinder"
+        outs = _execute_double_downs(
+            build_client(Settings(dry_run=True)),
+            self._settings(), portfolio, [self._under45(0.70)], "grinder")
+        self.assertEqual(len(outs), 1)
+        self.assertEqual(outs[0]["reason"], "dip_double_down")
+        self.assertTrue(pos.get("doubled_down"))
 
     def test_dipped_non_soccer_also_doubles_down(self):
         # User 2026-06-14: the double-down applies to ANY dipped favorite, not
