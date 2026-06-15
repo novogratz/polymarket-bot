@@ -59,6 +59,8 @@ Winners ride to 0.99, the live report shows every full-size trade again, and the
 
 ### Changed
 
+- **Per-bet cap 10% → 15%** (user 2026-06-14): `stake_pct` 0.10 → **0.15** in both profiles to size up at the 89% live win rate; fresh entries still open at the 5% `initial_stake_pct`, so the dip double-down now has headroom to fill toward 15%. Self-tuner `race.stake_pct` upper bound raised (0.05, 0.10) → (0.05, 0.15).
+
 - **Dip double-down now gated by a 0.60 "alive" floor, not an 8¢ max-dip** (user 2026-06-14, Sweden-Tunisia Under): the double-down fires whenever a held position's ask has dipped below entry AND is still ≥ `race_double_down_min_price` (0.60) — the deterministic proxy for "the bet is still going well / few goals" (the bot has no live-score feed). The old `max_dip` (8¢) cap and the 0.85 band floor are replaced by the single 0.60 alive-floor; below it the bet has turned and is never topped up. Still once per position, never past the 10% cap.
 
 - **Entry window = game starts OR market closes within 4h** (user 2026-06-14): `_build_eligible_candidates` now keeps a market only when its `gameStartTime` is within the next `max_hours` OR its `endDate` is — a game already in progress that doesn't close inside the window is dropped. The dynamic widening ladder stays disabled (`max_hours_cap=0`).
