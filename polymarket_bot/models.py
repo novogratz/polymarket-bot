@@ -278,6 +278,20 @@ _PAREN_TICKER_RE = re.compile(r"\([A-Z]{2,5}\)")
 # (no word boundary before the 'v'), so only true view-count titles are hit.
 _VIEW_COUNT_RE = re.compile(r"\bviews\b")
 
+# Macro / central-bank interest-rate decision markets — banned outright
+# (user 2026-06-16: "why do we have a bet on the Fed rate by September? too
+# far away — we only want stuff expiring in 4-6h max"). These resolve weeks
+# to months out (Fed/FOMC, ECB, BoE, Bank of Brazil Selic, etc.) and can
+# never satisfy the ≤4h grinder window; one slipped into the wallet via
+# live-position sync. Word-bounded so it can't collide with "accurate",
+# "winrate", "generate", etc.
+_MACRO_RATE_RE = re.compile(
+    r"\b(?:rate cuts?|rate hikes?|rate decisions?|interest rates?|fed rates?|"
+    r"(?:raise|cut|hold|lower|hike|increase|decrease)s? rates?|"
+    r"fomc|selic|central bank|bank of (?:england|japan|canada|brazil)|\becb\b|"
+    r"basis points|rate (?:by|after|before))\b"
+)
+
 
 
 def _parse_market_dt(raw: Any) -> datetime | None:
@@ -398,6 +412,8 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
     if any(pat in slug for pat in _EXCLUDED_SLUG_SUBSTRINGS):
         return True
     if _VIEW_COUNT_RE.search(q):
+        return True
+    if _MACRO_RATE_RE.search(q) or _MACRO_RATE_RE.search(slug.replace("-", " ")):
         return True
     if now is None:
         now = datetime.now(timezone.utc)
