@@ -82,12 +82,15 @@ stake_usd = 1.0
 # headroom up to 15% — so the double-down always has room to add.
 stake_pct = 0.15
 initial_stake_pct = 0.05
-# Under-4.5 double-down (user 2026-06-14): add to a held soccer O/U 4.5
-# Under position when its live ask dips 1-8c below entry, once per
-# position, never past the 10% per-bet cap.
+# Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held
+# position whose live ask has dipped below entry while it's still a favorite
+# (probability > 0.60). Widened the max dip 0.08 -> 0.40 so a bigger slide
+# still doubles down — e.g. 0.83->0.78 AND 0.85->0.70 both qualify; the real
+# floor is min_price 0.60. Once per position, never past the per-bet cap.
 double_down_enabled = true
 double_down_min_dip = 0.01
-double_down_max_dip = 0.08
+double_down_max_dip = 0.40
+double_down_min_price = 0.60
 max_orders_per_tick = 4
 cash_floor_pct = 0.01
 

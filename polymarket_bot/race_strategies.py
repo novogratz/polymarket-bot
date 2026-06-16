@@ -2389,6 +2389,11 @@ def _execute_double_downs(
         # still above 0.6); below it the bet has turned and we never add.
         if dip < settings.race_double_down_min_dip:
             continue
+        # Secondary safety cap (0 = unbounded). The min_price floor below is the
+        # real "still a favorite" gate; both 0.83->0.78 and 0.85->0.70 pass.
+        max_dip = getattr(settings, "race_double_down_max_dip", 0.0)
+        if max_dip > 0 and dip > max_dip:
+            continue
         if ask < settings.race_double_down_min_price:
             continue
         room = cap - float(position.get("stake") or 0.0)

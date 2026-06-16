@@ -3818,6 +3818,23 @@ class DoubleDownTests(unittest.TestCase):
         self.assertEqual(outs[0]["reason"], "dip_double_down")
         self.assertTrue(pos.get("doubled_down"))
 
+    def test_double_down_max_dip_cap_when_set(self):
+        # The secondary max_dip cap skips a dip larger than the cap.
+        from dataclasses import replace
+        from polymarket_bot.race_strategies import _execute_double_downs
+
+        entry_cand = self._under45(0.90)
+        portfolio = Portfolio(cash=1000.0, positions=[])
+        pos = portfolio.record_live_position(entry_cand, 40.0, entry_price=0.90)
+        pos["strategy"] = "grinder"
+        capped = replace(self._settings(), race_double_down_max_dip=0.10)
+        # 0.90 -> 0.72 is a 0.18 dip > 0.10 cap -> no add (still above 0.60).
+        outs = _execute_double_downs(
+            build_client(Settings(dry_run=True)),
+            capped, portfolio, [self._under45(0.72)], "grinder")
+        self.assertEqual(outs, [])
+        self.assertFalse(pos.get("doubled_down"))
+
     def test_dipped_non_soccer_also_doubles_down(self):
         # User 2026-06-14: the double-down applies to ANY dipped favorite, not
         # only soccer Under-4.5 — a moneyline that slid 0.96 → 0.89 qualifies.

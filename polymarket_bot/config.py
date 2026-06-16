@@ -374,6 +374,10 @@ class Settings:
     # per-bet cap is never breached. Off unless enabled in the profile.
     race_double_down_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_DOUBLE_DOWN_ENABLED", False))
     race_double_down_min_dip: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_DOUBLE_DOWN_MIN_DIP", 0.01))
+    # Max dip below entry that still doubles down (0 = no upper bound). The
+    # min_price floor (0.60) is the real "still a favorite" gate; this is a
+    # secondary safety cap. 0.40 is effectively non-binding for valid entries.
+    race_double_down_max_dip: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_DOUBLE_DOWN_MAX_DIP", 0.40))
     race_double_down_min_price: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_DOUBLE_DOWN_MIN_PRICE", 0.60))
     # Dynamic take-profit margin (user 2026-06-15): the resolved-exit must
     # clear the entry by at least this, capped at 0.99 — so a high-entry
