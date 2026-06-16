@@ -879,6 +879,8 @@ def execute_live_trade(
                     "wallets": int(float(wallets or 0)),
                     "copied_usdc": float(copied or 0),
                     "tag": strategy,
+                    # The human "why it bought" — copy/whale/grinder reason.
+                    "reason": signal.get("selection_reason") or "",
                 }
             elif strategy:
                 signal_payload = {"tag": strategy}

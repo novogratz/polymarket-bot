@@ -831,3 +831,42 @@ class TestStateMigration(NotificationsBaseTest):
         notifications._prune_dedupe(state, now=2000.0, window=300.0)
         self.assertNotIn("old", state.dedupe_seen)
         self.assertIn("new", state.dedupe_seen)
+
+
+class TestBuyAlertReason(NotificationsBaseTest):
+    """The per-BUY alert must explain WHY the bot bought (selection reason)."""
+
+    def _enable(self):
+        os.environ["TELEGRAM_BOT_TOKEN"] = "t"
+        os.environ["TELEGRAM_CHAT_ID_LIVE"] = "1"
+        os.environ["TELEGRAM_ALERT_TRADES"] = "1"
+        os.environ["TELEGRAM_ALERT_TRADES_BUY"] = "1"
+        notifications._reset_for_tests()
+        sent: list[str] = []
+        notifications.set_transport_for_test(lambda payload: sent.append(payload.get("text", "")) or True)
+        return sent
+
+    def test_reason_included_in_buy_alert(self) -> None:
+        sent = self._enable()
+        notifications.notify_trade_buy(
+            market_title="Will IR Iran win?",
+            token_id="t",
+            price=0.54,
+            size_usd=11.0,
+            signal={"wallets": 2, "copied_usdc": 1921.0,
+                    "reason": "WHALE single-wallet buy: 0xabc bought $108,000 of this token"},
+            outcome="Yes",
+            strategy="smart_money_whale",
+        )
+        self.assertEqual(len(sent), 1)
+        # MarkdownV2 escapes hyphens, so match escape-free fragments.
+        self.assertIn("WHALE single", sent[0])
+        self.assertIn("108,000", sent[0])
+
+    def test_long_reason_truncated(self) -> None:
+        sent = self._enable()
+        notifications.notify_trade_buy(
+            market_title="M", token_id="t", price=0.5, size_usd=5.0,
+            signal={"reason": "x" * 600}, outcome="Yes", strategy="smart_money",
+        )
+        self.assertIn("…", sent[0])

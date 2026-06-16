@@ -550,6 +550,13 @@ def notify_trade_buy(
         lines.append(f"🎯 _{_md_escape(title)}_")
     elif outcome_str:
         lines.append(f"👍 *{outcome_str}*")
+    # "Why it bought" — the strategy's selection reason (copy consensus / whale
+    # single-bet / grinder pick). Truncated so the Telegram message stays short.
+    reason = str(signal.get("reason") or "").strip()
+    if reason:
+        if len(reason) > 280:
+            reason = reason[:277].rstrip() + "…"
+        lines.append(f"💡 _{_md_escape(reason)}_")
     if footer_parts:
         lines.append(f"🏷️ {' • '.join(footer_parts)}")
     _post("\n".join(lines))

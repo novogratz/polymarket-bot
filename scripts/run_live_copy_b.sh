@@ -34,10 +34,12 @@ export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-30}
 # entries pause for the rest of the day once breached.
 export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-0.15}
 
-# Telegram: live reporting only (the deterministic live_analyst sidecar).
-# Per-trade BUY/SELL alerts off, matching the other live launchers.
-export TELEGRAM_ALERT_TRADES=0
-export TELEGRAM_ALERT_TRADES_BUY=0
+# Telegram: the deterministic live_analyst report + a per-BUY alert that
+# explains WHY each position was bought (user 2026-06-15). BUY alerts ON,
+# SELL/heartbeat/etc OFF. The buy alert carries the strategy's selection
+# reason (copy consensus / whale single-bet) via notify_trade_buy.
+export TELEGRAM_ALERT_TRADES=1
+export TELEGRAM_ALERT_TRADES_BUY=1
 export TELEGRAM_ALERT_TRADES_SELL=0
 export TELEGRAM_ALERT_ERRORS=1
 export TELEGRAM_ALERT_THRESHOLDS=0
