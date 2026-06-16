@@ -2384,6 +2384,10 @@ def _is_unfilled_market_order_error(message: str) -> bool:
             "fully filled or killed",
             "couldn't be fully filled",
             "could not be fully filled",
+            # Thin/empty book: no executable depth to cover the minimum order.
+            # Skip this opportunity (try the next) instead of aborting the whole
+            # tick — common when copying into a market the wallets just moved.
+            "book_too_thin",
         )
     )
 

@@ -274,25 +274,29 @@ class DataApiClient:
     ) -> list[SmartTrade]:
         """Global recent taker trades (NO user filter), for whale detection.
 
-        Asks the data-api to pre-filter by cash size (``filterType=CASH`` +
-        ``filterAmount``); also filters client-side as a backstop in case the
-        params are ignored by the endpoint.
+        Notes from probing the live data-api (2026-06-15):
+        - Sending ``start`` on a global (no-user) query makes the endpoint scan
+          a huge window and return HTTP 408 — so we do NOT send it; ``start``
+          is applied CLIENT-SIDE as a timestamp cutoff instead.
+        - The global feed has no ``usdcSize`` field, so the dollar value is
+          ``size * price`` (the ``_float`` fallback below).
+        - ``filterType``/``filterAmount`` do NOT filter by size here, so the
+          ≥ ``min_usdc`` cut is done client-side too.
         """
         params: dict[str, str] = {
-            "start": str(start),
             "limit": str(limit),
             "takerOnly": "true",
         }
         if side:
             params["side"] = side
-        if min_usdc > 0:
-            params["filterType"] = "CASH"
-            params["filterAmount"] = str(int(min_usdc))
         payload = self._get_json("/trades", params)
         trades: list[SmartTrade] = []
         for item in payload if isinstance(payload, list) else []:
             asset = str(item.get("asset") or "")
             if not asset:
+                continue
+            ts = int(_float(item.get("timestamp")))
+            if start and ts < start:
                 continue
             usdc = _float(item.get("usdcSize"), _float(item.get("size")) * _float(item.get("price")))
             if min_usdc > 0 and usdc < min_usdc:

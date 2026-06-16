@@ -770,6 +770,11 @@ class StrategyTests(unittest.TestCase):
 
         self.assertTrue(_is_unfilled_market_order_error(message))
 
+    def test_book_too_thin_is_skippable(self):
+        # A thin/empty book must skip the opportunity, not abort the whole tick.
+        message = "book_too_thin: executable ask depth $0.00 ≤ 0.7 cannot cover the $3.50 minimum order"
+        self.assertTrue(_is_unfilled_market_order_error(message))
+
     def test_live_sell_records_partial_exit(self):
         class FakeClient:
             def place_live_order(self, *, candidate, price, size, side="BUY"):

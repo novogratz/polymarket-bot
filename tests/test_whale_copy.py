@@ -124,5 +124,53 @@ class WhaleCopyTests(unittest.TestCase):
         self.assertEqual(client.calls[0]["min_usdc"], 50000.0)
 
 
+class RecentTradesParsingTests(unittest.TestCase):
+    """DataApiClient.recent_trades: client-side time + size filtering, and the
+    size*price value fallback (the global feed has no usdcSize field)."""
+
+    def _client_returning(self, payload):
+        from polymarket_bot.smart_money import DataApiClient
+        c = DataApiClient()
+        c._get_json = lambda path, params, **kw: payload  # type: ignore[assignment]
+        return c
+
+    def test_does_not_send_start_to_server(self):
+        # start triggers the 408 — it must be applied client-side, not sent.
+        from polymarket_bot.smart_money import DataApiClient
+        c = DataApiClient()
+        seen = {}
+        def fake(path, params, **kw):
+            seen.update(params)
+            return []
+        c._get_json = fake  # type: ignore[assignment]
+        c.recent_trades(start=1_000_000, limit=500, side="BUY", min_usdc=50000)
+        self.assertNotIn("start", seen)
+        self.assertNotIn("filterAmount", seen)
+        self.assertEqual(seen.get("limit"), "500")
+
+    def test_value_is_size_times_price_when_usdcsize_missing(self):
+        payload = [
+            {"asset": "tokA", "side": "BUY", "size": "100000", "price": "0.6",
+             "timestamp": "1000000", "usdcSize": None},  # = $60k
+        ]
+        c = self._client_returning(payload)
+        trades = c.recent_trades(start=0, min_usdc=50000)
+        self.assertEqual(len(trades), 1)
+        self.assertAlmostEqual(trades[0].usdc_size, 60000.0)
+
+    def test_filters_below_min_and_before_start(self):
+        payload = [
+            {"asset": "tokA", "side": "BUY", "size": "100000", "price": "0.6",
+             "timestamp": "1000000"},                       # $60k, in window → keep
+            {"asset": "tokB", "side": "BUY", "size": "100", "price": "0.6",
+             "timestamp": "1000000"},                       # $60, too small → drop
+            {"asset": "tokC", "side": "BUY", "size": "100000", "price": "0.6",
+             "timestamp": "500000"},                        # $60k but too old → drop
+        ]
+        c = self._client_returning(payload)
+        trades = c.recent_trades(start=900_000, min_usdc=50000)
+        self.assertEqual([t.asset for t in trades], ["tokA"])
+
+
 if __name__ == "__main__":
     unittest.main()
