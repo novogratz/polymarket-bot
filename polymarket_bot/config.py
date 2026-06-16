@@ -176,6 +176,22 @@ class Settings:
     smart_whale_lookback_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_WHALE_LOOKBACK_MINUTES", 60))
     smart_whale_max_orders_per_tick: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_WHALE_MAX_ORDERS_PER_TICK", 2))
     smart_whale_fetch_limit: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_WHALE_FETCH_LIMIT", 500))
+    # ── Favorite-dip lane (bot 2) ──────────────────────────────────────────
+    # Buy a favorite that just dropped: current ask in [min, max] AND the price
+    # one window ago (ask - recent change) was >= reference_min, i.e. it was a
+    # strong favorite that fell. Reference window = 1h by default (catches a
+    # halftime goal drop); set use_day_change to use the 24h move instead.
+    # OFF by default — only bot 2's smart_b.toml turns it on.
+    smart_dip_buy_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_DIP_BUY_ENABLED", False))
+    smart_dip_min_price: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_DIP_MIN_PRICE", 0.60))
+    smart_dip_max_price: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_DIP_MAX_PRICE", 0.85))
+    smart_dip_reference_min: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_DIP_REFERENCE_MIN", 0.86))
+    smart_dip_use_day_change: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_DIP_USE_DAY_CHANGE", False))
+    smart_dip_max_orders_per_tick: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_DIP_MAX_ORDERS_PER_TICK", 2))
+    # Global window for ALL bot-2 lanes (consensus/whale/dip): only take bets
+    # that RESOLVE TODAY (end_date before the next UTC midnight). Naturally
+    # tightens through the day. OFF by default.
+    smart_expiring_today_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_EXPIRING_TODAY_ONLY", False))
     smart_reverse_lookup_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_REVERSE_LOOKUP_ENABLED", True))
     smart_reverse_lookup_max_tokens: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_REVERSE_LOOKUP_MAX_TOKENS", 30))
     smart_reverse_lookup_min_copied_usdc: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_REVERSE_LOOKUP_MIN_COPIED_USDC", 100.0))

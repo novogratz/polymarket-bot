@@ -44,10 +44,16 @@ def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Cand
             continue
 
         hours = max((end_date - now).total_seconds() / 3600.0, 0.0)
+        # Raw price moves are reported for the YES side; the NO side moves the
+        # opposite way (flipped per outcome below).
+        raw_day_change = as_float(market.get("oneDayPriceChange"), default=0.0)
+        raw_hour_change = as_float(market.get("oneHourPriceChange"), default=0.0)
         for index, outcome in enumerate(outcomes):
             price = prices[index]
             if price <= 0.0 or price >= 1.0:
                 continue
+            day_change = raw_day_change if index == 0 else -raw_day_change
+            hour_change = raw_hour_change if index == 0 else -raw_hour_change
 
             # This is a liquidity/urgency watchlist score, not an expected-value claim.
             urgency = 1.0 / max(hours, 1.0)
@@ -77,6 +83,8 @@ def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Cand
                     neg_risk=neg_risk,
                     accepts_orders=accepts_orders,
                     event_slug=event_slug,
+                    one_day_change=day_change,
+                    one_hour_change=hour_change,
                 )
             )
 

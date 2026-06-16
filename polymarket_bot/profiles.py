@@ -144,6 +144,17 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "max_orders_per_tick": ("POLYMARKET_SMART_WHALE_MAX_ORDERS_PER_TICK", "int"),
         "fetch_limit": ("POLYMARKET_SMART_WHALE_FETCH_LIMIT", "int"),
     },
+    "favorite_dip": {
+        "enabled": ("POLYMARKET_SMART_DIP_BUY_ENABLED", "bool"),
+        "min_price": ("POLYMARKET_SMART_DIP_MIN_PRICE", "float"),
+        "max_price": ("POLYMARKET_SMART_DIP_MAX_PRICE", "float"),
+        "reference_min": ("POLYMARKET_SMART_DIP_REFERENCE_MIN", "float"),
+        "use_day_change": ("POLYMARKET_SMART_DIP_USE_DAY_CHANGE", "bool"),
+        "max_orders_per_tick": ("POLYMARKET_SMART_DIP_MAX_ORDERS_PER_TICK", "int"),
+    },
+    "window": {
+        "expiring_today_only": ("POLYMARKET_SMART_EXPIRING_TODAY_ONLY", "bool"),
+    },
     "reverse_lookup": {
         "enabled": ("POLYMARKET_SMART_REVERSE_LOOKUP_ENABLED", "bool"),
         "max_tokens": ("POLYMARKET_SMART_REVERSE_LOOKUP_MAX_TOKENS", "int"),

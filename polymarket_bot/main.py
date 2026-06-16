@@ -47,6 +47,7 @@ from .smart_money import (
     DataApiClient,
     analyze_smart_money,
     analyze_smart_money_with_data,
+    fetch_dip_signals,
     fetch_smart_money_data,
     fetch_whale_signals,
     market_category,
@@ -120,6 +121,11 @@ def load_btc_candidates(settings: Settings):
     return rank_markets(list(markets_by_id.values()), settings)
 
 
+def _end_of_utc_day(now):
+    """Next UTC midnight minus a hair — the upper bound for 'expiring today'."""
+    return now.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+
 def load_smart_candidates(settings: Settings):
     client = GammaClient(settings.gamma_base_url)
     now = utc_now()
@@ -127,6 +133,10 @@ def load_smart_candidates(settings: Settings):
     if settings.smart_max_hours_to_close > 0:
         horizon_hours = min(horizon_hours, settings.smart_max_hours_to_close)
     horizon = now + timedelta(hours=horizon_hours)
+    # "Expiring today" governs the upper bound when set: load everything that
+    # resolves before the next UTC midnight (the natural cap for daily markets).
+    if settings.smart_expiring_today_only:
+        horizon = _end_of_utc_day(now)
     batches = []
     for kwargs in (
         {
@@ -495,6 +505,18 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             if added:
                 _step(settings, f"   eligible after reverse-lookup: {len(eligible_candidates)} (+{added})")
 
+    # "Expiring today" gate — governs EVERY lane (consensus/whale/dip) since they
+    # all draw from eligible_candidates. Keep only bets resolving before the next
+    # UTC midnight (reverse-lookup can re-introduce later-dated markets).
+    if settings.smart_expiring_today_only:
+        _eod = _end_of_utc_day(utc_now())
+        before = len(eligible_candidates)
+        eligible_candidates = [
+            c for c in eligible_candidates if c.end_date is not None and c.end_date <= _eod
+        ]
+        if len(eligible_candidates) != before:
+            _step(settings, f"   expiring-today filter: {len(eligible_candidates)}/{before} resolve today")
+
     report = analyze_smart_money_with_data(eligible_candidates, settings, smart_data)
     _step(settings, f"   strict scan: {len(report.opportunities)} opportunity(ies)")
     scan_counts["strict"] = len(report.opportunities)
@@ -584,6 +606,30 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             if signal is None:
                 signal = new_whales[0]
                 strategy = "smart_money_whale"
+
+    # ── Favorite-dip pass — buy a strong favorite that just dropped into the
+    # buy band but is still alive (user 2026-06-16). Self-contained over the
+    # eligible universe (respects the 6h window + filters). Deduped against
+    # everything already queued/held so it never double-buys.
+    if settings.smart_dip_buy_enabled:
+        dip_signals = fetch_dip_signals(settings, eligible_candidates)
+        if settings.smart_dip_max_orders_per_tick > 0:
+            dip_signals = dip_signals[: settings.smart_dip_max_orders_per_tick]
+        queued_tokens = {opp.candidate.token_id for opp in opportunities if opp.candidate.token_id}
+        new_dips = [
+            d for d in dip_signals
+            if d.candidate.token_id
+            and d.candidate.token_id not in queued_tokens
+            and not portfolio.has_open_token(str(d.candidate.token_id))
+            and not portfolio.has_pending_token(str(d.candidate.token_id))
+        ]
+        scan_counts["favorite_dip"] = len(new_dips)
+        if new_dips:
+            _step(settings, f"   favorite-dip: {len(new_dips)} dropped-favorite signal(s)")
+            opportunities = opportunities + new_dips
+            if signal is None:
+                signal = new_dips[0]
+                strategy = "smart_money_dip"
 
     signal_payload = signal.to_dict() if signal else None
 
@@ -695,10 +741,11 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     }
                 )
                 continue
-            # Tag whale-sourced picks distinctly in sizing + the journal.
+            # Tag whale / dip picks distinctly in sizing + the journal.
+            _src = getattr(opportunity, "source", "consensus")
             opp_strategy = (
-                "smart_money_whale"
-                if getattr(opportunity, "source", "consensus") == "whale"
+                "smart_money_whale" if _src == "whale"
+                else "smart_money_dip" if _src == "favorite_dip"
                 else strategy
             )
             print(f"🧠 SELECTED: {opportunity_payload['selection_reason']}")

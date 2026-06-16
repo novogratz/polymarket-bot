@@ -106,7 +106,17 @@ class SmartMoneySignal:
             if value_pct < 0
             else ""
         )
-        if self.source == "whale":
+        if self.source == "favorite_dip":
+            ask = self.candidate.best_ask or self.candidate.price
+            prior = self.avg_copy_price  # reference price before the drop
+            drop = (prior - ask) if (prior and ask) else 0.0
+            selection_reason = (
+                f"FAVORITE DIP: '{self.candidate.outcome}' fell to {ask:.2f} from ~{prior:.2f} "
+                f"(−{drop:.0%} recent drop) but is still alive; buying the dip to ride it to "
+                f"resolution. Closes in {_format_hours(self.candidate.hours_to_close)}, "
+                f"spread {self.spread:.4f}."
+            )
+        elif self.source == "whale":
             wallet = self.wallets[0] if self.wallets else "?"
             selection_reason = (
                 f"WHALE single-wallet buy: {wallet} bought ${self.copied_usdc:,.0f} of this "
@@ -697,6 +707,59 @@ def fetch_whale_signals(
             best_by_token[asset] = signal
 
     return sorted(best_by_token.values(), key=lambda s: s.copied_usdc, reverse=True)
+
+
+def fetch_dip_signals(
+    settings: Settings,
+    eligible_candidates: list[Candidate],
+) -> list[SmartMoneySignal]:
+    """Favorite-dip lane: buy a strong favorite that JUST dropped but is alive.
+
+    For each eligible candidate: take the live ask, look at the recent price
+    move for that outcome (1h by default, or 24h if ``smart_dip_use_day_change``),
+    and fire when the ask is in ``[smart_dip_min_price, smart_dip_max_price]`` AND
+    the price one window ago (ask − recent change) was ≥ ``smart_dip_reference_min``
+    — i.e. it was a strong favorite and fell into the buy band. Self-contained
+    (no order-flow); intersected with the already-vetted eligible universe so
+    it respects the 6h window, spread/liquidity, and exclusions.
+    """
+    if not settings.smart_dip_buy_enabled:
+        return []
+
+    lo = settings.smart_dip_min_price
+    hi = settings.smart_dip_max_price
+    ref_min = settings.smart_dip_reference_min
+    max_spread = settings.smart_max_spread
+    signals: list[SmartMoneySignal] = []
+    for c in eligible_candidates:
+        ask = c.best_ask if c.best_ask is not None else c.price
+        if ask is None or not (lo <= ask <= hi):
+            continue
+        change = c.one_day_change if settings.smart_dip_use_day_change else c.one_hour_change
+        if change >= 0:  # must have actually dropped
+            continue
+        prior = ask - change  # change is negative → prior is higher than ask
+        if prior < ref_min:
+            continue
+        spread = (c.best_ask or 0.0) - (c.best_bid or 0.0)
+        if c.best_bid is not None and c.best_ask is not None and spread > max_spread:
+            continue
+        signals.append(
+            SmartMoneySignal(
+                candidate=c,
+                consensus=0,
+                copied_usdc=0.0,
+                avg_copy_price=round(prior, 4),
+                wallets=[],
+                titles=[c.question],
+                spread=round(spread, 4),
+                min_consensus=0,
+                source="favorite_dip",
+            )
+        )
+    # Biggest drops first.
+    signals.sort(key=lambda s: (s.avg_copy_price - (s.candidate.best_ask or s.candidate.price or 0.0)), reverse=True)
+    return signals
 
 
 def analyze_smart_money_with_data(

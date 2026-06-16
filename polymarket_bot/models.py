@@ -415,6 +415,10 @@ class Candidate:
     neg_risk: bool = False
     accepts_orders: bool = False
     event_slug: str = ""
+    # Recent price moves for THIS outcome (NO side already sign-flipped). Used
+    # by the favorite-dip lane to spot a favorite that just dropped.
+    one_day_change: float = 0.0
+    one_hour_change: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {

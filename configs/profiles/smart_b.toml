@@ -60,12 +60,9 @@ trade_lookback_minutes = 240
 trade_fetch_concurrency = 8
 
 [discovery]
-# 6 h MAX window (user 2026-06-16: every rule — consensus copy, $5k whale, and
-# the favorite-dip lane — only takes bets that resolve within ~6 h). Narrowing
-# the scan here constrains the consensus AND whale passes too, since both
-# intersect the eligible set. Trade-off: fewer near-term signals than the old
-# 72 h, so cash utilisation depends on near-term flow.
-soon_hours = 6
+# Upper bound is the "expiring today" gate ([window] below); these just need to
+# not clip within a single UTC day, so they cover a full day (25h).
+soon_hours = 25
 scan_limit = 1000
 
 [market_filters]
@@ -87,7 +84,8 @@ price_max = 0.97
 max_absolute_spread = 0.04
 max_relative_spread = 0.15
 min_hours_to_close = 0.0
-max_hours_to_close = 6.0
+# Real upper bound is the "expiring today" gate; 25h just avoids clipping a day.
+max_hours_to_close = 25.0
 max_sports_positions = 5
 
 # Exit stack — the smart lane's full machinery (the grinder lacks most of it):
@@ -130,6 +128,27 @@ enabled = true
 min_usdc = 5000.0
 lookback_minutes = 60
 max_orders_per_tick = 2
+
+[favorite_dip]
+# THIRD lane (user 2026-06-16): buy a strong favorite that just dropped into
+# [0.60, 0.85] but is still alive — e.g. a soccer Under 4.5 that was ~0.90 and
+# fell at halftime. Reference = the 1h move (catches the in-game drop); the
+# price one hour ago must have been ≥ 0.86. Self-contained, respects the 6h
+# window + spread/liquidity. Riskier (can be a falling knife) — small band.
+enabled = true
+min_price = 0.60
+max_price = 0.85
+# 0.84 so a favorite that was ~0.85 and dropped (e.g. Gentner Drummond
+# 0.85 -> 0.70, politics, expiring today) still qualifies (user 2026-06-16).
+reference_min = 0.84
+use_day_change = false
+max_orders_per_tick = 2
+
+[window]
+# ALL lanes (consensus/whale/dip): only bets that RESOLVE TODAY (before the
+# next UTC midnight). Naturally tightens through the day; supersedes the rolling
+# 6h cap (user 2026-06-16: "all bets must be expiring today").
+expiring_today_only = true
 
 [noise_fallback]
 # Hard off — never place an unfiltered "just trade something" bet.

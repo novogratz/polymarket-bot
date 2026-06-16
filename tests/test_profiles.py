@@ -362,6 +362,14 @@ class CopyLaneProfileTests(unittest.TestCase):
         self.assertEqual(values["POLYMARKET_SMART_WHALE_COPY_ENABLED"], "1")
         self.assertEqual(float(values["POLYMARKET_SMART_WHALE_MIN_USDC"]), 5000.0)
 
+    def test_favorite_dip_and_window_enabled(self):
+        # Third lane + the global "expiring today" gate.
+        values = self._smart_b().values
+        self.assertEqual(values["POLYMARKET_SMART_DIP_BUY_ENABLED"], "1")
+        self.assertEqual(values["POLYMARKET_SMART_EXPIRING_TODAY_ONLY"], "1")
+        # 0.85 -> 0.70 (Drummond) must qualify: reference_min <= 0.85.
+        self.assertLessEqual(float(values["POLYMARKET_SMART_DIP_REFERENCE_MIN"]), 0.85)
+
     def test_isolated_from_grinder_b(self):
         # The bot-3 isolation guarantee: smart_b must not be a grinder profile,
         # and the grinder_b profile must stay on the grinder mode.
