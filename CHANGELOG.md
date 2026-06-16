@@ -70,6 +70,8 @@ Winners ride to 0.99, the live report shows every full-size trade again, and the
 
 ### Changed
 
+- **Bot 2 reverted to the grinder strategy — copy lane removed** (user 2026-06-16): bot 2 no longer runs the whale copy-trading lane; it runs the same grinder strategy/controls as bot 1 (`grinder_b.toml`, identical to `grinder.toml` apart from the per-machine bankroll baseline, via `run_live_b.sh`). Removed the copy-only artifacts: `scripts/run_live_copy_b.sh`, `configs/profiles/smart_b.toml`, and the `CopyLaneProfileTests`. The dormant `smart_whale_*` config keys remain (default-off, used by no profile).
+
 - **Per-bet cap 10% → 15%** (user 2026-06-14): `stake_pct` 0.10 → **0.15** in both profiles to size up at the 89% live win rate; fresh entries still open at the 5% `initial_stake_pct`, so the dip double-down now has headroom to fill toward 15%. Self-tuner `race.stake_pct` upper bound raised (0.05, 0.10) → (0.05, 0.15).
 
 - **Dip double-down now gated by a 0.60 "alive" floor, not an 8¢ max-dip** (user 2026-06-14, Sweden-Tunisia Under): the double-down fires whenever a held position's ask has dipped below entry AND is still ≥ `race_double_down_min_price` (0.60) — the deterministic proxy for "the bet is still going well / few goals" (the bot has no live-score feed). The old `max_dip` (8¢) cap and the 0.85 band floor are replaced by the single 0.60 alive-floor; below it the bet has turned and is never topped up. Still once per position, never past the 10% cap.

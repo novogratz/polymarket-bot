@@ -49,7 +49,7 @@ Stop-Process -Name python -Force -ErrorAction SilentlyContinue; Stop-Process -Na
 
 ## Strategy — `grinder` (race mode)
 
-Buy a heavily-favored binary outcome near its resolution and **ride it to resolution**. The edge is the implied-probability gap between the entry price and a near-certain outcome settling at 1.0. Source of truth: `configs/profiles/grinder.toml` (bot 1) and `configs/profiles/grinder_b.toml` (bots 2 & 3) — keep their strategy keys in sync. Selector `select_grinder` in `polymarket_bot/race_strategies.py`.
+Buy a heavily-favored binary outcome near its resolution and **ride it to resolution**. The edge is the implied-probability gap between the entry price and a near-certain outcome settling at 1.0. Source of truth: `configs/profiles/grinder.toml` (bot 1) and `configs/profiles/grinder_b.toml` (bots 2 & 3) — keep their strategy keys in sync. All three bots run this same grinder strategy. Selector `select_grinder` in `polymarket_bot/race_strategies.py`.
 
 **Entry** (`_build_eligible_candidates`):
 - price (ask) ∈ **[0.85, 0.97]**, **game STARTS or market CLOSES within ≤ 4 h** (user 2026-06-14: only fast-resolving bets — a game in progress that doesn't close inside the window is dropped). The dynamic widening ladder is disabled (`race_max_hours=4`, `race_max_hours_cap=0` → single `[4h]` window).
@@ -87,8 +87,8 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 
 Three independent live bots, each with its own wallet, `.env`, and ledger.
 
-- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bots 2 & 3). Live data (`paper_state.json`, journals, `starting_cash.txt`) is **gitignored = per-machine**; only code + profiles are shared.
-- **Launchers:** `run_live_70.sh` (bot 1), `run_live_b.sh` (bots 2 & 3), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
+- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bots 2 & 3) — all grinder, keep strategy keys in sync. Live data (`paper_state.json`, journals, `starting_cash.txt`) is **gitignored = per-machine**; only code + profiles are shared.
+- **Launchers:** `run_live_70.sh` (bot 1), `run_live_b.sh` (bots 2 & 3, grinder), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
 - **Per-machine baseline:** `data/starting_cash.txt` (gitignored) sets each bot's report baseline independently of the shared profile. Written by `fresh_start.py`. Both `live_analyst._starting_cash` and `notifications._total_pnl_vs_start` prefer it.
 
 ## Launch
@@ -134,10 +134,10 @@ Run on a bot's own machine, **bot stopped**: backs up + wipes closed-trade histo
 - `polymarket_bot/main.py` — CLI commands and the strategy loop dispatch; tick orchestration; journal writer.
 - `polymarket_bot/portfolio.py` — local ledger (cash, open positions, exits).
 - `polymarket_bot/gamma.py` — Gamma market scan + reverse-lookup by clob_token_ids.
-- `scripts/run_live_70.sh` / `run_live_b.sh` / `run_live_win.sh` — live launchers (bot 1 / bots 2-3 / Windows). Do NOT reset the ledger.
+- `scripts/run_live_70.sh` / `run_live_b.sh` / `run_live_win.sh` — live launchers (bot 1 / bots 2 & 3 grinder / Windows). Do NOT reset the ledger.
 - `scripts/live_analyst.py` — the Telegram RAPPORT LIVE (read-only sidecar).
 - `scripts/fresh_start.py` — per-machine reset (keeps open trades).
-- `configs/profiles/grinder.toml`, `grinder_b.toml` — live profiles.
+- `configs/profiles/grinder.toml`, `grinder_b.toml` — grinder live profiles (bot 1 / bots 2 & 3).
 - `docs/PROFILES.md` — exhaustive TOML key reference. `docs/STRATEGIES.md` — buy lanes + exit conditions. `docs/AUTONOMY.md` — offline self-tuner design.
 
 ## Development workflow
