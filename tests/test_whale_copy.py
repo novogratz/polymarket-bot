@@ -172,5 +172,57 @@ class RecentTradesParsingTests(unittest.TestCase):
         self.assertEqual([t.asset for t in trades], ["tokA"])
 
 
+class HttpRetryTests(unittest.TestCase):
+    """DataApiClient._get_json retries on 429 (the cohort-fetch rate-limit)."""
+
+    class _FakeResp:
+        def __init__(self, body):
+            self._body = body
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return self._body
+
+    def _client(self):
+        from polymarket_bot.smart_money import DataApiClient
+        return DataApiClient()
+
+    def test_retries_on_429_then_succeeds(self):
+        import urllib.error
+        from unittest import mock
+        c = self._client()
+        calls = {"n": 0}
+
+        def fake_urlopen(req, timeout=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise urllib.error.HTTPError(req.full_url, 429, "rate", {}, None)
+            return self._FakeResp(b'[{"ok": 1}]')
+
+        with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen), \
+             mock.patch("time.sleep", lambda *_a, **_k: None):
+            out = c._get_json("/trades", {"a": "b"}, use_cache=False)
+        self.assertEqual(out, [{"ok": 1}])
+        self.assertEqual(calls["n"], 2)  # one 429, one success
+
+    def test_non_429_raises_immediately(self):
+        import urllib.error
+        from unittest import mock
+        c = self._client()
+        calls = {"n": 0}
+
+        def fake_urlopen(req, timeout=None):
+            calls["n"] += 1
+            raise urllib.error.HTTPError(req.full_url, 500, "boom", {}, None)
+
+        with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen), \
+             mock.patch("time.sleep", lambda *_a, **_k: None):
+            with self.assertRaises(urllib.error.HTTPError):
+                c._get_json("/trades", {"a": "b"}, use_cache=False)
+        self.assertEqual(calls["n"], 1)  # no retry on non-429
+
+
 if __name__ == "__main__":
     unittest.main()

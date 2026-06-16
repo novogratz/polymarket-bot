@@ -54,6 +54,10 @@ leaderboard_windows = "DAY,WEEK,MONTH"
 top_n = 100
 min_trader_pnl = 0.0
 trade_lookback_minutes = 240
+# Lower concurrency (default 16) so the per-tick burst of wallet-trade fetches
+# stops tripping the data-api 429 rate limiter (combined with HTTP-client
+# backoff). Fewer parallel calls = slower scan but far fewer failed fetches.
+trade_fetch_concurrency = 8
 
 [discovery]
 # Follow flow across ANY horizon (out to 72 h) — the opposite of grinder's
@@ -116,8 +120,11 @@ enabled = false
 # pass intersects the vetted eligible universe (post-scan, post-exclusion), so
 # crypto/O-U/etc. bans, the price band, spread and liquidity floors still
 # apply. Whales are prioritised over consensus picks within the tick budget.
+# Threshold $50k -> $5k single-wallet (user 2026-06-16) — catch many more
+# single big bets. Still ONE wallet's flow on a token within the lookback;
+# still intersected with the vetted eligible universe.
 enabled = true
-min_usdc = 50000.0
+min_usdc = 5000.0
 lookback_minutes = 60
 max_orders_per_tick = 2
 

@@ -15,6 +15,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -361,11 +362,32 @@ class DataApiClient:
                 "User-Agent": "polymarket-bot/0.1",
             },
         )
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        if use_cache:
-            _cache_write(url, payload)
-        return payload
+        # Retry on 429 (Too Many Requests) with backoff. The cohort fetch pulls
+        # 100+ wallets per tick and bursts trip the data-api rate limiter; a
+        # short retry recovers most without losing the wallet's signal. Respects
+        # Retry-After when the server sends it, capped so a tick never stalls.
+        delay = 0.4
+        last_err: Exception | None = None
+        for attempt in range(4):
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                if use_cache:
+                    _cache_write(url, payload)
+                return payload
+            except urllib.error.HTTPError as exc:
+                last_err = exc
+                if exc.code != 429 or attempt == 3:
+                    raise
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
+                try:
+                    wait = float(retry_after) if retry_after else delay
+                except (TypeError, ValueError):
+                    wait = delay
+                time.sleep(min(wait, 3.0))
+                delay *= 2
+        if last_err is not None:  # pragma: no cover - loop always returns/raises
+            raise last_err
 
 
 # ─── Shared HTTP cache (cross-process, file-based) ────────────────────

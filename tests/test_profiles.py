@@ -360,7 +360,7 @@ class CopyLaneProfileTests(unittest.TestCase):
         # Bot 2's SECOND trigger: copy any single wallet's >= $50k bet.
         values = self._smart_b().values
         self.assertEqual(values["POLYMARKET_SMART_WHALE_COPY_ENABLED"], "1")
-        self.assertEqual(float(values["POLYMARKET_SMART_WHALE_MIN_USDC"]), 50000.0)
+        self.assertEqual(float(values["POLYMARKET_SMART_WHALE_MIN_USDC"]), 5000.0)
 
     def test_isolated_from_grinder_b(self):
         # The bot-3 isolation guarantee: smart_b must not be a grinder profile,
