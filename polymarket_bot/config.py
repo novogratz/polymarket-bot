@@ -203,6 +203,11 @@ class Settings:
     # game (date-truncated event slug + team names from the question). OFF by
     # default; only bot 2's smart_b.toml turns it on.
     smart_one_bet_per_game: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_ONE_BET_PER_GAME", False))
+    # Copy lane: use the LIGHT exclusion set (crypto + stocks only) instead of
+    # the grinder's full ban-list, so the lane can follow smart money into
+    # draws / exact scores / halftime / O-U / weather markets (~10x the
+    # universe). OFF by default; the grinder keeps the full exclusions.
+    smart_copy_light_exclusions: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_COPY_LIGHT_EXCLUSIONS", False))
     smart_reverse_lookup_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_REVERSE_LOOKUP_ENABLED", True))
     smart_reverse_lookup_max_tokens: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_REVERSE_LOOKUP_MAX_TOKENS", 30))
     smart_reverse_lookup_min_copied_usdc: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_REVERSE_LOOKUP_MIN_COPIED_USDC", 100.0))

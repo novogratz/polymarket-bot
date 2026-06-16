@@ -157,6 +157,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
     "window": {
         "expiring_today_only": ("POLYMARKET_SMART_EXPIRING_TODAY_ONLY", "bool"),
         "one_bet_per_game": ("POLYMARKET_SMART_ONE_BET_PER_GAME", "bool"),
+        "copy_light_exclusions": ("POLYMARKET_SMART_COPY_LIGHT_EXCLUSIONS", "bool"),
     },
     "reverse_lookup": {
         "enabled": ("POLYMARKET_SMART_REVERSE_LOOKUP_ENABLED", "bool"),

@@ -157,6 +157,11 @@ expiring_today_only = true
 # (moneyline / first-to-score / totals); without this the lane stacked 3
 # correlated legs of IR Iran–NZ. Collapse to one pick per game.
 one_bet_per_game = true
+# LIGHT exclusions (user 2026-06-16): the grinder's full ban-list dropped 821
+# of 895 liquid today-markets (draws / exact scores / halftime / O-U / weather)
+# — exactly where smart money trades. The copy lane bans only crypto + stocks
+# and follows the wallets everywhere else (~10x the candidate universe).
+copy_light_exclusions = true
 
 [noise_fallback]
 # Hard off — never place an unfiltered "just trade something" bet.

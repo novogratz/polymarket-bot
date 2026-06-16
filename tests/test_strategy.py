@@ -4061,6 +4061,30 @@ class ExcludedMarketTests(unittest.TestCase):
         ):
             self.assertTrue(is_excluded_market(market), market["question"])
 
+    def test_light_exclusions_for_copy_lane(self):
+        # Copy lane: crypto + stocks still banned; everything the grinder bans
+        # for its own thesis (draws, exact scores, halftime, O/U, weather) is
+        # ALLOWED so it can follow smart money there.
+        from polymarket_bot.models import is_excluded_market_light
+        banned = [
+            {"question": "Will Bitcoin be up or down today?", "slug": "btc-updown"},
+            {"question": "Will Ethereum close above $4000?", "slug": "eth-4000"},
+            {"question": "S&P 500 (SPY) closes above $725?", "slug": "sp-500-spy-closes-above-725"},
+        ]
+        allowed = [
+            {"question": "Will France vs. Senegal end in a draw?", "slug": "fra-sen-draw"},
+            {"question": "Exact Score: France 1 - 0 Senegal?", "slug": "fra-sen-exact-1-0"},
+            {"question": "France leading at halftime?", "slug": "fra-sen-halftime"},
+            {"question": "Iraq vs. Norway: O/U 2.5", "slug": "irq-nor-ou-25"},
+            {"question": "Will the high temperature exceed 30°C?", "slug": "weather-30c"},
+        ]
+        for m in banned:
+            self.assertTrue(is_excluded_market_light(m), m["question"])
+            self.assertTrue(is_excluded_market(m), m["question"])  # also banned in full
+        for m in allowed:
+            self.assertFalse(is_excluded_market_light(m), m["question"])  # copy allows
+            self.assertTrue(is_excluded_market(m), m["question"])  # grinder still bans
+
     def test_stock_ticker_word_boundary_no_false_positives(self):
         # Short tickers are word-bounded: "spy" must not ban spy thrillers,
         # "meta" must not ban metal, "dax" must not ban Dexter etc.

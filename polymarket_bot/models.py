@@ -339,6 +339,38 @@ def is_fast_lane_text(question: str, slug: str = "") -> bool:
     return is_esports_text(question, slug) or is_stock_text(question, slug)
 
 
+_CRYPTO_QUESTION_SUBSTRINGS = (
+    "up or down", "bitcoin", "btc", "ethereum", "solana",
+    "dogecoin", "xrp", "cardano", "litecoin", "crypto",
+)
+_CRYPTO_SLUG_SUBSTRINGS = ("updown", "up-or-down")
+
+
+def is_excluded_market_light(market: dict[str, Any], now: datetime | None = None) -> bool:
+    """Lighter exclusion for the COPY lane (bot 2): ban ONLY crypto + stocks
+    (the user's standing outright bans). Everything the grinder excludes for
+    its own ride-to-resolution thesis — draws, exact scores, halftime, O/U
+    lines, weather, handicaps, esports — is ALLOWED here, because the copy
+    lane's edge is the wallet's signal, not our opinion on the market type.
+    The grinder still uses the full is_excluded_market (this is opt-in via
+    settings.smart_copy_light_exclusions)."""
+    q = str(market.get("question") or "").lower()
+    slug = str(market.get("slug") or "").lower()
+    if any(p in q for p in _CRYPTO_QUESTION_SUBSTRINGS) or any(
+        p in slug for p in _CRYPTO_SLUG_SUBSTRINGS
+    ):
+        return True
+    raw_q = str(market.get("question") or "")
+    is_stock = (
+        any(pat in q for pat in _STOCK_QUESTION_SUBSTRINGS)
+        or any(pat in slug for pat in _STOCK_SLUG_SUBSTRINGS)
+        or bool(_STOCK_MARKET_RE.search(q))
+        or bool(_STOCK_MARKET_RE.search(slug))
+        or (bool(_PAREN_TICKER_RE.search(raw_q)) and "$" in raw_q)
+    )
+    return is_stock
+
+
 def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> bool:
     """True for market types excluded from every strategy.
 

@@ -12,16 +12,23 @@ from datetime import timedelta
 from typing import Any
 
 from .config import Settings
-from .models import Candidate, as_float, is_excluded_market, parse_dt, parse_json_list, utc_now
+from .models import Candidate, as_float, is_excluded_market, is_excluded_market_light, parse_dt, parse_json_list, utc_now
 
 
 def rank_markets(markets: list[dict[str, Any]], settings: Settings) -> list[Candidate]:
     now = utc_now()
     horizon = now + timedelta(hours=settings.soon_hours)
     candidates: list[Candidate] = []
+    # Copy lane opts into the lighter exclusion set (crypto + stocks only) so it
+    # can follow smart money into markets the grinder bans for its own thesis.
+    _excluded = (
+        is_excluded_market_light
+        if getattr(settings, "smart_copy_light_exclusions", False)
+        else is_excluded_market
+    )
 
     for market in markets:
-        if is_excluded_market(market):
+        if _excluded(market):
             continue
         end_date = parse_dt(market.get("endDate"))
         if end_date is None or end_date < now or end_date > horizon:
