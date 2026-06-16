@@ -52,10 +52,9 @@ enabled = false
 max_hours = 4.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
-# Top 100 markets only (user 2026-06-15, was 750): a single Gamma page per
-# ordering, no pagination — the scan reads only the soonest-closing /
-# highest-volume top 100 instead of walking ~1,000-2,000 raw markets/tick.
-scan_limit = 100
+# 750 markets/ordering (user 2026-06-16: match bot 1 exactly — full scan
+# breadth past the Gamma 100-row page cap, ~1,000-2,000 raw markets/tick).
+scan_limit = 750
 
 min_liquidity_usd = 500.0
 min_volume_24h_usd = 300.0

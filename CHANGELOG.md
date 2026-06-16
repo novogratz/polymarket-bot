@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- **bot 3 + zaza `scan_limit` 100 → 750** (user 2026-06-16): match bot 1's full scan breadth (the 2026-06-15 top-100 setting is reverted on these two bots to mirror bot 1 exactly).
 - **Zaza + bot 3 synced to bot 1's strategy** (user 2026-06-16, "bring the same strategy as bot 1 — the best bot ever"): `grinder_zaza.toml` was on a stale config (`stake_pct = 0.50`, `max_hours = 8`, `min_price = 0.88`, no double-down, `resolved_exit_threshold = 0.99`, no profit-margin floor) and is now aligned to bot 1 (`grinder.toml`): 15% hard cap with 5% initial entry, 4 h hard window, 0.85 band, generalized dip double-down (`min_price 0.60`), 3-tick confirmed soccer-moneyline SL, 0.97 resolved exit floored above entry by `min_profit_margin 0.02`. `grinder_b.toml` (bot 3) already matched functionally; its double-down keys were made explicit (`max_dip 0.40`, `min_price 0.60`). Both keep `scan_limit = 100` (bot 1 uses 750 — kept per the 2026-06-15 instruction). Profile loader gains the `[race].double_down_min_price` key (was in `config.py` but unmapped).
 - **Scan reverted to the top 100 markets** (user 2026-06-15): `scan_limit` 750 → **100** in all live profiles (`grinder.toml`, `grinder_b.toml`, `grinder_zaza.toml`) — a single Gamma page per ordering (soonest-closing / highest-volume), no pagination. The scan no longer walks ~1,000–2,000 raw markets per tick.
 
