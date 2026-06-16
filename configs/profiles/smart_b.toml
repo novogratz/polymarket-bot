@@ -26,12 +26,17 @@
 starting_cash = 65.0
 mode = "smart_money"
 
+# HIGHER CASH UTILISATION (user 2026-06-15: "use most of the cash"). The
+# opportunity-spread sizer deploys toward (1 - cash_floor) of equity across the
+# tick's signals, capped per position by the ceiling. A bigger ceiling lets a
+# handful of signals deploy most of the bankroll; small cash_floor keeps almost
+# everything working. Trade-off: copies are more concentrated than the original
+# 6%/8% — acceptable given the lane's full exit stack (cohort-exit + TP ladder
+# + trailing + peak-protect + -40% SL).
 [sizing]
-# SMALL per-position so the bankroll spreads across MANY copied positions
-# instead of a few big ones — this is what keeps cash working without forcing.
-position_pct = 0.06
+position_pct = 0.12
 max_position_ceiling_usd = 0.0
-max_position_ceiling_pct = 0.08
+max_position_ceiling_pct = 0.25
 cash_floor_pct = 0.02
 # CRITICAL SAFETY: 0 = NEVER force trades. With min_open_positions > 0 the bot
 # runs relaxed/deep fallback passes that LOOSEN consensus to hit a position
@@ -67,8 +72,9 @@ min_consensus = 2
 fallback_consensus = 2
 min_copied_usdc = 50.0
 min_trade_usd = 1.0
-# More orders/tick so a busy window can fund several copies at once.
-max_orders_per_tick = 4
+# More orders/tick so a busy window can fund several copies at once and put
+# more cash to work per tick.
+max_orders_per_tick = 6
 price_min = 0.05
 price_max = 0.97
 max_absolute_spread = 0.04

@@ -343,10 +343,15 @@ class CopyLaneProfileTests(unittest.TestCase):
         self.assertGreaterEqual(int(values["POLYMARKET_SMART_MIN_CONSENSUS"]), 2)
 
     def test_broad_cohort_for_utilisation(self):
-        # Utilisation lever: a wide cohort + small positions, not forcing.
+        # Utilisation levers: a wide cohort + a meaningful (but bounded) per-
+        # position ceiling so a few signals deploy most of the cash. NOT forcing
+        # (min_open=0, asserted separately). Ceiling stays <=30% to bound
+        # concentration on any single copy.
         values = self._smart_b().values
         self.assertGreaterEqual(int(values["POLYMARKET_SMART_LEADERBOARD_LIMIT"]), 50)
-        self.assertLessEqual(float(values["POLYMARKET_SMART_MAX_POSITION_CEILING_PCT"]), 0.10)
+        ceiling = float(values["POLYMARKET_SMART_MAX_POSITION_CEILING_PCT"])
+        self.assertGreater(ceiling, 0.0)
+        self.assertLessEqual(ceiling, 0.30)
 
     def test_mirrors_cohort_exit(self):
         self.assertEqual(self._smart_b().values["POLYMARKET_SMART_COHORT_EXIT_ENABLED"], "1")

@@ -569,15 +569,11 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         whale_signals = fetch_whale_signals(settings, eligible_candidates)
         if settings.smart_whale_max_orders_per_tick > 0:
             whale_signals = whale_signals[: settings.smart_whale_max_orders_per_tick]
-        seen_whale_tokens = {opp.candidate.token_id for opp in opportunities if opp.candidate.token_id}
-        new_whales: list = []
-        for w in whale_signals:
-            tok = w.candidate.token_id
-            if tok and tok in seen_whale_tokens:
-                continue
-            if tok:
-                seen_whale_tokens.add(tok)
-            new_whales.append(w)
+        # NO dedup against the consensus picks (user 2026-06-15: "ok to
+        # duplicate if it hits this one too"). A whale on a token consensus
+        # also picked is kept; the execution loop's open/pending-token checks
+        # still prevent an actual double-buy of a position already held.
+        new_whales: list = list(whale_signals)
         scan_counts["whale"] = len(new_whales)
         if new_whales:
             _step(
