@@ -317,6 +317,58 @@ class ProfilesDirectoryTests(unittest.TestCase):
         self.assertIn("POLYMARKET_SMART_NOISE_FALLBACK_ENABLED", profile.values)
 
 
+class CopyLaneProfileTests(unittest.TestCase):
+    """Bot 2's copy-trading profile (smart_b.toml) invariants.
+
+    Bot 2 runs this; bots 1 & 3 run the grinder profiles. The key safety
+    invariant is that the copy lane NEVER force-trades to fill cash — high
+    utilisation comes from a broad cohort, not from loosening consensus.
+    """
+
+    def _smart_b(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        return load_profile(repo_root / "configs" / "profiles" / "smart_b.toml")
+
+    def test_runs_smart_money_mode(self):
+        self.assertEqual(self._smart_b().values["POLYMARKET_RUN_MODE"], "smart_money")
+
+    def test_never_force_trades(self):
+        # min_open_positions = 0 and deep fallback OFF: the relaxed/deep
+        # consensus-loosening passes (the documented crypto-coinflip
+        # money-loser) can never run on this lane.
+        values = self._smart_b().values
+        self.assertEqual(values["POLYMARKET_MIN_OPEN_POSITIONS"], "0")
+        self.assertEqual(values["POLYMARKET_SMART_DEEP_FALLBACK_ENABLED"], "0")
+        self.assertEqual(values["POLYMARKET_SMART_NOISE_FALLBACK_ENABLED"], "0")
+        self.assertGreaterEqual(int(values["POLYMARKET_SMART_MIN_CONSENSUS"]), 2)
+
+    def test_broad_cohort_for_utilisation(self):
+        # Utilisation lever: a wide cohort + small positions, not forcing.
+        values = self._smart_b().values
+        self.assertGreaterEqual(int(values["POLYMARKET_SMART_LEADERBOARD_LIMIT"]), 50)
+        self.assertLessEqual(float(values["POLYMARKET_SMART_MAX_POSITION_CEILING_PCT"]), 0.10)
+
+    def test_mirrors_cohort_exit(self):
+        self.assertEqual(self._smart_b().values["POLYMARKET_SMART_COHORT_EXIT_ENABLED"], "1")
+
+    def test_whale_copy_trigger_enabled(self):
+        # Bot 2's SECOND trigger: copy any single wallet's >= $50k bet.
+        values = self._smart_b().values
+        self.assertEqual(values["POLYMARKET_SMART_WHALE_COPY_ENABLED"], "1")
+        self.assertEqual(float(values["POLYMARKET_SMART_WHALE_MIN_USDC"]), 50000.0)
+
+    def test_isolated_from_grinder_b(self):
+        # The bot-3 isolation guarantee: smart_b must not be a grinder profile,
+        # and the grinder_b profile must stay on the grinder mode.
+        repo_root = Path(__file__).resolve().parent.parent
+        grinder_b = load_profile(repo_root / "configs" / "profiles" / "grinder_b.toml")
+        self.assertEqual(grinder_b.values["POLYMARKET_RUN_MODE"], "grinder")
+        self.assertNotEqual(
+            self._smart_b().values["POLYMARKET_RUN_MODE"],
+            grinder_b.values["POLYMARKET_RUN_MODE"],
+        )
+
+
 class TestProfilesPersistenceSection(unittest.TestCase):
     def test_persistence_section_recognized(self) -> None:
         toml_content = """

@@ -1,0 +1,129 @@
+# Profile "smart_b" — BOT 2's copy-trading lane (run_live_copy_b.sh).
+#
+# Bot 1 (grinder.toml) and bot 3 (grinder_b.toml) keep running the grinder
+# strategy untouched. This profile lives in its OWN file so editing it can
+# never affect either grinder bot — bot 2 is the only consumer.
+#
+# Thesis: mirror PUBLIC order-flow from many persistently-profitable
+# leaderboard wallets. When real wallets in the cohort buy the SAME token in a
+# short window we copy the buy with small, bounded size; when the cohort sells
+# (cohort_exit) we sell. The edge is the wallets' collective informational
+# advantage — NOT our own opinion. Differs from grinder (favorites in the last
+# 4 h, ride to 1.0): copy follows informed flow across ANY horizon.
+#
+# CAPITAL UTILISATION ("no idle cash", user 2026-06-15): tuned for high
+# deployment the SAFE way — a BROAD cohort (top 100 wallets, not 25) + a long
+# 72 h discovery horizon + SMALL per-position caps (6%) + more orders/tick, so
+# real consensus signals are plentiful and cash spreads across many markets.
+# It does NOT force trades: min_open_positions = 0 and the relaxed/deep
+# fallback passes never run, because forcing deployment by loosening consensus
+# is the documented money-loser (the crypto-coinflip pattern). Cash idles only
+# when there is genuinely no real consensus — that is correct, not a bug.
+
+[run]
+# Per-machine baseline lives in data/starting_cash.txt (gitignored); this is
+# only the RPC-failure fallback. Bot 2's account.
+starting_cash = 65.0
+mode = "smart_money"
+
+[sizing]
+# SMALL per-position so the bankroll spreads across MANY copied positions
+# instead of a few big ones — this is what keeps cash working without forcing.
+position_pct = 0.06
+max_position_ceiling_usd = 0.0
+max_position_ceiling_pct = 0.08
+cash_floor_pct = 0.02
+# CRITICAL SAFETY: 0 = NEVER force trades. With min_open_positions > 0 the bot
+# runs relaxed/deep fallback passes that LOOSEN consensus to hit a position
+# count — a force-trade lane with no edge (the crypto-coinflip pattern that
+# cost money). Utilisation comes from a broad cohort, never from forcing.
+min_open_positions = 0
+assumed_live_balance_usd = 65.0
+# OFF: a high-conviction signal must not blow past the ceiling.
+high_conviction_balance_fraction = 0.0
+
+[trader_cohort]
+# BROAD cohort = more genuine consensus signals = higher utilisation.
+# Top 100 wallets across day+week+month windows (vs the strict lane's 25/WEEK).
+leaderboard_windows = "DAY,WEEK,MONTH"
+top_n = 100
+min_trader_pnl = 0.0
+trade_lookback_minutes = 240
+
+[discovery]
+# Follow flow across ANY horizon (out to 72 h) — the opposite of grinder's
+# ≤4 h window. Wider horizon = more copyable signals.
+soon_hours = 72
+scan_limit = 1000
+
+[market_filters]
+min_liquidity_usd = 500.0
+min_volume_usd = 300.0
+
+[filters]
+# Require genuine multi-wallet consensus before mirroring. Lower copied-USDC
+# floor (vs the strict 75) surfaces more real signals without forcing.
+min_consensus = 2
+fallback_consensus = 2
+min_copied_usdc = 50.0
+min_trade_usd = 1.0
+# More orders/tick so a busy window can fund several copies at once.
+max_orders_per_tick = 4
+price_min = 0.05
+price_max = 0.97
+max_absolute_spread = 0.04
+max_relative_spread = 0.15
+min_hours_to_close = 0.25
+max_hours_to_close = 72.0
+max_sports_positions = 5
+
+# Exit stack — the smart lane's full machinery (the grinder lacks most of it):
+#   take-profit ladder + trailing stop + peak-protect + -40% stop-loss, AND
+#   cohort_exit = mirror the wallets OUT (when the cohort sells, we sell).
+[exits]
+take_profit_ladder = "0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15"
+trailing_stop_arm_pct = 0.25
+trailing_stop_giveback = 0.50
+peak_protect_arm_pct = 1.0
+peak_protect_exit_pct = 0.40
+stop_loss_pct = 0.40
+stop_loss_min_age_minutes = 15
+resolved_market_threshold = 0.97
+
+[cohort_exit]
+# Mirror the wallets' EXIT — the piece most copy bots miss. When >=2 cohort
+# wallets that held the token have sold it, we sell too.
+enabled = true
+lookback_minutes = 120
+min_age_minutes = 30
+min_wallets = 2
+
+[deep_fallback]
+# Inert while min_open_positions = 0 (never runs), but kept OFF explicitly so
+# nobody can accidentally re-arm a force-trade path here.
+enabled = false
+
+[whale_copy]
+# SECOND trigger, running alongside the cohort-consensus path (user
+# 2026-06-15): copy ANY single wallet's buy on a token once its flow in the
+# lookback window reaches min_usdc — leaderboard membership NOT required. The
+# pass intersects the vetted eligible universe (post-scan, post-exclusion), so
+# crypto/O-U/etc. bans, the price band, spread and liquidity floors still
+# apply. Whales are prioritised over consensus picks within the tick budget.
+enabled = true
+min_usdc = 50000.0
+lookback_minutes = 60
+max_orders_per_tick = 2
+
+[noise_fallback]
+# Hard off — never place an unfiltered "just trade something" bet.
+enabled = false
+
+[reverse_lookup]
+# Pull high-flow tokens not in the standard Gamma scan so we don't drop them.
+enabled = true
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 30
+stdout_heartbeat_minutes = 15

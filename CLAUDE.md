@@ -30,7 +30,7 @@ The live trade loop is **fully deterministic — no LLM in the scanning or trade
 
 ## Strategy — `grinder` (race mode)
 
-Buy a heavily-favored binary outcome near its resolution and **ride it to resolution**. The edge is the implied-probability gap between the entry price and a near-certain outcome settling at 1.0. Source of truth: `configs/profiles/grinder.toml` (bot 1) and `configs/profiles/grinder_b.toml` (bots 2 & 3) — keep their strategy keys in sync. Selector `select_grinder` in `polymarket_bot/race_strategies.py`.
+Buy a heavily-favored binary outcome near its resolution and **ride it to resolution**. The edge is the implied-probability gap between the entry price and a near-certain outcome settling at 1.0. Source of truth: `configs/profiles/grinder.toml` (bot 1) and `configs/profiles/grinder_b.toml` (bot 3) — keep their strategy keys in sync. (Bot 2 runs a separate copy-trading lane, `smart_b.toml`; see Multi-bot layout.) Selector `select_grinder` in `polymarket_bot/race_strategies.py`.
 
 **Entry** (`_build_eligible_candidates`):
 - price (ask) ∈ **[0.85, 0.97]**, **game STARTS or market CLOSES within ≤ 4 h** (user 2026-06-14: only fast-resolving bets — a game in progress that doesn't close inside the window is dropped). The dynamic widening ladder is disabled (`race_max_hours=4`, `race_max_hours_cap=0` → single `[4h]` window).
@@ -68,9 +68,21 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 
 Three independent live bots, each with its own wallet, `.env`, and ledger.
 
-- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bots 2 & 3). Live data (`paper_state.json`, journals, `starting_cash.txt`) is **gitignored = per-machine**; only code + profiles are shared.
-- **Launchers:** `run_live_70.sh` (bot 1), `run_live_b.sh` (bots 2 & 3), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
+- **Profiles:** `grinder.toml` (bot 1, grinder), **`smart_b.toml` (bot 2, copy-trading — its OWN file, see below)**, `grinder_b.toml` (bot 3, grinder). Live data (`paper_state.json`, journals, `starting_cash.txt`) is **gitignored = per-machine**; only code + profiles are shared.
+- **Launchers:** `run_live_70.sh` (bot 1), **`run_live_copy_b.sh` (bot 2, copy lane)**, `run_live_b.sh` (bot 3, grinder), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
 - **Per-machine baseline:** `data/starting_cash.txt` (gitignored) sets each bot's report baseline independently of the shared profile. Written by `fresh_start.py`. Both `live_analyst._starting_cash` and `notifications._total_pnl_vs_start` prefer it.
+
+### Bot 2 — copy-trading lane (`smart_b.toml`, `mode = "smart_money"`)
+
+Bot 2 runs a **different strategy from grinder** (user 2026-06-15), with **two copy triggers active at once**:
+
+1. **Cohort consensus** — when ≥2 persistently-profitable leaderboard wallets buy the same token in a short window → copy with small bounded size; when the cohort sells (`cohort_exit`) → sell.
+2. **Whale single-bet** (`whale_copy` section, `fetch_whale_signals`) — copy ANY single wallet's buy on a token once its flow in the lookback window reaches `smart_whale_min_usdc` (**$50k**), leaderboard membership NOT required. Watches the GLOBAL `/trades` feed (`DataApiClient.recent_trades`), intersected with the vetted eligible universe so exclusions/crypto-ban/spread/liquidity still apply; whales are prioritised within the per-tick budget and journalled as `smart_money_whale`.
+
+Reuses the existing `smart_money_once` engine (`main.py`) + `smart_money.py` / `mirror.py` / `leaderboard.py`. It lives in its **own profile file** so it can never affect bots 1 & 3 — **grinder is frozen on bots 1 and 3.** Both `smart_whale_*` and the consensus path are OFF in every other profile.
+
+- **No idle cash, the SAFE way:** high capital utilisation comes from a BROAD cohort (top 100 wallets across DAY/WEEK/MONTH), a 72 h discovery horizon, small per-position caps (6%, ceiling 8%), and 4 orders/tick — so real consensus signals are plentiful and cash spreads across many markets. It **never force-trades**: `min_open_positions = 0` and the relaxed/deep/noise fallbacks are OFF (forcing deployment by loosening consensus is the documented crypto-coinflip money-loser). Cash idles only when there is genuinely no real consensus — correct, not a bug. Pinned by `CopyLaneProfileTests`.
+- **Rollout:** run `run_live_copy_b.sh` — it boots a dry paper twin (`--dry-run --profile smart_b`, 10 min tick) alongside the live lane; watch the twin's signal rate before trusting it. Crypto stays excluded.
 
 ## Launch
 
@@ -115,10 +127,10 @@ Run on a bot's own machine, **bot stopped**: backs up + wipes closed-trade histo
 - `polymarket_bot/main.py` — CLI commands and the strategy loop dispatch; tick orchestration; journal writer.
 - `polymarket_bot/portfolio.py` — local ledger (cash, open positions, exits).
 - `polymarket_bot/gamma.py` — Gamma market scan + reverse-lookup by clob_token_ids.
-- `scripts/run_live_70.sh` / `run_live_b.sh` / `run_live_win.sh` — live launchers (bot 1 / bots 2-3 / Windows). Do NOT reset the ledger.
+- `scripts/run_live_70.sh` / `run_live_copy_b.sh` / `run_live_b.sh` / `run_live_win.sh` — live launchers (bot 1 grinder / bot 2 copy / bot 3 grinder / Windows). Do NOT reset the ledger.
 - `scripts/live_analyst.py` — the Telegram RAPPORT LIVE (read-only sidecar).
 - `scripts/fresh_start.py` — per-machine reset (keeps open trades).
-- `configs/profiles/grinder.toml`, `grinder_b.toml` — live profiles.
+- `configs/profiles/grinder.toml`, `grinder_b.toml` — grinder live profiles (bots 1, 3). `smart_b.toml` — bot 2 copy-trading lane.
 - `docs/PROFILES.md` — exhaustive TOML key reference. `docs/STRATEGIES.md` — buy lanes + exit conditions. `docs/AUTONOMY.md` — offline self-tuner design.
 
 ## Development workflow

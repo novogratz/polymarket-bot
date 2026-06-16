@@ -165,6 +165,17 @@ class Settings:
     smart_deep_fallback_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_DEEP_FALLBACK_ENABLED", True))
     smart_deep_fallback_min_copied_usdc: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_DEEP_FALLBACK_MIN_COPIED_USDC", 250.0))
     smart_deep_fallback_min_consensus: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_DEEP_FALLBACK_MIN_CONSENSUS", 1))
+    # ── Whale-copy pass (bot 2 copy lane) ──────────────────────────────────
+    # Independent of the cohort/consensus path: copy ANY single wallet's buy on
+    # a token when its flow in the lookback window reaches the USDC threshold,
+    # regardless of leaderboard membership. Restricted to the already-vetted
+    # eligible universe so exclusions/crypto-ban/spread/liquidity still apply.
+    # OFF by default — only bot 2's smart_b.toml turns it on.
+    smart_whale_copy_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_WHALE_COPY_ENABLED", False))
+    smart_whale_min_usdc: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_WHALE_MIN_USDC", 50000.0))
+    smart_whale_lookback_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_WHALE_LOOKBACK_MINUTES", 60))
+    smart_whale_max_orders_per_tick: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_WHALE_MAX_ORDERS_PER_TICK", 2))
+    smart_whale_fetch_limit: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_WHALE_FETCH_LIMIT", 500))
     smart_reverse_lookup_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_REVERSE_LOOKUP_ENABLED", True))
     smart_reverse_lookup_max_tokens: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_REVERSE_LOOKUP_MAX_TOKENS", 30))
     smart_reverse_lookup_min_copied_usdc: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_REVERSE_LOOKUP_MIN_COPIED_USDC", 100.0))

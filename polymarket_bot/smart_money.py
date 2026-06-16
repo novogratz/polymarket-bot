@@ -73,6 +73,7 @@ class SmartMoneySignal:
     fresh_wallets: int = 0
     largest_wallet_share: float = 0.0
     flow_balance_bonus: float = 0.0
+    source: str = "consensus"  # "consensus" (cohort) or "whale" (single big bet)
 
     @property
     def score(self) -> float:
@@ -104,15 +105,26 @@ class SmartMoneySignal:
             if value_pct < 0
             else ""
         )
-        selection_reason = (
-            f"{self.consensus} profitable wallets bought this same token recently, "
-            f"copying ${self.copied_usdc:.2f} total at avg {self.avg_copy_price:.4f}; "
-            f"current ask {self.candidate.best_ask} has spread {self.spread:.4f}, "
-            f"closes in {_format_hours(self.candidate.hours_to_close)}, "
-            f"latest copied buy {_format_minutes(self.latest_trade_age_minutes)} ago{value_text}, "
-            f"fresh wallets {self.fresh_wallets}, largest wallet share {self.largest_wallet_share:.1%}, "
-            f"and passed min consensus {self.min_consensus}, price band, spread, and duplicate checks."
-        )
+        if self.source == "whale":
+            wallet = self.wallets[0] if self.wallets else "?"
+            selection_reason = (
+                f"WHALE single-wallet buy: {wallet} bought ${self.copied_usdc:,.0f} of this "
+                f"token at avg {self.avg_copy_price:.4f} in the lookback window; "
+                f"current ask {self.candidate.best_ask} has spread {self.spread:.4f}, "
+                f"closes in {_format_hours(self.candidate.hours_to_close)}, "
+                f"latest buy {_format_minutes(self.latest_trade_age_minutes)} ago{value_text}; "
+                f"passed price band, spread, liquidity, and exclusion checks."
+            )
+        else:
+            selection_reason = (
+                f"{self.consensus} profitable wallets bought this same token recently, "
+                f"copying ${self.copied_usdc:.2f} total at avg {self.avg_copy_price:.4f}; "
+                f"current ask {self.candidate.best_ask} has spread {self.spread:.4f}, "
+                f"closes in {_format_hours(self.candidate.hours_to_close)}, "
+                f"latest copied buy {_format_minutes(self.latest_trade_age_minutes)} ago{value_text}, "
+                f"fresh wallets {self.fresh_wallets}, largest wallet share {self.largest_wallet_share:.1%}, "
+                f"and passed min consensus {self.min_consensus}, price band, spread, and duplicate checks."
+            )
         return {
             "market_id": self.candidate.market_id,
             "question": self.candidate.question,
@@ -127,6 +139,7 @@ class SmartMoneySignal:
             "total_trader_pnl": self.total_trader_pnl,
             "category": self.category,
             "score": round(self.score, 4),
+            "source": self.source,
             "selection_reason": selection_reason,
             "selection_metrics": {
                 "profitable_wallet_count": self.consensus,
@@ -243,6 +256,55 @@ class DataApiClient:
                     price=_float(item.get("price")),
                     size=_float(item.get("size")),
                     usdc_size=_float(item.get("usdcSize"), _float(item.get("size")) * _float(item.get("price"))),
+                    timestamp=int(_float(item.get("timestamp"))),
+                    title=str(item.get("title") or ""),
+                    outcome=str(item.get("outcome") or ""),
+                    slug=str(item.get("slug") or item.get("eventSlug") or ""),
+                )
+            )
+        return trades
+
+    def recent_trades(
+        self,
+        *,
+        start: int,
+        limit: int = 500,
+        side: str | None = "BUY",
+        min_usdc: float = 0.0,
+    ) -> list[SmartTrade]:
+        """Global recent taker trades (NO user filter), for whale detection.
+
+        Asks the data-api to pre-filter by cash size (``filterType=CASH`` +
+        ``filterAmount``); also filters client-side as a backstop in case the
+        params are ignored by the endpoint.
+        """
+        params: dict[str, str] = {
+            "start": str(start),
+            "limit": str(limit),
+            "takerOnly": "true",
+        }
+        if side:
+            params["side"] = side
+        if min_usdc > 0:
+            params["filterType"] = "CASH"
+            params["filterAmount"] = str(int(min_usdc))
+        payload = self._get_json("/trades", params)
+        trades: list[SmartTrade] = []
+        for item in payload if isinstance(payload, list) else []:
+            asset = str(item.get("asset") or "")
+            if not asset:
+                continue
+            usdc = _float(item.get("usdcSize"), _float(item.get("size")) * _float(item.get("price")))
+            if min_usdc > 0 and usdc < min_usdc:
+                continue
+            trades.append(
+                SmartTrade(
+                    wallet=str(item.get("proxyWallet") or ""),
+                    asset=asset,
+                    side=str(item.get("side") or ""),
+                    price=_float(item.get("price")),
+                    size=_float(item.get("size")),
+                    usdc_size=usdc,
                     timestamp=int(_float(item.get("timestamp"))),
                     title=str(item.get("title") or ""),
                     outcome=str(item.get("outcome") or ""),
@@ -523,6 +585,92 @@ def fetch_smart_money_data(
         cohort_after_persistence=cohort_after,
         trades_fetch_errors=len(fetch_errors),
     )
+
+
+def fetch_whale_signals(
+    settings: Settings,
+    eligible_candidates: list[Candidate],
+    *,
+    client: DataApiClient | None = None,
+    now_ts: int | None = None,
+) -> list[SmartMoneySignal]:
+    """Whale-copy pass: copy ANY single wallet's large buy, leaderboard or not.
+
+    Watches the GLOBAL recent-trade feed (no user filter), aggregates each
+    wallet's BUY flow per token over the lookback window, and emits a
+    consensus-1 ``source="whale"`` signal for every (wallet, token) whose flow
+    reaches ``smart_whale_min_usdc``. Restricted to ``eligible_candidates`` —
+    the markets that already passed the Gamma scan, exclusions (crypto ban,
+    O/U lines, etc.), price band, spread and liquidity floors — so the whale
+    pass can never trade something the cohort path would have refused.
+    """
+    if not settings.smart_whale_copy_enabled or settings.smart_whale_min_usdc <= 0:
+        return []
+
+    by_token: dict[str, Candidate] = {
+        c.token_id: c for c in eligible_candidates if c.token_id
+    }
+    if not by_token:
+        return []
+
+    client = client or DataApiClient(settings.data_api_base_url)
+    now_ts = now_ts if now_ts is not None else int(time.time())
+    start = now_ts - max(1, settings.smart_whale_lookback_minutes) * 60
+    try:
+        raw = client.recent_trades(
+            start=start,
+            limit=settings.smart_whale_fetch_limit,
+            side="BUY",
+            min_usdc=settings.smart_whale_min_usdc,
+        )
+    except Exception as exc:  # fail-open: whale pass is additive, never fatal
+        print(f"   whale-copy fetch skipped: {type(exc).__name__}: {exc}", flush=True)
+        return []
+
+    # Aggregate each wallet's flow per token (a single $50k fill OR several
+    # buys by the same wallet summing past the threshold both qualify).
+    agg: dict[tuple[str, str], dict[str, float]] = {}
+    for t in raw:
+        if t.side != "BUY" or not t.wallet or t.asset not in by_token:
+            continue
+        key = (t.wallet, t.asset)
+        slot = agg.setdefault(key, {"usdc": 0.0, "size": 0.0, "latest": 0.0, "title": ""})
+        slot["usdc"] += t.usdc_size
+        slot["size"] += t.size
+        if t.timestamp > slot["latest"]:
+            slot["latest"] = float(t.timestamp)
+        if t.title:
+            slot["title"] = t.title
+
+    # Keep only (wallet, token) at/above threshold; one signal per token
+    # (largest wallet wins if several whales hit the same token).
+    best_by_token: dict[str, SmartMoneySignal] = {}
+    for (wallet, asset), slot in agg.items():
+        usdc = slot["usdc"]
+        if usdc < settings.smart_whale_min_usdc:
+            continue
+        candidate = by_token[asset]
+        avg_price = usdc / slot["size"] if slot["size"] > 0 else (candidate.best_ask or 0.0)
+        spread = (candidate.best_ask or 0.0) - (candidate.best_bid or 0.0)
+        age_min = max(0.0, (now_ts - slot["latest"]) / 60.0) if slot["latest"] else None
+        signal = SmartMoneySignal(
+            candidate=candidate,
+            consensus=1,
+            copied_usdc=round(usdc, 2),
+            avg_copy_price=round(avg_price, 4),
+            wallets=[wallet],
+            titles=[slot["title"] or candidate.question],
+            spread=round(spread, 4),
+            min_consensus=1,
+            latest_trade_age_minutes=age_min,
+            largest_wallet_share=1.0,
+            source="whale",
+        )
+        prev = best_by_token.get(asset)
+        if prev is None or usdc > prev.copied_usdc:
+            best_by_token[asset] = signal
+
+    return sorted(best_by_token.values(), key=lambda s: s.copied_usdc, reverse=True)
 
 
 def analyze_smart_money_with_data(
