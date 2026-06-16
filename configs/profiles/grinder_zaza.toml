@@ -43,60 +43,72 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Widened 3→6h (2026-05-30): the scan only loads markets closing within
-# max_hours, so at 3h the 0.90-0.94 band was almost always empty (eligible:0
-# for 60+ ticks). 6h roughly doubles the candidate pool. Safe to widen now
-# because per-trade sizing is hard-capped at ~$10 (15%) — a wider-band loss
-# costs ~$10, not the account.
-max_hours = 8.0
+# Synced to bot 1 (main grinder.toml) / bot 3 strategy 2026-06-16 (user:
+# "bring the same strategy as bot 1, the best bot ever"). Only the bankroll
+# baseline (starting_cash / assumed_live_balance_usd above) and scan_limit
+# differ from bot 1.
+#
+# Entry window: 4h MAX, hard (user 2026-06-14: "only bet on things expiring
+# in 4 hours maximum"). Dynamic ladder OFF — max_hours_cap = 0 makes a single
+# [4h] rung, nothing beyond 4h is ever scanned or entered.
+max_hours = 4.0
+max_hours_cap = 0.0
+daily_expiry_fallback = false
 # Top 100 markets only (user 2026-06-15, was 750): a single Gamma page per
-# ordering, no pagination.
+# ordering, no pagination. (Bot 1 still uses 750 — kept 100 here per the
+# 2026-06-15 instruction; flip to 750 to fully match bot 1's scan breadth.)
 scan_limit = 100
 
 min_liquidity_usd = 500.0
 min_volume_24h_usd = 300.0
 
-# Entry band 0.90–0.94. Tighter = genuinely near-certain only.
-# 0.87–0.89 has asymmetric gap risk (one goal: 0.87 → 0.40).
-# Above 0.94 the spread thins out and upside to 0.99 is too small.
-# Widened band 0.90-0.94 → 0.85-0.97 (2026-05-30) to surface more entries.
-# Lower bound 0.85 carries a bit more gap risk than 0.90, but the catastrophic
-# categories (exact scores, coinflips, weather) stay excluded and the $10 cap
-# bounds any single loss. Upper bound 0.97 still leaves room up to ~1.0.
-min_price = 0.88
+# Entry band 0.85–0.97 (2026-05-30). Lower bound 0.85 carries a bit more gap
+# risk than 0.90, but the catastrophic categories (exact scores, coinflips,
+# weather) stay excluded and the per-bet cap bounds any single loss. Upper
+# bound 0.97 still leaves room up to ~1.0.
+min_price = 0.85
 max_price = 0.97
 
-
-# Momentum filter: skip outcomes that fell >10% today.
-# A market at 0.91 that was 0.96 this morning is trending away from resolution.
-
-# Spread 2¢ → 4¢ (2026-05-30): the wider 0.85-0.97 band includes slightly
-# thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.
+# Spread 4¢ bounds slippage on the wider band's slightly thinner books.
 max_spread = 0.04
 
+# 15% = the HARD per-position cap (user 2026-06-14). Fresh entries open at the
+# lower initial_stake_pct (5%) and the dip double-down fills the reserved
+# headroom up to 15% — so the double-down always has room to add.
 stake_usd = 1.0
-stake_pct = 0.50
+stake_pct = 0.15
+initial_stake_pct = 0.05
+# Dip double-down (user 2026-06-14, generalized): add to ANY held position
+# whose live ask has dipped below entry while it's still a favorite
+# (ask ≥ min_price 0.60). Once per position, never past the per-bet cap.
+double_down_enabled = true
+double_down_min_dip = 0.01
+double_down_max_dip = 0.40
+double_down_min_price = 0.60
 max_orders_per_tick = 4
 cash_floor_pct = 0.01
 
-# Exit rules (match grinder.toml / bot 3 2026-06-07):
-#   tp_pct = 1.0      → TP disabled; ride to resolution.
-#   sl_pct = 0.25     → CONTROLLED SL at -25%, SOCCER MONEYLINE ONLY
-#                       ("Will <Team> win on <date>?" Yes/No bets). All other
-#                       markets (O/U 4.5 totals, specials) NEVER stop out
-#                       (user rule 2026-06-07, gate in
-#                       _is_soccer_moneyline_position; 3-tick confirm const).
-#   resolved at 0.99  → exit when the market prints near-final resolution value.
-#   max_hold 4.5h     → backstop so nothing lingers after expiry.
+# Exit rules (match grinder.toml / bot 1):
+#   tp_pct = 1.0          → TP disabled; ride to resolution.
+#   sl_pct = 0.25         → CONTROLLED SL at -25%, SOCCER MONEYLINE ONLY,
+#                           confirmed over sl_confirm_ticks (3). All other
+#                           markets NEVER stop out (gate in
+#                           _is_soccer_moneyline_position).
+#   resolved at 0.97      → exit only when a REAL live-book bid clears the
+#                           dynamic threshold; min_profit_margin floors it
+#                           above entry so a 0.97 entry sells at 0.99.
+#   max_hold 4.5h         → backstop so nothing lingers after expiry.
 tp_pct = 1.0
-sl_pct = 0.25  # -25% confirmed SL, soccer moneyline only
+sl_pct = 0.25            # -25% confirmed SL, soccer moneyline only
+sl_confirm_ticks = 3
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
-resolved_exit_threshold = 0.99
+resolved_exit_threshold = 0.97
+# Dynamic TP (2026-06-15): exit must clear entry by this, capped 0.99 —
+# a 0.97 entry sells at 0.99, never break-even.
+min_profit_margin = 0.02
 
 # Binary arb disabled (set arb_threshold = 0.97 to re-enable).
-# Sizing now uses proportional stakes (larger stake on the expensive/likely
-# leg) so the guaranteed payout is equal regardless of outcome.
 arb_threshold = 0.0
 arb_max_stake_usd = 5.0
 
