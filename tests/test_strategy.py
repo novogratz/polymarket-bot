@@ -4013,6 +4013,32 @@ class ExcludedMarketTests(unittest.TestCase):
         ):
             self.assertTrue(is_excluded_market({"question": question, "slug": ""}), question)
 
+    def test_macro_central_bank_rate_markets_excluded(self):
+        # User 2026-06-16: "why do we have a bet on the Fed rate by September?
+        # too far away — we only want stuff expiring in 4-6h max." Central-bank
+        # interest-rate markets resolve weeks/months out and can never satisfy
+        # the ≤4h window; one slipped in via live-position sync. Ban outright.
+        for question in (
+            "Fed rate cut by September 2026 meeting?",
+            "Will the Bank of Brazil decrease the Selic rate after June 2026 meeting?",
+            "Will the Fed cut interest rates in 2026?",
+            "FOMC decision: hold or cut?",
+            "Will the ECB raise rates at the next meeting?",
+            "Will the Bank of Japan hike rates?",
+        ):
+            self.assertTrue(is_excluded_market({"question": question, "slug": ""}), question)
+
+    def test_macro_rate_regex_no_false_positives(self):
+        # The macro ban must be word-bounded — must NOT catch "win rates",
+        # "accurate", or ordinary sports/election markets.
+        for question in (
+            "Highest win rates this season?",
+            "Accurate prediction: will it rain today?",
+            "Will Mexico beat South Africa?",
+            "Will Real Madrid win in regulation?",
+        ):
+            self.assertFalse(is_excluded_market({"question": question, "slug": ""}), question)
+
     def test_elections_and_primaries_stay_tradeable(self):
         # User decision 2026-06-10: elections/primaries/mayoral races are a
         # liked, profitable lane (Billy Webster, Castrovillari wins) and must
