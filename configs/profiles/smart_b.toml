@@ -13,7 +13,7 @@
 #
 # CAPITAL UTILISATION ("no idle cash", user 2026-06-15): tuned for high
 # deployment the SAFE way — a BROAD cohort (top 100 wallets, not 25) + a long
-# 72 h discovery horizon + SMALL per-position caps (6%) + more orders/tick, so
+# 6 h discovery horizon (user 2026-06-16) + per-position caps + more orders/tick, so
 # real consensus signals are plentiful and cash spreads across many markets.
 # It does NOT force trades: min_open_positions = 0 and the relaxed/deep
 # fallback passes never run, because forcing deployment by loosening consensus
@@ -60,9 +60,12 @@ trade_lookback_minutes = 240
 trade_fetch_concurrency = 8
 
 [discovery]
-# Follow flow across ANY horizon (out to 72 h) — the opposite of grinder's
-# ≤4 h window. Wider horizon = more copyable signals.
-soon_hours = 72
+# 6 h MAX window (user 2026-06-16: every rule — consensus copy, $5k whale, and
+# the favorite-dip lane — only takes bets that resolve within ~6 h). Narrowing
+# the scan here constrains the consensus AND whale passes too, since both
+# intersect the eligible set. Trade-off: fewer near-term signals than the old
+# 72 h, so cash utilisation depends on near-term flow.
+soon_hours = 6
 scan_limit = 1000
 
 [market_filters]
@@ -83,8 +86,8 @@ price_min = 0.05
 price_max = 0.97
 max_absolute_spread = 0.04
 max_relative_spread = 0.15
-min_hours_to_close = 0.25
-max_hours_to_close = 72.0
+min_hours_to_close = 0.0
+max_hours_to_close = 6.0
 max_sports_positions = 5
 
 # Exit stack — the smart lane's full machinery (the grinder lacks most of it):
