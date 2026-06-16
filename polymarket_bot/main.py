@@ -48,6 +48,7 @@ from .smart_money import (
     analyze_smart_money,
     analyze_smart_money_with_data,
     fetch_smart_money_data,
+    fetch_whale_signals,
     market_category,
     _top_traders,
 )
@@ -558,6 +559,36 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 signal = deep_report.selected
                 strategy = "smart_money_deep_fallback"
 
+    # ── Whale-copy pass — copy ANY single wallet's >= $X bet, leaderboard or
+    # not (additive to the cohort consensus path; runs every tick on bot 2's
+    # copy lane). Intersected with the vetted eligible universe inside
+    # fetch_whale_signals so exclusions/crypto-ban/spread/liquidity still
+    # apply. Whales are prioritised (prepended) since the user explicitly wants
+    # big single bets copied; capped at smart_whale_max_orders_per_tick.
+    if settings.smart_whale_copy_enabled:
+        whale_signals = fetch_whale_signals(settings, eligible_candidates)
+        if settings.smart_whale_max_orders_per_tick > 0:
+            whale_signals = whale_signals[: settings.smart_whale_max_orders_per_tick]
+        seen_whale_tokens = {opp.candidate.token_id for opp in opportunities if opp.candidate.token_id}
+        new_whales: list = []
+        for w in whale_signals:
+            tok = w.candidate.token_id
+            if tok and tok in seen_whale_tokens:
+                continue
+            if tok:
+                seen_whale_tokens.add(tok)
+            new_whales.append(w)
+        scan_counts["whale"] = len(new_whales)
+        if new_whales:
+            _step(
+                settings,
+                f"   whale-copy: {len(new_whales)} single-wallet ≥ ${settings.smart_whale_min_usdc:,.0f} signal(s)",
+            )
+            opportunities = new_whales + opportunities
+            if signal is None:
+                signal = new_whales[0]
+                strategy = "smart_money_whale"
+
     signal_payload = signal.to_dict() if signal else None
 
     executed_trades: list[dict[str, object]] = []
@@ -668,9 +699,15 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     }
                 )
                 continue
+            # Tag whale-sourced picks distinctly in sizing + the journal.
+            opp_strategy = (
+                "smart_money_whale"
+                if getattr(opportunity, "source", "consensus") == "whale"
+                else strategy
+            )
             print(f"🧠 SELECTED: {opportunity_payload['selection_reason']}")
             max_trade_usd = _dynamic_max_trade(
-                settings, opportunity_payload, strategy, portfolio, remaining_slots
+                settings, opportunity_payload, opp_strategy, portfolio, remaining_slots
             )
             try:
                 result = execute_live_trade(
@@ -680,7 +717,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     portfolio,
                     min_trade_usd=1.0,
                     max_trade_usd=max_trade_usd,
-                    strategy=strategy,
+                    strategy=opp_strategy,
                     signal=opportunity_payload,
                 )
                 signal = opportunity
@@ -707,7 +744,7 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 if _new_pos is not None:
                     _new_pos["persistence_score"] = _persistence_score
                 trade_payload = {
-                    "strategy": strategy,
+                    "strategy": opp_strategy,
                     "signal": signal_payload,
                     "order": result.order,
                     "response": result.response,

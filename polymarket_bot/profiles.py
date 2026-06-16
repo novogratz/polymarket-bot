@@ -137,6 +137,13 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "min_copied_usdc": ("POLYMARKET_SMART_DEEP_FALLBACK_MIN_COPIED_USDC", "float"),
         "min_consensus": ("POLYMARKET_SMART_DEEP_FALLBACK_MIN_CONSENSUS", "int"),
     },
+    "whale_copy": {
+        "enabled": ("POLYMARKET_SMART_WHALE_COPY_ENABLED", "bool"),
+        "min_usdc": ("POLYMARKET_SMART_WHALE_MIN_USDC", "float"),
+        "lookback_minutes": ("POLYMARKET_SMART_WHALE_LOOKBACK_MINUTES", "int"),
+        "max_orders_per_tick": ("POLYMARKET_SMART_WHALE_MAX_ORDERS_PER_TICK", "int"),
+        "fetch_limit": ("POLYMARKET_SMART_WHALE_FETCH_LIMIT", "int"),
+    },
     "reverse_lookup": {
         "enabled": ("POLYMARKET_SMART_REVERSE_LOOKUP_ENABLED", "bool"),
         "max_tokens": ("POLYMARKET_SMART_REVERSE_LOOKUP_MAX_TOKENS", "int"),
