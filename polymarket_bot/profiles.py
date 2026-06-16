@@ -143,6 +143,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "lookback_minutes": ("POLYMARKET_SMART_WHALE_LOOKBACK_MINUTES", "int"),
         "max_orders_per_tick": ("POLYMARKET_SMART_WHALE_MAX_ORDERS_PER_TICK", "int"),
         "fetch_limit": ("POLYMARKET_SMART_WHALE_FETCH_LIMIT", "int"),
+        "size_mult": ("POLYMARKET_SMART_WHALE_SIZE_MULT", "float"),
     },
     "favorite_dip": {
         "enabled": ("POLYMARKET_SMART_DIP_BUY_ENABLED", "bool"),
@@ -151,9 +152,11 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "reference_min": ("POLYMARKET_SMART_DIP_REFERENCE_MIN", "float"),
         "use_day_change": ("POLYMARKET_SMART_DIP_USE_DAY_CHANGE", "bool"),
         "max_orders_per_tick": ("POLYMARKET_SMART_DIP_MAX_ORDERS_PER_TICK", "int"),
+        "size_mult": ("POLYMARKET_SMART_DIP_SIZE_MULT", "float"),
     },
     "window": {
         "expiring_today_only": ("POLYMARKET_SMART_EXPIRING_TODAY_ONLY", "bool"),
+        "one_bet_per_game": ("POLYMARKET_SMART_ONE_BET_PER_GAME", "bool"),
     },
     "reverse_lookup": {
         "enabled": ("POLYMARKET_SMART_REVERSE_LOOKUP_ENABLED", "bool"),

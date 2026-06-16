@@ -367,6 +367,7 @@ class CopyLaneProfileTests(unittest.TestCase):
         values = self._smart_b().values
         self.assertEqual(values["POLYMARKET_SMART_DIP_BUY_ENABLED"], "1")
         self.assertEqual(values["POLYMARKET_SMART_EXPIRING_TODAY_ONLY"], "1")
+        self.assertEqual(values["POLYMARKET_SMART_ONE_BET_PER_GAME"], "1")
         # 0.85 -> 0.70 (Drummond) must qualify: reference_min <= 0.85.
         self.assertLessEqual(float(values["POLYMARKET_SMART_DIP_REFERENCE_MIN"]), 0.85)
 

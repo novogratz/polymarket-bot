@@ -730,10 +730,15 @@ def fetch_dip_signals(
     hi = settings.smart_dip_max_price
     ref_min = settings.smart_dip_reference_min
     max_spread = settings.smart_max_spread
+    bid_floor = max(0.0, lo - 0.10)  # phantom guard: bid must not have collapsed
     signals: list[SmartMoneySignal] = []
     for c in eligible_candidates:
-        ask = c.best_ask if c.best_ask is not None else c.price
-        if ask is None or not (lo <= ask <= hi):
+        # Require a REAL two-sided book — a dip lane buying off a one-sided /
+        # phantom ask print is the classic knife-catch failure.
+        if c.best_ask is None or c.best_bid is None:
+            continue
+        ask = c.best_ask
+        if not (lo <= ask <= hi):
             continue
         change = c.one_day_change if settings.smart_dip_use_day_change else c.one_hour_change
         if change >= 0:  # must have actually dropped
@@ -741,8 +746,10 @@ def fetch_dip_signals(
         prior = ask - change  # change is negative → prior is higher than ask
         if prior < ref_min:
             continue
-        spread = (c.best_ask or 0.0) - (c.best_bid or 0.0)
-        if c.best_bid is not None and c.best_ask is not None and spread > max_spread:
+        spread = c.best_ask - c.best_bid
+        if spread > max_spread:
+            continue
+        if c.best_bid < bid_floor:  # bid collapsed → not a clean dip, skip
             continue
         signals.append(
             SmartMoneySignal(

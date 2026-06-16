@@ -128,6 +128,8 @@ enabled = true
 min_usdc = 5000.0
 lookback_minutes = 60
 max_orders_per_tick = 2
+# Single-wallet conviction < multi-wallet consensus → size at 60%.
+size_mult = 0.6
 
 [favorite_dip]
 # THIRD lane (user 2026-06-16): buy a strong favorite that just dropped into
@@ -143,12 +145,18 @@ max_price = 0.85
 reference_min = 0.84
 use_day_change = false
 max_orders_per_tick = 2
+# Riskiest lane (catching a falling favorite) → size at 50%.
+size_mult = 0.5
 
 [window]
 # ALL lanes (consensus/whale/dip): only bets that RESOLVE TODAY (before the
 # next UTC midnight). Naturally tightens through the day; supersedes the rolling
 # 6h cap (user 2026-06-16: "all bets must be expiring today").
 expiring_today_only = true
+# One bet per GAME (user 2026-06-16): a match is filed under several events
+# (moneyline / first-to-score / totals); without this the lane stacked 3
+# correlated legs of IR Iran–NZ. Collapse to one pick per game.
+one_bet_per_game = true
 
 [noise_fallback]
 # Hard off — never place an unfiltered "just trade something" bet.

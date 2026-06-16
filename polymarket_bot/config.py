@@ -176,6 +176,10 @@ class Settings:
     smart_whale_lookback_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_WHALE_LOOKBACK_MINUTES", 60))
     smart_whale_max_orders_per_tick: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_WHALE_MAX_ORDERS_PER_TICK", 2))
     smart_whale_fetch_limit: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_WHALE_FETCH_LIMIT", 500))
+    # Per-lane size multipliers on the computed max-trade (1.0 = no change).
+    # Riskier lanes (single-wallet whale, falling-knife dip) sized below the
+    # multi-wallet consensus.
+    smart_whale_size_mult: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_WHALE_SIZE_MULT", 1.0))
     # ── Favorite-dip lane (bot 2) ──────────────────────────────────────────
     # Buy a favorite that just dropped: current ask in [min, max] AND the price
     # one window ago (ask - recent change) was >= reference_min, i.e. it was a
@@ -188,10 +192,17 @@ class Settings:
     smart_dip_reference_min: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_DIP_REFERENCE_MIN", 0.86))
     smart_dip_use_day_change: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_DIP_USE_DAY_CHANGE", False))
     smart_dip_max_orders_per_tick: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_DIP_MAX_ORDERS_PER_TICK", 2))
+    smart_dip_size_mult: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_DIP_SIZE_MULT", 1.0))
     # Global window for ALL bot-2 lanes (consensus/whale/dip): only take bets
     # that RESOLVE TODAY (end_date before the next UTC midnight). Naturally
     # tightens through the day. OFF by default.
     smart_expiring_today_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_EXPIRING_TODAY_ONLY", False))
+    # One bet per GAME (not just per event): Polymarket files one match under
+    # several events (moneyline / first-to-score / totals), so the lane could
+    # stack 3 correlated legs of one game. When set, collapse to one pick per
+    # game (date-truncated event slug + team names from the question). OFF by
+    # default; only bot 2's smart_b.toml turns it on.
+    smart_one_bet_per_game: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_ONE_BET_PER_GAME", False))
     smart_reverse_lookup_enabled: bool = field(default_factory=lambda: _bool_env("POLYMARKET_SMART_REVERSE_LOOKUP_ENABLED", True))
     smart_reverse_lookup_max_tokens: int = field(default_factory=lambda: _int_env("POLYMARKET_SMART_REVERSE_LOOKUP_MAX_TOKENS", 30))
     smart_reverse_lookup_min_copied_usdc: float = field(default_factory=lambda: _float_env("POLYMARKET_SMART_REVERSE_LOOKUP_MIN_COPIED_USDC", 100.0))

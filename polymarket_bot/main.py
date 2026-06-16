@@ -682,6 +682,13 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 "summary": portfolio.summary(),
             }
 
+        # One-bet-per-GAME cap (bot 2): Polymarket files one match under several
+        # events (moneyline / first-to-score / totals), so without this the lane
+        # can stack correlated legs of one game. Seed with games already held.
+        from .race_strategies import _candidate_game_keys, _open_game_keys
+        _game_cap = settings.smart_one_bet_per_game
+        _seen_game_keys = _open_game_keys(portfolio) if _game_cap else set()
+
         for slot_index, opportunity in enumerate(opportunities):
             remaining_slots = max(1, len(opportunities) - slot_index)
             if settings.smart_max_orders_per_tick > 0 and len(executed_trades) >= settings.smart_max_orders_per_tick:
@@ -723,6 +730,19 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                     }
                 )
                 continue
+            if _game_cap:
+                _gk = _candidate_game_keys(opportunity.candidate)
+                if _gk & _seen_game_keys:
+                    rejected_signals.append(
+                        {
+                            "market_id": opportunity.candidate.market_id,
+                            "question": opportunity.candidate.question,
+                            "outcome": opportunity.candidate.outcome,
+                            "reason": "duplicate_open_game",
+                            "selection_reason": opportunity.to_dict()["selection_reason"],
+                        }
+                    )
+                    continue
             opportunity_payload = opportunity.to_dict()
             category = str(opportunity_payload.get("category") or "OTHER")
             if (
@@ -752,6 +772,11 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
             max_trade_usd = _dynamic_max_trade(
                 settings, opportunity_payload, opp_strategy, portfolio, remaining_slots
             )
+            # Risk-weight the riskier lanes smaller than multi-wallet consensus.
+            if _src == "whale":
+                max_trade_usd *= settings.smart_whale_size_mult
+            elif _src == "favorite_dip":
+                max_trade_usd *= settings.smart_dip_size_mult
             try:
                 result = execute_live_trade(
                     client,
@@ -794,6 +819,8 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 }
                 executed_trades.append(trade_payload)
                 open_categories[category] = open_categories.get(category, 0) + 1
+                if _game_cap:
+                    _seen_game_keys |= _candidate_game_keys(opportunity.candidate)
                 portfolio.save(settings.state_path)
             except ValueError as e:
                 if "Anti-pump" in str(e):

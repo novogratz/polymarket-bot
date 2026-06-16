@@ -82,6 +82,19 @@ class FavoriteDipTests(unittest.TestCase):
         self.assertEqual(len(sigs), 1)
         self.assertAlmostEqual(sigs[0].avg_copy_price, 0.88)
 
+    def test_no_bid_skipped(self):
+        # Phantom one-sided book (no bid) must not be bought.
+        s = self._settings()
+        c = _cand("a", ask=0.70, hour_change=-0.15)
+        c = replace(c, best_bid=None)
+        self.assertEqual(fetch_dip_signals(s, [c]), [])
+
+    def test_collapsed_bid_skipped(self):
+        # Ask shows a dip but the bid has collapsed (< floor 0.50) → skip.
+        s = self._settings(smart_max_spread=0.40)
+        c = _cand("a", ask=0.70, bid=0.40, hour_change=-0.15)
+        self.assertEqual(fetch_dip_signals(s, [c]), [])
+
     def test_biggest_drop_first(self):
         s = self._settings()
         sigs = fetch_dip_signals(s, [
