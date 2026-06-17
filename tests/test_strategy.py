@@ -4287,5 +4287,37 @@ class ExcludedMarketTests(unittest.TestCase):
         self.assertFalse(is_excluded_market(politics, now=in_session))
 
 
+class SoccerMoneylineSLGateTests(unittest.TestCase):
+    """SL lane gate (user 2026-06-16): a soccer club like América FC must be
+    covered regardless of league; elections/awards must NOT stop out."""
+
+    def _gate(self, question, outcome="No", slug=""):
+        from polymarket_bot.race_strategies import _is_soccer_moneyline_position
+        return _is_soccer_moneyline_position(
+            {"question": question, "outcome": outcome, "slug": slug, "event_slug": slug}
+        )
+
+    def test_soccer_club_covered_regardless_of_league_slug(self):
+        # The América FC case: a "Will <club> win on <date>?" Yes/No with a
+        # slug that has NO enumerated league keyword must still get the SL.
+        self.assertTrue(self._gate(
+            "Will América FC win on 2026-06-16?", "No",
+            "will-america-fc-win-on-2026-06-16"))
+        self.assertTrue(self._gate("Will France win on 2026-06-16?", "Yes", "fifwc-fra"))
+
+    def test_elections_and_awards_never_stop_out(self):
+        for q, slug in (
+            ("Will Donald Trump win on 2026-11-03?", "us-presidential-election-2026"),
+            ("Will the incumbent win on 2026-06-16?", "governor-primary-runoff"),
+            ("Will the film win on 2026-06-16?", "academy-award-best-picture"),
+        ):
+            self.assertFalse(self._gate(q, "Yes", slug), q)
+
+    def test_non_moneyline_and_non_yesno_excluded(self):
+        # O/U totals and Over/Under outcomes never match the moneyline regex.
+        self.assertFalse(self._gate("Spurs vs. Knicks: O/U 196.5", "Under", "nba-ou"))
+        self.assertFalse(self._gate("Will América FC win on 2026-06-16?", "Maybe", "x"))
+
+
 if __name__ == "__main__":
     unittest.main()

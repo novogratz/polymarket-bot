@@ -107,7 +107,8 @@ cash_floor_pct = 0.01
 #                           real cents on bets that are about to settle.
 #   max_hold 4.5h         → backstop so nothing lingers after expiry.
 tp_pct = 1.0
-sl_pct = 0.25  # -25% confirmed SL, soccer moneyline only
+sl_pct = 0.30            # -30% confirmed SL, sport moneylines (user 2026-06-16)
+sl_confirm_ticks = 3
 sl_min_age_minutes = 5
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.97
