@@ -160,6 +160,22 @@ _EXCLUDED_QUESTION_SUBSTRINGS = (
     "film",
     "album",
     "celebrity",
+    # Fed / FOMC interest-rate-decision markets (2026-06-17, user rule — "too
+    # far away"). "Fed rate cut by September 2026 meeting?" resolves months out
+    # but shows a near-term Gamma endDate, so it slips through the 4h window and
+    # the bot kept re-buying it. No short-horizon convergence — banned. Phrases
+    # are monetary-policy-specific to avoid colliding with "approval rate" etc.
+    "fed rate",
+    "rate cut",
+    "rate hike",
+    "cut rates",
+    "hike rates",
+    "raise rates",
+    "interest rate",
+    "fomc",
+    "fed funds",
+    "rate decision",
+    "basis points",
 )
 _EXCLUDED_SLUG_SUBSTRINGS = (
     "updown",

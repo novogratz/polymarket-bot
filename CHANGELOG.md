@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Fed / FOMC rate-decision markets banned** (user 2026-06-17, "too far away"): `is_excluded_market` now excludes monetary-policy markets — `fed rate`, `rate cut`/`rate hike`, `cut rates`/`hike rates`/`raise rates`, `interest rate`, `fomc`, `fed funds`, `rate decision`, `basis points`. "Fed rate cut by September 2026 meeting?" resolves months out but shows a near-term Gamma `endDate`, so it slipped through the 4 h entry window and the bots kept re-buying it after manual sells. Phrases are monetary-policy-specific so "approval rating" / "rate of scoring" etc. are not affected (test-pinned).
+
 ### Changed
 
 - **bot 3 + zaza `scan_limit` 100 → 750** (user 2026-06-16): match bot 1's full scan breadth (the 2026-06-15 top-100 setting is reverted on these two bots to mirror bot 1 exactly).

@@ -4258,6 +4258,25 @@ class ExcludedMarketTests(unittest.TestCase):
         ):
             self.assertTrue(is_excluded_market(market), market["question"])
 
+    def test_fed_rate_decision_markets_banned_outright(self):
+        # User rule 2026-06-17 — the bot kept re-buying "Fed rate cut by
+        # September 2026 meeting?" (resolves months out but shows a near-term
+        # Gamma endDate, so it slipped through the 4h window). "Too far away."
+        for market in (
+            {"question": "Fed rate cut by September 2026 meeting?",
+             "slug": "fed-rate-cut-september-2026"},
+            {"question": "Will the Fed hike rates in July?", "slug": "fed-rate-hike-july"},
+            {"question": "FOMC interest rate decision: 25 basis points cut?",
+             "slug": "fomc-25bps-cut"},
+        ):
+            self.assertTrue(is_excluded_market(market), market["question"])
+        # Must not collide with non-monetary "rate" markets.
+        for ok in (
+            {"question": "Will Trump approval rating stay above 45%?", "slug": "trump-approval"},
+            {"question": "Will Brazil win at this rate of scoring?", "slug": "brazil-win"},
+        ):
+            self.assertFalse(is_excluded_market(ok), ok["question"])
+
     def test_weekly_and_touch_stock_markets_banned_even_in_session(self):
         # The bot bought "Will Airbnb, Inc. (ABNB) hit (LOW) $124 Week of
         # June 8 2026?" on 2026-06-11 — ABNB wasn't in the ticker list and
