@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **bot 3 + zaza entry window 4 h → 8 h** (user 2026-06-17, "not enough bets"): diagnosis showed both bots sat on abundant cash ($89 / $127) with only 1–2 open positions despite 10 eligible candidates — because within a 4 h window there's usually only ~1 distinct game, and one-bet-per-game (correctly) takes a single bet from it (the other 9 eligibles were the same game's specials + player props). Cash/stake/filters were not the limiter; distinct games were. Widening to 8 h roughly doubles the games in the window (still same-day — no overnight holds, `daily_expiry_fallback` stays false). Hard cap (`max_hours_cap = 0`). Intentionally diverges from bot 1's 4 h for volume on bots 2/3 + zaza.
+
 ### Added
 
 - **Fed / FOMC rate-decision markets banned** (user 2026-06-17, "too far away"): `is_excluded_market` now excludes monetary-policy markets — `fed rate`, `rate cut`/`rate hike`, `cut rates`/`hike rates`/`raise rates`, `interest rate`, `fomc`, `fed funds`, `rate decision`, `basis points`. "Fed rate cut by September 2026 meeting?" resolves months out but shows a near-term Gamma `endDate`, so it slipped through the 4 h entry window and the bots kept re-buying it after manual sells. Phrases are monetary-policy-specific so "approval rating" / "rate of scoring" etc. are not affected (test-pinned).

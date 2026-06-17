@@ -49,7 +49,14 @@ enabled = false
 # beyond 4h is ever scanned or entered. (The 6/8/10/12h widening that ran
 # 2026-06-11..14 is disabled; flip max_hours_cap back above max_hours to
 # re-enable it.)
-max_hours = 4.0
+# Entry window 4h -> 8h (user 2026-06-17: "not enough bets"). Diagnosis:
+# within 4h there's usually only ~1 game, and one-bet-per-game (correctly)
+# takes a single bet from it — so 1-2 positions despite plenty of cash. 8h
+# roughly doubles the distinct games in the window (still same-day, nowhere
+# near the overnight-hold problem that killed the 24h/daily rungs). Hard cap
+# (max_hours_cap=0 -> single 8h window, no laddering). Diverges from bot 1's
+# 4h intentionally, for volume on bots 2/3 + zaza.
+max_hours = 8.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
 # 750 markets/ordering (user 2026-06-16: match bot 1 exactly — full scan

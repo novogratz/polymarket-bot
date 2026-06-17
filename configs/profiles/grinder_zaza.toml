@@ -48,10 +48,12 @@ enabled = false
 # baseline (starting_cash / assumed_live_balance_usd above) and scan_limit
 # differ from bot 1.
 #
-# Entry window: 4h MAX, hard (user 2026-06-14: "only bet on things expiring
-# in 4 hours maximum"). Dynamic ladder OFF — max_hours_cap = 0 makes a single
-# [4h] rung, nothing beyond 4h is ever scanned or entered.
-max_hours = 4.0
+# Entry window 4h -> 8h (user 2026-06-17: "not enough bets"). Within 4h there's
+# usually only ~1 game and one-bet-per-game takes a single bet from it, so few
+# positions despite plenty of cash; 8h roughly doubles the distinct games in
+# the window (still same-day, no overnight holds). Hard cap (max_hours_cap=0 ->
+# single 8h window, no laddering).
+max_hours = 8.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
 # 750 markets/ordering (user 2026-06-16: match bot 1 exactly — full scan
