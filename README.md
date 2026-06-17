@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.85–0.97) close to resolution (4 h window, hard maximum) and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −25% confirmed stop-loss and a hard "never sell below entry" floor. Crypto and esports markets are excluded. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.85–0.97) close to resolution (4 h window, hard maximum) and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −30% confirmed stop-loss (sport moneylines only) and a hard "never sell below entry" floor. Crypto and esports markets are excluded. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -110,7 +110,7 @@ Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) a
 | Down ≥ 25 % from entry, confirmed 3 consecutive ticks, **soccer moneylines only** ("Will <Team> win on <date>?") | `race_stop_loss_confirmed` — the one path allowed to sell below entry |
 | Genuinely-resolved loser ~8 h past expiry | written off locally (no order; settles on-chain) |
 
-**Never sell below entry** is a hard floor in `execute_live_sell` — the *only* exception is the **controlled stop-loss**, which fires at −25 % only after the loss persists for 3 consecutive ticks (so a one-tick thin-book phantom bid can't dump a winner) and only on soccer moneylines; O/U totals, elections, and everything else ride to on-chain resolution. There is no take-profit ladder, no EOD flatten, and no loss-sweep. The expiry path never force-closes a market that is still accepting orders (it uses a live lookup + `gameStartTime`, since Gamma `endDate` is often set before kickoff). The **daily drawdown halt is disabled** — the per-trade confirmed SL is the risk control.
+**Never sell below entry** is a hard floor in `execute_live_sell` — the *only* exception is the **controlled stop-loss**, which fires at −30 % only after the loss persists for 3 consecutive ticks (so a one-tick thin-book phantom bid can't dump a winner) and only on sport moneylines ("Will <X> win on YYYY-MM-DD?" Yes/No, any soccer club regardless of league, politics/awards excluded); O/U totals, elections, and everything else ride to on-chain resolution. There is no take-profit ladder, no EOD flatten, and no loss-sweep. The expiry path never force-closes a market that is still accepting orders (it uses a live lookup + `gameStartTime`, since Gamma `endDate` is often set before kickoff). The **daily drawdown halt is disabled** — the per-trade confirmed SL is the risk control.
 
 ### Self-improvement
 

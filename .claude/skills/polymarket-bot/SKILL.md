@@ -44,9 +44,11 @@ Buy a heavily-favored binary outcome and ride it to resolution.
     (**0.97**, user 2026-06-14 "as we had before"; was 0.99). The exit
     loop probes the live book per position (`live_best_bid`) — Gamma
     quotes/`curPrice` lag. Probe fail-open → cached price.
-  - **Controlled stop-loss: −25 %, confirmed over 3 consecutive ticks,
-    SOCCER MONEYLINES ONLY** (`sl_pct`, `sl_confirm_ticks`,
-    `_is_soccer_moneyline_position`). Min age 5 min. Everything else (O/U,
+  - **Controlled stop-loss: −30 %, confirmed over 3 consecutive ticks,
+    SPORT MONEYLINES ONLY** (`sl_pct=0.30`, `sl_confirm_ticks`,
+    `_is_soccer_moneyline_position` — matches "Will <X> win on YYYY-MM-DD?"
+    Yes/No and excludes politics/awards; any soccer club passes regardless of
+    league slug, 2026-06-16). Min age 5 min. Everything else (O/U,
     elections, …) rides to resolution.
   - **Hard rule: never sell below entry** (floor in `trading.execute_live_sell`).
     Only `race_stop_loss_confirmed` is exempt. Other losers ride to resolution.

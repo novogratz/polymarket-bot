@@ -47,7 +47,7 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 
 **Exits** (`_execute_race_exits`):
 - **Resolved-exit** — sell at **live CLOB book** bid ≥ a **dynamic per-position threshold** = `min(0.99, max(resolved_exit_threshold, entry + race_min_profit_margin))` (2026-06-15). `resolved_exit_threshold` is 0.97 and `min_profit_margin` 0.02, so a **0.97 entry must clear 0.99** (never break-even) while a 0.87 entry still exits at 0.97. Above 0.99 it rides to settlement at 1.00. The exit probes the live book per position (`live_best_bid` in `trading.py`); the winners-only sweep applies the same per-position floor. Probe fail-open → cached price.
-- **Controlled stop-loss — −25%, confirmed over 3 consecutive ticks, SOCCER MONEYLINES ONLY** (`sl_pct=0.25`, `sl_confirm_ticks=3`, min age 5 min; gate `_is_soccer_moneyline_position`). A one-tick thin-book phantom bid can never trigger it; the loss must persist. O/U totals, elections, and everything else never stop out. Tagged `race_stop_loss_confirmed`.
+- **Controlled stop-loss — −30%, confirmed over 3 consecutive ticks, SPORT MONEYLINES ONLY** (`sl_pct=0.30`, `sl_confirm_ticks=3`, min age 5 min; gate `_is_soccer_moneyline_position`). A one-tick thin-book phantom bid can never trigger it; the loss must persist. The gate matches "Will <X> win on YYYY-MM-DD?" Yes/No bets and **excludes** politics/elections and awards (exclusion model since 2026-06-16 — any soccer club passes regardless of league slug, after América FC rode 0.88→0.30 with no SL because its slug lacked a hardcoded league keyword). O/U totals, elections, and everything else never stop out. Tagged `race_stop_loss_confirmed`.
 - **Never sell below entry** — hard floor in `trading.execute_live_sell`. The confirmed stop-loss is the **only** exempt path; every other path holds a losing position to natural on-chain resolution.
 - **Winner floor (0.97)** — `execute_live_sell` refuses winner-reason orders below **0.97** (the position holds instead), `_sweep_sell_live` clamps to 0.97, and the self-tuner's `resolved_exit_threshold` bounds are pinned to (0.97, 0.97). One flat floor across every lane (user 2026-06-14, reverting the 0.99/0.98-fast-lane scheme).
 - **Expiry** never force-closes a market that is still `acceptingOrders` — it confirms via a live lookup and uses `gameStartTime` (Gamma `endDate` is frequently set *before* kickoff for sports). A genuinely-resolved loser is written off locally ~8 h after expiry, no order.
@@ -140,7 +140,7 @@ When changing strategy/filters/sizing/exits: edit **both** `grinder.toml` and `g
 1. Load short-expiry Gamma markets (out to the widest ladder rung).
 2. Build eligible candidates (entry filters + exclusions); log a wide forward-observation net. Entries use the 4 h window (ladder disabled); same-game picks collapse to one (best bid wins).
 3. Sync live Polymarket positions into the ledger; refresh live USDC cash.
-4. Run exits: live-book bid probe + resolved-exit (≥0.97), confirmed −25% SL, expiry/open-market handling, winners-only sweep.
+4. Run exits: live-book bid probe + resolved-exit (≥0.97), confirmed −30% SL, expiry/open-market handling, winners-only sweep.
 5. (Daily drawdown halt — disabled.)
 6. Place new grinder picks with percentage sizing toward the cash floor.
 7. Persist portfolio + write journal entries for any closed positions.

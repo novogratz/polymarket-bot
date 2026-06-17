@@ -1169,26 +1169,33 @@ def _is_sports_total_position(position: dict[str, Any]) -> bool:
 # election markets say "win the most seats" — neither matches).
 _SOCCER_MONEYLINE_RE = re.compile(r"^will .+ win on \d{4}-\d{2}-\d{2}\?$")
 
-# Slug/event_slug substrings that confirm a market is soccer specifically.
-# Guards against NBA/NFL/MLB markets that might share the same question format.
-_SOCCER_SLUG_KEYWORDS = (
-    "soccer", "football", "premier-league", "la-liga", "laliga",
-    "bundesliga", "serie-a", "ligue-1", "champions-league",
-    "europa-league", "world-cup", "copa", "mls", "eredivisie",
-    "primeira-liga", "superliga", "liga-mx", "brasileirao",
-    "international-friendly", "nations-league", "euro-",
+# Keywords that EXCLUDE a "Will <X> win on <date>?" market from the SL lane.
+# The SL is for live SPORT moneylines (a team can collapse mid-game on a goal);
+# elections/politics and the other-sport markets that share the question format
+# must NOT stop out — they ride to resolution. (2026-06-16: flipped from a
+# brittle soccer-league WHITELIST to this exclusion model after América FC's
+# "Will América FC win on 2026-06-16?" got no SL — its slug lacked any league
+# keyword — and rode 0.88 → 0.30.)
+_NON_SPORT_MONEYLINE_KEYWORDS = (
+    # politics / elections — never stop out (rides to resolution)
+    "election", "primary", "governor", "senate", "president", "presidential",
+    "mayor", "mayoral", "nominee", "congress", "parliament", "referendum",
+    "ballot", "caucus", "approval",
+    # non-team / awards / metrics that can phrase as "win on <date>"
+    "award", "nobel", "palme",
 )
 
 
 def _is_soccer_moneyline_position(position: dict[str, Any]) -> bool:
-    """True only for SOCCER team-win Yes/No bets — the ONLY market type with SL.
+    """True for a live SPORT team-win Yes/No moneyline — the ONLY SL lane.
 
-    Three-layer check:
+    Exclusion model (2026-06-16, was a soccer-league slug whitelist):
       1. outcome must be Yes or No
       2. question must match "Will <X> win on YYYY-MM-DD?"
-      3. slug or event_slug must contain a soccer keyword — separates soccer
-         from NBA/NFL/MLB. If no slug stored, trust the regex (overwhelmingly
-         soccer on Polymarket).
+      3. neither the question nor the slug may contain a non-sport keyword
+         (elections/politics/awards) — those ride to resolution, no SL.
+    Any soccer club / national team passes regardless of league, so games
+    like "Will América FC win on 2026-06-16?" are now covered.
     """
     outcome = str(position.get("outcome") or "").strip().lower()
     if outcome not in {"yes", "no"}:
@@ -1197,8 +1204,9 @@ def _is_soccer_moneyline_position(position: dict[str, Any]) -> bool:
     if not _SOCCER_MONEYLINE_RE.match(question):
         return False
     slug = str(position.get("slug") or position.get("event_slug") or "").lower()
-    if slug:
-        return any(kw in slug for kw in _SOCCER_SLUG_KEYWORDS)
+    haystack = f"{question} {slug}"
+    if any(kw in haystack for kw in _NON_SPORT_MONEYLINE_KEYWORDS):
+        return False
     return True
 
 
