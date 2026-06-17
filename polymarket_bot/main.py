@@ -685,9 +685,9 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
         # One-bet-per-GAME cap (bot 2): Polymarket files one match under several
         # events (moneyline / first-to-score / totals), so without this the lane
         # can stack correlated legs of one game. Seed with games already held.
-        from .race_strategies import _candidate_game_keys, _open_game_keys
+        from .race_strategies import _candidate_game_keys, _open_game_counts
         _game_cap = settings.smart_one_bet_per_game
-        _seen_game_keys = _open_game_keys(portfolio) if _game_cap else set()
+        _seen_game_keys = set(_open_game_counts(portfolio)) if _game_cap else set()
 
         for slot_index, opportunity in enumerate(opportunities):
             remaining_slots = max(1, len(opportunities) - slot_index)

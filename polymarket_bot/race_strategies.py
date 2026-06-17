@@ -22,6 +22,7 @@ import json
 import os
 import random
 import re
+import time
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
@@ -98,6 +99,36 @@ def _load_short_expiry_markets(settings: Settings, max_hours: float | None = Non
 _FWD_OBS_LO = 0.80
 _FWD_OBS_HI = 0.995
 _FWD_LOGGED_TOKENS: set[str] | None = None
+
+# Thin-book cooldown (2026-06-16). Gamma's `liquidity` field can read ≥$500
+# while the live CLOB ask side holds <$1 of executable depth, so such a market
+# passes eligibility, is picked, and the BUY raises `book_too_thin` at the
+# depth probe — every single tick. Seen live: "Lionel Messi: 3+ goals" ($0.46
+# executable depth) re-picked and re-rejected on every ~18s tick, burning the
+# pick slot and a book probe each time. After a token fails book_too_thin we
+# skip it for a cooldown so the slot goes to a real bet; the book can refill,
+# so the skip expires rather than banning the market.
+_THIN_BOOK_COOLDOWN: dict[str, float] = {}
+_THIN_BOOK_COOLDOWN_SECONDS = 600.0
+
+
+def _mark_thin_book(token_id: str | None) -> None:
+    """Remember a token whose live book just failed book_too_thin."""
+    if token_id:
+        _THIN_BOOK_COOLDOWN[str(token_id)] = time.monotonic() + _THIN_BOOK_COOLDOWN_SECONDS
+
+
+def _is_thin_book_cooling(token_id: str | None) -> bool:
+    """True while a token is inside its post-failure thin-book cooldown."""
+    if not token_id:
+        return False
+    expiry = _THIN_BOOK_COOLDOWN.get(str(token_id))
+    if expiry is None:
+        return False
+    if time.monotonic() >= expiry:
+        _THIN_BOOK_COOLDOWN.pop(str(token_id), None)
+        return False
+    return True
 
 
 def _forward_log_path() -> Path:
@@ -2175,9 +2206,9 @@ def _entry_window_ladder(settings: Settings, now: Any = None) -> list[float]:
     return ladder
 
 
-# One bet per game (2026-06-11, was 2): a second position on the same event
-# is never opened — _dedup_same_game collapses same-game picks before
-# selection, this cap is the in-loop backstop.
+# Default bets-per-game cap (2026-06-11). The LIVE cap is now
+# settings.race_max_bets_per_game (configurable per profile, 2026-06-17); this
+# constant just records the standing default of one bet per game.
 EVENT_EXPOSURE_CAP = 1
 
 
@@ -2226,60 +2257,83 @@ def _candidate_game_keys(candidate: Candidate) -> set[str]:
     return _game_keys(candidate.question or "", candidate.event_slug or "")
 
 
-def _open_game_keys(portfolio: Portfolio) -> set[str]:
-    """Game keys of every OPEN position — blocks a second bet on a game the
-    book already holds, across ticks and across satellite event slugs."""
-    keys: set[str] = set()
+def _open_game_counts(portfolio: Portfolio) -> dict[str, int]:
+    """How many OPEN positions touch each game key — the cross-tick per-game
+    exposure tally. A candidate is blocked once the max count over its own
+    game keys reaches race_max_bets_per_game (default 1), across ticks and
+    across satellite event slugs. Within the ≤4h window a team plays one game,
+    so per-key counting never conflates two distinct games."""
+    counts: dict[str, int] = {}
     for position in portfolio.positions:
         if position.get("status") != "open":
             continue
-        keys |= _game_keys(
+        for key in _game_keys(
             str(position.get("question") or ""), str(position.get("event_slug") or "")
-        )
-    return keys
+        ):
+            counts[key] = counts.get(key, 0) + 1
+    return counts
 
 
 def _dedup_same_game(
     candidates: list[tuple[Candidate, float]],
+    max_per_game: int = 1,
 ) -> list[tuple[Candidate, float]]:
-    """One bet per game: keep a single candidate per game (NOT per event —
-    one game spans several Polymarket events, see `_game_keys`).
+    """Cap bets per game: keep the best ``max_per_game`` candidates per game
+    (NOT per event — one game spans several Polymarket events, see
+    `_game_keys`), ranked by highest bid (most-resolved). Input order is
+    preserved among the kept entries; candidates with no game keys pass
+    through untouched.
 
-    User rule 2026-06-11/14: never take two bets on the same game; keep the
-    single best (highest-bid, i.e. most-resolved) candidate per game. The
-    soccer under-4.5 priority was dropped 2026-06-14 — just take the best
-    bet for each game. Candidates with no keys pass through.
+    User rule 2026-06-11/14: at most one bet per game — the anti-stacking
+    guard added after $958 piled onto Mexico–South Africa across three of its
+    satellite events. Bot 2 (2026-06-17) raises the cap to 2 via
+    race_max_bets_per_game so a busy game can yield two bets; the per-bet
+    stake cap still bounds total game exposure.
     """
-    chosen: list[tuple[Candidate, float]] = []
-    keys_by_index: dict[int, set[str]] = {}
-    claimed: dict[str, int] = {}
-    passthrough: list[tuple[int, tuple[Candidate, float]]] = []
-    for position_in_input, entry in enumerate(candidates):
-        candidate, _ = entry
+    if max_per_game < 1:
+        max_per_game = 1
+    # Union-find: merge candidates that share any game key into one component
+    # (handles a market that bridges two key sets, e.g. shares a team key with
+    # one and a dated-slug key with another).
+    parent: dict[int, int] = {}
+
+    def find(x: int) -> int:
+        root = x
+        while parent.get(root, root) != root:
+            root = parent[root]
+        while parent.get(x, x) != root:
+            parent[x], x = root, parent[x]
+        return root
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    key_owner: dict[str, int] = {}
+    keyed: list[int] = []
+    passthrough: list[int] = []
+    for idx, (candidate, _) in enumerate(candidates):
         keys = _candidate_game_keys(candidate)
         if not keys:
-            passthrough.append((position_in_input, entry))
+            passthrough.append(idx)
             continue
-        conflict = next((claimed[k] for k in keys if k in claimed), None)
-        if conflict is None:
-            index = len(chosen)
-            chosen.append(entry)
-            keys_by_index[index] = set(keys)
-            for k in keys:
-                claimed[k] = index
-            continue
-        held_candidate, _ = chosen[conflict]
-        if (candidate.best_bid or 0.0) > (held_candidate.best_bid or 0.0):
-            chosen[conflict] = entry
-        # Either way the loser's keys now point at the winner, so a third
-        # market of the same game still conflicts.
-        keys_by_index[conflict] |= keys
-        for k in keys_by_index[conflict]:
-            claimed[k] = conflict
-    out = list(chosen)
-    for _, entry in passthrough:
-        out.append(entry)
-    return out
+        parent.setdefault(idx, idx)
+        for k in keys:
+            if k in key_owner:
+                union(key_owner[k], idx)
+            else:
+                key_owner[k] = idx
+        keyed.append(idx)
+    groups: dict[int, list[int]] = {}
+    for idx in keyed:
+        groups.setdefault(find(idx), []).append(idx)
+    kept: set[int] = set(passthrough)
+    for idxs in groups.values():
+        # Highest bid first; earlier input index wins ties (stable).
+        ranked = sorted(idxs, key=lambda i: ((candidates[i][0].best_bid or 0.0), -i), reverse=True)
+        kept.update(ranked[:max_per_game])
+    return [candidates[i] for i in range(len(candidates)) if i in kept]
 
 
 def _actionable_candidates(
@@ -2307,27 +2361,40 @@ def _actionable_candidates(
     # Passive top-up uses the ENTRY cap (initial %); the headroom up to the
     # hard cap is reserved for the dip double-down only.
     cap = _entry_cap_usd(settings, equity)
-    open_keys = _open_game_keys(portfolio)
+    open_counts = _open_game_counts(portfolio)
+    max_per_game = max(1, settings.race_max_bets_per_game)
     out: list[tuple[Candidate, float]] = []
     for c, m in eligible:
+        if _is_thin_book_cooling(c.token_id):
+            # Live book proved too thin to fill on a recent tick; skip it for
+            # the cooldown instead of burning a pick slot + a depth probe on a
+            # market that can't execute.
+            continue
         if portfolio.has_pending_token(c.token_id):
             continue
         open_pos = portfolio.open_position_for_token(c.token_id)
         if open_pos is not None:
+            # Held token = top-up lane (always allowed up to the per-position
+            # cap); it does not count against the per-game cap here.
             if cap - float(open_pos.get("stake") or 0.0) < _TOPUP_MIN_USD:
                 continue
-        elif portfolio.has_open_event_position(c):
-            continue
-        elif _candidate_game_keys(c) & open_keys:
-            # One bet per GAME across ticks (2026-06-11): an open position
-            # on any market of this game blocks every other market of the
-            # same game, even when Polymarket files them under different
-            # event slugs (moneyline vs -more-markets vs -first-to-score).
-            continue
+        else:
+            cand_keys = _candidate_game_keys(c)
+            if cand_keys:
+                # Per-game cap across ticks (2026-06-11; configurable
+                # 2026-06-17): block once the game already holds
+                # race_max_bets_per_game positions, counting across the
+                # satellite event slugs (moneyline / -more-markets /
+                # -first-to-score) that one game is filed under.
+                if max((open_counts.get(k, 0) for k in cand_keys), default=0) >= max_per_game:
+                    continue
+            elif portfolio.has_open_event_position(c):
+                # No game identity (rare: elections, indices) → fall back to
+                # the per-event block.
+                continue
         out.append((c, m))
-    # One bet per game within the tick: collapse same-game candidates to a
-    # single pick, preferring soccer's under-4.5 line over the rest.
-    return _dedup_same_game(out)
+    # Within-tick per-game cap: keep the best race_max_bets_per_game per game.
+    return _dedup_same_game(out, max_per_game)
 
 
 def _execute_double_downs(
@@ -2573,8 +2640,9 @@ def _run_race_tick(
             fallback_used = True
 
     open_assets = _open_asset_keys(portfolio)
+    max_per_game = max(1, settings.race_max_bets_per_game)
     executed: list[dict[str, Any]] = []
-    executed_game_keys: set[str] = set()
+    executed_game_counts: dict[str, int] = {}
     rejected: list[dict[str, Any]] = []
     cash_floor = portfolio.summary().get("equity", 0) * settings.race_cash_floor_pct
 
@@ -2614,14 +2682,17 @@ def _run_race_tick(
                 rejected.append({"question": candidate.question, "reason": "topup_cap_reached"})
                 continue
         ev_slug = str(candidate.event_slug or "")
-        if topup_pos is None and ev_slug and event_exposure.get(ev_slug, 0) >= EVENT_EXPOSURE_CAP:
+        if topup_pos is None and ev_slug and event_exposure.get(ev_slug, 0) >= max_per_game:
             rejected.append({"question": candidate.question, "reason": f"event_exposure_cap:{ev_slug}"})
             continue
-        # In-loop one-bet-per-game backstop (2026-06-11): a pick executed
-        # earlier THIS tick claims its game keys; same-game picks bounce
+        # In-loop per-game backstop (2026-06-11; configurable 2026-06-17): a
+        # pick executed earlier THIS tick increments its game keys; same-game
+        # picks bounce once the per-tick tally hits race_max_bets_per_game,
         # even if they slipped past the upstream dedup.
         cand_keys = _candidate_game_keys(candidate)
-        if topup_pos is None and cand_keys & executed_game_keys:
+        if topup_pos is None and cand_keys and max(
+            (executed_game_counts.get(k, 0) for k in cand_keys), default=0
+        ) >= max_per_game:
             rejected.append({"question": candidate.question, "reason": "same_game_already_bet"})
             continue
         asset_key = _asset_key(candidate.question, candidate.event_slug or "", candidate.slug or "")
@@ -2676,7 +2747,11 @@ def _run_race_tick(
                 signal=signal_payload,
             )
             executed.append({"strategy": strategy_name, "order": result.order, "response": result.response, "signal": signal_payload})
-            executed_game_keys |= cand_keys
+            if topup_pos is None:
+                # A top-up grows an existing position — it must not bump the
+                # per-game tally, or a single position could exhaust the cap.
+                for k in cand_keys:
+                    executed_game_counts[k] = executed_game_counts.get(k, 0) + 1
             if asset_key:
                 open_assets.add(asset_key)
             if ev_slug and topup_pos is None:
@@ -2688,6 +2763,10 @@ def _run_race_tick(
             if _mirror_enabled() and settings.dry_run and strategy_name == "grinder":
                 _emit_mirror_signal(candidate, strategy_name)
         except Exception as exc:
+            if "book_too_thin" in str(exc):
+                # Live ask side can't cover the minimum order — don't re-pick
+                # this token every tick; cool it off until the book may refill.
+                _mark_thin_book(candidate.token_id)
             rejected.append({"question": candidate.question, "reason": f"{type(exc).__name__}: {exc}"})
 
     # ── Binary arbitrage pass ────────────────────────────────────────────────

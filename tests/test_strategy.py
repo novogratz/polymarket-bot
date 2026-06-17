@@ -3399,6 +3399,106 @@ class ActionableCandidatesTests(unittest.TestCase):
         )
         self.assertEqual(dropped, [])
 
+    def test_thin_book_token_is_skipped_during_cooldown(self):
+        # Regression (2026-06-16): a market whose live book can't cover the
+        # minimum order ("Lionel Messi: 3+ goals", $0.46 executable depth) was
+        # re-picked and re-rejected with book_too_thin every tick. Once it
+        # fails we cool it off so the pick slot isn't burned.
+        from polymarket_bot.race_strategies import (
+            _actionable_candidates,
+            _is_thin_book_cooling,
+            _mark_thin_book,
+            _THIN_BOOK_COOLDOWN,
+        )
+
+        messi = self._candidate("99", "Lionel Messi: 3+ goals", "messi-3-goals",
+                                "messi-3-goals", "tok-messi", hours=2.0, bid=0.92)
+        eligible = [(messi, 0.0)]
+        portfolio = Portfolio(cash=900.0, positions=[])
+
+        _THIN_BOOK_COOLDOWN.clear()
+        try:
+            # Fresh process: nothing cooling → the market is actionable.
+            self.assertEqual(len(_actionable_candidates(eligible, portfolio, Settings())), 1)
+            # A book_too_thin failure cools the token → dropped before truncation.
+            _mark_thin_book("tok-messi")
+            self.assertTrue(_is_thin_book_cooling("tok-messi"))
+            self.assertEqual(_actionable_candidates(eligible, portfolio, Settings()), [])
+        finally:
+            _THIN_BOOK_COOLDOWN.clear()
+
+    def test_thin_book_cooldown_expires(self):
+        from polymarket_bot.race_strategies import (
+            _is_thin_book_cooling,
+            _THIN_BOOK_COOLDOWN,
+        )
+
+        _THIN_BOOK_COOLDOWN.clear()
+        try:
+            # An already-expired entry reports not-cooling and is purged.
+            _THIN_BOOK_COOLDOWN["tok-old"] = 0.0
+            self.assertFalse(_is_thin_book_cooling("tok-old"))
+            self.assertNotIn("tok-old", _THIN_BOOK_COOLDOWN)
+            # Empty / unknown tokens never cool.
+            self.assertFalse(_is_thin_book_cooling(None))
+            self.assertFalse(_is_thin_book_cooling("never-seen"))
+        finally:
+            _THIN_BOOK_COOLDOWN.clear()
+
+    def test_dedup_keeps_one_per_game_by_default(self):
+        from polymarket_bot.race_strategies import _dedup_same_game
+
+        a = self._candidate("1", "Portugal vs. DR Congo: Neither team to score first?",
+                             "por-cod-ntsf", "fifwc-por-cod-2026-06-17-first-to-score",
+                             "tok-a", hours=3.0, bid=0.92)
+        b = self._candidate("2", "Portugal vs. DR Congo: Both Teams to Score?",
+                             "por-cod-btts", "fifwc-por-cod-2026-06-17-more-markets",
+                             "tok-b", hours=3.0, bid=0.85)
+        kept = _dedup_same_game([(a, 0.0), (b, 0.0)], max_per_game=1)
+        # Same game (shared team keys) → only the higher-bid candidate survives.
+        self.assertEqual([c.market_id for c, _ in kept], ["1"])
+
+    def test_dedup_keeps_two_per_game_when_cap_is_two(self):
+        from polymarket_bot.race_strategies import _dedup_same_game
+
+        a = self._candidate("1", "Portugal vs. DR Congo: Neither team to score first?",
+                             "por-cod-ntsf", "fifwc-por-cod-2026-06-17-first-to-score",
+                             "tok-a", hours=3.0, bid=0.92)
+        b = self._candidate("2", "Portugal vs. DR Congo: Both Teams to Score?",
+                             "por-cod-btts", "fifwc-por-cod-2026-06-17-more-markets",
+                             "tok-b", hours=3.0, bid=0.85)
+        c = self._candidate("3", "Portugal vs. DR Congo: Over 2.5?",
+                            "por-cod-ou", "fifwc-por-cod-2026-06-17-more-markets",
+                            "tok-c", hours=3.0, bid=0.80)
+        kept = _dedup_same_game([(a, 0.0), (b, 0.0), (c, 0.0)], max_per_game=2)
+        # Two best (by bid) of the same game survive; the third is dropped.
+        self.assertEqual(sorted(x.market_id for x, _ in kept), ["1", "2"])
+
+    def test_second_bet_on_held_game_blocked_at_cap_one_allowed_at_two(self):
+        from polymarket_bot.race_strategies import _actionable_candidates
+
+        # Already hold one market of Portugal–DR Congo.
+        portfolio = Portfolio(cash=900.0, positions=[{
+            "status": "open",
+            "token_id": "tok-held",
+            "market_id": "1",
+            "question": "Portugal vs. DR Congo: Neither team to score first?",
+            "event_slug": "fifwc-por-cod-2026-06-17-first-to-score",
+            "stake": 10.0,
+        }])
+        # A DIFFERENT market of the SAME game.
+        other = self._candidate("2", "Portugal vs. DR Congo: Both Teams to Score?",
+                                "por-cod-btts", "fifwc-por-cod-2026-06-17-more-markets",
+                                "tok-b", hours=3.0, bid=0.85)
+        eligible = [(other, 0.0)]
+        # cap=1 (default): blocked — one bet per game.
+        self.assertEqual(
+            _actionable_candidates(eligible, portfolio, Settings(race_max_bets_per_game=1)), []
+        )
+        # cap=2: the second market of the same game is now actionable.
+        kept = _actionable_candidates(eligible, portfolio, Settings(race_max_bets_per_game=2))
+        self.assertEqual([c.market_id for c, _ in kept], ["2"])
+
     def test_top_up_live_position_averages_the_fill(self):
         portfolio = Portfolio(cash=661.86, positions=[{
             "status": "open",

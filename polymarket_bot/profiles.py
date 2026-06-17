@@ -285,6 +285,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "double_down_max_dip": ("POLYMARKET_RACE_DOUBLE_DOWN_MAX_DIP", "float"),
         "double_down_min_price": ("POLYMARKET_RACE_DOUBLE_DOWN_MIN_PRICE", "float"),
         "max_orders_per_tick": ("POLYMARKET_RACE_MAX_ORDERS_PER_TICK", "int"),
+        "max_bets_per_game": ("POLYMARKET_RACE_MAX_BETS_PER_GAME", "int"),
         "cash_floor_pct": ("POLYMARKET_RACE_CASH_FLOOR_PCT", "float"),
         "tp_pct": ("POLYMARKET_RACE_TP_PCT", "float"),
         "sl_pct": ("POLYMARKET_RACE_SL_PCT", "float"),

@@ -1,0 +1,135 @@
+# Profile "grinder_b2" — BOT 2 ONLY (run_live_b2.sh). Diverges from the shared
+# grinder_b.toml (bot 3) and grinder.toml (bot 1): bot 2 runs the SAME grinder
+# strategy but with LOOSENED entry filters to take MORE bets (user 2026-06-17:
+# "I don't see enough bets taken for bot 2 ... improve it"). Bots 1 & 3 keep
+# the tighter filters; only this file changes.
+#
+# Funnel diagnosis (2026-06-17, scripts/funnel_debug.py): of ~940 markets in
+# the ≤4h window, ~68% are excluded (deliberate bans), and the rest cluster on
+# 1-2 games that the one-bet-per-game rule collapses. So the only levers that
+# add bets without touching the ≤4h rule or the exclusion list are: lower
+# liquidity/volume floors (more distinct games), a slightly wider band, and
+# allowing 2 bets per game. All three are applied here.
+#
+# Aggressive changes vs grinder_b.toml (marked ★ below):
+#   - min_liquidity_usd 500 → 250   (surfaces more distinct games)
+#   - min_volume_24h_usd 300 → 100  (idem; thin books handled by the
+#                                    thin-book cooldown added 2026-06-16)
+#   - min_price 0.85 → 0.80         (wider band low end; more gap risk —
+#                                    one goal can drop 0.80 → ~0.40)
+#   - max_bets_per_game 1 → 2       (biggest lever; 15% per-bet cap still
+#                                    bounds total exposure per game)
+
+[run]
+starting_cash = 65.0
+mode = "grinder"
+
+[sizing]
+max_position_ceiling_usd = 0.0
+max_position_ceiling_pct = 0.54
+cash_floor_pct = 0.05
+position_pct = 0.50
+min_open_positions = 0
+starter_trade_usd = 1.5
+assumed_live_balance_usd = 65.0
+max_trade_usd = 0.0
+high_conviction_balance_fraction = 0.50
+
+[market_filters]
+min_liquidity_usd = 250.0   # ★ was 500
+min_volume_usd = 100.0      # ★ was 300
+
+[persistence]
+enabled = false
+
+[race]
+# Entry window: 4h MAX, hard (user 2026-06-14: "never bet on more than 4h").
+# UNCHANGED — the ≤4h rule is not relaxed.
+max_hours = 4.0
+max_hours_cap = 0.0
+daily_expiry_fallback = false
+scan_limit = 750
+
+min_liquidity_usd = 250.0       # ★ was 500
+min_volume_24h_usd = 100.0      # ★ was 300
+
+# Entry band ★ 0.80–0.97 (was 0.85–0.97). The lower 0.80 floor adds gap risk
+# (a single goal can take 0.80 → ~0.40); the catastrophic categories stay
+# excluded and the per-bet cap bounds any single loss.
+min_price = 0.80
+max_price = 0.97
+
+max_spread = 0.04
+
+stake_usd = 1.0
+stake_pct = 0.15
+initial_stake_pct = 0.05
+
+# ★ Allow up to 2 bets on the same game (was 1). The biggest bet-count lever:
+# the board clusters on 1-2 games, so one-per-game collapses most eligibles to
+# a single bet. The 15% per-bet hard cap still bounds total exposure per game
+# (~2 × 15% of equity), well short of the $958 single-game pile-up that
+# prompted the original one-bet-per-game rule.
+max_bets_per_game = 2
+
+double_down_enabled = true
+double_down_min_dip = 0.01
+double_down_max_dip = 0.40
+double_down_min_price = 0.60
+max_orders_per_tick = 4
+cash_floor_pct = 0.01
+
+tp_pct = 1.0
+sl_pct = 0.25            # -25% confirmed SL, soccer moneyline only
+sl_confirm_ticks = 3
+sl_min_age_minutes = 5
+near_expiry_minutes = 5
+resolved_exit_threshold = 0.97
+min_profit_margin = 0.02
+
+arb_threshold = 0.0
+arb_max_stake_usd = 5.0
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 10
+stdout_heartbeat_minutes = 15
+
+[filters]
+max_orders_per_tick = 2
+max_hours_to_close = 4.0
+min_trade_usd = 1.0
+max_absolute_spread = 0.02
+max_relative_spread = 0.08
+max_chase_premium = 0.03
+
+[noise_fallback]
+enabled = false
+
+[btc_edge]
+enabled = false
+min_model_probability = 0.75
+min_edge_over_market = 0.05
+min_buy_price = 0.75
+max_buy_price = 0.97
+max_spread = 0.04
+min_trade_usd = 1.0
+per_trade_cap_usd = 5.0
+min_hours_to_close = 0.08
+volatility_days = 7
+
+[discovery]
+soon_hours = 1
+
+[crypto]
+max_hours_to_close = 1.0
+
+[execution]
+max_entry_slippage = 0.02
+
+[exits]
+stop_loss_pct = 1.0
+stop_loss_min_age_minutes = 1
+max_hold_hours = 4.5
+near_expiry_exit_losers = false
+near_expiry_loser_minutes = 5

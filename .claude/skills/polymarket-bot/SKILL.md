@@ -12,17 +12,20 @@ scan or trade-selection path** — the engine is pure Python over Polymarket API
 
 Buy a heavily-favored binary outcome and ride it to resolution.
 
-- **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1) and
-  `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
+- **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1),
+  `configs/profiles/grinder_b.toml` (bot 3), `configs/profiles/grinder_b2.toml`
+  (**bot 2**). Keep strategy keys in sync **except bot 2's deliberate
+  divergence** (2026-06-17, "improve it / more bets"): bot 2 loosens entry —
+  liq ≥ 250, vol ≥ 100, band 0.80–0.97, `race_max_bets_per_game = 2`.
 - **Entry:** ask ∈ **[0.85, 0.97]**, **game starts OR market closes within
   ≤ 4 h** (user 2026-06-14; dynamic widening OFF via `max_hours_cap=0`),
   (`max_hours=4`,
   `daily_expiry_fallback=false`; user 2026-06-12). **One bet per GAME**
   (`_dedup_same_game` on date-truncated event slug + team names — one game
-  spans several Polymarket events; `_open_game_keys` blocks across ticks;
-  `EVENT_EXPOSURE_CAP=1`); keeps the single best (highest-bid) candidate
-  per game (the soccer under-4.5 priority was dropped 2026-06-14). Spread ≤ 4¢, liquidity
-  ≥ $500, 24 h volume ≥ $300. NO price-movement gates (user 2026-06-10): day-
+  spans several Polymarket events; `_open_game_counts` blocks across ticks;
+  cap = `race_max_bets_per_game`, default 1, **bot 2 = 2**); keeps the best
+  N (highest-bid) candidates per game (the soccer under-4.5 priority was dropped 2026-06-14). Spread ≤ 4¢, liquidity
+  ≥ $500 (**bot 2: 250**), 24 h volume ≥ $300 (**bot 2: 100**). NO price-movement gates (user 2026-06-10): day-
   change, day-momentum, and 1h gates all removed — fast movers stay tradeable,
   values logged in the forward net only, pinned by tests.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
@@ -85,8 +88,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
 
 3 independent live bots, each its own wallet / `.env` / ledger.
 
-- **Launchers:** `run_live_70.sh` (bot 1), `run_live_b.sh` (bots 2 & 3),
-  `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
+- **Launchers:** `run_live_70.sh` (bot 1, `grinder`), `run_live_b2.sh`
+  (**bot 2**, `grinder_b2` — looser filters), `run_live_b.sh` (bot 3,
+  `grinder_b`), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
 - **Per-machine baseline:** `data/starting_cash.txt` (gitignored) — each bot's
   report baseline, independent of the shared profile. Written by `fresh_start.py`.
 - Ledger/journal/cache are gitignored = per-machine; only code + profiles are shared.

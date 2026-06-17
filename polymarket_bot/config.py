@@ -401,6 +401,12 @@ class Settings:
     # exit threshold = min(0.99, max(resolved_exit_threshold, entry + margin)).
     race_min_profit_margin: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_PROFIT_MARGIN", 0.02))
     race_max_orders_per_tick: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_MAX_ORDERS_PER_TICK", 3))
+    # Max concurrent bets on the SAME game (default 1 = the standing one-bet-
+    # per-game anti-stacking rule). Bot 2 raises this to 2 to surface more bets
+    # when the board clusters on a few games; the per-bet cap still bounds total
+    # game exposure. Honored by _dedup_same_game, the cross-tick open-game block,
+    # and the in-loop event-exposure backstop.
+    race_max_bets_per_game: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_MAX_BETS_PER_GAME", 1))
     race_cash_floor_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_CASH_FLOOR_PCT", 0.10))
     race_tp_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_TP_PCT", 0.25))
     race_sl_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_SL_PCT", 0.50))

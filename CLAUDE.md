@@ -34,7 +34,7 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 
 **Entry** (`_build_eligible_candidates`):
 - price (ask) ∈ **[0.85, 0.97]**, **game STARTS or market CLOSES within ≤ 4 h** (user 2026-06-14: only fast-resolving bets — a game in progress that doesn't close inside the window is dropped). The dynamic widening ladder is disabled (`race_max_hours=4`, `race_max_hours_cap=0` → single `[4h]` window).
-- **One bet per GAME** (`_dedup_same_game` + `_open_game_keys` + `EVENT_EXPOSURE_CAP=1`): a game is identified by its date-truncated event slug AND the team names parsed from the question — Polymarket files one game under several events (moneyline / `-more-markets` / `-first-to-score`), which let $958 stack onto Mexico–South Africa on 2026-06-11. Same-game candidates collapse to a single pick before selection, an open position on any market of a game blocks all its other markets across ticks, and an in-loop backstop rejects same-tick repeats. The single best (highest-bid) candidate per game is kept (the soccer under-4.5 priority was dropped 2026-06-14 — just the best bet per game).
+- **One bet per GAME** (`_dedup_same_game` + `_open_game_counts` + `race_max_bets_per_game`, default 1; **bot 2 sets 2**): a game is identified by its date-truncated event slug AND the team names parsed from the question — Polymarket files one game under several events (moneyline / `-more-markets` / `-first-to-score`), which let $958 stack onto Mexico–South Africa on 2026-06-11. Same-game candidates collapse to a single pick before selection, an open position on any market of a game blocks all its other markets across ticks, and an in-loop backstop rejects same-tick repeats. The single best (highest-bid) candidate per game is kept (the soccer under-4.5 priority was dropped 2026-06-14 — just the best bet per game).
 - spread ≤ 4¢, liquidity ≥ $500, 24 h volume ≥ $300
 - **No price-movement gates** (removed 2026-06-10): the >10% day-change gate, the −5% day-momentum floor, and the short-lived 1h gates are all gone — recently-moving markets stay tradeable (they are often the ones converging toward resolution). Both day and 1h values are logged in the forward net only; tests pin that neither can ever exclude a market.
 - The scan paginates the Gamma API past its silent 100-row cap (~1,000–2,000 raw markets/tick) and held/pending/capped markets are removed **before** the top-4 pick truncation so they never burn slots.
@@ -69,14 +69,15 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 
 Three independent live bots, each with its own wallet, `.env`, and ledger.
 
-- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bots 2 & 3) — all grinder, keep strategy keys in sync. Live data (`paper_state.json`, journals, `starting_cash.txt`) is **gitignored = per-machine**; only code + profiles are shared.
-- **Launchers:** `run_live_70.sh` (bot 1), `run_live_b.sh` (bots 2 & 3, grinder), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
+- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bot 3), `grinder_b2.toml` (**bot 2**) — all grinder. Keep strategy keys in sync **except bot 2's deliberate divergence** (2026-06-17): bot 2 loosens entry filters to take more bets — `min_liquidity_usd` 250 (vs 500), `min_volume_24h_usd` 100 (vs 300), entry band `0.80`–0.97 (vs 0.85), and `race_max_bets_per_game = 2` (vs 1). The per-game cap is the `race_max_bets_per_game` setting (default 1); only `grinder_b2.toml` raises it. Live data (`paper_state.json`, journals, `starting_cash.txt`) is **gitignored = per-machine**; only code + profiles are shared.
+- **Launchers:** `run_live_70.sh` (bot 1, `grinder`), `run_live_b2.sh` (**bot 2**, `grinder_b2`), `run_live_b.sh` (bot 3, `grinder_b`), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
 - **Per-machine baseline:** `data/starting_cash.txt` (gitignored) sets each bot's report baseline independently of the shared profile. Written by `fresh_start.py`. Both `live_analyst._starting_cash` and `notifications._total_pnl_vs_start` prefer it.
 
 ## Launch
 
 ```bash
-bash scripts/run_live_b.sh        # bots 2 & 3 (or run_live_70.sh for bot 1)
+bash scripts/run_live_b2.sh       # bot 2 (looser filters, grinder_b2)
+bash scripts/run_live_b.sh        # bot 3 (grinder_b)   ·   run_live_70.sh for bot 1
 ```
 
 Boots the live grinder (`--profile grinder_b`, 10 s tick) + a dry paper twin + the read-only `live_analyst` sidecar. Live position sync is on (`POLYMARKET_SYNC_LIVE_POSITIONS=1`). `Ctrl+C` cleans up the process group.

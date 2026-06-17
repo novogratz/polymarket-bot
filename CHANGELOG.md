@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- **Bot 2 — looser entry filters to take more bets (`grinder_b2.toml` + `run_live_b2.sh`)** (user 2026-06-17: "I don't see enough bets taken for bot 2 ... improve it"). A funnel diagnosis (`scripts/funnel_debug.py`) showed bot 2 was starved not by one tight knob but structurally: of ~940 markets in the ≤4h window, ~68% are deliberate exclusions and the rest cluster on 1–2 games that the one-bet-per-game rule collapses to a single bet. Bot 2 now **diverges** from bots 1 & 3 (which keep the tighter `grinder.toml`/`grinder_b.toml`) with the only levers that add bets without touching the ≤4h rule or the exclusion list:
+  - `min_liquidity_usd` 500 → **250**, `min_volume_24h_usd` 300 → **100** (more distinct games; thin books are now handled by the 2026-06-16 thin-book cooldown).
+  - entry band low end `min_price` 0.85 → **0.80** (wider; accepts more gap risk).
+  - new **`race_max_bets_per_game`** knob (default 1 = the standing anti-stacking rule) set to **2** for bot 2 — the biggest lever. The per-game cap is now configurable and honored at all three enforcement points: `_dedup_same_game` (within-tick), the cross-tick open-game block in `_actionable_candidates` (now count-based via `_open_game_counts`), and the in-loop order backstop (now counts executions per game key). The 15% per-bet hard cap still bounds total per-game exposure, well short of the $958 single-game pile-up that prompted the original rule.
+
+  Measured live impact at rollout: eligible 8 → 14, distinct games 5 → 7, **actionable 0 → 3**. Bots 1 & 3 are untouched (`race_max_bets_per_game` defaults to 1). Tests: `test_dedup_keeps_one_per_game_by_default`, `test_dedup_keeps_two_per_game_when_cap_is_two`, `test_second_bet_on_held_game_blocked_at_cap_one_allowed_at_two`.
+
+### Fixed
+
+- **Thin-book market no longer re-picked every tick** (2026-06-16): a market whose Gamma `liquidity` field reads ≥$500 while its live CLOB ask side holds <$1 of executable depth passed eligibility, was selected, and the BUY raised `book_too_thin` at the depth probe — then re-picked and re-rejected on *every* tick (seen live: "Lionel Messi: 3+ goals", $0.46 executable depth, retried on each ~18s tick, burning the only actionable pick slot and a book probe each time). A token that fails `book_too_thin` is now cooled off for 10 min (`_THIN_BOOK_COOLDOWN` in `race_strategies`) and dropped in `_actionable_candidates` before the pick-slot truncation, so the slot goes to a real bet; the cooldown expires (rather than banning the market) because the book can refill. Tests: `test_thin_book_token_is_skipped_during_cooldown`, `test_thin_book_cooldown_expires`.
+
+### Added
+
 - **Macro / central-bank interest-rate markets banned outright** (user 2026-06-16: "why do we have a bet on the Fed rate by September? too far away — we only want stuff expiring in 4-6h max"). New `_MACRO_RATE_RE` in `models.is_excluded_market` rejects Fed/FOMC, ECB, BoE/BoJ, Bank of Brazil Selic, and any "rate cut/hike/decision · interest rate · (raise|cut|hold|lower|hike) rates · basis points · rate by|after|before" market across every lane. These resolve weeks-to-months out and can never satisfy the ≤4h grinder window; one ("Fed rate cut by September 2026 meeting?") had slipped into the wallet via live-position sync and was sold manually. Word-bounded so it can't collide with "win rates"/"accurate". Tests: `test_macro_central_bank_rate_markets_excluded`, `test_macro_rate_regex_no_false_positives`.
 
 - **Bot 2 — copy-trading lane (`smart_b.toml`) with TWO triggers, grinder frozen on bots 1 & 3** (user 2026-06-15): bot 2 now runs a *different* strategy from the grinder, with **both** copy triggers active at once:

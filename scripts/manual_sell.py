@@ -20,12 +20,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-# Tokens the user asked to sell manually.
+# Tokens the user asked to sell manually. When non-empty, ONLY these tokens
+# are sold; leave it empty to flatten every open position.
 TARGET_TOKENS = {
-    # Antonio Gracias / No
-    "49230672971701746465122426449835191870819159491584700297160742718022482783703",
-    # Miami Marlins vs. Philadelphia Phillies: O/U 4.5 / Over
-    "43795065402261717214379510192942048116088888161067134164915431433730409921434",
+    # Will América FC win on 2026-06-16? / No (user 2026-06-16: sell this game)
+    "100079088902188738353988308877072004536937811819151997125313280358639366847774",
 }
 
 
@@ -68,6 +67,7 @@ def main() -> None:
     targets = [
         p for p in portfolio.positions
         if p.get("status") == "open" and str(p.get("token_id") or "")
+        and (not TARGET_TOKENS or str(p.get("token_id")) in TARGET_TOKENS)
     ]
     if not targets:
         print("No matching open positions found.")
