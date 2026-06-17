@@ -4390,7 +4390,9 @@ class SoccerMoneylineAntiGapSLTests(unittest.TestCase):
 
     def _plan(self, decision_bid, entry=0.8949, confirm_count=2):
         from polymarket_bot.race_strategies import _simple_exit_plan
-        s = Settings(race_sl_pct=0.30, race_sl_confirm_ticks=3,
+        # kzer_windows uses the module constant _SL_CONFIRM_TICKS (=3) rather
+        # than a settings field, so don't pass race_sl_confirm_ticks here.
+        s = Settings(race_sl_pct=0.30,
                      race_sl_min_age_minutes=5, race_sl_min_exit_price=0.50,
                      race_tp_pct=1.0)
         pos = {
