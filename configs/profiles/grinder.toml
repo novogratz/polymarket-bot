@@ -90,12 +90,13 @@ cash_floor_pct = 0.01
 
 # Exit rules:
 #   tp_pct = 1.0          → TP disabled; ride to resolution.
-#   sl_pct = 0.25         → CONTROLLED SL at -25%, SOCCER MONEYLINE ONLY
-#                           ("Will <Team> win on <date>?" Yes/No bets). All
-#                           other markets (O/U 4.5 totals, specials) NEVER
+#   sl_pct = 0.30         → CONTROLLED SL at -30%, SPORT MONEYLINES ONLY
+#                           ("Will <X> win on <date>?" Yes/No bets, any soccer
+#                           club regardless of league). Politics/elections and
+#                           awards are EXCLUDED; O/U totals and specials NEVER
 #                           stop out — they ride to resolution (user rule
-#                           2026-06-07, gate in _is_soccer_moneyline_position).
-#   sl_confirm_ticks = 3  → must stay past -25% for 3 consecutive ticks before
+#                           2026-06-16, gate in _is_soccer_moneyline_position).
+#   sl_confirm_ticks = 3  → must stay past -30% for 3 consecutive ticks before
 #                           firing, so a one-tick thin-book blip can't trigger it.
 #   resolved at 0.99      → exit only when a REAL 0.99 bid exists on the live
 #                           book (the exit probes the live CLOB bid since

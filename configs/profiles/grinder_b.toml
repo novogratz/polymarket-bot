@@ -96,9 +96,10 @@ cash_floor_pct = 0.01
 
 # Exit rules (match grinder.toml / main 2026-06-07):
 #   tp_pct = 1.0          → TP disabled; ride to resolution.
-#   sl_pct = 0.25         → CONTROLLED SL at -25%, SOCCER MONEYLINE ONLY
-#                           ("Will <Team> win on <date>?" Yes/No bets). All
-#                           other markets NEVER stop out (user rule 2026-06-07,
+#   sl_pct = 0.30         → CONTROLLED SL at -30%, SPORT MONEYLINES ONLY
+#                           ("Will <X> win on <date>?" Yes/No bets, any soccer
+#                           club regardless of league). Politics/awards EXCLUDED;
+#                           all other markets NEVER stop out (user rule 2026-06-16,
 #                           gate in _is_soccer_moneyline_position).
 #   sl_confirm_ticks = 3  → must persist 3 consecutive ticks before firing.
 #   resolved at 0.99      → exit only when a REAL 0.99 bid exists on the live
