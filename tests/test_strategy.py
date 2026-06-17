@@ -4166,10 +4166,13 @@ class ExcludedMarketTests(unittest.TestCase):
             self.assertEqual(_build_eligible_candidates([lol_market(ask)], settings), [])
 
         def normal_market(ask):
+            # A genuine non-lane market — first-to-score, NOT a "Will X win"
+            # moneyline (those now carry their own 0.92 floor, 2026-06-17) and
+            # NOT a stock (banned). Keeps the global 0.85 floor.
             end = (utc_now() + timedelta(hours=2)).isoformat()
             return {
-                "id": f"fra-{ask}", "question": "Will France win on 2026-06-12?",
-                "slug": f"fra-{ask}", "endDate": end, "acceptingOrders": True,
+                "id": f"fts-{ask}", "question": "France vs. Spain: Neither team to score first?",
+                "slug": f"fra-esp-{ask}", "endDate": end, "acceptingOrders": True,
                 "liquidity": 1500, "volume24hr": 2000,
                 "bestBid": round(ask - 0.02, 2), "bestAsk": ask,
                 "orderPriceMinTickSize": 0.01,
@@ -4336,6 +4339,80 @@ class SoccerMoneylineSLGateTests(unittest.TestCase):
         # O/U totals and Over/Under outcomes never match the moneyline regex.
         self.assertFalse(self._gate("Spurs vs. Knicks: O/U 196.5", "Under", "nba-ou"))
         self.assertFalse(self._gate("Will América FC win on 2026-06-16?", "Maybe", "x"))
+
+
+class SoccerMoneylineEntryFloorTests(unittest.TestCase):
+    """Entry floor (user 2026-06-17): soccer/sport moneylines need ask ≥ 0.92 —
+    every moneyline loss ever entered at ≤ 0.90; 0.90+ has zero losses."""
+
+    def _moneyline_market(self, ask, question="Will Difaâ Hassani El Jadida win on 2026-06-17?",
+                          slug="mar1-mad-dhe-2026-06-17"):
+        end = (utc_now() + timedelta(hours=2)).isoformat()
+        return {
+            "id": f"ml-{ask}", "question": question, "slug": slug,
+            "endDate": end, "gameStartTime": (utc_now() + timedelta(hours=1)).isoformat(),
+            "acceptingOrders": True, "liquidity": 1500, "volume24hr": 2000,
+            "bestBid": round(ask - 0.02, 2), "bestAsk": ask,
+            "orderPriceMinTickSize": 0.01,
+            "outcomes": '["Yes", "No"]',
+            "outcomePrices": f'["{ask}", "{round(1 - ask, 2)}"]',
+            "clobTokenIds": '["tok-a", "tok-b"]',
+        }
+
+    def _settings(self):
+        return Settings(race_min_price=0.85, race_max_price=0.97,
+                        race_max_spread=0.04, race_max_hours=4.0)
+
+    def _build(self, market):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        return _build_eligible_candidates([market], self._settings())
+
+    def test_moneyline_below_092_excluded(self):
+        self.assertEqual(self._build(self._moneyline_market(0.89)), [])
+        self.assertEqual(self._build(self._moneyline_market(0.90)), [])
+
+    def test_moneyline_at_or_above_092_allowed(self):
+        got = self._build(self._moneyline_market(0.93))
+        self.assertEqual([c.best_ask for c, _ in got], [0.93])
+
+    def test_non_moneyline_keeps_global_floor(self):
+        # A first-to-score market at 0.88 stays eligible (global 0.85 floor).
+        got = self._build(self._moneyline_market(
+            0.88, question="Portugal vs. DR Congo: Neither team to score first?",
+            slug="fifwc-prt-cdr-2026-06-17-first-to-score"))
+        self.assertEqual([c.best_ask for c, _ in got], [0.88])
+
+
+class SoccerMoneylineAntiGapSLTests(unittest.TestCase):
+    """Anti-gap guard (user 2026-06-17): the confirmed SL must HOLD, not dump,
+    when the live bid has gapped far below the -30% level. Difaâ "No" went
+    0.89 → 0.02 (sold by the SL) → resolved 1.0 — a winner booked as a loss."""
+
+    def _plan(self, decision_bid, entry=0.8949, confirm_count=2):
+        from polymarket_bot.race_strategies import _simple_exit_plan
+        s = Settings(race_sl_pct=0.30, race_sl_confirm_ticks=3,
+                     race_sl_min_age_minutes=5, race_sl_min_exit_price=0.50,
+                     race_tp_pct=1.0)
+        pos = {
+            "shares": 24.0, "entry_price": entry, "outcome": "No",
+            "question": "Will Difaâ Hassani El Jadida win on 2026-06-17?",
+            "slug": "mar1-mad-dhe-2026-06-17",
+            "opened_at": (utc_now() - timedelta(minutes=30)).isoformat(),
+            "sl_confirm_count": confirm_count,
+        }
+        pnl = (decision_bid - entry) / entry
+        return _simple_exit_plan(pos, pnl, s, decision_bid=decision_bid), pos
+
+    def test_gap_below_floor_holds(self):
+        plan, pos = self._plan(0.02)
+        self.assertIsNone(plan)                       # not sold
+        self.assertEqual(pos["sl_confirm_count"], 0)  # streak reset
+
+    def test_orderly_decline_still_stops_out(self):
+        # bid 0.55 for a 0.8949 entry = -38.5%, above the 0.50 floor → SL fires.
+        plan, _ = self._plan(0.55)
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan["reason"], "race_stop_loss_confirmed")
 
 
 if __name__ == "__main__":

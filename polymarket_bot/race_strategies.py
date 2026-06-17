@@ -32,6 +32,7 @@ from .config import Settings
 from .gamma import GammaClient
 from .models import (
     ESPORTS_MIN_ASK,
+    SOCCER_MONEYLINE_MIN_ASK,
     Candidate,
     as_float,
     is_esports_text,
@@ -306,6 +307,13 @@ def _build_eligible_candidates(
         lane_min_price = settings.race_min_price
         if is_esports_text(question, slug):
             lane_min_price = max(lane_min_price, ESPORTS_MIN_ASK)
+        # Soccer/sport "Will <X> win on <date>?" moneylines (user 2026-06-17):
+        # gap-bombs below 0.92. EVERY moneyline loss ever entered at ≤ 0.90;
+        # the 0.90+ band has zero losses. The SL can't save a goal-gap
+        # (Difaâ "No" 0.89 → 0.02 sold by the SL → resolved 1.0) — control it
+        # at entry. Both Yes and No sides gap, so floor the whole market.
+        if _is_soccer_moneyline_text(question, slug):
+            lane_min_price = max(lane_min_price, SOCCER_MONEYLINE_MIN_ASK)
 
         for index, outcome in enumerate(outcomes):
             price = prices[index]
@@ -1198,31 +1206,45 @@ _NON_SPORT_MONEYLINE_KEYWORDS = (
 )
 
 
+def _is_soccer_moneyline_text(question: str, slug: str) -> bool:
+    """True for a SPORT team-win moneyline market by its text alone.
+
+    Exclusion model (2026-06-16): the question must match
+    "Will <X> win on YYYY-MM-DD?" and neither question nor slug may carry a
+    non-sport keyword (elections/politics/awards). Any soccer club / national
+    team passes regardless of league. Used both by the entry floor (both Yes
+    and No sides of such a market gap on a goal) and the SL gate.
+    """
+    q = str(question or "").strip().lower()
+    if not _SOCCER_MONEYLINE_RE.match(q):
+        return False
+    haystack = f"{q} {str(slug or '').lower()}"
+    return not any(kw in haystack for kw in _NON_SPORT_MONEYLINE_KEYWORDS)
+
+
 def _is_soccer_moneyline_position(position: dict[str, Any]) -> bool:
     """True for a live SPORT team-win Yes/No moneyline — the ONLY SL lane.
 
-    Exclusion model (2026-06-16, was a soccer-league slug whitelist):
       1. outcome must be Yes or No
-      2. question must match "Will <X> win on YYYY-MM-DD?"
-      3. neither the question nor the slug may contain a non-sport keyword
-         (elections/politics/awards) — those ride to resolution, no SL.
+      2. the market text must be a sport moneyline (_is_soccer_moneyline_text)
     Any soccer club / national team passes regardless of league, so games
     like "Will América FC win on 2026-06-16?" are now covered.
     """
     outcome = str(position.get("outcome") or "").strip().lower()
     if outcome not in {"yes", "no"}:
         return False
-    question = str(position.get("question") or "").strip().lower()
-    if not _SOCCER_MONEYLINE_RE.match(question):
-        return False
-    slug = str(position.get("slug") or position.get("event_slug") or "").lower()
-    haystack = f"{question} {slug}"
-    if any(kw in haystack for kw in _NON_SPORT_MONEYLINE_KEYWORDS):
-        return False
-    return True
+    return _is_soccer_moneyline_text(
+        str(position.get("question") or ""),
+        str(position.get("slug") or position.get("event_slug") or ""),
+    )
 
 
-def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings: Settings) -> dict[str, Any] | None:
+def _simple_exit_plan(
+    position: dict[str, Any],
+    current_pnl_pct: float,
+    settings: Settings,
+    decision_bid: float = 0.0,
+) -> dict[str, Any] | None:
     shares = float(position.get("shares", 0.0) or 0.0)
     if shares <= 0:
         return None
@@ -1246,6 +1268,18 @@ def _simple_exit_plan(position: dict[str, Any], current_pnl_pct: float, settings
     sl_pct = float(settings.race_sl_pct or 0.0)
     if 0.0 < sl_pct < 1.0 and _is_soccer_moneyline_position(position):
         if current_pnl_pct <= -sl_pct:
+            # ── ANTI-GAP GUARD (2026-06-17) ──────────────────────────────
+            # The SL must only stop out into an ORDERLY decline. A bid that
+            # has gapped far below the -sl_pct level is a goal-gap crash, not
+            # a controlled stop — and those mean-revert: Difaâ "No" went
+            # 0.8949 → 0.02 (Difaâ scored), the SL sold the bottom at 2¢, then
+            # Maghreb won so "No" resolved to 1.0 — a +$2.55 winner booked as
+            # a -$21.25 loss. If the live bid is below race_sl_min_exit_price,
+            # HOLD to on-chain resolution instead of dumping into the crash.
+            floor = float(settings.race_sl_min_exit_price or 0.0)
+            if floor > 0.0 and decision_bid > 0.0 and decision_bid < floor:
+                position["sl_confirm_count"] = 0
+                return None
             count = int(position.get("sl_confirm_count", 0) or 0) + 1
             position["sl_confirm_count"] = count
             if count >= _SL_CONFIRM_TICKS:
@@ -1609,7 +1643,7 @@ def _execute_race_exits(
             # dumping winning favorites mid-game at whatever (often thin-book)
             # bid existed, losing real money for a cosmetic report. Positions
             # now ride to resolution; the report shows open-position equity.
-            plan = _simple_exit_plan(position, current_pnl_pct, settings)
+            plan = _simple_exit_plan(position, current_pnl_pct, settings, decision_bid=decision_bid)
         if plan is None:
             continue
         try:

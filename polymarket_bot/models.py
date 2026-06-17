@@ -226,6 +226,15 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
 # kept because race_strategies imports it and a held legacy position still
 # routes through the fast-lane exit logic.
 ESPORTS_MIN_ASK = 0.92
+
+# Per-lane entry floor for soccer/sport "Will <X> win on <date>?" moneylines
+# (user 2026-06-17). These gap catastrophically on a single goal: every
+# moneyline loss in the realized history entered at ≤ 0.90 (0.85, 0.86, 0.867,
+# 0.895, 0.90); the 0.90+ band has ZERO losses across 29 trades. The stop-loss
+# cannot protect them — a goal moves the price faster than any tick-based exit
+# and the gap often mean-reverts (Difaâ "No" 0.89 → 0.02 → resolved 1.0). The
+# real control is at entry: only buy a moneyline favorite already near-settled.
+SOCCER_MONEYLINE_MIN_ASK = 0.92
 _ESPORTS_QUESTION_SUBSTRINGS = (
     "counter-strike",
     "esports",

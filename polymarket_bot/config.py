@@ -358,6 +358,12 @@ class Settings:
     race_tp_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_TP_PCT", 0.25))
     race_sl_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_SL_PCT", 0.50))
     race_sl_min_age_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_SL_MIN_AGE_MINUTES", 5))
+    # Anti-gap floor (2026-06-17): the confirmed SL only executes while the live
+    # bid is still in ORDERLY-decline territory (≥ this price). A soccer
+    # moneyline that has gapped below it is a goal-gap crash that mean-reverts
+    # (Difaâ "No" 0.89 → 0.02 → resolved 1.0); selling there crystallizes a loss
+    # on a position that often wins. Below the floor we HOLD to resolution.
+    race_sl_min_exit_price: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_SL_MIN_EXIT_PRICE", 0.50))
     race_near_expiry_minutes: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_NEAR_EXPIRY_MINUTES", 5))
     race_resolved_exit_threshold: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_RESOLVED_EXIT_THRESHOLD", 0.97))
     race_limit_sell_trigger: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_LIMIT_SELL_TRIGGER", 0.0))
