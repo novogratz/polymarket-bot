@@ -115,6 +115,10 @@ tp_pct = 1.0
 sl_pct = 0.30            # -30% confirmed SL, sport moneylines (user 2026-06-16)
 sl_confirm_ticks = 3
 sl_min_age_minutes = 5
+# Anti-gap floor (user 2026-06-17): the SL only fires while the live bid is
+# still ≥ 0.50 (orderly decline). A moneyline gapped below it is a goal-crash
+# that mean-reverts (Difaâ "No" 0.89 → 0.02 → resolved 1.0) — HOLD, don't dump.
+sl_min_exit_price = 0.50
 near_expiry_minutes = 5
 resolved_exit_threshold = 0.97
 # Dynamic TP (2026-06-15): exit must clear entry by this, capped 0.99 —
