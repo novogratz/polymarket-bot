@@ -81,7 +81,7 @@ Three independent live bots, each with its own wallet, `.env`, and ledger.
 bash scripts/run_live_b.sh        # bots 2 & 3 (or run_live_70.sh for bot 1)
 ```
 
-Boots the live grinder (`--profile grinder_b`, 10 s tick) + a dry paper twin + the read-only `live_analyst` sidecar. Live position sync is on (`POLYMARKET_SYNC_LIVE_POSITIONS=1`). `Ctrl+C` cleans up the process group.
+Boots the live grinder (`--profile grinder_b`, 10 s tick) + a dry paper twin + the read-only `live_analyst` sidecar + the **daily self-learning sidecar** (`daily_self_improve.sh`, see Safety). Live position sync is on (`POLYMARKET_SYNC_LIVE_POSITIONS=1`). `Ctrl+C` cleans up the process group.
 
 > **Do not use `run_all.sh` for live** — it resets the ledger on startup and runs a retired dry race.
 
@@ -107,6 +107,7 @@ Run on a bot's own machine, **bot stopped**: backs up + wipes closed-trade histo
 - No random/unfiltered live trades. `noise_fallback` is disabled.
 - Preserve `data/paper_state.json`, `data/trade_journal.jsonl`, `data/realized_trade_cache.jsonl`, `data/starting_cash.txt` unless the user explicitly asks for a reset (use `fresh_start.py`).
 - **Offline self-tuner (bounded, opt-in):** `scripts/auto_improve.py` + `.github/workflows/auto-improve.yml` use the Claude Code CLI to open PRs that tune **EXIT/SIZING knobs only** in the live profile, auto-merging once CI is green. The **entry/bet-selection filters are FROZEN** (`_audit_frozen` aborts if the price band, spread, hours, day-change, momentum, or liquidity/volume move) and a stop-loss can never be *introduced* by it. It runs **OFFLINE, never in the live trade loop** — the one sanctioned LLM exception. See `docs/AUTONOMY.md`.
+- **Daily self-learning sidecar (`scripts/daily_self_improve.sh`, 2026-06-17):** the launchers spawn this as a process-group sidecar. Once per day after `DAILY_SELF_IMPROVE_HOUR` (23:00 local) it writes a deterministic **end-of-day analysis** (`auto_improve.py --analyze-only`: all-time/today/7-day P&L, win/loss asymmetry, per-category, worst trades) and then runs the fenced self-tuner above. It is **fully wrapped (`set +e` + try/catch) so it can NEVER crash or stall the live loop**, runs at most once/day (`data/.last_self_improve`), and **always restores the git branch** (the running bot keeps its loaded code; a tuned config only applies on the next manual restart). Toggle `DAILY_SELF_IMPROVE=0`. The tuner edits only `grinder.toml` (bot 1); mirror to `grinder_b.toml` by hand if a change should reach bots 2 & 3.
 - The bot does not have the capability to write or push its own source code.
 
 ## Project map
