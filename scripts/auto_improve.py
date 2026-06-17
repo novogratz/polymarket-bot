@@ -171,25 +171,61 @@ def _propose_hillclimb(current: dict[str, float]) -> dict[str, float]:
 
 
 def _recent_performance() -> dict:
-    """Cheap, read-only PnL summary from the realized-trade cache for context."""
+    """Read-only PnL summary from the realized-trade cache for context.
+
+    Richer than a single total so the daily analysis and the Claude proposal
+    are well-grounded: all-time, today, last-7-day, the win/loss asymmetry
+    (avg win vs avg loss — the grinder's core risk), and the worst trades.
+    De-duplicates the cache by (token_id, closed_at). Always fail-safe.
+    """
+    import datetime as _dt
     path = REPO_ROOT / "data" / "realized_trade_cache.jsonl"
-    n = wins = 0
-    pnl = 0.0
+    rows: list[dict] = []
+    seen: set = set()
     try:
         for line in path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             r = json.loads(line)
-            v = r.get("realized_pnl", r.get("realized_pnl_usd"))
-            if v is None:
+            key = (r.get("token_id"), r.get("closed_at"))
+            if key in seen:
                 continue
-            n += 1
-            pnl += float(v)
-            wins += 1 if float(v) > 0 else 0
+            seen.add(key)
+            if r.get("realized_pnl", r.get("realized_pnl_usd")) is not None:
+                rows.append(r)
     except Exception:  # noqa: BLE001
-        pass
-    return {"closed": n, "win_rate": round(wins / n, 3) if n else None,
-            "total_pnl": round(pnl, 2)}
+        return {"closed": 0, "win_rate": None, "total_pnl": 0.0}
+
+    def _pnl(r: dict) -> float:
+        return float(r.get("realized_pnl", r.get("realized_pnl_usd")) or 0.0)
+
+    def _summ(sub: list[dict]) -> dict:
+        n = len(sub)
+        wins = [r for r in sub if _pnl(r) > 0]
+        losses = [r for r in sub if _pnl(r) < 0]
+        return {
+            "closed": n,
+            "win_rate": round(len(wins) / n, 3) if n else None,
+            "total_pnl": round(sum(_pnl(r) for r in sub), 2),
+            "avg_win": round(sum(_pnl(r) for r in wins) / len(wins), 2) if wins else 0.0,
+            "avg_loss": round(sum(_pnl(r) for r in losses) / len(losses), 2) if losses else 0.0,
+        }
+
+    today = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
+    wk_cut = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=7)).isoformat()
+    today_rows = [r for r in rows if str(r.get("closed_at", ""))[:10] == today]
+    week_rows = [r for r in rows if str(r.get("closed_at", "")) >= wk_cut]
+    worst = sorted(rows, key=_pnl)[:5]
+    out = _summ(rows)
+    out["today"] = _summ(today_rows)
+    out["last_7d"] = _summ(week_rows)
+    out["worst_trades"] = [
+        {"pnl": round(_pnl(r), 2), "entry": r.get("entry_price"),
+         "exit": r.get("exit_price"), "reason": r.get("exit_reason"),
+         "q": str(r.get("question") or "")[:60]}
+        for r in worst if _pnl(r) < 0
+    ]
+    return out
 
 
 def _apply(new: dict[str, float]) -> list[str]:
@@ -255,7 +291,51 @@ def _tests_pass() -> bool:
     return proc.returncode == 0
 
 
+def _category_breakdown() -> dict:
+    """Read-only P&L by market category — the same lens used in the manual
+    day-review (moneyline / first-to-score / esports / O/U / other)."""
+    import re as _re
+    path = REPO_ROOT / "data" / "realized_trade_cache.jsonl"
+    seen: set = set()
+    agg: dict[str, dict] = {}
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            key = (r.get("token_id"), r.get("closed_at"))
+            if key in seen:
+                continue
+            seen.add(key)
+            q = str(r.get("question") or "").lower()
+            if _re.match(r"will .+ win on \d{4}-\d{2}-\d{2}\?", q):
+                cat = "sport_moneyline"
+            elif "to score first" in q:
+                cat = "first_to_score"
+            elif "o/u" in q:
+                cat = "ou_totals"
+            elif any(t in q for t in ("lol:", "counter-strike", "bo1", "bo3", "bo5", "rainbow")):
+                cat = "esports"
+            else:
+                cat = "other"
+            v = float(r.get("realized_pnl", r.get("realized_pnl_usd")) or 0.0)
+            a = agg.setdefault(cat, {"n": 0, "wins": 0, "pnl": 0.0, "worst": 0.0})
+            a["n"] += 1
+            a["pnl"] = round(a["pnl"] + v, 2)
+            a["wins"] += 1 if v > 0 else 0
+            a["worst"] = round(min(a["worst"], v), 2)
+    except Exception:  # noqa: BLE001
+        pass
+    return agg
+
+
 def main() -> int:
+    if "--analyze-only" in sys.argv:
+        print("[auto-improve] read-only analysis (no tuning).")
+        print(json.dumps(_recent_performance(), indent=2))
+        print("by_category:")
+        print(json.dumps(_category_breakdown(), indent=2))
+        return 0
     _preflight()
     before = _toml()
     current = _read_params(before)

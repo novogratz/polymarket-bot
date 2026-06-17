@@ -122,6 +122,12 @@ per-machine baseline. `--equity X` forces the baseline (else cash + positions).
 - Never delete `data/paper_state.json`, `data/trade_journal.jsonl`, or
   `data/realized_trade_cache.jsonl` unless the user explicitly asks for a reset.
 - The bot must not gain the capability to commit or push source code.
+- **Daily self-learning sidecar** (`scripts/daily_self_improve.sh`): launchers
+  run it once/day after 23:00 local → end-of-day analysis (`auto_improve.py
+  --analyze-only`) + the fenced Claude self-tuner. Fully try/catch-wrapped
+  (never crashes the live loop), once/day, always restores the git branch.
+  Tuner fences intact: EXIT/SIZING only, entry FROZEN, no SL, tests+CI gated,
+  only `grinder.toml` writable. Toggle `DAILY_SELF_IMPROVE=0`.
 
 ## Commands
 

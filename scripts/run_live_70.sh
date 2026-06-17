@@ -106,5 +106,15 @@ POLYMARKET_QUIET=1 \
 TELEGRAM_CHAT_ID_DRY_RUN="" \
     uv run python scripts/dry_analyst.py 2>&1 | sed -u 's/^/[analyst] /' | tee -a "$RUN_LOG" &
 
+# ─── Daily self-learning sidecar (offline LLM exception) ───────────────
+# Once/day after 23:00 local: writes an end-of-day ANALYSIS of the results +
+# runs the FENCED Claude self-tuner (scripts/auto_improve.py) — EXIT/SIZING
+# only, entry filters FROZEN, a stop-loss can NEVER be introduced, full test
+# suite + CI gated, only grinder.toml writable, git branch always restored.
+# Fully wrapped (set +e + try/catch) so it can NEVER crash the live loop.
+# Toggle with DAILY_SELF_IMPROVE=0. Part of the process group → Ctrl+C kills it.
+DAILY_SELF_IMPROVE="${DAILY_SELF_IMPROVE:-1}" \
+    bash scripts/daily_self_improve.sh 2>&1 | sed -u 's/^/[self-improve] /' | tee -a "$RUN_LOG" &
+
 uv run pmbot auto-loop --live --profile grinder --yes \
     2>&1 | sed -u 's/^/[LIVE] /' | tee -a "$LIVE_LOG" "$RUN_LOG"
