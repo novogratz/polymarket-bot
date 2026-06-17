@@ -22,7 +22,11 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   spans several Polymarket events; `_open_game_keys` blocks across ticks;
   `EVENT_EXPOSURE_CAP=1`); keeps the single best (highest-bid) candidate
   per game (the soccer under-4.5 priority was dropped 2026-06-14). Spread ≤ 4¢, liquidity
-  ≥ $500, 24 h volume ≥ $300. NO price-movement gates (user 2026-06-10): day-
+  ≥ $500, 24 h volume ≥ $300. **Per-lane entry floors ≥ 0.92**: esports
+  (`ESPORTS_MIN_ASK`) and soccer/sport "Will <X> win on <date>?" moneylines
+  (`SOCCER_MONEYLINE_MIN_ASK`, user 2026-06-17 — gap-bombs below 0.92; every
+  moneyline loss ever entered ≤ 0.90, 0.90+ has zero losses). NO price-movement
+  gates (user 2026-06-10): day-
   change, day-momentum, and 1h gates all removed — fast movers stay tradeable,
   values logged in the forward net only, pinned by tests.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
@@ -49,7 +53,10 @@ Buy a heavily-favored binary outcome and ride it to resolution.
     `_is_soccer_moneyline_position` — matches "Will <X> win on YYYY-MM-DD?"
     Yes/No and excludes politics/awards; any soccer club passes regardless of
     league slug, 2026-06-16). Min age 5 min. Everything else (O/U,
-    elections, …) rides to resolution.
+    elections, …) rides to resolution. **Anti-gap floor
+    `sl_min_exit_price=0.50` (2026-06-17):** the SL only executes while the live
+    bid is still ≥ 0.50; below that it's a goal-crash that mean-reverts (Difaâ
+    "No" 0.89 → 0.02 → resolved 1.0) → HOLD to resolution, don't dump.
   - **Hard rule: never sell below entry** (floor in `trading.execute_live_sell`).
     Only `race_stop_loss_confirmed` is exempt. Other losers ride to resolution.
   - **Winner floor (0.97)**: winner-exit orders below **0.97** are refused
