@@ -31,12 +31,15 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   values logged in the forward net only, pinned by tests.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
   dropped before pick-slot truncation.
-- **Sizing (dynamic):** hard cap **15% of equity per bet** (`stake_pct`; raised from 10% 2026-06-14); fresh entries open at
-  the lower `initial_stake_pct` (5%) so the dip double-down has headroom to
-  fill toward the 10% cap; per-bet
-  target = available cash spread across the actionable opportunities (cash/N),
-  full cap when the market is slow. Near-resolution boost never pierces the cap.
-  Depth-capped entries top up later toward the same cap.
+- **Sizing (Kelly, dynamic — user 2026-06-18 "10% isn't enough"):** the binding
+  lever is the ENTRY size (`initial_stake_pct = 0.20`), not the cap — most
+  winners never dip so they ride at the entry size; the hard cap
+  `stake_pct = 0.35` is only reached via the dip double-down. Near-full-Kelly,
+  aggressive by explicit choice: `f* = (p·b − q·a)/(a·b) ≈ 0.35` for p≈0.97,
+  b≈8.4%, a≈1.0. Worst single total loss −20% (entry) / −35% (doubled). Per-bet
+  target = cash/N spread, full cap when slow; near-resolution boost never
+  pierces the cap. Tuner may move `stake_pct` in (0.05, 0.35). See
+  `docs/STRATEGIES.md` for the derivation.
   **Dip double-down (2026-06-14):** ANY held position whose live ask has
   dipped below entry and is still **≥ 0.60** (alive proxy — no live-score
   feed) is bought up once toward the 10% cap (`_execute_double_downs`,
