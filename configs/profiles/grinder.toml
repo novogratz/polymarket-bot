@@ -76,7 +76,7 @@ stake_usd = 1.0
 # 15% = the HARD per-position cap (user 2026-06-14, was 10%). Fresh entries open at the lower
 # initial_stake_pct (5%) and the dip double-down fills the reserved
 # headroom up to 15% — so the double-down always has room to add.
-stake_pct = 0.15
+stake_pct = 0.05
 initial_stake_pct = 0.05
 # Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held
 # position whose live ask has dipped below entry while it's still a favorite
