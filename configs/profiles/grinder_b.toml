@@ -80,20 +80,28 @@ max_price = 0.97
 # thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.
 max_spread = 0.04
 
-# 20% HARD CAP per bet (user 2026-06-10, was 30%). Per-bet target spreads the
-# available cash across the actionable opportunities (cash/N), so a busy window
-# funds every market instead of the first picks taking the cap; a slow market
-# gives each bet the full 10%. The <30min/<1h boost scales the spread share but
-# never pierces the cap (handled in race_strategies._dynamic_stake_target).
+# Per-bet target spreads the available cash across the actionable opportunities
+# (cash/N), so a busy window funds every market instead of the first picks
+# taking the cap; a slow market gives each bet the full cap. The <30min/<1h
+# boost scales the spread share but never pierces the cap (handled in
+# race_strategies._dynamic_stake_target).
 stake_usd = 1.0
-# 15% = the HARD per-position cap (user 2026-06-14, was 10%). Fresh entries open at the lower
-# initial_stake_pct (5%) and the dip double-down fills the reserved
-# headroom up to 15% — so the double-down always has room to add.
-stake_pct = 0.15
-initial_stake_pct = 0.05
-# Dip double-down (user 2026-06-14, generalized): add to ANY held position
-# whose live ask has dipped below entry while it's still a favorite
-# (ask ≥ min_price 0.60). Once per position, never past the per-bet cap.
+# KELLY SIZING (user 2026-06-18, "10% isn't enough"). For a 0.97 win rate p,
+# ~8.4% gain b and worst-case total loss a≈1.0, two-point Kelly
+# f* = (p·b − q·a)/(a·b) ≈ 0.35. We size NEAR FULL KELLY (aggressive, the
+# user's explicit choice) — high variance, fast compounding:
+#   initial_stake_pct = 0.20 → FRESH entries open at 20% of equity. This is the
+#     real win-sizing lever: most winners never dip, so they stay at the entry
+#     size (the cap is only reached via the dip double-down). Was 5%.
+#   stake_pct = 0.35 → HARD per-position cap (double-down ceiling). Was 15%.
+# Worst single total loss: −20% (entry) / −35% (if doubled down before losing).
+stake_pct = 0.35
+initial_stake_pct = 0.20
+# Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held
+# position whose live ask has dipped below entry while it's still a favorite
+# (probability > 0.60). Widened the max dip 0.08 -> 0.40 so a bigger slide
+# still doubles down — e.g. 0.83->0.78 AND 0.85->0.70 both qualify; the real
+# floor is min_price 0.60. Once per position, never past the per-bet cap.
 double_down_enabled = true
 double_down_min_dip = 0.01
 double_down_max_dip = 0.40

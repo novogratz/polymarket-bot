@@ -53,7 +53,7 @@ ALLOWED_WRITE = {str(TARGET.relative_to(REPO_ROOT))}
 # stop-loss keys are absent so a stop-loss can never be introduced.
 TUNABLE: dict[str, tuple[float, float]] = {
     "race.tp_pct": (0.05, 1.0),                    # take-profit (1.0 = ride to resolution)
-    "race.stake_pct": (0.05, 0.15),                # position size per trade (15% hard cap, user 2026-06-14)
+    "race.stake_pct": (0.05, 0.35),                # position-size hard cap (Kelly, user 2026-06-18; near-full-Kelly 0.35)
     "race.max_orders_per_tick": (1, 5),            # concurrency / sizing spread
     # PINNED at 0.97 (user 2026-06-14, "sell at 0.97 as we had before"):
     # the tuner must never move the winner exit off 0.97.

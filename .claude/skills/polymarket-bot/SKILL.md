@@ -29,6 +29,7 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   gates (user 2026-06-10): day-
   change, day-momentum, and 1h gates all removed — fast movers stay tradeable,
   values logged in the forward net only, pinned by tests.
+<<<<<<< HEAD
   Scan reads the **top 100 markets** per ordering (`scan_limit=100`, user
   2026-06-15 — single Gamma page, no pagination); held/pending/capped markets
   are dropped before pick-slot truncation.
@@ -38,6 +39,19 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   target = available cash spread across the actionable opportunities (cash/N),
   full cap when the market is slow. Near-resolution boost never pierces the cap.
   Depth-capped entries top up later toward the same cap.
+=======
+  Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
+  dropped before pick-slot truncation.
+- **Sizing (Kelly, dynamic — user 2026-06-18 "10% isn't enough"):** the binding
+  lever is the ENTRY size (`initial_stake_pct = 0.20`), not the cap — most
+  winners never dip so they ride at the entry size; the hard cap
+  `stake_pct = 0.35` is only reached via the dip double-down. Near-full-Kelly,
+  aggressive by explicit choice: `f* = (p·b − q·a)/(a·b) ≈ 0.35` for p≈0.97,
+  b≈8.4%, a≈1.0. Worst single total loss −20% (entry) / −35% (doubled). Per-bet
+  target = cash/N spread, full cap when slow; near-resolution boost never
+  pierces the cap. Tuner may move `stake_pct` in (0.05, 0.35). See
+  `docs/STRATEGIES.md` for the derivation.
+>>>>>>> 23db231 (race: Kelly position sizing — near-full-Kelly (entries 20%, cap 35%))
   **Dip double-down (2026-06-14):** ANY held position whose live ask has
   dipped below entry and is still **≥ 0.60** (alive proxy — no live-score
   feed) is bought up once toward the 10% cap (`_execute_double_downs`,
