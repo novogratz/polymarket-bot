@@ -291,3 +291,50 @@ Pour un dry-run sérieux ou la prod : `[noise_fallback] enabled = false`. Le bot
 - Pas de réaction sur news (pas de feed externe).
 - Pas d'opinion sur l'outcome (sauf BTC).
 - Pas de signal d'entrée généré "from scratch" — tout vient soit de la cohorte, soit du noise.
+
+---
+
+## Sizing Kelly — grinder (2026-06-18)
+
+Le grinder n'utilise PAS le sizing conviction-weighted ci-dessus. Son sizing
+est dérivé du **critère de Kelly** sur la distribution de gains réelle.
+
+### La formule
+
+Pour un pari qui gagne une fraction **b** de la mise avec probabilité **p**, ou
+perd une fraction **a** avec probabilité **q = 1 − p**, la fraction de capital
+qui maximise la croissance géométrique est :
+
+```
+f* = (p·b − q·a) / (a·b)
+```
+
+- Espérance par pari (arithmétique) : `E = p·b − q·a`
+- Win rate de breakeven : `p = a / (a + b)`
+- Croissance log par pari : `G(f) = p·ln(1 + f·b) + q·ln(1 − f·a)`
+
+### Les chiffres du grinder (univers post-bans, ~416 trades)
+
+- `p ≈ 0.97` (win rate), `b ≈ 0.084` (gain moyen 8.4 %), `a` queue lourde :
+  la plupart des pertes −1 % à −15 %, quelques-unes proches de −98 %.
+- Edge `E ≈ +7 %/pari`. Breakeven ≈ 77 % → grosse marge.
+- Kelly deux-points avec `a ≈ 1.0` (perte totale, hypothèse prudente) : `f* ≈ 0.35`.
+
+**Deux pièges** : (1) le Kelly deux-points avec la perte *moyenne* (28 %) donne
+304 % — absurde, il ignore la queue. (2) Le Kelly *empirique* sur l'historique
+donne 98 % — sur-ajusté à un échantillon où aucune perte n'a atteint −100 %.
+La contrainte réelle est la **survie**, pas le pic empirique.
+
+### Le réglage
+
+Le levier qui compte est la **taille d'entrée** (`initial_stake_pct`), pas le
+cap : à 97 % de win rate la plupart des positions gagnent sans jamais dipper,
+donc elles restent à la taille d'entrée (le cap n'est atteint que par le dip
+double-down). Réglage actuel (near-full-Kelly, choix explicite de l'utilisateur) :
+
+- `initial_stake_pct = 0.20` — entrées fraîches à 20 % de l'equity.
+- `stake_pct = 0.35` — cap dur par position (plafond du double-down).
+- Perte totale sur une position : −20 % (entrée) / −35 % (si doublée).
+
+Le tuner offline peut bouger `stake_pct` dans (0.05, 0.35) ; `initial_stake_pct`
+est gelé (hors `TUNABLE`).
