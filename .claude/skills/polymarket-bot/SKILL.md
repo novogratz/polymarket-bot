@@ -84,7 +84,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   Tweet-count markets banned outright (2026-06-12); YouTube views +
   entertainment ("Divertissement") banned outright (2026-06-14:
   `youtube`/`mrbeast`/`views` + awards/box-office/charts/streaming/social
-  metrics).
+  metrics). **"What will be said" markets banned outright (2026-06-18,
+  `_SPEECH_MARKET_RE`):** word-bounded `say/says/said/mention(s/ed)/utter(s/ed)`
+  — 'Will the announcers say "Golden Boot"…?' — linguistic coin-flips, no edge.
   **ALL stock market/equities banned outright** (re-banned 2026-06-12;
   generic "(TICKER) … $" rule catches unlisted tickers).
   **Conditional (2026-06-12):** esports = **League of Legends ONLY**
