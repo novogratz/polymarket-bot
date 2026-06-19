@@ -65,6 +65,7 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | **Tweet-count markets** — `tweet` + `-tweets`/`of-tweets` slugs | Banned outright (2026-06-12): week-long counts, no convergence signal |
 | **YouTube views + entertainment ("Divertissement")** — `youtube`/`mrbeast`/`views` + awards/box-office/charts/streaming/social-metrics | Banned outright (2026-06-14): no convergence edge, jumps on hype |
 | **League of Ireland soccer** — `irl1-` slug prefix | Banned outright (2026-06-12) |
+| **"What will be said" markets** — word-bounded `say`/`says`/`said`/`mention(s/ed)`/`utter(s/ed)` | Banned outright (2026-06-18): 'Will the announcers say "Golden Boot"…?' — linguistic coin-flips, no convergence edge |
 
 **Deliberately tradeable** (test-pinned, do not ban): elections, primaries, and mayoral races — a profitable lane despite occasional postponements — and **fast-moving markets**: there are no `oneDayPriceChange` or `oneHourPriceChange` gates (recently-moving markets are often the ones converging toward resolution; both values are logged for offline analysis only).
 

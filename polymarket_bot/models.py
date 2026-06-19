@@ -301,6 +301,17 @@ _MACRO_RATE_RE = re.compile(
     r"basis points|rate (?:by|after|before))\b"
 )
 
+# "What will be said" markets — banned outright (user 2026-06-18: a bot bought
+# 'Will the announcers say "Golden Boot" during the Canada vs Qatar match?'
+# "never bet about what something will say"). Bets on whether a person /
+# commentator / announcer will SAY or MENTION a given word or phrase are pure
+# linguistic coin-flips with no convergence edge. Word-bounded so it can't
+# collide inside other words ("essay", "Macy's", "summation", etc.); the
+# leading \b on "say" stops a match inside "essay"/"naysayer".
+_SPEECH_MARKET_RE = re.compile(
+    r"\b(?:says?|said|saying|mentions?|mentioned|utters?|uttered)\b"
+)
+
 
 
 def _parse_market_dt(raw: Any) -> datetime | None:
@@ -423,6 +434,8 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
     if _VIEW_COUNT_RE.search(q):
         return True
     if _MACRO_RATE_RE.search(q) or _MACRO_RATE_RE.search(slug.replace("-", " ")):
+        return True
+    if _SPEECH_MARKET_RE.search(q) or _SPEECH_MARKET_RE.search(slug.replace("-", " ")):
         return True
     if now is None:
         now = datetime.now(timezone.utc)

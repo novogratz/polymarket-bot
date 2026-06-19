@@ -4039,6 +4039,31 @@ class ExcludedMarketTests(unittest.TestCase):
         ):
             self.assertFalse(is_excluded_market({"question": question, "slug": ""}), question)
 
+    def test_speech_markets_banned(self):
+        # User 2026-06-18: a bot bought 'Will the announcers say "Golden Boot"
+        # during the Canada vs Qatar match?' — "never bet about what something
+        # will say." Bets on whether someone says/mentions a word or phrase are
+        # pure linguistic coin-flips with no convergence edge. Ban outright.
+        for market in (
+            {"question": 'Will the announcers say "Golden Boot" during the Canada vs Qatar FIFA World Cup Match?',
+             "slug": "announcers-say-golden-boot-canada-qatar"},
+            {"question": "Will Trump mention Bitcoin in his speech?",
+             "slug": "trump-mention-bitcoin-speech"},
+            {"question": 'Will Powell say "recession" at the press conference?',
+             "slug": "powell-says-recession"},
+        ):
+            self.assertTrue(is_excluded_market(market), market["question"])
+
+    def test_speech_market_regex_no_false_positives(self):
+        # The speech ban must be word-bounded — must NOT catch "essay",
+        # "naysayer", or ordinary sports/election markets.
+        for market in (
+            {"question": "Will the essay win the writing prize?", "slug": "essay-prize"},
+            {"question": "Will Canada win on 2026-06-18?", "slug": "fif-can-2026-06-18"},
+            {"question": "Will Real Madrid win in regulation?", "slug": "real-madrid-win"},
+        ):
+            self.assertFalse(is_excluded_market(market), market["question"])
+
     def test_elections_and_primaries_stay_tradeable(self):
         # User decision 2026-06-10: elections/primaries/mayoral races are a
         # liked, profitable lane (Billy Webster, Castrovillari wins) and must
