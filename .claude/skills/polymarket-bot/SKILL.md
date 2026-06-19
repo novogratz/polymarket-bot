@@ -22,8 +22,8 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   spans several Polymarket events; `_open_game_keys` blocks across ticks;
   `EVENT_EXPOSURE_CAP=1`); keeps the single best (highest-bid) candidate
   per game (the soccer under-4.5 priority was dropped 2026-06-14). Spread ≤ 4¢, liquidity
-  ≥ $500, 24 h volume ≥ $300. **Per-lane entry floors ≥ 0.92**: esports
-  (`ESPORTS_MIN_ASK`) and soccer/sport "Will <X> win on <date>?" moneylines
+  ≥ $500, 24 h volume ≥ $300. **Per-lane entry floor ≥ 0.92**: soccer/sport
+  "Will <X> win on <date>?" moneylines
   (`SOCCER_MONEYLINE_MIN_ASK`, user 2026-06-17 — gap-bombs below 0.92; every
   moneyline loss ever entered ≤ 0.90, 0.90+ has zero losses). NO price-movement
   gates (user 2026-06-10): day-
@@ -89,10 +89,10 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   — 'Will the announcers say "Golden Boot"…?' — linguistic coin-flips, no edge.
   **ALL stock market/equities banned outright** (re-banned 2026-06-12;
   generic "(TICKER) … $" rule catches unlisted tickers).
-  **Conditional (2026-06-12):** esports = **League of Legends ONLY**
-  (Mobile Legends, CS, and all other titles banned outright; Game/Map
-  Handicap banned), only while the game is live (gameStartTime past,
-  ≤8h), ask ≥ **0.92**.
+  **Esports — BANNED OUTRIGHT (2026-06-19):** every title (League of
+  Legends/LoL, Counter-Strike, CS2, Valorant, Dota, Mobile Legends, Game/Map
+  Handicap, BO1/BO3/BO5, …) excluded regardless of live status or ask
+  (`is_esports_text`); the prior LoL-only-while-live carve-out is removed.
 - **Disabled:** `btc_edge` lane, `noise_fallback`.
 
 ## Multi-bot layout

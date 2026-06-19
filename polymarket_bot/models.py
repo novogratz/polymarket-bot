@@ -176,24 +176,11 @@ _EXCLUDED_SLUG_SUBSTRINGS = (
     "crypto",
 )
 
-# ── Esports — LEAGUE OF LEGENDS ONLY, LIVE GAMES ONLY ────────────────────
-# Blanket-banned 2026-05-31; re-allowed live-only 2026-06-12; narrowed twice
-# the same day (user): ONLY League of Legends qualifies — Mobile Legends,
-# Counter-Strike, and every other title are banned outright. LoL still
-# requires the game to be IN PROGRESS (gameStartTime in the past, within
-# _ESPORTS_LIVE_MAX_HOURS) and an ask ≥ ESPORTS_MIN_ASK (0.92).
-_ESPORTS_ALLOWED_QUESTION_SUBSTRINGS = (
-    "league of legends",
-    "lol:",
-)
-_ESPORTS_ALLOWED_SLUG_SUBSTRINGS = (
-    "league-of-legends",
-    "lol-",
-)
-
-# Per-lane entry floor (user 2026-06-12): the esports lane needs MORE
-# certainty than the global price band, not less — never below 0.92.
-ESPORTS_MIN_ASK = 0.92
+# ── Esports — BANNED OUTRIGHT (user 2026-06-19) ──────────────────────────
+# Blanket-banned 2026-05-31; re-allowed LoL-only-while-live 2026-06-12; banned
+# outright again 2026-06-19 (user: "remove completely esports bets from bot
+# 1 2 3 — no counter strike no league of legends LoL etc"). Every title is
+# excluded regardless of live status or ask. is_esports_text drives the ban.
 
 # Per-lane entry floor for soccer/sport "Will <X> win on <date>?" moneylines
 # (user 2026-06-17). These gap catastrophically on a single goal: every
@@ -235,7 +222,6 @@ _ESPORTS_SLUG_SUBSTRINGS = (
     "dota",
     "esports",
 )
-_ESPORTS_LIVE_MAX_HOURS = 8.0
 
 # ── Stock market — BANNED OUTRIGHT (re-banned 2026-06-12) ────────────────
 # Blanket-banned 2026-06-11 after the SPY buy, conditionally re-allowed
@@ -313,34 +299,8 @@ _SPEECH_MARKET_RE = re.compile(
 )
 
 
-
-def _parse_market_dt(raw: Any) -> datetime | None:
-    s = str(raw or "").strip()
-    if not s:
-        return None
-    s = s.replace("Z", "+00:00").replace(" ", "T")
-    if s.endswith("+00"):
-        s += ":00"
-    try:
-        d = datetime.fromisoformat(s)
-        if d.tzinfo is None:
-            d = d.replace(tzinfo=timezone.utc)
-        return d
-    except ValueError:
-        return None
-
-
-def _esports_game_is_live(market: dict[str, Any], now: datetime) -> bool:
-    """True only while the game/series is actually IN PROGRESS."""
-    start = _parse_market_dt(market.get("gameStartTime"))
-    if start is None:
-        return False
-    hours_running = (now - start).total_seconds() / 3600.0
-    return 0.0 <= hours_running <= _ESPORTS_LIVE_MAX_HOURS
-
-
 def is_esports_text(question: str, slug: str = "") -> bool:
-    """True for any esports market (allowed title or not)."""
+    """True for any esports market — all are banned outright (2026-06-19)."""
     q = str(question or "").lower()
     s = str(slug or "").lower()
     return any(pat in q for pat in _ESPORTS_QUESTION_SUBSTRINGS) or any(
@@ -415,15 +375,17 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
     - Exact-score live sports: gaps on goals, SL can't catch them.
     - O/U 0.5 soccer: any-goal binary, same gap risk.
 
-    Conditionally allowed (2026-06-12, user rule):
-    - Esports: ONLY League of Legends, and ONLY while the game is live
-      (gameStartTime in the past, within _ESPORTS_LIVE_MAX_HOURS). Other
-      titles (Mobile Legends, Counter-Strike, Valorant, Dota, …),
-      pre-game, or unknown start -> excluded.
+    Esports: banned OUTRIGHT (user 2026-06-19: "remove completely esports
+    bets from bot 1 2 3 — no counter strike no league of legends LoL etc").
+    Every title (LoL, Counter-Strike, Valorant, Dota, Mobile Legends, …) is
+    excluded regardless of live status or ask — the prior LoL-only-while-live
+    carve-out is gone.
 
     Stock market / equities: banned OUTRIGHT (re-banned 2026-06-12 after a
     one-day in-session experiment) — indices, ETFs, tickers, company
     stocks, price-threshold closes, weekly ranges, touch markets.
+
+    ``now`` is accepted for backwards compatibility but no longer used.
     """
     q = str(market.get("question") or "").lower()
     if any(pat in q for pat in _EXCLUDED_QUESTION_SUBSTRINGS):
@@ -437,20 +399,11 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
         return True
     if _SPEECH_MARKET_RE.search(q) or _SPEECH_MARKET_RE.search(slug.replace("-", " ")):
         return True
-    if now is None:
-        now = datetime.now(timezone.utc)
-    is_esports = any(pat in q for pat in _ESPORTS_QUESTION_SUBSTRINGS) or any(
-        pat in slug for pat in _ESPORTS_SLUG_SUBSTRINGS
-    )
-    if is_esports:
-        allowed_game = any(
-            pat in q for pat in _ESPORTS_ALLOWED_QUESTION_SUBSTRINGS
-        ) or any(pat in slug for pat in _ESPORTS_ALLOWED_SLUG_SUBSTRINGS)
-        if not allowed_game:
-            # Only LoL and Mobile Legends qualify (user 2026-06-12) —
-            # Counter-Strike, Valorant, Dota, … are banned outright.
-            return True
-        return not _esports_game_is_live(market, now)
+    # Esports — BANNED OUTRIGHT (user 2026-06-19). Every title is excluded
+    # regardless of live status or ask; the LoL-only-while-live carve-out
+    # (2026-06-12) is removed.
+    if is_esports_text(q, slug):
+        return True
     raw_q = str(market.get("question") or "")
     is_stock = (
         any(pat in q for pat in _STOCK_QUESTION_SUBSTRINGS)

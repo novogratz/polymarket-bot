@@ -4150,7 +4150,11 @@ class ExcludedMarketTests(unittest.TestCase):
 
     # ── Conditional re-allow (user 2026-06-12): "ongoing only" ────────────
 
-    def test_esports_allowed_only_while_game_is_live(self):
+    def test_esports_banned_outright_even_lol_live(self):
+        # User 2026-06-19: "remove completely esports bets from bot 1 2 3 — no
+        # counter strike no league of legends LoL etc." Every esports title is
+        # banned regardless of live status — the prior LoL-only-while-live
+        # carve-out (2026-06-12) is removed.
         from datetime import datetime, timezone
 
         now = datetime(2026, 6, 12, 18, 0, tzinfo=timezone.utc)
@@ -4159,14 +4163,15 @@ class ExcludedMarketTests(unittest.TestCase):
         live = dict(base, gameStartTime="2026-06-12T17:00:00+00:00")     # 1h in
         pregame = dict(base, gameStartTime="2026-06-12T19:00:00+00:00")  # +1h
         stale = dict(base, gameStartTime="2026-06-12T06:00:00+00:00")    # 12h ago
-        self.assertFalse(is_excluded_market(live, now=now))
+        # All four are now excluded, live or not.
+        self.assertTrue(is_excluded_market(live, now=now))
         self.assertTrue(is_excluded_market(pregame, now=now))
         self.assertTrue(is_excluded_market(stale, now=now))
-        self.assertTrue(is_excluded_market(base, now=now))  # unknown start
+        self.assertTrue(is_excluded_market(base, now=now))
 
-    def test_esports_only_league_of_legends_qualifies(self):
-        # User 2026-06-12 (twice): only League of Legends — Mobile Legends,
-        # Counter-Strike, and every other title are banned outright, even live.
+    def test_every_esports_title_banned_outright(self):
+        # User 2026-06-19: LoL, Counter-Strike, Valorant, Mobile Legends, and
+        # every other title are banned outright, live or not.
         from datetime import datetime, timezone
 
         now = datetime(2026, 6, 12, 18, 0, tzinfo=timezone.utc)
@@ -4181,11 +4186,10 @@ class ExcludedMarketTests(unittest.TestCase):
             {"question": "Mobile Legends: ONIC vs Blacklist - Game 3 Winner",
              "slug": "mobile-legends-onic-vs-blacklist-game-3",
              "gameStartTime": live_start},
+            {"question": "LoL: T1 vs Gen.G - Game 2 Winner",
+             "slug": "lol-t1-vs-geng-game-2", "gameStartTime": live_start},
         ):
             self.assertTrue(is_excluded_market(market, now=now), market["question"])
-        lol_live = {"question": "LoL: T1 vs Gen.G - Game 2 Winner",
-                    "slug": "lol-t1-vs-geng-game-2", "gameStartTime": live_start}
-        self.assertFalse(is_excluded_market(lol_live, now=now))
 
     def test_league_of_ireland_banned(self):
         # User rule 2026-06-12: no League of Ireland (Premier Division
@@ -4232,9 +4236,9 @@ class ExcludedMarketTests(unittest.TestCase):
                   "gameStartTime": "2026-06-12T17:00:00+00:00"}
         self.assertTrue(is_excluded_market(market, now=now))
 
-    def test_fast_lane_entry_floors_esports_092_stocks_090(self):
-        # User 2026-06-12: esports never below ask 0.92, stocks never below
-        # ask 0.90 — the fast lanes need MORE certainty, not less.
+    def test_esports_never_produces_a_candidate(self):
+        # User 2026-06-19: esports banned outright — no esports market, live
+        # or not and at any ask, ever becomes an eligible candidate.
         from polymarket_bot.race_strategies import _build_eligible_candidates
 
         def lol_market(ask):
@@ -4254,10 +4258,9 @@ class ExcludedMarketTests(unittest.TestCase):
 
         settings = Settings(race_min_price=0.85, race_max_price=0.97,
                             race_max_spread=0.04, race_max_hours=4.0)
-        too_cheap = _build_eligible_candidates([lol_market(0.90)], settings)
-        ok = _build_eligible_candidates([lol_market(0.93)], settings)
-        self.assertEqual(too_cheap, [])
-        self.assertEqual([c.best_ask for c, _ in ok], [0.93])
+        # Even a high-ask live LoL game yields zero candidates.
+        self.assertEqual(_build_eligible_candidates([lol_market(0.93)], settings), [])
+        self.assertEqual(_build_eligible_candidates([lol_market(0.96)], settings), [])
 
         def normal_market(ask):
             # A genuine non-lane market — first-to-score, NOT a "Will X win"
