@@ -31,11 +31,9 @@ from . import notifications
 from .config import Settings
 from .gamma import GammaClient
 from .models import (
-    ESPORTS_MIN_ASK,
     SOCCER_MONEYLINE_MIN_ASK,
     Candidate,
     as_float,
-    is_esports_text,
     is_excluded_market,
     is_fast_lane_text,
     parse_dt,
@@ -290,11 +288,9 @@ def _build_eligible_candidates(
         # them tradeable. The field is still logged in the forward-observation
         # net so its edge contribution can be measured before any future gate.
 
-        # Per-lane entry floor (user 2026-06-12): the esports lane needs
-        # MORE certainty than the global band — never below ask 0.92.
+        # Esports is banned outright (user 2026-06-19) — no per-lane floor
+        # needed; such markets never reach candidate selection.
         lane_min_price = settings.race_min_price
-        if is_esports_text(question, slug):
-            lane_min_price = max(lane_min_price, ESPORTS_MIN_ASK)
         # Soccer/sport "Will <X> win on <date>?" moneylines (user 2026-06-17):
         # gap-bombs below 0.92. EVERY moneyline loss ever entered at ≤ 0.90;
         # the 0.90+ band has zero losses. The SL can't save a goal-gap
