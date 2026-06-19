@@ -82,7 +82,7 @@ stake_usd = 1.0
 #     size (the cap is only reached via the dip double-down). Was 5%.
 #   stake_pct = 0.35 → HARD per-position cap (double-down ceiling). Was 15%.
 # Worst single total loss: −20% (entry) / −35% (if doubled down before losing).
-stake_pct = 0.35
+stake_pct = 0.2
 initial_stake_pct = 0.20
 # Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held
 # position whose live ask has dipped below entry while it's still a favorite
@@ -93,7 +93,7 @@ double_down_enabled = true
 double_down_min_dip = 0.01
 double_down_max_dip = 0.40
 double_down_min_price = 0.60
-max_orders_per_tick = 4
+max_orders_per_tick = 5
 cash_floor_pct = 0.01
 
 # Exit rules:
@@ -181,6 +181,6 @@ max_entry_slippage = 0.02
 [exits]
 stop_loss_pct = 1.0
 stop_loss_min_age_minutes = 1
-max_hold_hours = 4.5
+max_hold_hours = 3
 near_expiry_exit_losers = false
 near_expiry_loser_minutes = 5
