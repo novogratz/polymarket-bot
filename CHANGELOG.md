@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- **"What will be said" markets banned outright** (user 2026-06-18: a bot bought 'Will the announcers say "Golden Boot" during the Canada vs Qatar FIFA World Cup Match?' — "never bet about what something will say"). New `_SPEECH_MARKET_RE` in `models.is_excluded_market` rejects any market whose question/slug contains word-bounded `say/says/said/saying/mention(s/ed)/utter(s/ed)` across every lane. Bets on whether a commentator/announcer/person will utter a given word or phrase are pure linguistic coin-flips with no convergence edge. Word-bounded so it can't collide with "essay"/"naysayer". Tests: `test_speech_markets_banned`, `test_speech_market_regex_no_false_positives`.
+
 - **Fed / FOMC rate-decision markets banned** (user 2026-06-17, "too far away"): `is_excluded_market` now excludes monetary-policy markets — `fed rate`, `rate cut`/`rate hike`, `cut rates`/`hike rates`/`raise rates`, `interest rate`, `fomc`, `fed funds`, `rate decision`, `basis points`. "Fed rate cut by September 2026 meeting?" resolves months out but shows a near-term Gamma `endDate`, so it slipped through the 4 h entry window and the bots kept re-buying it after manual sells. Phrases are monetary-policy-specific so "approval rating" / "rate of scoring" etc. are not affected (test-pinned).
 
 ### Changed

@@ -323,6 +323,15 @@ _PAREN_TICKER_RE = re.compile(r"\([A-Z]{2,5}\)")
 # (\bviews\b) is the view-count tell — "reviews"/"interviews" do NOT match.
 _VIEW_COUNT_RE = re.compile(r"\bviews\b")
 
+# "What will be said" markets — banned outright (user 2026-06-18: a bot bought
+# 'Will the announcers say "Golden Boot" during the Canada vs Qatar match?'
+# "never bet about what something will say"). Bets on whether a person /
+# commentator / announcer will SAY or MENTION a given word or phrase are pure
+# linguistic coin-flips with no convergence edge. Word-bounded so it can't
+# collide inside other words ("essay", "naysayer", etc.).
+_SPEECH_MARKET_RE = re.compile(
+    r"\b(?:says?|said|saying|mentions?|mentioned|utters?|uttered)\b"
+)
 
 
 def is_esports_text(question: str, slug: str = "") -> bool:
@@ -383,6 +392,8 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
     if any(pat in slug for pat in _EXCLUDED_SLUG_SUBSTRINGS):
         return True
     if _VIEW_COUNT_RE.search(q):
+        return True
+    if _SPEECH_MARKET_RE.search(q) or _SPEECH_MARKET_RE.search(slug.replace("-", " ")):
         return True
     raw_q = str(market.get("question") or "")
     return is_esports_text(raw_q, slug) or is_stock_text(raw_q, slug)
