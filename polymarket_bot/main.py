@@ -1716,6 +1716,54 @@ def _v4_category_breakdown(records: list[dict[str, object]]) -> dict[str, object
         return {}
 
 
+def _v4_price_bucket_breakdown(records: list[dict[str, object]]) -> dict[str, object]:
+    """Per v4 price-bucket (0.80-0.85 … 0.94-0.96) trades / win_rate / ROI."""
+    try:
+        from .categories import _record_cost, _record_pnl
+        from .forecast import price_bucket
+
+        agg: dict[str, dict[str, float]] = {}
+        for r in records:
+            b = price_bucket(r.get("entry_price"))
+            if b is None:
+                continue
+            pnl = _record_pnl(r)
+            cell = agg.setdefault(b, {"trades": 0, "wins": 0, "total_pnl": 0.0, "total_cost": 0.0})
+            cell["trades"] += 1
+            cell["total_pnl"] += pnl
+            cell["total_cost"] += _record_cost(r)
+            if pnl > 0:
+                cell["wins"] += 1
+        for cell in agg.values():
+            cell["roi"] = round(cell["total_pnl"] / cell["total_cost"], 4) if cell["total_cost"] > 0 else 0.0
+            cell["win_rate"] = round(cell["wins"] / cell["trades"], 3) if cell["trades"] else 0.0
+            cell["total_pnl"] = round(cell["total_pnl"], 2)
+            cell["total_cost"] = round(cell["total_cost"], 2)
+        return {k: agg[k] for k in sorted(agg)}
+    except Exception:
+        return {}
+
+
+def _v4_performance(records: list[dict[str, object]], settings: Settings) -> dict[str, object]:
+    """Dashboard metrics: Sharpe, profit factor, max drawdown, promotion gate."""
+    try:
+        from . import forecast
+
+        return {
+            "sharpe": forecast.sharpe_ratio(records),
+            "profit_factor": forecast.profit_factor(records),
+            "max_drawdown": forecast.max_drawdown(records),
+            "roi": forecast.roi(records),
+            "promotion": forecast.promotion_status(
+                records,
+                min_trades=int(getattr(settings, "race_promotion_min_trades", 500)),
+                min_roi=float(getattr(settings, "race_promotion_min_roi", 0.05)),
+            ),
+        }
+    except Exception:
+        return {}
+
+
 def journal_stats(settings: Settings) -> dict[str, object]:
     path = settings.trade_journal_path
     records = _read_realized_records(path)
@@ -1805,6 +1853,8 @@ def journal_stats(settings: Settings) -> dict[str, object]:
         "max_drawdown": round(max_drawdown, 2),
         "by_category": group_by(records, lambda r: r.get("category")),
         "by_v4_category": _v4_category_breakdown(records),
+        "by_v4_price_bucket": _v4_price_bucket_breakdown(records),
+        "v4_performance": _v4_performance(records, settings),
         "by_consensus": group_by(records, consensus_bucket),
         "by_strategy": group_by(records, lambda r: r.get("strategy")),
         "by_exit_reason": group_by(records, lambda r: r.get("exit_reason")),

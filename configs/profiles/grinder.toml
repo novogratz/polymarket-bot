@@ -88,6 +88,17 @@ unban_all_markets = true
 # Forward-looking — a fresh bot disables nothing.
 category_min_samples = 100
 category_disable_roi = -0.05
+# v4 forecasting EV / quality gates (user 2026-06-21) — OPT-IN, 0 = off.
+# The forecaster (forecast.py) calibrates a favorite's win probability per
+# (category, price-bucket) from realized history; edge = predicted − ask. The
+# gates are OFF until there is enough history to calibrate (a fresh bot would
+# otherwise starve). Recommended once data exists: min_edge 0.03, quality 70.
+# Watch the distribution in `pmbot journal-stats` (by_v4_* / v4_performance)
+# before enabling.
+min_edge = 0.0
+min_quality_score = 0.0
+forecast_prior = 0.95
+preferred_volume_usd = 5000.0
 stake_pct = 0.35
 initial_stake_pct = 0.20
 # Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held
