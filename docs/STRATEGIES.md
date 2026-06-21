@@ -2,21 +2,20 @@
 
 Document maître expliquant **toutes les lanes** d'achat et toutes les conditions de vente du bot. Aucune ligne de code ici, juste la mécanique métier. Pour les paramètres, voir `docs/PROFILES.md`.
 
-## État actuel (2026-05-28)
+## État actuel (v4 — 2026-06-21)
 
-**Stratégie LIVE :** `grinder` — mode race, scalp heavy-favorite near-resolution.
+**Stratégie LIVE :** `grinder` — mode race, scalp heavy-favorite near-resolution. Les 3 bots tournent le même grinder.
 
-**Thèse :** un marché à bid ∈ [0.88, 0.95] avec ≤4h à la fermeture est en train de priceer la near-certainty. On paye le spread, on prend +7%, on rotate. L'edge est le gap entre le bid courant et l'outcome binaire qui se résout à 1.0.
+**Thèse :** un favori binaire à ask ∈ [0.80, 0.94] avec ≤4h à la fermeture price la near-certainty ; on paye le spread et on **ride jusqu'à la résolution** (1.0). L'edge est le gap entre le prix d'entrée et l'outcome qui se résout à 1.0.
 
-**Dry race :** un seul twin grinder en paper (même profil, tick 10min). Pas de dry race multi-profils depuis la réinitialisation du 2026-05-25.
+**Config source de vérité :** `configs/profiles/grinder.toml` (bot 1) et `grinder_b.toml` (bots 2 & 3).
 
-**Config source de vérité :** `configs/profiles/grinder.toml`.
-
-**Paramètres clés (2026-05-28) :**
-- Entry : bid ∈ [0.88, 0.95], ≤4h, spread ≤2¢, liq ≥$500, vol ≥$300
-- Sizing : 50% de la balance dispo / trade, max 2 ordres/tick
-- TP +7%, SL −15% (après 1 min), resolved_exit à bid ≥0.97, max-hold 4.5h
-- Daily DD halt −15% de l'équité de départ
+**Paramètres clés v4 (user 2026-06-21, « Polymarket Bot v4 ») :**
+- **Entry :** ask ∈ [0.80, 0.94], **hard cap 0.96** (`max_price_hard_cap` — 0.97/0.98/0.99 jamais tradables), ≤4h (game start OU close), spread ≤4¢, liq ≥$250, vol 24h ≥$1000. Plancher 0.92 sur les moneylines soccer « Will X win on <date>? ».
+- **Sizing : FIXE $5 par trade** (`fixed_stake_usd = 5.0`) — pas de Kelly, %, martingale, averaging, double-down, scaling. Perte max par trade = $5 ; le bankroll se déploie sur `bankroll/5` positions. Double-down désactivé.
+- **Unban total** (`unban_all_markets = true`) : toutes catégories autorisées, gouvernées par l'**auto-disable data-driven** (`categories.py` : ≥100 trades & ROI < −5% → retirée).
+- **Modèle de forecasting** (`forecast.py`, opt-in) : `predicted_probability` calibré par (catégorie, bucket de prix), `edge = predicted − ask`, `quality_score` ; gates `min_edge`/`min_quality_score` OFF par défaut (besoin d'historique).
+- **Exits :** TP désactivé (ride to resolution), **resolved_exit à bid ≥0.99** (sinon settle à 1.0), SL confirmé −30% sur moneylines soccer uniquement (anti-gap ≥0.50), never-sell-below-entry. Daily DD halt DÉSACTIVÉ ; pas de pause-halts (user 2026-06-21).
 
 Le smart-money path original (lanes décrites ci-dessous) est disponible dans la codebase mais n'est pas utilisé en live — le grinder mode race ne fait pas de leaderboard fetch.
 
@@ -294,47 +293,36 @@ Pour un dry-run sérieux ou la prod : `[noise_fallback] enabled = false`. Le bot
 
 ---
 
-## Sizing Kelly — grinder (2026-06-18)
+## Sizing FIXE $5 — grinder v4 (user 2026-06-21)
 
-Le grinder n'utilise PAS le sizing conviction-weighted ci-dessus. Son sizing
-est dérivé du **critère de Kelly** sur la distribution de gains réelle.
+Le grinder **v4** mise **exactement $5 par trade** (`fixed_stake_usd = 5.0`).
+Pas de Kelly, pas de %-equity, pas de martingale, pas d'averaging-down, pas de
+double-down, pas de confidence scaling, pas de sizing dynamique.
 
-### La formule
+### La règle
 
-Pour un pari qui gagne une fraction **b** de la mise avec probabilité **p**, ou
-perd une fraction **a** avec probabilité **q = 1 − p**, la fraction de capital
-qui maximise la croissance géométrique est :
+Quand `fixed_stake_usd > 0`, les trois fonctions de sizing
+(`_position_cap_usd`, `_entry_cap_usd`, `_dynamic_stake_target`) court-circuitent
+toutes vers le montant fixe (borné seulement par le cash dispo). Donc :
 
-```
-f* = (p·b − q·a) / (a·b)
-```
+- Perte max sur un seul trade = **$5**.
+- Le bankroll se déploie sur `bankroll / 5` positions ($50 → 10, $100 → 20,
+  $500 → 100). C'est possible parce que le risque par trade est plafonné.
+- Le double-down est **désactivé** (`double_down_enabled = false`).
 
-- Espérance par pari (arithmétique) : `E = p·b − q·a`
-- Win rate de breakeven : `p = a / (a + b)`
-- Croissance log par pari : `G(f) = p·ln(1 + f·b) + q·ln(1 − f·a)`
+Les knobs Kelly legacy (`stake_pct`/`initial_stake_pct`) sont **ignorés** tant que
+le sizing fixe est actif (gardés pour le mode % legacy ; le tuner borne encore
+`stake_pct` dans (0.05, 0.35) pour ce chemin).
 
-### Les chiffres du grinder (univers post-bans, ~416 trades)
+### Pourquoi fixe (et plus Kelly)
 
-- `p ≈ 0.97` (win rate), `b ≈ 0.084` (gain moyen 8.4 %), `a` queue lourde :
-  la plupart des pertes −1 % à −15 %, quelques-unes proches de −98 %.
-- Edge `E ≈ +7 %/pari`. Breakeven ≈ 77 % → grosse marge.
-- Kelly deux-points avec `a ≈ 1.0` (perte totale, hypothèse prudente) : `f* ≈ 0.35`.
+v4 optimise pour la **préservation du capital / faible drawdown / consistance**,
+pas le win-rate ni le volume. Un plafond dur de $5 rend le risque par trade
+constant et borné — c'est ce qui rend l'**unban total** acceptable (la
+gouvernance passe à l'auto-disable data-driven par catégorie + au modèle de
+forecasting, voir `categories.py` / `forecast.py`).
 
-**Deux pièges** : (1) le Kelly deux-points avec la perte *moyenne* (28 %) donne
-304 % — absurde, il ignore la queue. (2) Le Kelly *empirique* sur l'historique
-donne 98 % — sur-ajusté à un échantillon où aucune perte n'a atteint −100 %.
-La contrainte réelle est la **survie**, pas le pic empirique.
-
-### Le réglage
-
-Le levier qui compte est la **taille d'entrée** (`initial_stake_pct`), pas le
-cap : à 97 % de win rate la plupart des positions gagnent sans jamais dipper,
-donc elles restent à la taille d'entrée (le cap n'est atteint que par le dip
-double-down). Réglage actuel (near-full-Kelly, choix explicite de l'utilisateur) :
-
-- `initial_stake_pct = 0.20` — entrées fraîches à 20 % de l'equity.
-- `stake_pct = 0.35` — cap dur par position (plafond du double-down).
-- Perte totale sur une position : −20 % (entrée) / −35 % (si doublée).
-
-Le tuner offline peut bouger `stake_pct` dans (0.05, 0.35) ; `initial_stake_pct`
-est gelé (hors `TUNABLE`).
+> Historique : all-in → 50 % → 30 % → 20 % → 10 % → cap 15 % → **Kelly
+> entries 20 % / cap 35 %** (2026-06-18) → **FIXE $5** (2026-06-21, v4). Le
+> sizing Kelly (`f* = (p·b − q·a)/(a·b) ≈ 0.35` pour p≈0.97, b≈8.4 %, a≈1.0)
+> est conservé dans l'historique git mais n'est plus actif.

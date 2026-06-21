@@ -54,7 +54,7 @@ ALLOWED_WRITE = {str(TARGET.relative_to(REPO_ROOT))}
 TUNABLE: dict[str, tuple[float, float]] = {
     "race.tp_pct": (0.05, 1.0),                    # take-profit (1.0 = ride to resolution)
     "race.stake_pct": (0.05, 0.35),                # position-size hard cap (Kelly, user 2026-06-18; near-full-Kelly 0.35)
-    "race.max_orders_per_tick": (1, 5),            # concurrency / sizing spread
+    "race.max_orders_per_tick": (1, 20),           # concurrency (v4: up to 12 new $5 bets/tick — maximize fills)
     # PINNED at 0.99 (user 2026-06-21 v4, "sell at 0.99 as well"):
     # the tuner must never move the winner exit off 0.99.
     "race.resolved_exit_threshold": (0.99, 0.99),
