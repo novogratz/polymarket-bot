@@ -75,6 +75,14 @@ Cible : `.env` ne contient que secrets (`PRIVATE_KEY`, `API_KEY`...), endpoints 
 | `fresh_signal_bonus` | float | Bonus de score appliqué quand le BUY le plus récent est < 5 min. |
 | `priority_category_bonus` | float | Bonus de score pour les catégories priorisées (politique, économie). |
 
+## Section `[race]` — clés v4 (production config, 2026-06-21)
+
+| Clé | Type | Rôle |
+|---|---|---|
+| `fixed_stake_usd` | float | **Sizing dollar fixe.** > 0 → chaque trade mise EXACTEMENT ce montant ($5), plafonné seulement par le cash dispo. Désactive Kelly / %-equity / martingale / averaging / double-down / scaling. `_position_cap_usd`, `_entry_cap_usd`, `_dynamic_stake_target` court-circuitent vers ce montant. 0 = mode % legacy. |
+| `max_price_hard_cap` | float | Plafond ABSOLU du prix d'entrée (ask). L'entrée est clampée à ce prix quel que soit `max_price`, donc 0.97/0.98/0.99 jamais tradables. 0 = désactivé. |
+| `unban_all_markets` | bool | `true` → `is_excluded_market` est bypassé à la sélection : toutes les catégories autorisées, gouvernées par l'auto-disable data-driven (Phase 2). Risque borné par `fixed_stake_usd`. Env var : `POLYMARKET_UNBAN_ALL_MARKETS`. |
+
 ## Section `[market_filters]` — exigences minimales sur le marché
 
 | Clé | Type | Rôle |
