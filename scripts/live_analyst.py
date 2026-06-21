@@ -1141,6 +1141,47 @@ def _translate_questions_fr(questions: list[str]) -> dict[str, str]:
     return {q: cache[q] for q in uniq if q in cache}
 
 
+def _v4_performance_lines() -> list[str]:
+    """Compact v4 performance block (user 2026-06-21): ROI / Sharpe / profit
+    factor / max drawdown from the realized ledger, plus the categories at or
+    near the data-driven auto-disable threshold. Fail-soft (returns [])."""
+    try:
+        from polymarket_bot import forecast
+        from polymarket_bot.categories import category_stats
+
+        records = [
+            r for r in _read_realized_records(DATA_DIR / "trade_journal.jsonl")
+            if r.get("question")
+        ]
+        if len(records) < 10:
+            return []
+        roi = forecast.roi(records) * 100.0
+        sharpe = forecast.sharpe_ratio(records)
+        pf = forecast.profit_factor(records)
+        mdd = forecast.max_drawdown(records)
+        lines = [
+            "*PERFORMANCE v4 :*",
+            f"  📈 ROI : {roi:+.1f}%  •  Sharpe : {sharpe:.2f}  •  "
+            f"PF : {pf:.2f}  •  Max DD : -${abs(mdd):.2f}",
+        ]
+        stats = category_stats(records)
+        risky = sorted(
+            [(c, s) for c, s in stats.items()
+             if c != "other" and s["trades"] >= 20 and s["roi"] < 0],
+            key=lambda kv: kv[1]["roi"],
+        )[:3]
+        if risky:
+            tags = []
+            for c, s in risky:
+                disabled = " ⛔" if (s["trades"] >= 100 and s["roi"] < -0.05) else ""
+                tags.append(f"{c} {s['roi'] * 100:+.0f}% ({s['trades']}){disabled}")
+            lines.append("  🏷️ Catégories à risque : " + ", ".join(tags))
+        lines.append("")
+        return lines
+    except Exception:
+        return []
+
+
 def cycle_once() -> None:
     """1h LIVE REPORT (French) — the only Telegram message this bot sends.
 
@@ -1205,6 +1246,10 @@ def cycle_once() -> None:
         f" ({snap.wins}V / {snap.losses}D{f' / {snap.flats} nul' if snap.flats else ''})",
         "",
     ]
+
+    # v4 performance block (user 2026-06-21): ROI / Sharpe / PF / max DD +
+    # categories near the auto-disable threshold. Empty until ≥10 closed trades.
+    parts.extend(_v4_performance_lines())
 
     # Tous les trades clôturés aujourd'hui, du meilleur à la pire perte (en bas).
     # load_todays_trades() trie déjà par PnL décroissant.

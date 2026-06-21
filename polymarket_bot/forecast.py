@@ -123,19 +123,33 @@ def edge(
     return predicted_probability(category, ask, table, prior=prior, pseudo_count=pseudo_count) - float(ask)
 
 
-# ── Quality score ────────────────────────────────────────────────────────
-_AMBIGUOUS_MARKERS = (
-    "considered", "deemed", "in the opinion", "subjective", "approximately",
-    "around ", "roughly", "or similar", "etc.", "tbd",
+# ── Resolution clarity / safety ───────────────────────────────────────────
+# Strong red flags for subjective / unclear settlement — a single one drops
+# clarity below a 60 threshold (so the resolution-safety filter skips it).
+_AMBIGUOUS_STRONG = (
+    "subjective", "in the opinion", "deemed", "considered", "widely regarded",
+    "generally regarded", "arguably", "to be determined", "tbd", "disputed",
+    "controversial", "unclear", "at the discretion", "judges decide",
+    "if applicable",
+)
+# Softer vagueness — two are needed to trip the filter.
+_AMBIGUOUS_SOFT = (
+    "approximately", "around ", "roughly", "or similar", "etc.", "more or less",
 )
 
 
 def resolution_clarity(question: str) -> float:
-    """0–100 heuristic — penalize vague / subjective resolution wording."""
-    text = str(question or "").lower()
-    if not text:
+    """0–100 heuristic — penalize vague / subjective resolution wording.
+
+    A clean, objectively-resolvable market (e.g. "Will Team A win on <date>?")
+    scores 100. One strong subjective marker (−50) or two soft ones (−25 each)
+    drops it below the 60 safety threshold so the entry filter skips it. This
+    is the one settlement-safety check that stays ON even under unban_all."""
+    text = f" {str(question or '').lower()} "
+    if not text.strip():
         return 50.0
-    penalty = sum(20 for m in _AMBIGUOUS_MARKERS if m in text)
+    penalty = sum(50 for m in _AMBIGUOUS_STRONG if m in text)
+    penalty += sum(25 for m in _AMBIGUOUS_SOFT if m in text)
     return float(max(0.0, 100.0 - penalty))
 
 

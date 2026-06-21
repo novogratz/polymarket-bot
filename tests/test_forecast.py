@@ -81,6 +81,63 @@ class QualityScoreTests(unittest.TestCase):
         self.assertGreater(lifted, base)
 
 
+class ResolutionSafetyTests(unittest.TestCase):
+    def test_clean_markets_score_100(self):
+        from polymarket_bot.forecast import resolution_clarity
+        for q in (
+            "Will the Lakers beat the Celtics?",
+            "Will Real Madrid win on 2026-06-21?",
+            "Will Trump win the 2026 election?",
+            "Bitcoin Up or Down on June 21?",
+        ):
+            self.assertEqual(resolution_clarity(q), 100.0, q)
+
+    def test_one_strong_marker_drops_below_60(self):
+        from polymarket_bot.forecast import resolution_clarity
+        for q in (
+            "Will X be deemed the winner by the judges?",
+            "Will this be considered a major upset?",
+            "Will the disputed result stand?",
+            "Winner to be determined by the committee",
+        ):
+            self.assertLess(resolution_clarity(q), 60.0, q)
+
+    def test_two_soft_markers_drop_below_60(self):
+        from polymarket_bot.forecast import resolution_clarity
+        self.assertLess(resolution_clarity("Will the price be approximately around 100?"), 60.0)
+
+    def test_filter_skips_ambiguous_market(self):
+        from datetime import timedelta
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        end = (utc_now() + timedelta(hours=2)).isoformat()
+
+        def mkt(q, slug, mid):
+            return {
+                "id": mid, "question": q, "slug": slug, "endDate": end,
+                "acceptingOrders": True, "liquidity": 1500, "volume24hr": 2000,
+                "bestBid": 0.88, "bestAsk": 0.90, "orderPriceMinTickSize": 0.01,
+                "outcomes": '["Yes", "No"]', "outcomePrices": '["0.9", "0.1"]',
+                "clobTokenIds": '["a", "b"]',
+            }
+        s = Settings(race_min_price=0.80, race_max_price=0.94, race_max_spread=0.04,
+                     race_max_hours=4.0, race_min_liquidity_usd=250.0,
+                     race_min_volume_24h_usd=1000.0, race_fixed_stake_usd=5.0,
+                     unban_all_markets=True, race_min_resolution_clarity=60.0)
+        clean = mkt("Will the home team reach the final?", "clean", "c1")
+        ambiguous = mkt("Will the result be deemed valid by the judges?", "amb", "a1")
+        out = _build_eligible_candidates([clean, ambiguous], s)
+        slugs = {c.slug for c, _ in out}
+        self.assertIn("clean", slugs)
+        self.assertNotIn("amb", slugs)
+        # Filter off (0) → ambiguous passes too.
+        s_off = Settings(race_min_price=0.80, race_max_price=0.94, race_max_spread=0.04,
+                         race_max_hours=4.0, race_min_liquidity_usd=250.0,
+                         race_min_volume_24h_usd=1000.0, race_fixed_stake_usd=5.0,
+                         unban_all_markets=True, race_min_resolution_clarity=0.0)
+        out_off = _build_eligible_candidates([ambiguous], s_off)
+        self.assertTrue(out_off)
+
+
 class AnalyticsTests(unittest.TestCase):
     def test_sharpe_profit_factor_drawdown(self):
         recs = [_rec(0.9, 0.5, closed="1"), _rec(0.9, -5.0, closed="2"), _rec(0.9, 0.5, closed="3")]

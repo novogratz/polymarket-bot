@@ -30,7 +30,7 @@ from typing import Any
 from . import notifications
 from .categories import classify_market, disabled_categories
 from .config import Settings
-from .forecast import build_context, evaluate_market
+from .forecast import build_context, evaluate_market, resolution_clarity
 from .gamma import GammaClient
 from .models import (
     ESPORTS_MIN_ASK,
@@ -248,12 +248,19 @@ def _build_eligible_candidates(
     min_edge = float(getattr(settings, "race_min_edge", 0.0) or 0.0)
     min_quality = float(getattr(settings, "race_min_quality_score", 0.0) or 0.0)
     gates_on = forecast_ctx is not None and (min_edge > 0 or min_quality > 0)
+    # v4 resolution-safety filter (user 2026-06-21) — ALWAYS-ON (no history
+    # needed), so it protects against ambiguous/subjective settlement even
+    # under unban_all. 0 disables it.
+    min_clarity = float(getattr(settings, "race_min_resolution_clarity", 0.0) or 0.0)
     out: list[tuple[Candidate, float]] = []
     for market in markets:
         if not unban_all and is_excluded_market(market):
             continue
         # v4 data-driven governance: drop auto-disabled categories.
         if disabled and classify_market(market) in disabled:
+            continue
+        # v4 resolution safety: skip subjective / ambiguous-settlement markets.
+        if min_clarity > 0 and resolution_clarity(str(market.get("question") or "")) < min_clarity:
             continue
         end_date = parse_dt(market.get("endDate"))
         if end_date is None:

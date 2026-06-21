@@ -86,6 +86,7 @@ Cible : `.env` ne contient que secrets (`PRIVATE_KEY`, `API_KEY`...), endpoints 
 | `category_disable_roi` | float | Une catégorie avec ≥ `category_min_samples` trades réalisés ET un ROI < ce seuil (défaut −0.05) est retirée de la sélection. `other` jamais désactivée. |
 | `min_edge` | float | **Gate EV opt-in (`forecast.py`).** > 0 → ne trade que si `predicted_probability − ask ≥ min_edge`. 0 = off. Cible recommandée après données : 0.03. |
 | `min_quality_score` | float | **Gate qualité opt-in.** > 0 → ne trade que si `quality_score` (0–100 ; edge / volume / clarté résolution / ROI catégorie & bucket) ≥ seuil. 0 = off. Cible : 70. |
+| `min_resolution_clarity` | float | **Filtre résolution-safety ALWAYS-ON.** > 0 → skip les marchés au settlement subjectif/ambigu (`resolution_clarity` < seuil ; defaut profils 60). Sans historique requis — reste actif sous `unban_all_markets`. 0 = off. |
 | `forecast_prior` | float | Prior du modèle (taux de victoire global) utilisé sans historique (défaut 0.95). |
 | `forecast_pseudo_count` | float | Pseudo-compte de shrinkage vers le prior (défaut 20). |
 | `preferred_volume_usd` | float | Volume 24h « préféré » pour le sous-score liquidité du quality_score (défaut 5000). |

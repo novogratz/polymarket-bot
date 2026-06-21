@@ -59,6 +59,10 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   history to calibrate). `journal-stats` adds `by_v4_price_bucket` +
   `v4_performance` (Sharpe / profit factor / max DD / promotion ≥500 trades &
   ROI ≥5%). Drawdown/loss-pause halts intentionally NOT built (user "no halts").
+- **Resolution-safety filter (v4, ALWAYS-ON — `min_resolution_clarity = 60`):**
+  skips subjective/ambiguous-settlement markets (`forecast.resolution_clarity`)
+  even under unban (needs no history). Clean market = 100; one strong
+  subjective marker (deemed/disputed/judges/…) drops below 60.
 - **Exits:**
   - Resolved-exit: sell at **live CLOB book** bid ≥ a dynamic per-position
     threshold `min(0.99, max(resolved_exit_threshold, entry + min_profit_margin))`
@@ -125,8 +129,10 @@ Buy a heavily-favored binary outcome and ride it to resolution.
 The **only** Telegram message. Deterministic French "RAPPORT LIVE": fires on
 **startup**, then every `LIVE_ANALYST_CYCLE_SECONDS`, plus a daily 10:00 US/Eastern.
 Shows equity, **P&L since start (= equity − baseline)**, **total trades + win
-rate**, open positions (sorted by expiry, each with its estimated end
-time), and a redemption watchdog (resolved-but-unpaid positions ≥ $1). No per-trade lists, no heartbeat, no BUY/SELL alerts.
+rate**, a **v4 performance block** (≥10 closed trades: ROI / Sharpe / profit
+factor / max DD + worst per-category ROIs, ⛔ on auto-disabled), open positions
+(sorted by expiry, each with its estimated end time), and a redemption watchdog
+(resolved-but-unpaid positions ≥ $1). No per-trade lists, no heartbeat, no BUY/SELL alerts.
 
 ## Reset workflow — `scripts/fresh_start.py`
 

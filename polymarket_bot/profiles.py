@@ -264,6 +264,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "category_disable_roi": ("POLYMARKET_RACE_CATEGORY_DISABLE_ROI", "float"),
         "min_edge": ("POLYMARKET_RACE_MIN_EDGE", "float"),
         "min_quality_score": ("POLYMARKET_RACE_MIN_QUALITY_SCORE", "float"),
+        "min_resolution_clarity": ("POLYMARKET_RACE_MIN_RESOLUTION_CLARITY", "float"),
         "forecast_prior": ("POLYMARKET_RACE_FORECAST_PRIOR", "float"),
         "forecast_pseudo_count": ("POLYMARKET_RACE_FORECAST_PSEUDO_COUNT", "float"),
         "preferred_volume_usd": ("POLYMARKET_RACE_PREFERRED_VOLUME_USD", "float"),
