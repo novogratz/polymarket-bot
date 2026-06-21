@@ -125,7 +125,9 @@ sl_min_age_minutes = 5
 # that mean-reverts (Difaâ "No" 0.89 → 0.02 → resolved 1.0) — HOLD, don't dump.
 sl_min_exit_price = 0.50
 near_expiry_minutes = 5
-resolved_exit_threshold = 0.97
+# v4 (user 2026-06-21, "sell at 0.99 as well"): winners exit at a real 0.99
+# bid, else ride to on-chain settlement at 1.00. One flat 0.99 across lanes.
+resolved_exit_threshold = 0.99
 # Dynamic TP (2026-06-15): exit must clear entry by this, capped 0.99 —
 # a 0.97 entry sells at 0.99, never break-even.
 min_profit_margin = 0.02

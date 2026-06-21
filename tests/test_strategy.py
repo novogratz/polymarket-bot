@@ -877,10 +877,11 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(result.order["price"], 0.99)
         self.assertEqual(position["exits"][0]["exit_price"], 0.99)
 
-    def test_live_sell_winner_floor_refuses_sub_097_resolved_exit(self):
-        # User 2026-06-14: winner floor back to 0.97 (was 0.99). A winner-exit
-        # reason carrying a sub-0.97 price must be refused so the position
-        # holds for a real 0.97 bid or on-chain settlement. A 0.97 bid sells.
+    def test_live_sell_winner_floor_refuses_sub_099_resolved_exit(self):
+        # User 2026-06-21 v4: winner floor raised to 0.99 ("sell at 0.99 as
+        # well"). A winner-exit reason carrying a sub-0.99 price (e.g. 0.97)
+        # must be refused so the position holds for a real 0.99 bid or
+        # on-chain settlement at 1.00.
         class TripwireClient:
             def place_live_order(self, **_kwargs):
                 raise AssertionError("no order may be placed below the winner floor")
@@ -898,8 +899,8 @@ class StrategyTests(unittest.TestCase):
             token_id="token",
             score=1,
             url="https://polymarket.com/event/q",
-            best_bid=0.95,
-            best_ask=0.97,
+            best_bid=0.97,
+            best_ask=0.98,
             tick_size=0.01,
             accepts_orders=True,
         )
@@ -929,9 +930,9 @@ class StrategyTests(unittest.TestCase):
                 )
         self.assertEqual(position["status"], "open")
 
-    def test_auto_improve_tuner_pins_resolved_exit_threshold_at_097(self):
-        # User 2026-06-14: winner exit pinned at 0.97 — the tuner must never
-        # move it off 0.97.
+    def test_auto_improve_tuner_pins_resolved_exit_threshold_at_099(self):
+        # User 2026-06-21 v4: winner exit pinned at 0.99 — the tuner must never
+        # move it off 0.99.
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
@@ -940,7 +941,7 @@ class StrategyTests(unittest.TestCase):
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        self.assertEqual(mod.TUNABLE["race.resolved_exit_threshold"], (0.97, 0.97))
+        self.assertEqual(mod.TUNABLE["race.resolved_exit_threshold"], (0.99, 0.99))
 
     def test_live_sell_allows_tiny_share_rounding_below_minimum(self):
         class FakeClient:
@@ -2348,33 +2349,42 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(exits[0]["reason"], "race_big_win_resolved")
         self.assertEqual(pos["status"], "closed")
 
-    def test_dynamic_tp_low_entry_keeps_097_exit(self):
-        # A normal-entry favorite (0.87) still exits at the configured 0.97
-        # (0.87 + 2¢ = 0.89 < 0.97, so the global threshold governs).
+    def test_v4_winner_exit_requires_099_even_for_low_entry(self):
+        # v4 (user 2026-06-21, "sell at 0.99 as well"): a low-entry favorite
+        # (0.87) no longer exits at 0.97 — the 0.99 winner floor holds it for a
+        # real 0.99 bid (or on-chain settlement at 1.00).
         from polymarket_bot.race_strategies import _execute_race_exits
 
-        candidate = Candidate(
-            market_id="1", question="Will France win on 2026-06-15?",
-            slug="france-win", end_date=utc_now() + timedelta(hours=1),
-            hours_to_close=1, liquidity=1000, volume=2000, outcome="Yes",
-            price=0.97, token_id="token", score=1,
-            url="https://polymarket.com/event/q",
-            best_bid=0.97, best_ask=0.99, tick_size=0.01, accepts_orders=True,
-        )
-        portfolio = Portfolio(cash=1.0, positions=[])
-        position = portfolio.record_live_position(candidate, 8.7, entry_price=0.87)
-        position["strategy"] = "grinder"
-        position["current_price"] = 0.97
-        exits = _execute_race_exits(
-            build_client(Settings(dry_run=True)),
-            Settings(dry_run=True, min_order_shares=5.0,
-                     race_resolved_exit_threshold=0.97,
-                     race_min_profit_margin=0.02,
-                     race_sl_min_age_minutes=15, quiet=True),
-            portfolio, [candidate], "grinder",
-        )
+        def run(bid):
+            candidate = Candidate(
+                market_id="1", question="Will France win on 2026-06-15?",
+                slug="france-win", end_date=utc_now() + timedelta(hours=1),
+                hours_to_close=1, liquidity=1000, volume=2000, outcome="Yes",
+                price=bid, token_id="token", score=1,
+                url="https://polymarket.com/event/q",
+                best_bid=bid, best_ask=min(bid + 0.01, 1.0), tick_size=0.01,
+                accepts_orders=True,
+            )
+            portfolio = Portfolio(cash=1.0, positions=[])
+            position = portfolio.record_live_position(candidate, 8.7, entry_price=0.87)
+            position["strategy"] = "grinder"
+            position["current_price"] = bid
+            return _execute_race_exits(
+                build_client(Settings(dry_run=True)),
+                Settings(dry_run=True, min_order_shares=5.0,
+                         race_resolved_exit_threshold=0.99,
+                         race_min_profit_margin=0.02,
+                         race_sl_min_age_minutes=15, quiet=True),
+                portfolio, [candidate], "grinder",
+            ), position
+
+        exits, pos = run(0.97)
+        self.assertEqual(exits, [])
+        self.assertEqual(pos["status"], "open")
+        exits, pos = run(0.99)
         self.assertEqual(len(exits), 1)
         self.assertEqual(exits[0]["reason"], "race_big_win_resolved")
+        self.assertEqual(pos["status"], "closed")
 
     def test_race_resolved_exit_uses_position_price_when_pool_quote_missing(self):
         from polymarket_bot.race_strategies import _execute_race_exits
@@ -2519,46 +2529,54 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(position["status"], "open")
         self.assertEqual(client.sells, [])
 
-    def test_fast_lane_winner_exit_fires_at_098(self):
-        # User 2026-06-12: esports and stock markets exit at 0.98 — their
-        # in-play/in-session books rarely print 0.99 before close. A CS
-        # position with a real 0.98 bid must sell (other lanes hold, see
-        # test_race_resolved_exit_holds_at_098_bid).
+    def test_v4_no_fast_lane_098_exit_holds_until_099(self):
+        # v4 (user 2026-06-21): the fast-lane 0.98 downgrade is removed — one
+        # flat 0.99 winner exit across EVERY lane. A position with only a 0.98
+        # bid is HELD (no sell); a real 0.99 bid sells.
         import tempfile
         from polymarket_bot.race_strategies import _execute_race_exits
 
-        candidate = Candidate(
-            market_id="cs", question="Counter-Strike: Marsborne vs F5 Esports (BO3) - Playoffs",
-            slug="cs-marsborne-f5", end_date=utc_now() + timedelta(hours=1),
-            hours_to_close=1, liquidity=1500, volume=2000, outcome="Marsborne",
-            price=0.95, token_id="tok-cs", score=1,
-            url="https://polymarket.com/event/cs-marsborne-f5",
-            best_bid=0.95, best_ask=0.97, tick_size=0.01, accepts_orders=True,
-            event_slug="cs-marsborne-f5",
-        )
-        portfolio = Portfolio(cash=1.0, positions=[])
-        position = portfolio.record_live_position(candidate, 4.7, entry_price=0.91)
-        position["strategy"] = "grinder"
-        position["current_price"] = 0.95
-
-        client = self._LiveBookClient(bids=[{"price": "0.98", "size": "500"}])
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            exits = _execute_race_exits(
-                client,
-                Settings(
-                    dry_run=False, min_order_shares=5.0,
-                    race_resolved_exit_threshold=0.99,
-                    race_sl_min_age_minutes=15, quiet=True,
-                    state_path=base / "paper_state.json",
-                    trade_journal_path=base / "trade_journal.jsonl",
-                ),
-                portfolio, [candidate], "grinder",
+        def run(book_bid):
+            candidate = Candidate(
+                market_id="cs", question="Counter-Strike: Marsborne vs F5 Esports (BO3) - Playoffs",
+                slug="cs-marsborne-f5", end_date=utc_now() + timedelta(hours=1),
+                hours_to_close=1, liquidity=1500, volume=2000, outcome="Marsborne",
+                price=0.95, token_id="tok-cs", score=1,
+                url="https://polymarket.com/event/cs-marsborne-f5",
+                best_bid=0.95, best_ask=0.97, tick_size=0.01, accepts_orders=True,
+                event_slug="cs-marsborne-f5",
             )
+            portfolio = Portfolio(cash=1.0, positions=[])
+            position = portfolio.record_live_position(candidate, 4.7, entry_price=0.91)
+            position["strategy"] = "grinder"
+            position["current_price"] = 0.95
+            client = self._LiveBookClient(bids=[{"price": book_bid, "size": "500"}])
+            with tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                exits = _execute_race_exits(
+                    client,
+                    Settings(
+                        dry_run=False, min_order_shares=5.0,
+                        race_resolved_exit_threshold=0.99,
+                        race_sl_min_age_minutes=15, quiet=True,
+                        state_path=base / "paper_state.json",
+                        trade_journal_path=base / "trade_journal.jsonl",
+                    ),
+                    portfolio, [candidate], "grinder",
+                )
+            return exits, position, client
+
+        # 0.98 bid → held, no sell.
+        exits, position, client = run("0.98")
+        self.assertEqual(exits, [])
+        self.assertEqual(position["status"], "open")
+        self.assertEqual(client.sells, [])
+        # 0.99 bid → sells.
+        exits, position, client = run("0.99")
         self.assertEqual(len(exits), 1)
         self.assertEqual(exits[0]["reason"], "race_big_win_resolved")
         self.assertEqual(position["status"], "closed")
-        self.assertAlmostEqual(client.sells[0]["price"], 0.98)
+        self.assertAlmostEqual(client.sells[0]["price"], 0.99)
 
     def test_race_resolved_exit_book_probe_fails_open(self):
         # Book unavailable → keep the stale price and do nothing (no sell,

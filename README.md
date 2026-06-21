@@ -39,7 +39,7 @@ Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet,
 
 ## Strategy
 
-**Thesis.** A binary market at ask 0.85–0.97 within a few hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0. Every tick (10 s) it runs the same deterministic pipeline: **scan → exclude → filter → rank → size → execute → manage exits**. No LLM is ever in this path.
+**Thesis.** A binary market at ask 0.80–0.94 within a few hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0. Every tick (10 s) it runs the same deterministic pipeline: **scan → exclude → filter → rank → size → execute → manage exits**. No LLM is ever in this path.
 
 ### 1. Scan
 
@@ -105,8 +105,8 @@ Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) a
 
 | Condition | Code |
 |---|---|
-| **Live book** bid ≥ `min(0.99, max(0.97, entry + 0.02))` | `race_big_win_resolved` — primary win exit. **Dynamic TP (2026-06-15):** the exit must clear the entry by `min_profit_margin` (2¢), so a 0.97 entry sells at 0.99, never break-even; a 0.87 entry exits at 0.97. Probes the live CLOB bid each tick; above 0.99 rides to settlement at 1.00 |
-| Cached price ≥ 0.97 after the market left the scan | `resolved_market_sweep_win` — winners-only sweep, same threshold (it can never fire earlier than the race exit) |
+| **Live book** bid ≥ **0.99** (`resolved_exit_threshold = 0.99`, v4 2026-06-21 "sell at 0.99 as well") | `race_big_win_resolved` — primary win exit. EVERY winner sells at a real 0.99 bid (fast-lane 0.98 downgrade removed); above 0.99 rides to settlement at 1.00. Probes the live CLOB bid each tick |
+| Cached price ≥ 0.99 after the market left the scan | `resolved_market_sweep_win` — winners-only sweep, same threshold (it can never fire earlier than the race exit) |
 | Down ≥ 25 % from entry, confirmed 3 consecutive ticks, **soccer moneylines only** ("Will <Team> win on <date>?") | `race_stop_loss_confirmed` — the one path allowed to sell below entry |
 | Genuinely-resolved loser ~8 h past expiry | written off locally (no order; settles on-chain) |
 
