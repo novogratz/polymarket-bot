@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Resolution-safety filter (always-on, survives unban)** (user 2026-06-21, "do everything"). New `race_min_resolution_clarity` (set to **60** in both profiles): `_build_eligible_candidates` skips any market whose `resolution_clarity` (in `forecast.py`) is below the threshold — subjective / ambiguous-settlement wording (judges' discretion, "deemed", "disputed", "considered", "to be determined", …). A clean objectively-resolvable market scores 100; one strong subjective marker drops it below 60. Unlike the EV/quality gates this needs **no history**, so it is the one structural protection that stays ON even under `unban_all_markets`. Tests: `ResolutionSafetyTests` in `tests/test_forecast.py`.
+- **v4 performance block in the Telegram LIVE REPORT** (`scripts/live_analyst.py`). After ≥10 closed trades the report adds `PERFORMANCE v4 :` — ROI / Sharpe / profit factor / max drawdown — and `🏷️ Catégories à risque :` listing the worst per-category ROIs (⛔ on any already auto-disabled), so the data-driven governance is visible at a glance without running `journal-stats`. Deterministic, fail-soft.
+
 ### Changed
 
 - **Maximize bets within the 4h window** (user 2026-06-21, "as many bets as possible"). `race.max_orders_per_tick` 4 → **12** in both grinder profiles so a fresh bankroll deploys fast across many distinct eligible games each tick (each new bet is a flat $5 and still passes every entry filter; one bet per game/event keeps correlated markets out). The self-tuner bound for `race.max_orders_per_tick` was widened (1,5) → **(1,20)** so the daily loop can't drag it back down. The $5 cap bounds per-trade risk regardless of count.

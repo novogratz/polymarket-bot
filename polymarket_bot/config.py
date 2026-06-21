@@ -407,6 +407,13 @@ class Settings:
     # production values once there is data: min_edge 0.03, min_quality 70.
     race_min_edge: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_EDGE", 0.0))
     race_min_quality_score: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_QUALITY_SCORE", 0.0))
+    # ── v4: resolution-safety filter (ALWAYS-ON, survives unban) ──────────
+    # Skip markets whose resolution wording is subjective / ambiguous (judges'
+    # discretion, "deemed", "disputed", …). resolution_clarity is 100 for a
+    # clean objectively-resolvable market; one strong subjective marker drops
+    # it below 60. 0 disables the filter. Unlike the EV/quality gates this
+    # needs no history, so it is ON in the profiles (60) even under unban.
+    race_min_resolution_clarity: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_RESOLUTION_CLARITY", 0.0))
     race_forecast_prior: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FORECAST_PRIOR", 0.95))
     race_forecast_pseudo_count: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FORECAST_PSEUDO_COUNT", 20.0))
     race_preferred_volume_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_PREFERRED_VOLUME_USD", 5000.0))

@@ -98,6 +98,12 @@ min_edge = 0.0
 min_quality_score = 0.0
 forecast_prior = 0.95
 preferred_volume_usd = 5000.0
+# Resolution-safety filter (user 2026-06-21): ALWAYS-ON (needs no history) —
+# skip markets with subjective/ambiguous settlement wording (judges' discretion,
+# "deemed", "disputed", …) even under unban_all. A clean market scores 100; one
+# strong subjective marker drops below 60. The one structural protection that
+# survives the unban.
+min_resolution_clarity = 60.0
 stake_pct = 0.35
 initial_stake_pct = 0.20
 # Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held
