@@ -63,18 +63,16 @@ daily_expiry_fallback = false
 # breadth past the Gamma 100-row page cap, ~1,000-2,000 raw markets/tick).
 scan_limit = 750
 
-min_liquidity_usd = 500.0
-min_volume_24h_usd = 300.0
+# v4 liquidity floors (user 2026-06-21): min volume $1000, min liquidity $250.
+min_liquidity_usd = 250.0
+min_volume_24h_usd = 1000.0
 
-# Entry band 0.90–0.94. Tighter = genuinely near-certain only.
-# 0.87–0.89 has asymmetric gap risk (one goal: 0.87 → 0.40).
-# Above 0.94 the spread thins out and upside to 0.99 is too small.
-# Widened band 0.90-0.94 → 0.85-0.97 (2026-05-30) to surface more entries.
-# Lower bound 0.85 carries a bit more gap risk than 0.90, but the catastrophic
-# categories (exact scores, coinflips, weather) stay excluded and the $10 cap
-# bounds any single loss. Upper bound 0.97 still leaves room up to ~1.0.
-min_price = 0.85
-max_price = 0.97
+# v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
+# 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
+# is the ABSOLUTE ceiling — 0.97/0.98/0.99 are never tradeable.
+min_price = 0.80
+max_price = 0.94
+max_price_hard_cap = 0.96
 
 # Spread 2¢ → 4¢ (2026-05-30): the wider 0.85-0.97 band includes slightly
 # thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.
@@ -86,15 +84,17 @@ max_spread = 0.04
 # boost scales the spread share but never pierces the cap (handled in
 # race_strategies._dynamic_stake_target).
 stake_usd = 1.0
-# KELLY SIZING (user 2026-06-18, "10% isn't enough"). For a 0.97 win rate p,
-# ~8.4% gain b and worst-case total loss a≈1.0, two-point Kelly
-# f* = (p·b − q·a)/(a·b) ≈ 0.35. We size NEAR FULL KELLY (aggressive, the
-# user's explicit choice) — high variance, fast compounding:
-#   initial_stake_pct = 0.20 → FRESH entries open at 20% of equity. This is the
-#     real win-sizing lever: most winners never dip, so they stay at the entry
-#     size (the cap is only reached via the dip double-down). Was 5%.
-#   stake_pct = 0.35 → HARD per-position cap (double-down ceiling). Was 15%.
-# Worst single total loss: −20% (entry) / −35% (if doubled down before losing).
+# ── v4 FIXED-DOLLAR SIZING (user 2026-06-21) ─────────────────────────────
+# Every trade = EXACTLY $5, never more. No Kelly, no % of equity, no
+# martingale, no averaging-down, no double-down, no confidence scaling, no
+# dynamic sizing. Risk per trade is hard-capped at $5, so the full bankroll
+# can be deployed across (bankroll / 5) positions ($50 → 10, $500 → 100).
+# When fixed_stake_usd > 0 the stake_pct/initial_stake_pct knobs below are
+# IGNORED (kept only for legacy % mode).
+fixed_stake_usd = 5.0
+# v4: unban every category — governance shifts to the data-driven category
+# auto-disable (Phase 2). Per-trade risk is bounded by the $5 fixed stake.
+unban_all_markets = true
 stake_pct = 0.35
 initial_stake_pct = 0.20
 # Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held
@@ -102,7 +102,8 @@ initial_stake_pct = 0.20
 # (probability > 0.60). Widened the max dip 0.08 -> 0.40 so a bigger slide
 # still doubles down — e.g. 0.83->0.78 AND 0.85->0.70 both qualify; the real
 # floor is min_price 0.60. Once per position, never past the per-bet cap.
-double_down_enabled = true
+# v4 (user 2026-06-21): double-down / averaging-down DISABLED — fixed $5 only.
+double_down_enabled = false
 double_down_min_dip = 0.01
 double_down_max_dip = 0.40
 double_down_min_price = 0.60

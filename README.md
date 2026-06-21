@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.85–0.97) close to resolution (4 h window, hard maximum) and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −30% confirmed stop-loss (sport moneylines only) and a hard "never sell below entry" floor. Crypto and esports markets are excluded. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (4 h window, hard maximum) at a **fixed $5 per trade** (v4, 2026-06-21), and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −30% confirmed stop-loss (sport moneylines only) and a hard "never sell below entry" floor. With `unban_all_markets` every category is allowed and governed by a data-driven category auto-disable. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -73,11 +73,11 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 
 | Parameter | Value (`grinder.toml [race]`) |
 |---|---|
-| Price band (ask) | 0.85 – 0.97 |
+| Price band (ask) | 0.80 – 0.94, absolute hard cap **0.96** (v4 2026-06-21 — 0.97+ never tradeable) |
 | Entry window | **game starts OR market closes within ≤ 4 h** (user 2026-06-14); dynamic widening disabled (`max_hours_cap = 0`) |
 | Max spread | ≤ 4¢ |
-| Min liquidity | $500 |
-| Min 24 h volume | $300 |
+| Min liquidity | $250 |
+| Min 24 h volume | $1000 |
 
 > Exact values live in `configs/profiles/grinder.toml` and are the single source of truth — the table reflects the current live config but may be tuned over time (see [Self-improvement](#self-improvement)).
 
@@ -87,13 +87,12 @@ There are **no price-movement gates** (removed 2026-06-10): markets that moved t
 
 Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) and the top `max_orders_per_tick` (4) become this tick's picks. Markets that can never execute — token already held at its cap, order pending, or event already held — are removed **before** ranking, so they never burn pick slots. **One bet per game:** a game is identified by its date-truncated event slug and the team names in the question (one game spans several Polymarket events — moneyline, `-more-markets`, `-first-to-score`); same-game candidates collapse to a single pick before ranking, an open position on the game blocks all its other markets, and the execution loop backstops same-tick repeats. The single best (highest-bid) candidate per game is kept (the soccer under-4.5 priority was dropped 2026-06-14).
 
-### 5. Sizing (dynamic, 10 % hard cap)
+### 5. Sizing (v4 fixed-dollar — user 2026-06-21)
 
-- **Hard cap: 15 % of equity per bet** (`stake_pct = 0.15`; raised from 10 % on 2026-06-14) — never more on a single outcome. **Fresh entries open at `initial_stake_pct` (5 %)**; the dip double-down fills the reserved headroom up to the 10 % cap (so it always has room). `initial_stake_pct = 0` → entries target the full cap.
-- **Opportunity spread:** the per-bet target is `min(cap, available cash / N)` where N = actionable markets this tick. A busy evening with many qualifying markets splits the cash so all can be funded; a quiet window gives each bet the full 10 %. Time-of-day adaptivity is emergent from N.
-- **Near-resolution boost:** 1.5× under 30 min to close, 1.25× under 1 h — scales the spread share but can never pierce the 10 % cap.
-- **Dip double-down:** any held position whose **live ask has dipped below entry and is still ≥ 0.60** is bought up once toward the 10 % cap — averaging the cost basis down while the bet is still going well (the 0.60 floor is the proxy for "few goals / cote still high"; the bot has no live-score feed). Below 0.60 the bet has turned → no add. Enabled via `double_down_enabled`.
-- No fixed dollar caps — everything scales with the bankroll.
+- **Every trade = EXACTLY $5** (`fixed_stake_usd = 5.0`). No Kelly, no %-of-equity, no martingale, no averaging-down, no double-down, no confidence scaling, no dynamic spread. When `fixed_stake_usd > 0` the three sizing functions short-circuit to the flat amount (capped only by available cash).
+- **Full capital deployment:** because risk is capped at $5 per trade, the whole bankroll deploys across `bankroll / 5` positions ($50 → 10, $100 → 20, $500 → 100). Worst single-trade loss is $5.
+- **Double-down disabled** (`double_down_enabled = false`) — fixed sizing means no averaging into a position.
+- Legacy `stake_pct`/`initial_stake_pct` Kelly knobs are ignored while fixed sizing is on (kept for the legacy % mode).
 
 ### 6. Execution
 

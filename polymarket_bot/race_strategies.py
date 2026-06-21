@@ -236,9 +236,12 @@ def _build_eligible_candidates(
     now = utc_now()
     earliest = now + timedelta(minutes=5)
     horizon = now + timedelta(hours=max_hours if max_hours is not None else settings.race_max_hours)
+    # v4 (user 2026-06-21): when unban_all_markets is on, every category is
+    # allowed — governance shifts to the data-driven category auto-disable.
+    unban_all = bool(getattr(settings, "unban_all_markets", False))
     out: list[tuple[Candidate, float]] = []
     for market in markets:
-        if is_excluded_market(market):
+        if not unban_all and is_excluded_market(market):
             continue
         end_date = parse_dt(market.get("endDate"))
         if end_date is None:
@@ -315,6 +318,14 @@ def _build_eligible_candidates(
         if _is_soccer_moneyline_text(question, slug):
             lane_min_price = max(lane_min_price, SOCCER_MONEYLINE_MIN_ASK)
 
+        # v4 (user 2026-06-21): absolute entry-price ceiling — never buy above
+        # the hard cap (0.96) no matter what race_max_price says, so 0.97/0.98/
+        # 0.99 are never tradeable. 0 disables the clamp.
+        lane_max_price = settings.race_max_price
+        hard_cap = float(getattr(settings, "race_max_price_hard_cap", 0.0) or 0.0)
+        if hard_cap > 0:
+            lane_max_price = min(lane_max_price, hard_cap)
+
         for index, outcome in enumerate(outcomes):
             price = prices[index]
             if price <= 0.0 or price >= 1.0:
@@ -322,7 +333,7 @@ def _build_eligible_candidates(
             best_bid, best_ask = _quote_for_outcome(index, 2, market_best_bid, market_best_ask)
             if best_bid is None or best_ask is None:
                 continue
-            if best_ask < lane_min_price or best_ask > settings.race_max_price:
+            if best_ask < lane_min_price or best_ask > lane_max_price:
                 continue
             spread = best_ask - best_bid
             if spread < 0 or spread > settings.race_max_spread:
@@ -2134,7 +2145,14 @@ def _position_cap_usd(settings: Settings, equity: float) -> float:
     ``equity × race_stake_pct`` (the 10% per-bet cap) — the absolute ceiling
     a position can ever reach, only fully filled via the dip double-down.
     Min'd with the configured ceilings when set.
+
+    v4 (user 2026-06-21): when ``race_fixed_stake_usd`` > 0, the cap IS the
+    fixed dollar stake — a position can never exceed one $5 bet (no averaging
+    or double-down headroom).
     """
+    fixed = float(getattr(settings, "race_fixed_stake_usd", 0.0) or 0.0)
+    if fixed > 0:
+        return fixed
     cap = equity * settings.race_stake_pct
     if settings.smart_max_position_ceiling_pct > 0:
         cap = min(cap, equity * settings.smart_max_position_ceiling_pct)
@@ -2150,7 +2168,13 @@ def _entry_cap_usd(settings: Settings, equity: float) -> float:
     and passive top-ups target ``equity × initial_stake_pct`` (e.g. 5%),
     reserving the headroom up to the full ``_position_cap_usd`` (10%) for the
     dip double-down. Otherwise this equals the hard cap (old behavior).
+
+    v4 (user 2026-06-21): with ``race_fixed_stake_usd`` > 0 the entry cap IS
+    the fixed stake (== the position cap, so there is no double-down headroom).
     """
+    fixed = float(getattr(settings, "race_fixed_stake_usd", 0.0) or 0.0)
+    if fixed > 0:
+        return fixed
     initial = float(getattr(settings, "race_initial_stake_pct", 0.0) or 0.0)
     hard = _position_cap_usd(settings, equity)
     if initial <= 0.0 or initial >= settings.race_stake_pct:
@@ -2176,6 +2200,12 @@ def _dynamic_stake_target(
     - The near-resolution boost (1.5× under 30 min, 1.25× under 1 h)
       scales the spread share but can never pierce the cap.
     """
+    # v4 fixed-dollar sizing (user 2026-06-21): every bet is EXACTLY the
+    # fixed stake, capped only by the cash actually available — no spread
+    # across opportunities, no near-resolution boost, no scaling.
+    fixed = float(getattr(settings, "race_fixed_stake_usd", 0.0) or 0.0)
+    if fixed > 0:
+        return max(0.0, min(fixed, cash_above_floor))
     # Entries (and passive top-ups) target the INITIAL cap; the dip
     # double-down later fills the reserved headroom up to the hard cap.
     per_bet_cap = _entry_cap_usd(settings, equity)

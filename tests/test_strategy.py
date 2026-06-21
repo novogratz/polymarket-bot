@@ -4442,5 +4442,92 @@ class SoccerMoneylineAntiGapSLTests(unittest.TestCase):
         self.assertEqual(plan["reason"], "race_stop_loss_confirmed")
 
 
+class V4ConfigTests(unittest.TestCase):
+    """v4 production config (user 2026-06-21): fixed $5 sizing, 0.80–0.94 band
+    with a 0.96 hard cap, unban-all governed by category auto-disable."""
+
+    def _market(self, ask, *, question="Will the home team reach the final?",
+                slug="home-team-final", mid="m1"):
+        end = (utc_now() + timedelta(hours=2)).isoformat()
+        return {
+            "id": mid, "question": question, "slug": slug, "endDate": end,
+            "acceptingOrders": True, "liquidity": 1500, "volume24hr": 2000,
+            "bestBid": round(ask - 0.02, 2), "bestAsk": ask,
+            "orderPriceMinTickSize": 0.01,
+            "outcomes": '["Yes", "No"]',
+            "outcomePrices": f'["{ask}", "{round(1 - ask, 2)}"]',
+            "clobTokenIds": '["tok-a", "tok-b"]',
+        }
+
+    def _settings(self, **over):
+        base = dict(race_min_price=0.80, race_max_price=0.94,
+                    race_max_price_hard_cap=0.96, race_max_spread=0.04,
+                    race_max_hours=4.0, race_min_liquidity_usd=250.0,
+                    race_min_volume_24h_usd=1000.0, race_fixed_stake_usd=5.0)
+        base.update(over)
+        return Settings(**base)
+
+    def test_fixed_stake_is_flat_five_regardless_of_equity(self):
+        from polymarket_bot.race_strategies import _position_cap_usd, _entry_cap_usd
+        s = self._settings()
+        for equity in (50, 100, 500, 100_000):
+            self.assertEqual(_position_cap_usd(s, equity), 5.0)
+            self.assertEqual(_entry_cap_usd(s, equity), 5.0)
+
+    def test_fixed_stake_never_exceeds_five_even_near_resolution(self):
+        from polymarket_bot.race_strategies import _dynamic_stake_target
+        s = self._settings()
+        # Near-resolution boost (h2c < 0.5) must NOT push the bet above $5.
+        self.assertEqual(_dynamic_stake_target(s, 1000, 500, 1, 0.1), 5.0)
+        # Many opportunities: each still gets a flat $5 (no cash/N shrink
+        # below the cap when cash allows).
+        self.assertEqual(_dynamic_stake_target(s, 1000, 500, 50, 2.0), 5.0)
+
+    def test_fixed_stake_capped_by_available_cash(self):
+        from polymarket_bot.race_strategies import _dynamic_stake_target
+        s = self._settings()
+        # Only $3 left → bet what's there, never invent capital.
+        self.assertEqual(_dynamic_stake_target(s, 1000, 3, 1, 2.0), 3.0)
+
+    def test_entry_ask_above_hard_cap_is_rejected(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        s = self._settings(unban_all_markets=True)
+        # 0.94 ok (== max_price); 0.95 above max_price → rejected.
+        self.assertTrue(_build_eligible_candidates([self._market(0.94)], s))
+        self.assertEqual(_build_eligible_candidates([self._market(0.95)], s), [])
+        # Even if max_price is loosened, the 0.96 hard cap still blocks 0.97+.
+        s2 = self._settings(race_max_price=0.99, unban_all_markets=True)
+        self.assertTrue(_build_eligible_candidates([self._market(0.96)], s2))
+        self.assertEqual(_build_eligible_candidates([self._market(0.97)], s2), [])
+
+    def test_below_band_rejected(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        s = self._settings(unban_all_markets=True)
+        self.assertEqual(_build_eligible_candidates([self._market(0.79)], s), [])
+        self.assertTrue(_build_eligible_candidates([self._market(0.80)], s))
+
+    def test_unban_all_lets_normally_excluded_markets_through(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        # A crypto Up/Down market is normally excluded; with unban_all it is a
+        # candidate (governance shifts to category auto-disable, Phase 2).
+        crypto = self._market(0.90, question="Bitcoin Up or Down on June 21?",
+                              slug="bitcoin-up-or-down", mid="btc")
+        self.assertTrue(is_excluded_market(crypto))
+        banned = self._settings(unban_all_markets=False)
+        self.assertEqual(_build_eligible_candidates([crypto], banned), [])
+        unbanned = self._settings(unban_all_markets=True)
+        self.assertTrue(_build_eligible_candidates([crypto], unbanned))
+
+    def test_liquidity_and_volume_floors(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        s = self._settings(unban_all_markets=True)
+        thin = self._market(0.90)
+        thin["liquidity"] = 200       # below 250
+        self.assertEqual(_build_eligible_candidates([thin], s), [])
+        quiet = self._market(0.90)
+        quiet["volume24hr"] = 900      # below 1000
+        self.assertEqual(_build_eligible_candidates([quiet], s), [])
+
+
 if __name__ == "__main__":
     unittest.main()
