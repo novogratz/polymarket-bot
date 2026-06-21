@@ -12,14 +12,15 @@ MIT licensed. Tests run in CI — see `.github/workflows/test.yml`.
 - Preserve `data/paper_state.json`, `data/trade_journal.jsonl`, `data/realized_trade_cache.jsonl` unless explicitly asked to reset.
 - The bot must not gain the capability to write or push source code on its own.
 
-## Current state (2026-05-29)
+## Current state (v4 — 2026-06-21)
 
-**Live strategy:** `grinder` — heavy-favorite, ride-to-resolution.  
-**Config:** `configs/profiles/grinder.toml` (single source of truth).  
-**Launcher:** `bash scripts/run_live_70.sh`. Do **not** use `run_all.sh` for live.  
-**Entry:** bid ∈ [0.89, 0.94], ≤4h to close, spread ≤2¢, day-change ≤10 %.  
-**Exits:** resolved_exit at bid ≥0.99, max-hold 4.5h. No TP, no SL.  
-**Sizing:** 40 % per trade, max 2 concurrent. Bankroll $123.
+**Live strategy:** `grinder` — heavy-favorite, ride-to-resolution. All 3 bots.  
+**Config:** `configs/profiles/grinder.toml` (bot 1) / `grinder_b.toml` (bots 2 & 3).  
+**Launcher:** `bash scripts/run_live_70.sh` / `run_live_b.sh`. Do **not** use `run_all.sh` for live.  
+**Entry:** ask ∈ [0.80, 0.94], hard cap 0.96 (0.97+ never), ≤4h to close, spread ≤4¢, liq ≥$250, vol ≥$1000.  
+**Sizing:** **FIXED $5 per trade** (`fixed_stake_usd = 5.0`) — no Kelly/%/martingale/double-down. Bankroll deploys across `bankroll/5` positions.  
+**Universe:** `unban_all_markets = true` — every category allowed, governed by the data-driven category auto-disable (`categories.py`) + opt-in forecasting EV/quality gates (`forecast.py`).  
+**Exits:** resolved_exit at bid ≥**0.99** (else settle 1.0), confirmed −30% SL on soccer moneylines only, never-sell-below-entry, max-hold 4.5h. No TP, no pause-halts.
 
 ## Project map
 
@@ -44,4 +45,4 @@ bash scripts/run_live_70.sh
 
 ## Thesis
 
-A binary market at bid 0.89–0.94 within 4 hours of close is pricing near-certainty. The bot pays the spread and holds until bid ≥ 0.99. No stop-loss — the exclusion filters and price-stability gate are the risk controls. 40 % sizing means one bad trade is survivable.
+A binary market at ask 0.80–0.94 within 4 hours of close is pricing near-certainty. The bot pays the spread and holds until bid ≥ 0.99 (else settles at 1.0). The risk controls are the **fixed $5 per-trade cap** (worst single loss = $5), the data-driven category auto-disable, and a confirmed −30% stop-loss on soccer moneylines. v4 optimizes for capital preservation and steady grind, not win-rate or volume.

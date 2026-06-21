@@ -123,7 +123,11 @@ double_down_enabled = false
 double_down_min_dip = 0.01
 double_down_max_dip = 0.40
 double_down_min_price = 0.60
-max_orders_per_tick = 4
+# v4 (user 2026-06-21): maximize bets within the 4h window — open up to 12 new
+# $5 positions per tick so a fresh bankroll deploys fast across many distinct
+# games (each still passes every entry filter; one bet per game/event). The $5
+# cap bounds risk regardless of count.
+max_orders_per_tick = 12
 cash_floor_pct = 0.01
 
 # Exit rules (match grinder.toml / main 2026-06-07):
