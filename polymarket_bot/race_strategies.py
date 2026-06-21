@@ -35,7 +35,6 @@ from .models import (
     Candidate,
     as_float,
     is_excluded_market,
-    is_fast_lane_text,
     parse_dt,
     parse_json_list,
     utc_now,
@@ -1573,18 +1572,14 @@ def _execute_race_exits(
                         )
                         # fall through to normal exit logic
 
-        # Fast lanes (2026-06-12): esports and stock markets exit at 0.98 —
-        # in-play/in-session books rarely print a 0.99 bid before close.
+        # v4 (user 2026-06-21): one flat 0.99 winner exit across every lane —
+        # the fast-lane 0.98 downgrade is removed. A winner sells only at a
+        # real 0.99 bid, else rides to on-chain settlement at 1.00.
         resolved_threshold = settings.race_resolved_exit_threshold
-        if resolved_threshold > 0 and is_fast_lane_text(
-            str(position.get("question") or ""),
-            str(position.get("event_slug") or position.get("slug") or ""),
-        ):
-            resolved_threshold = min(resolved_threshold, 0.98)
         # Dynamic take-profit (user 2026-06-15): the exit must clear the entry
-        # by race_min_profit_margin, capped at 0.99 — so a 0.97 entry sells at
-        # 0.99, never at break-even. If the required bid never prints, the
-        # position simply rides to on-chain settlement at 1.00.
+        # by race_min_profit_margin, capped at 0.99. With resolved_exit at 0.99
+        # every winner targets 0.99. If the bid never prints, the position
+        # simply rides to on-chain settlement at 1.00.
         pos_entry = float(position.get("entry_price", 0.0) or 0.0)
         if resolved_threshold > 0 and pos_entry > 0:
             resolved_threshold = min(

@@ -55,9 +55,9 @@ TUNABLE: dict[str, tuple[float, float]] = {
     "race.tp_pct": (0.05, 1.0),                    # take-profit (1.0 = ride to resolution)
     "race.stake_pct": (0.05, 0.35),                # position-size hard cap (Kelly, user 2026-06-18; near-full-Kelly 0.35)
     "race.max_orders_per_tick": (1, 5),            # concurrency / sizing spread
-    # PINNED at 0.97 (user 2026-06-14, "sell at 0.97 as we had before"):
-    # the tuner must never move the winner exit off 0.97.
-    "race.resolved_exit_threshold": (0.97, 0.97),
+    # PINNED at 0.99 (user 2026-06-21 v4, "sell at 0.99 as well"):
+    # the tuner must never move the winner exit off 0.99.
+    "race.resolved_exit_threshold": (0.99, 0.99),
     "exits.max_hold_hours": (1.0, 4.5),            # max-hold backstop
 }
 INT_KEYS = {"race.max_orders_per_tick"}
