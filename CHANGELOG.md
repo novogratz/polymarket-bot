@@ -10,6 +10,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- **v4 production config — Phase 2 (part 1): data-driven category auto-disable** (user 2026-06-21, "go phase 2"). New `polymarket_bot/categories.py` — the governance that makes `unban_all_markets` safe by replacing manual bans with data:
+  - `classify_category(question, slug)` buckets every market into one of the v4 categories (politics, economics, crypto, ufc, golf, soccer, sports, entertainment, other) via ordered, collision-safe regexes.
+  - `category_stats(records)` computes per-category trades / wins / losses / win-rate / total_pnl / total_cost / **ROI** (= pnl / cost) / avg_pnl from the realized ledger.
+  - `disabled_categories(records, min_samples, roi_threshold)` returns the categories to drop: ≥ `min_samples` (100) realized trades **and** ROI < `roi_threshold` (−5%). Forward-looking — a fresh bot disables nothing; `other` is never auto-disabled.
+  - `_run_race_tick` computes the disabled set from the realized ledger each tick (fail-open) and `_build_eligible_candidates` drops auto-disabled categories at entry selection. New knobs `race_category_min_samples` (100) / `race_category_disable_roi` (−0.05) in both profiles.
+  - `pmbot journal-stats` gains a `by_v4_category` breakdown (the same ROI signal the auto-disable acts on). New `tests/test_categories.py` (classification, ROI, sample-floor, the gate). **Still pending in Phase 2: price-bucket analytics, daily/weekly drawdown + large-loss pause, dashboard, and the forecasting model behind the EV / quality-score / Sharpe / promotion gates.**
+
 - **v4 production config — Phase 1: fixed-dollar sizing, tighter band, unban flag** (user 2026-06-21, "Polymarket Bot v4"). The first slice of the v4 rewrite, optimizing for capital preservation / low drawdown over win-rate or volume:
   - **Fixed $5 position sizing** (`race_fixed_stake_usd`): when > 0 every entry stakes EXACTLY that many USD — no Kelly, no % of equity, no martingale, no averaging/double-down, no confidence scaling, no dynamic spread. `_position_cap_usd`, `_entry_cap_usd`, and `_dynamic_stake_target` all short-circuit to the flat amount (capped only by available cash), so the bankroll fully deploys across `bankroll / 5` positions and worst single-trade loss is $5. Double-down disabled in both profiles.
   - **Entry band 0.80–0.94 with a 0.96 hard cap** (`race_max_price_hard_cap`): the absolute ceiling clamps the entry ask regardless of `max_price`, so 0.97/0.98/0.99 are never tradeable.

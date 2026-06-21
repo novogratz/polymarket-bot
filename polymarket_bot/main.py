@@ -1812,6 +1812,17 @@ def print_positions(settings: Settings) -> None:
     typer.echo(format_positions_table(settings))
 
 
+def _v4_category_breakdown(records: list[dict[str, object]]) -> dict[str, object]:
+    """Per-v4-category realized stats (trades/wins/losses/win_rate/roi/avg_pnl),
+    the same signal the data-driven category auto-disable acts on. Fail-soft."""
+    try:
+        from .categories import category_stats
+
+        return {k: v for k, v in sorted(category_stats(records).items())}
+    except Exception:
+        return {}
+
+
 def journal_stats(settings: Settings) -> dict[str, object]:
     path = settings.trade_journal_path
     records = _read_realized_records(path)
@@ -1900,6 +1911,7 @@ def journal_stats(settings: Settings) -> dict[str, object]:
         "avg_pnl": round(sum(pnls) / len(records), 4),
         "max_drawdown": round(max_drawdown, 2),
         "by_category": group_by(records, lambda r: r.get("category")),
+        "by_v4_category": _v4_category_breakdown(records),
         "by_consensus": group_by(records, consensus_bucket),
         "by_strategy": group_by(records, lambda r: r.get("strategy")),
         "by_exit_reason": group_by(records, lambda r: r.get("exit_reason")),
