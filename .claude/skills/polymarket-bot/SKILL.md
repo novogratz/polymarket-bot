@@ -49,8 +49,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
 - **Exits:**
   - Resolved-exit: sell at **live CLOB book** bid ≥ a dynamic per-position
     threshold `min(0.99, max(resolved_exit_threshold, entry + min_profit_margin))`
-    (2026-06-15: 0.97 entry → 0.99 exit, never break-even); else `resolved_exit_threshold`
-    (**0.97**, user 2026-06-14 "as we had before"; was 0.99). The exit
+    — v4 (user 2026-06-21) `resolved_exit_threshold = **0.99**`, so EVERY
+    winner exits at a real 0.99 bid (fast-lane 0.98 downgrade removed), else
+    rides to settlement at 1.00. The exit
     loop probes the live book per position (`live_best_bid`) — Gamma
     quotes/`curPrice` lag. Probe fail-open → cached price.
   - **Controlled stop-loss: −30 %, confirmed over 3 consecutive ticks,
@@ -64,12 +65,11 @@ Buy a heavily-favored binary outcome and ride it to resolution.
     "No" 0.89 → 0.02 → resolved 1.0) → HOLD to resolution, don't dump.
   - **Hard rule: never sell below entry** (floor in `trading.execute_live_sell`).
     Only `race_stop_loss_confirmed` is exempt. Other losers ride to resolution.
-  - **Winner floor (0.97)**: winner-exit orders below **0.97** are refused
-    (`winner_floor` in `execute_live_sell`, sweep clamped to 0.97, tuner
-    pinned (0.97, 0.97)). One flat floor across every lane (user 2026-06-14;
-    was 0.99/0.98-fast-lane).
+  - **Winner floor (0.99)**: winner-exit orders below **0.99** are refused
+    (`winner_floor` in `execute_live_sell`, tuner pinned (0.99, 0.99)). One
+    flat floor across every lane (user 2026-06-21 v4, "sell at 0.99 as well").
   - No EOD flatten, no loss-sweep; the winners-only sweep uses
-    max(smart, race) thresholds (0.97) and can never front-run the race exit.
+    max(smart, race) thresholds (0.99) and can never front-run the race exit.
   - FOK BUY capped to 90% of executable ask depth; true fill booked; depth-
     capped entries top up later toward the 10% per-bet cap.
   - Expiry never force-closes a market still `acceptingOrders` (uses a live

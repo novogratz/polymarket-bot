@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- **Winners sell at 0.99** (user 2026-06-21, "sell at 0.99 as well"). `resolved_exit_threshold` 0.97 → **0.99** in both grinder profiles, the `WINNER_FLOOR` in `trading.execute_live_sell` 0.97 → **0.99**, and the self-tuner bound pinned (0.97,0.97) → **(0.99,0.99)**. The fast-lane 0.98 downgrade for esports/stocks is removed — one flat 0.99 winner exit across every lane: a winner sells only at a real 0.99 bid, else rides to on-chain settlement at 1.00. Tests updated (`test_live_sell_winner_floor_refuses_sub_099_resolved_exit`, `test_auto_improve_tuner_pins_resolved_exit_threshold_at_099`, `test_v4_winner_exit_requires_099_even_for_low_entry`, `test_v4_no_fast_lane_098_exit_holds_until_099`).
 - **bot 3 + zaza entry window 4 h → 8 h** (user 2026-06-17, "not enough bets"): diagnosis showed both bots sat on abundant cash ($89 / $127) with only 1–2 open positions despite 10 eligible candidates — because within a 4 h window there's usually only ~1 distinct game, and one-bet-per-game (correctly) takes a single bet from it (the other 9 eligibles were the same game's specials + player props). Cash/stake/filters were not the limiter; distinct games were. Widening to 8 h roughly doubles the games in the window (still same-day — no overnight holds, `daily_expiry_fallback` stays false). Hard cap (`max_hours_cap = 0`). Intentionally diverges from bot 1's 4 h for volume on bots 2/3 + zaza.
 
 ### Added

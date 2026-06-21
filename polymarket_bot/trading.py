@@ -1009,12 +1009,13 @@ def execute_live_sell(
 
     sell_price = round(min(max(candidate.best_bid, candidate.tick_size), 0.99), 3)
 
-    # ── WINNER FLOOR — resolved winners never sell below 0.97 ──────────────
+    # ── WINNER FLOOR — resolved winners never sell below 0.99 ──────────────
     # A winner exit must never dump a resolved position cheap; it is held
     # (retries next tick or settles at 1.00) until the bid reaches the floor.
-    # Floor history: 0.97 → 0.99 (2026-06-10) → back to 0.97 (user 2026-06-14,
-    # "sell at 0.97 as we had before"). One flat floor across every lane.
-    WINNER_FLOOR = 0.97
+    # Floor history: 0.97 → 0.99 (2026-06-10) → 0.97 (2026-06-14) → back to
+    # 0.99 (user 2026-06-21 v4, "sell at 0.99 as well"). One flat floor across
+    # every lane — a winner exits only at a real 0.99 bid, else rides to 1.00.
+    WINNER_FLOOR = 0.99
     WINNER_FLOOR_REASONS = {"race_big_win_resolved", "resolved_market_sweep_win"}
     if reason in WINNER_FLOOR_REASONS and sell_price < WINNER_FLOOR:
         raise ValueError(
