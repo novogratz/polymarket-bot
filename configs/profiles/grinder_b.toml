@@ -84,8 +84,13 @@ stake_usd = 1.0
 # IGNORED (kept only for legacy % mode).
 fixed_stake_usd = 5.0
 # v4: unban every category — governance shifts to the data-driven category
-# auto-disable (Phase 2). Per-trade risk is bounded by the $5 fixed stake.
+# auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
+# Data-driven category auto-disable (user 2026-06-21): after ≥ 100 realized
+# trades in a category, drop it from entry selection if its ROI < −5%.
+# Forward-looking — a fresh bot disables nothing.
+category_min_samples = 100
+category_disable_roi = -0.05
 stake_pct = 0.35
 initial_stake_pct = 0.20
 # Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held

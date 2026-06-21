@@ -391,6 +391,13 @@ class Settings:
     # auto-disable (user 2026-06-21). Per-trade risk is capped by the fixed
     # stake above. False keeps the manual ban list.
     unban_all_markets: bool = field(default_factory=lambda: _bool_env("POLYMARKET_UNBAN_ALL_MARKETS", False))
+    # ── v4: data-driven category auto-disable ────────────────────────────
+    # The governance that replaces manual bans (user 2026-06-21): after at
+    # least ``min_samples`` realized trades in a category, that category is
+    # auto-disabled at entry selection if its ROI < ``disable_roi``. Below the
+    # sample size nothing is disabled (forward-looking). 0 samples = off.
+    race_category_min_samples: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_CATEGORY_MIN_SAMPLES", 100))
+    race_category_disable_roi: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_CATEGORY_DISABLE_ROI", -0.05))
     # Initial-entry size as a fraction of equity (user 2026-06-14): a FRESH
     # entry (and any passive top-up) targets this, leaving headroom up to the
     # full race_stake_pct cap for the dip double-down to fill. 0 or
