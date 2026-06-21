@@ -398,6 +398,22 @@ class Settings:
     # sample size nothing is disabled (forward-looking). 0 samples = off.
     race_category_min_samples: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_CATEGORY_MIN_SAMPLES", 100))
     race_category_disable_roi: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_CATEGORY_DISABLE_ROI", -0.05))
+    # ── v4: forecasting model + EV / quality gates (user 2026-06-21) ──────
+    # The forecaster (forecast.py) calibrates a favorite's win probability per
+    # (category, price-bucket) from the realized ledger, shrunk toward the
+    # overall realized win rate (prior). Edge = predicted_probability − ask.
+    # The two gates are OPT-IN — 0 disables them — because they need realized
+    # history to calibrate (a fresh bot would otherwise starve). Recommended
+    # production values once there is data: min_edge 0.03, min_quality 70.
+    race_min_edge: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_EDGE", 0.0))
+    race_min_quality_score: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_QUALITY_SCORE", 0.0))
+    race_forecast_prior: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FORECAST_PRIOR", 0.95))
+    race_forecast_pseudo_count: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FORECAST_PSEUDO_COUNT", 20.0))
+    race_preferred_volume_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_PREFERRED_VOLUME_USD", 5000.0))
+    # Promotion gate (reporting): a strategy may be scaled only after this many
+    # realized trades AND this ROI. No scaling decisions before sufficient data.
+    race_promotion_min_trades: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_PROMOTION_MIN_TRADES", 500))
+    race_promotion_min_roi: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_PROMOTION_MIN_ROI", 0.05))
     # Initial-entry size as a fraction of equity (user 2026-06-14): a FRESH
     # entry (and any passive top-up) targets this, leaving headroom up to the
     # full race_stake_pct cap for the dip double-down to fill. 0 or
