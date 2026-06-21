@@ -49,6 +49,15 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   (`race_category_min_samples` / `race_category_disable_roi`). Computed per tick
   from the realized ledger (fail-open); `other` never disabled. Risk bounded by
   the $5 stake. `pmbot journal-stats` shows `by_v4_category` ROI.
+- **Forecasting EV/quality gates (v4, OPT-IN — default OFF):** `forecast.py`
+  calibrates a favorite's win probability per (category, price-bucket) from
+  realized history (shrunk toward the prior = overall win rate); `edge =
+  predicted − ask`. `race_min_edge > 0` drops sub-edge outcomes;
+  `race_min_quality_score > 0` drops low-`quality_score` ones (blend of edge /
+  volume / resolution clarity / category & bucket ROI). Both default 0 (need
+  history to calibrate). `journal-stats` adds `by_v4_price_bucket` +
+  `v4_performance` (Sharpe / profit factor / max DD / promotion ≥500 trades &
+  ROI ≥5%). Drawdown/loss-pause halts intentionally NOT built (user "no halts").
 - **Exits:**
   - Resolved-exit: sell at **live CLOB book** bid ≥ a dynamic per-position
     threshold `min(0.99, max(resolved_exit_threshold, entry + min_profit_margin))`

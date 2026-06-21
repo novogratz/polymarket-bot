@@ -30,6 +30,7 @@ from typing import Any
 from . import notifications
 from .categories import classify_market, disabled_categories
 from .config import Settings
+from .forecast import build_context, evaluate_market
 from .gamma import GammaClient
 from .models import (
     SOCCER_MONEYLINE_MIN_ASK,
@@ -211,6 +212,7 @@ def _build_eligible_candidates(
     settings: Settings,
     max_hours: float | None = None,
     disabled_categories: set[str] | None = None,
+    forecast_ctx: dict[str, Any] | None = None,
 ) -> list[tuple[Candidate, float]]:
     """Per-outcome candidate with a momentum signal attached for ranking.
 
@@ -228,6 +230,10 @@ def _build_eligible_candidates(
     # allowed — governance shifts to the data-driven category auto-disable.
     unban_all = bool(getattr(settings, "unban_all_markets", False))
     disabled = disabled_categories or set()
+    # v4 forecasting EV/quality gates (user 2026-06-21) — opt-in, both 0 = off.
+    min_edge = float(getattr(settings, "race_min_edge", 0.0) or 0.0)
+    min_quality = float(getattr(settings, "race_min_quality_score", 0.0) or 0.0)
+    gates_on = forecast_ctx is not None and (min_edge > 0 or min_quality > 0)
     out: list[tuple[Candidate, float]] = []
     for market in markets:
         if not unban_all and is_excluded_market(market):
@@ -328,6 +334,23 @@ def _build_eligible_candidates(
             spread = best_ask - best_bid
             if spread < 0 or spread > settings.race_max_spread:
                 continue
+            # v4 EV / quality gates (opt-in): only trade positive-EV, high-
+            # quality opportunities. The forecaster's edge =
+            # predicted_probability − ask; quality blends edge, volume,
+            # resolution clarity, and historical category/bucket ROI.
+            if gates_on:
+                ev = evaluate_market(
+                    category=classify_market(market),
+                    ask=best_ask,
+                    volume_usd=volume_24h,
+                    question=question,
+                    ctx=forecast_ctx,
+                    preferred_volume_usd=float(getattr(settings, "race_preferred_volume_usd", 5000.0)),
+                )
+                if min_edge > 0 and ev["edge"] < min_edge:
+                    continue
+                if min_quality > 0 and ev["quality"] < min_quality:
+                    continue
             outcome_momentum = one_day_change if index == 0 else -one_day_change
             candidate = Candidate(
                 market_id=market_id,
@@ -2536,8 +2559,31 @@ def _run_race_tick(
                 _step(settings, f"   category auto-disable: {sorted(disabled_cats)}")
         except Exception:
             disabled_cats = set()
+    # v4 forecasting EV/quality gates (opt-in): build the calibration context
+    # once from the realized ledger when a gate is active. Fail-open.
+    forecast_ctx = None
+    gates_active = (
+        float(getattr(settings, "race_min_edge", 0.0) or 0.0) > 0
+        or float(getattr(settings, "race_min_quality_score", 0.0) or 0.0) > 0
+    )
+    if gates_active:
+        try:
+            from .main import _read_realized_records
+
+            recs = _read_realized_records(settings.trade_journal_path)
+            forecast_ctx = build_context(
+                recs,
+                prior_default=float(getattr(settings, "race_forecast_prior", 0.95)),
+                pseudo_count=float(getattr(settings, "race_forecast_pseudo_count", 20.0)),
+            )
+        except Exception:
+            forecast_ctx = None
     eligible = _build_eligible_candidates(
-        markets, settings, max_hours=ladder[-1], disabled_categories=disabled_cats
+        markets,
+        settings,
+        max_hours=ladder[-1],
+        disabled_categories=disabled_cats,
+        forecast_ctx=forecast_ctx,
     )
     _step(settings, f"   eligible: {len(eligible)}")
     obs = _log_forward_observations(markets, settings)

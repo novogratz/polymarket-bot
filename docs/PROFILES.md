@@ -84,6 +84,12 @@ Cible : `.env` ne contient que secrets (`PRIVATE_KEY`, `API_KEY`...), endpoints 
 | `unban_all_markets` | bool | `true` → `is_excluded_market` est bypassé à la sélection : toutes les catégories autorisées, gouvernées par l'auto-disable data-driven (`categories.py`). Risque borné par `fixed_stake_usd`. Env var : `POLYMARKET_UNBAN_ALL_MARKETS`. |
 | `category_min_samples` | int | Taille d'échantillon avant qu'une catégorie puisse être auto-désactivée (défaut 100). 0 = auto-disable off. |
 | `category_disable_roi` | float | Une catégorie avec ≥ `category_min_samples` trades réalisés ET un ROI < ce seuil (défaut −0.05) est retirée de la sélection. `other` jamais désactivée. |
+| `min_edge` | float | **Gate EV opt-in (`forecast.py`).** > 0 → ne trade que si `predicted_probability − ask ≥ min_edge`. 0 = off. Cible recommandée après données : 0.03. |
+| `min_quality_score` | float | **Gate qualité opt-in.** > 0 → ne trade que si `quality_score` (0–100 ; edge / volume / clarté résolution / ROI catégorie & bucket) ≥ seuil. 0 = off. Cible : 70. |
+| `forecast_prior` | float | Prior du modèle (taux de victoire global) utilisé sans historique (défaut 0.95). |
+| `forecast_pseudo_count` | float | Pseudo-compte de shrinkage vers le prior (défaut 20). |
+| `preferred_volume_usd` | float | Volume 24h « préféré » pour le sous-score liquidité du quality_score (défaut 5000). |
+| `promotion_min_trades` / `promotion_min_roi` | int / float | Gate de promotion (reporting) : scaler seulement après ≥ N trades ET ROI ≥ seuil (défaut 500 / 0.05). |
 
 ## Section `[market_filters]` — exigences minimales sur le marché
 
