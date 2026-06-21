@@ -14,7 +14,9 @@ Buy a heavily-favored binary outcome and ride it to resolution.
 
 - **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1) and
   `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
-- **Entry:** ask ∈ **[0.85, 0.97]**, **game starts OR market closes within
+- **Entry:** ask ∈ **[0.80, 0.94]**, absolute hard cap **0.96**
+  (`max_price_hard_cap`, v4 2026-06-21 — 0.97+ never tradeable),
+  **game starts OR market closes within
   ≤ 4 h** (user 2026-06-14; dynamic widening OFF via `max_hours_cap=0`),
   (`max_hours=4`,
   `daily_expiry_fallback=false`; user 2026-06-12). **One bet per GAME**
@@ -22,7 +24,7 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   spans several Polymarket events; `_open_game_keys` blocks across ticks;
   `EVENT_EXPOSURE_CAP=1`); keeps the single best (highest-bid) candidate
   per game (the soccer under-4.5 priority was dropped 2026-06-14). Spread ≤ 4¢, liquidity
-  ≥ $500, 24 h volume ≥ $300. **Per-lane entry floor ≥ 0.92**: soccer/sport
+  ≥ $250, 24 h volume ≥ $1000 (v4 2026-06-21). **Per-lane entry floor ≥ 0.92**: soccer/sport
   "Will <X> win on <date>?" moneylines
   (`SOCCER_MONEYLINE_MIN_ASK`, user 2026-06-17 — gap-bombs below 0.92; every
   moneyline loss ever entered ≤ 0.90, 0.90+ has zero losses). NO price-movement
@@ -31,19 +33,18 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   values logged in the forward net only, pinned by tests.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
   dropped before pick-slot truncation.
-- **Sizing (Kelly, dynamic — user 2026-06-18 "10% isn't enough"):** the binding
-  lever is the ENTRY size (`initial_stake_pct = 0.20`), not the cap — most
-  winners never dip so they ride at the entry size; the hard cap
-  `stake_pct = 0.35` is only reached via the dip double-down. Near-full-Kelly,
-  aggressive by explicit choice: `f* = (p·b − q·a)/(a·b) ≈ 0.35` for p≈0.97,
-  b≈8.4%, a≈1.0. Worst single total loss −20% (entry) / −35% (doubled). Per-bet
-  target = cash/N spread, full cap when slow; near-resolution boost never
-  pierces the cap. Tuner may move `stake_pct` in (0.05, 0.35). See
-  `docs/STRATEGIES.md` for the derivation.
-  **Dip double-down (2026-06-14):** ANY held position whose live ask has
-  dipped below entry and is still **≥ 0.60** (alive proxy — no live-score
-  feed) is bought up once toward the 10% cap (`_execute_double_downs`,
-  `race_double_down_enabled`).
+- **Sizing (v4 fixed-dollar — user 2026-06-21):** every trade = EXACTLY $5
+  (`fixed_stake_usd = 5.0`). No Kelly, no %-of-equity, no martingale, no
+  averaging/double-down, no confidence scaling, no dynamic spread. The three
+  sizing functions (`_position_cap_usd`, `_entry_cap_usd`,
+  `_dynamic_stake_target`) short-circuit to the flat $5 (capped only by
+  available cash), so worst single-trade loss is $5 and the bankroll deploys
+  fully across `bankroll / 5` positions. Legacy `stake_pct`/`initial_stake_pct`
+  ignored while fixed sizing is on. **Double-down DISABLED**
+  (`double_down_enabled = false`).
+- **Unban (v4):** `unban_all_markets = true` bypasses `is_excluded_market` at
+  entry selection — every category allowed, governed by the (Phase 2) category
+  auto-disable; risk bounded by the $5 stake.
 - **Exits:**
   - Resolved-exit: sell at **live CLOB book** bid ≥ a dynamic per-position
     threshold `min(0.99, max(resolved_exit_threshold, entry + min_profit_margin))`

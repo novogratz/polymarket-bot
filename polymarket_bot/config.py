@@ -374,6 +374,23 @@ class Settings:
     race_max_spread: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MAX_SPREAD", 0.05))
     race_stake_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_STAKE_USD", 5.0))
     race_stake_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_STAKE_PCT", 0.15))
+    # ── v4 (user 2026-06-21): FIXED-DOLLAR position sizing ───────────────
+    # When > 0, every entry stakes EXACTLY this many USD (capped only by
+    # available cash) — no Kelly, no % of equity, no dynamic spread, no
+    # double-down, no averaging-down, no confidence scaling. Risk per trade
+    # is hard-capped at this number, so the bankroll can be fully deployed
+    # across bankroll / fixed_stake positions. 0 = off (legacy % sizing).
+    race_fixed_stake_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FIXED_STAKE_USD", 0.0))
+    # ── v4: absolute hard ceiling on the ENTRY ask ───────────────────────
+    # Entries are never placed above this price, regardless of race_max_price
+    # (user 2026-06-21: "never trade 0.97/0.98/0.99"). 0 disables the clamp.
+    race_max_price_hard_cap: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MAX_PRICE_HARD_CAP", 0.0))
+    # ── v4: unban every market category ──────────────────────────────────
+    # When true, is_excluded_market is bypassed at entry selection — every
+    # category is allowed and governed instead by the data-driven category
+    # auto-disable (user 2026-06-21). Per-trade risk is capped by the fixed
+    # stake above. False keeps the manual ban list.
+    unban_all_markets: bool = field(default_factory=lambda: _bool_env("POLYMARKET_UNBAN_ALL_MARKETS", False))
     # Initial-entry size as a fraction of equity (user 2026-06-14): a FRESH
     # entry (and any passive top-up) targets this, leaving headroom up to the
     # full race_stake_pct cap for the dip double-down to fill. 0 or
