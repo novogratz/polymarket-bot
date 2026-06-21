@@ -22,9 +22,9 @@ uv run pmbot journal-stats
 bash scripts/run_live_70.sh
 ```
 
-## Current strategy (2026-05-29)
+## Current strategy (v4 — 2026-06-21)
 
-**Grinder:** buy bid 0.89–0.94, ≤4h to close, hold until bid ≥ 0.99. No SL. 40 % stake, 2 concurrent max. Exclusion filters block exact scores, weather, O/U 0.5/5.5+. Price-stability gate blocks markets that moved >10 % today.
+**Grinder:** buy ask 0.80–0.94 (hard cap 0.96), ≤4h to close, hold until bid ≥ 0.99 (else settle 1.0). **Fixed $5 per trade** (no Kelly/%/double-down). `unban_all_markets` — all categories allowed, governed by the data-driven category auto-disable (`categories.py`) + opt-in forecasting EV/quality gates (`forecast.py`). Confirmed −30% SL on soccer moneylines only; never sell below entry. Up to 12 new $5 bets per tick. See `CLAUDE.md` / `docs/STRATEGIES.md`.
 
 ## Code style
 
