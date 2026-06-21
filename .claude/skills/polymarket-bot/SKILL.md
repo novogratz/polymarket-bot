@@ -43,9 +43,13 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   fully across `bankroll / 5` positions. Legacy `stake_pct`/`initial_stake_pct`
   ignored while fixed sizing is on. **Double-down DISABLED**
   (`double_down_enabled = false`).
-- **Unban (v4):** `unban_all_markets = true` bypasses `is_excluded_market` at
-  entry selection — every category allowed, governed by the (Phase 2) category
-  auto-disable; risk bounded by the $5 stake.
+- **Unban + category auto-disable (v4):** `unban_all_markets = true` bypasses
+  `is_excluded_market` at entry selection — every category allowed, governed by
+  the **data-driven category auto-disable** (`categories.py`): ≥ 100 realized
+  trades in a category AND ROI < −5% → dropped from selection
+  (`race_category_min_samples` / `race_category_disable_roi`). Computed per tick
+  from the realized ledger (fail-open); `other` never disabled. Risk bounded by
+  the $5 stake. `pmbot journal-stats` shows `by_v4_category` ROI.
 - **Exits:**
   - Resolved-exit: sell at **live CLOB book** bid ≥ a dynamic per-position
     threshold `min(0.99, max(resolved_exit_threshold, entry + min_profit_margin))`

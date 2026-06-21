@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from . import notifications
+from .categories import classify_market, disabled_categories
 from .config import Settings
 from .gamma import GammaClient
 from .models import (
@@ -223,6 +224,7 @@ def _build_eligible_candidates(
     markets: list[dict[str, Any]],
     settings: Settings,
     max_hours: float | None = None,
+    disabled_categories: set[str] | None = None,
 ) -> list[tuple[Candidate, float]]:
     """Per-outcome candidate with a momentum signal attached for ranking.
 
@@ -230,7 +232,8 @@ def _build_eligible_candidates(
     YES-side ``oneDayPriceChange`` flipped for the NO side. Caller picks
     whichever sign matches their thesis (contrarian flips, favorite
     ignores momentum entirely). ``max_hours`` overrides the base window for
-    the dynamic entry-window ladder.
+    the dynamic entry-window ladder. ``disabled_categories`` (v4) drops any
+    market whose category has been auto-disabled by the data-driven governance.
     """
     now = utc_now()
     earliest = now + timedelta(minutes=5)
@@ -238,9 +241,13 @@ def _build_eligible_candidates(
     # v4 (user 2026-06-21): when unban_all_markets is on, every category is
     # allowed — governance shifts to the data-driven category auto-disable.
     unban_all = bool(getattr(settings, "unban_all_markets", False))
+    disabled = disabled_categories or set()
     out: list[tuple[Candidate, float]] = []
     for market in markets:
         if not unban_all and is_excluded_market(market):
+            continue
+        # v4 data-driven governance: drop auto-disabled categories.
+        if disabled and classify_market(market) in disabled:
             continue
         end_date = parse_dt(market.get("endDate"))
         if end_date is None:
@@ -2520,7 +2527,29 @@ def _run_race_tick(
     ladder = _entry_window_ladder(settings)
     markets = _load_short_expiry_markets(settings, max_hours=ladder[-1])
     _step(settings, f"   markets: {len(markets)} raw (≤{ladder[-1]:.0f}h)")
-    eligible = _build_eligible_candidates(markets, settings, max_hours=ladder[-1])
+    # v4 data-driven category auto-disable (user 2026-06-21): a category with
+    # ≥ min_samples realized trades and ROI < disable_roi is dropped from entry
+    # selection — the governance that replaces manual bans under unban_all.
+    # Fail-open (empty set) so the ledger read can never break the loop.
+    disabled_cats: set[str] = set()
+    min_samples = int(getattr(settings, "race_category_min_samples", 0) or 0)
+    if min_samples > 0:
+        try:
+            from .main import _read_realized_records
+
+            records = _read_realized_records(settings.trade_journal_path)
+            disabled_cats = disabled_categories(
+                records,
+                min_samples=min_samples,
+                roi_threshold=float(getattr(settings, "race_category_disable_roi", -0.05)),
+            )
+            if disabled_cats:
+                _step(settings, f"   category auto-disable: {sorted(disabled_cats)}")
+        except Exception:
+            disabled_cats = set()
+    eligible = _build_eligible_candidates(
+        markets, settings, max_hours=ladder[-1], disabled_categories=disabled_cats
+    )
     _step(settings, f"   eligible: {len(eligible)}")
     obs = _log_forward_observations(markets, settings)
     if obs:

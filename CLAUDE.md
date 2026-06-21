@@ -73,7 +73,7 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 - No EOD flatten, no blanket stop-loss, no loss-sweep. The universal sweep realizes **winners only** and uses `max(smart, race)` resolved-exit thresholds (0.97) — it can never fire earlier than the race exit.
 - **Daily drawdown halt: disabled** (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0`). The per-trade confirmed SL is the risk control.
 
-**Excluded markets** (`models.py:is_excluded_market`, across every lane). **v4 (user 2026-06-21): `unban_all_markets = true` BYPASSES this entire list at entry selection** — every category is allowed and governed instead by the data-driven category auto-disable (Phase 2); per-trade risk is bounded by the $5 fixed stake. The ban list below is what applies when `unban_all_markets = false`:
+**Excluded markets** (`models.py:is_excluded_market`, across every lane). **v4 (user 2026-06-21): `unban_all_markets = true` BYPASSES this entire list at entry selection** — every category is allowed and governed instead by the **data-driven category auto-disable** (`categories.py`): after ≥ `race_category_min_samples` (100) realized trades in a category, it is dropped from entry selection if its ROI < `race_category_disable_roi` (−5%). `_run_race_tick` computes the disabled set from the realized ledger each tick (fail-open) and `_build_eligible_candidates` filters on it. Forward-looking — a fresh bot disables nothing; `other` is never auto-disabled. Per-trade risk is bounded by the $5 fixed stake. The ban list below is what applies when `unban_all_markets = false`:
 - **All crypto** — bitcoin/btc/ethereum/solana/dogecoin/xrp/cardano/litecoin/"crypto" + Up/Down binaries
 - **All stock market / equities — BANNED OUTRIGHT (re-banned 2026-06-12)**: the one-day in-session experiment is over — indices & ETFs, big-cap tickers & companies (word-bounded `_STOCK_MARKET_RE` incl. ABNB/Airbnb, UBER, COIN, PLTR, HOOD), equity terms, `closes above/below $X`, the generic `(TICKER) … $` rule, weekly ranges, and touch markets are all excluded, always
 - **Tweet-count markets** — banned outright (2026-06-12): "Will Elon Musk post 240-259 tweets…" — week-long counts with no convergence signal (`"tweet"` + `-tweets`/`of-tweets` slugs)
@@ -133,6 +133,7 @@ Run on a bot's own machine, **bot stopped**: backs up + wipes closed-trade histo
 - `polymarket_bot/race_strategies.py` — grinder engine: `select_grinder`, `_build_eligible_candidates`, `_execute_race_exits` (resolved-exit, confirmed SL, expiry/open-market check, winners-only sweep), `_lookup_open_market`.
 - `polymarket_bot/trading.py` — authenticated BUY/SELL execution, stake computation, and the **never-sell-below-entry floor** (exempts `race_stop_loss_confirmed`).
 - `polymarket_bot/models.py` — `is_excluded_market` (the ban list) + shared dataclasses/parsers.
+- `polymarket_bot/categories.py` — v4 category classifier + per-category ROI stats + data-driven `disabled_categories` auto-disable (the governance under `unban_all_markets`).
 - `polymarket_bot/config.py` — every `Settings` field and its env-var name.
 - `polymarket_bot/main.py` — CLI commands and the strategy loop dispatch; tick orchestration; journal writer.
 - `polymarket_bot/portfolio.py` — local ledger (cash, open positions, exits).
