@@ -438,10 +438,33 @@ def telegram_post(text: str, *, live: bool = True) -> bool:
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
 
-    def _send(use_markdown: bool) -> bool:
+    # Split into ≤ limit-char chunks on LINE boundaries — Telegram caps a
+    # message at 4096 chars and the report (many open positions) used to be
+    # silently truncated mid-line at 4000. Splitting on whole lines keeps every
+    # line's `*bold*` markers balanced, so Markdown never breaks across chunks.
+    def _chunks(s: str, limit: int = 3800) -> list[str]:
+        out: list[str] = []
+        cur = ""
+        for line in s.split("\n"):
+            while len(line) > limit:  # pathological single long line
+                if cur:
+                    out.append(cur)
+                    cur = ""
+                out.append(line[:limit])
+                line = line[limit:]
+            if cur and len(cur) + 1 + len(line) > limit:
+                out.append(cur)
+                cur = line
+            else:
+                cur = f"{cur}\n{line}" if cur else line
+        if cur:
+            out.append(cur)
+        return out or [""]
+
+    def _send_one(chunk: str, use_markdown: bool) -> bool:
         body = {
             "chat_id": chat,
-            "text": text[:4000],
+            "text": chunk,
             "disable_web_page_preview": True,
         }
         if use_markdown:
@@ -454,19 +477,24 @@ def telegram_post(text: str, *, live: bool = True) -> bool:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return 200 <= resp.status < 300
 
-    try:
-        return _send(True)
-    except Exception as exc:
-        # 400 → Markdown parse error (e.g. the model's **bold** leaks into the
-        # verdict). Retry as plain text so the report still lands.
-        if getattr(exc, "code", None) == 400:
-            try:
-                return _send(False)
-            except Exception as exc2:
-                print(f"[live-analyst] telegram failed (plain retry): {exc2}", file=sys.stderr, flush=True)
-                return False
-        print(f"[live-analyst] telegram failed: {exc}", file=sys.stderr, flush=True)
-        return False
+    def _send(chunk: str) -> bool:
+        try:
+            return _send_one(chunk, True)
+        except Exception as exc:
+            # 400 → Markdown parse error; retry as plain text so it still lands.
+            if getattr(exc, "code", None) == 400:
+                try:
+                    return _send_one(chunk, False)
+                except Exception as exc2:
+                    print(f"[live-analyst] telegram failed (plain retry): {exc2}", file=sys.stderr, flush=True)
+                    return False
+            print(f"[live-analyst] telegram failed: {exc}", file=sys.stderr, flush=True)
+            return False
+
+    ok = True
+    for chunk in _chunks(text):
+        ok = _send(chunk) and ok
+    return ok
 
 
 def _parse_end_date(end_iso: str) -> "datetime | None":
