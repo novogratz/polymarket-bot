@@ -430,24 +430,52 @@ def telegram_post(text: str, *, live: bool = True) -> bool:
         print(f"[live-analyst] telegram disabled ({chat_var} missing)\n{text}", flush=True)
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
+    # Split into ≤ limit-char chunks on LINE boundaries — Telegram caps a
+    # message at 4096 chars and the report (many open positions) used to be
+    # silently truncated mid-line at 4000.
+    def _chunks(s: str, limit: int = 3800) -> list[str]:
+        out: list[str] = []
+        cur = ""
+        for line in s.split("\n"):
+            while len(line) > limit:  # pathological single long line
+                if cur:
+                    out.append(cur)
+                    cur = ""
+                out.append(line[:limit])
+                line = line[limit:]
+            if cur and len(cur) + 1 + len(line) > limit:
+                out.append(cur)
+                cur = line
+            else:
+                cur = f"{cur}\n{line}" if cur else line
+        if cur:
+            out.append(cur)
+        return out or [""]
+
     # Plain text only — no parse_mode. Market titles can contain _ * ( )
     # which break Telegram Markdown parsing and corrupt accented characters.
-    body = {
-        "chat_id": chat,
-        "text": text[:4000],
-        "disable_web_page_preview": True,
-    }
-    req = urllib.request.Request(
-        url, data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return 200 <= resp.status < 300
-    except Exception as exc:
-        print(f"[live-analyst] telegram failed: {exc}", file=sys.stderr, flush=True)
-        return False
+    def _send(chunk: str) -> bool:
+        body = {
+            "chat_id": chat,
+            "text": chunk,
+            "disable_web_page_preview": True,
+        }
+        req = urllib.request.Request(
+            url, data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return 200 <= resp.status < 300
+        except Exception as exc:
+            print(f"[live-analyst] telegram failed: {exc}", file=sys.stderr, flush=True)
+            return False
+
+    ok = True
+    for chunk in _chunks(text):
+        ok = _send(chunk) and ok
+    return ok
 
 
 def _parse_end_date(end_iso: str) -> "datetime | None":
