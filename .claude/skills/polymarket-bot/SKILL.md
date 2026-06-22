@@ -132,10 +132,13 @@ rate**, a **v4 performance block** (≥10 closed trades: ROI / Sharpe / profit
 factor / max DD + a **p/q/edge** line all-time & today, `🎯 p=avg entry · q=win
 rate · edge(q−p)` — +EV only when q>p — + worst per-category ROIs, ⛔ on
 auto-disabled), open positions and trades-of-the-day **each capped to the top
-`LIVE_REPORT_TOP_N` winners + N worst losers** (default 3, `_winners_losers`;
-rest folded into `… +X autres`; `=0` → summary only — user 2026-06-22 "too many
-positions, simplify"), shown positions keeping their estimated end time, and a
-redemption watchdog (resolved-but-unpaid positions ≥ $1). No heartbeat, no BUY/SELL alerts.
+`LIVE_REPORT_TOP_N` winners + N worst losers** (default 5, `_winners_losers`;
+rest folded into `… +X autres`; `=0` → summary only — user 2026-06-22 "I want
+something clear as a summary"), shown positions keeping their estimated end time,
+and a redemption watchdog (resolved-but-unpaid positions ≥ $1). No heartbeat, no
+BUY/SELL alerts. `_fetch_live_equity` retries the `/positions` API 3× and falls
+back to the local ledger on failure (never cash-only — that used to fabricate a
+"$60 / -$100" capital via a stale `assumed_live_balance_usd` floor, now removed).
 
 ## Reset workflow — `scripts/fresh_start.py`
 

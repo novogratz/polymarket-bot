@@ -122,13 +122,13 @@ _load_dotenv()
 
 CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))   # 30 minutes
 
-# Cap the per-trade / per-position lists in the live report so the Telegram
-# message stays short once the bot holds many positions (user 2026-06-22):
-# each list shows only the top-N winners and the N worst losers; everything
-# else folds into a "+X autres" line. The summary counts/totals above each
-# list still cover ALL trades/positions — only the line-by-line detail is
-# capped. Set LIVE_REPORT_TOP_N=0 to hide the detail entirely (summary only).
-_REPORT_TOP_N = int(os.environ.get("LIVE_REPORT_TOP_N", "3"))
+# The report is a SUMMARY, not a dump (user 2026-06-22: "I want something clear
+# as a summary", "top 5 winning and top 5 where we lost"). Both detail lists —
+# closed trades-of-the-day AND open positions — show only the top-N winners and
+# the N worst losers; the rest folds into a "+X autres" line, and the summary
+# header above each list still reflects ALL trades/positions (counts, totals,
+# latent P&L). Set LIVE_REPORT_TOP_N=0 to hide the detail entirely.
+_REPORT_TOP_N = int(os.environ.get("LIVE_REPORT_TOP_N", "5"))
 
 
 def _winners_losers(items: list[dict], pnl_key, n: int = _REPORT_TOP_N):
@@ -343,31 +343,41 @@ def _fetch_live_equity() -> tuple[float, float] | None:
             avail = float(settings.paper_balance_usd or 0.0)
         # All active positions from Data API — same filter as _sync_live_positions:
         # size > 0 AND currentValue >= min_value (drops dust / redeemed positions).
+        # The /positions endpoint times out intermittently (HTTP 408 / socket
+        # timeout); retry a few times before giving up, because a single missed
+        # read here used to be catastrophic — see the failure handling below.
         pos_value = 0.0
+        positions_ok = False
         min_val = float(getattr(settings, "live_position_min_value_usd", 0.5) or 0.5)
-        try:
-            live_positions = DataApiClient(settings.data_api_base_url).positions(
-                user=settings.funder_address
-            )
-            for item in live_positions:
-                try:
-                    size = float(item.get("size") or 0)
-                    cv = float(item.get("currentValue") or 0)
-                except (TypeError, ValueError):
-                    continue
-                if size <= 0 or cv < min_val:
-                    continue
-                pos_value += cv
-        except Exception:
-            pass
-        equity = avail + pos_value
-        # Redemption lag guard: when a position resolves and disappears from the
-        # Data API, the USDC can take minutes to settle to the CLOB wallet.
-        # During that window equity looks artificially low. Use assumed_live_balance_usd
-        # as a floor so the report never shows a false crash mid-settlement.
-        assumed = float(getattr(settings, "assumed_live_balance_usd", 0) or 0)
-        if assumed > 0 and equity < assumed * 0.5:
-            return assumed, 0.0
+        for attempt in range(3):
+            try:
+                live_positions = DataApiClient(settings.data_api_base_url).positions(
+                    user=settings.funder_address
+                )
+                pos_value = 0.0
+                for item in live_positions:
+                    try:
+                        size = float(item.get("size") or 0)
+                        cv = float(item.get("currentValue") or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    if size <= 0 or cv < min_val:
+                        continue
+                    pos_value += cv
+                positions_ok = True
+                break
+            except Exception:
+                if attempt < 2:
+                    time.sleep(1.0)
+        # If the positions read never succeeded, equity is UNKNOWABLE from the
+        # live API. Returning cash-only would both understate equity by the full
+        # open-position value AND (when cash < assumed*0.5) make the old floor
+        # fabricate a stale fixed equity — exactly the "$60 / -$100" phantom the
+        # report showed on 2026-06-22 (wallet really held $160). Signal failure
+        # so load_live_snapshot falls back to the local ledger, which the live
+        # bot keeps synced with the real positions every tick.
+        if not positions_ok:
+            return None
         return avail, pos_value
     except Exception:
         return None
