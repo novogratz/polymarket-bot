@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **p / q / edge in the live Telegram report** (user 2026-06-22). The 30-min LIVE REPORT's `PERFORMANCE v4` block now shows a `🎯` line **for all-time and for today**: `p` = average entry price paid, `q` = win rate (wins/(wins+losses), the realized proxy for the true win probability), and `edge(q−p)` in points. The bot is +EV only when `q > p`, so this surfaces the single number that decides whether the strategy has an advantage. Deterministic, fail-soft (`_pq_line` in `scripts/live_analyst.py`).
+
 ### Fixed
 
 - **Resolved positions now close promptly at their TRUE value** (user 2026-06-21, "some bets don't seem to close when they should / redeemed up with 0 or with gains"). `_sync_live_positions` gained a resolution-reconcile pass over the Data API holdings: a position the chain marks **`redeemable`** is booked as a **resolved win** (closed at its full on-chain value), and a position whose value has collapsed below the dust floor **and whose endDate has passed** is booked as a **resolved loss at ~$0**. Previously a settled loser was dropped by the min-value filter and written off at its **stale ~0.50 mid-price** (overstating realized P&L / equity), and a redeemable winner could sit "open" until a +6h/8h expiry timer. The past-endDate guard means a mid-game gap (low value but still live) is **not** mis-booked as a loss. Diagnostic on the live wallet confirmed the "résolution en cours" 15-min crypto positions were genuinely *pending oracle settlement* (`redeemable=false`, curPrice≈0.50), not lost — the bot now books them the moment the chain settles them. New `ResolvedReconcileTests`.
