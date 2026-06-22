@@ -43,12 +43,12 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# v4 strategy — matches bot 1 (main grinder.toml) / bot 3 (user 2026-06-22:
-# "zaza not doing enough bets, match bot 1"). Bot 1's volume comes from the
-# v4 mechanics below (unban-all + fixed $5 stake + 12 orders/tick), NOT the
-# window. Only the bankroll baseline ([run]/[sizing] above) differs from bot 1;
-# zaza keeps the 8h window (bot 1 uses 4h) for extra volume.
-max_hours = 8.0
+# v4 strategy — FULLY matches bot 1 (main grinder.toml) / bot 3 (user
+# 2026-06-22: "align strategy with bot 1"). Bot 1's volume comes from the v4
+# mechanics below (unban-all + fixed $5 stake + 12 orders/tick), NOT the
+# window — so zaza now uses bot 1's 4h window too (the 8h-for-volume hedge is
+# dropped). Only the bankroll baseline ([run]/[sizing] above) differs from bot 1.
+max_hours = 4.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
 # 750 markets/ordering — full scan breadth past the Gamma 100-row page cap.
