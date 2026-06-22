@@ -131,9 +131,11 @@ Shows equity, **P&L since start (= equity − baseline)**, **total trades + win
 rate**, a **v4 performance block** (≥10 closed trades: ROI / Sharpe / profit
 factor / max DD + a **p/q/edge** line all-time & today, `🎯 p=avg entry · q=win
 rate · edge(q−p)` — +EV only when q>p — + worst per-category ROIs, ⛔ on
-auto-disabled), open positions
-(sorted by expiry, each with its estimated end time), and a redemption watchdog
-(resolved-but-unpaid positions ≥ $1). No per-trade lists, no heartbeat, no BUY/SELL alerts.
+auto-disabled), open positions and trades-of-the-day **each capped to the top
+`LIVE_REPORT_TOP_N` winners + N worst losers** (default 3, `_winners_losers`;
+rest folded into `… +X autres`; `=0` → summary only — user 2026-06-22 "too many
+positions, simplify"), shown positions keeping their estimated end time, and a
+redemption watchdog (resolved-but-unpaid positions ≥ $1). No heartbeat, no BUY/SELL alerts.
 
 ## Reset workflow — `scripts/fresh_start.py`
 

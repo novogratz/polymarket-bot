@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **Live Telegram report trimmed to a summary + top movers** (user 2026-06-22, "we open too many positions… simplify so it only shows a summary and maybe some positions winning or losing"). With the bot now holding many positions the `RAPPORT LIVE` had grown to thousands of characters (every open position and every trade-of-the-day listed in full). The two unbounded lists — `TRADES DU JOUR` and `POSITIONS OUVERTES` — are now capped to the **top `LIVE_REPORT_TOP_N` winners + N worst losers** each (default 3), with the remainder folded into a `… +X autres` line; the summary header above each list (counts, totals, latent P&L) still covers everything. Set `LIVE_REPORT_TOP_N=0` for summary-only. Only the shown titles are sent to the FR translator, and the per-position "Voir le match" link is dropped to keep each entry to two lines. New `_winners_losers` helper in `scripts/live_analyst.py`.
+
 ### Added
 
 - **p / q / edge in the live Telegram report** (user 2026-06-22). The 30-min LIVE REPORT's `PERFORMANCE v4` block now shows a `🎯` line **for all-time and for today**: `p` = average entry price paid, `q` = win rate (wins/(wins+losses), the realized proxy for the true win probability), and `edge(q−p)` in points. The bot is +EV only when `q > p`, so this surfaces the single number that decides whether the strategy has an advantage. Deterministic, fail-soft (`_pq_line` in `scripts/live_analyst.py`).
