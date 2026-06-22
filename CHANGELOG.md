@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **p / q / edge in the live Telegram report** (user 2026-06-22). The 30-min LIVE REPORT's `PERFORMANCE v4` block now shows a `🎯` line **for all-time and for today**: `p` = average entry price paid, `q` = win rate (wins/(wins+losses), the realized proxy for the true win probability), and `edge(q−p)` in points. The bot is +EV only when `q > p`, so this surfaces the single number that decides whether the strategy has an advantage. Deterministic, fail-soft (`_pq_line` in `scripts/live_analyst.py`).
+
 ### Changed
 
 - **Zaza migrated to the v4 strategy to match bot 1** (user 2026-06-22, "zaza not doing enough bets, match bot 1"): `grinder_zaza.toml` was still on the pre-v4 config (15% stakes, 4 orders/tick, banned categories, 0.85–0.97 band) while bot 1 (main `grinder.toml`) and bot 3 (`grinder_b.toml`) had moved to v4. Ported the full v4 `[race]` to zaza: `unban_all_markets = true` (+ data-driven category auto-disable, `min_resolution_clarity = 60` always-on), `fixed_stake_usd = 5` (no %-sizing / double-down), `max_orders_per_tick = 12`, band 0.80–0.94 with `max_price_hard_cap = 0.96`, floors `min_liquidity 250 / min_volume 1000`, `sl_pct 0.30` + `sl_min_exit_price 0.50`, `resolved_exit_threshold 0.99`. Kept zaza's 8 h window (bot 1 uses 4 h) for extra volume. Measured effect: eligible candidates 10 → 31, distinct actionable bets per tick 2 → 9.

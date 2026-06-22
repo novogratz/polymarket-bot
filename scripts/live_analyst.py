@@ -31,6 +31,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
 
 
+def _float_safe(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _record_pnl(record: dict) -> float:
     for key in ("realized_pnl", "realized_pnl_usd"):
         if record.get(key) is not None:
@@ -1169,10 +1176,30 @@ def _translate_questions_fr(questions: list[str]) -> dict[str, str]:
     return {q: cache[q] for q in uniq if q in cache}
 
 
-def _v4_performance_lines() -> list[str]:
+def _pq_line(label: str, pairs: list[tuple[float, float]]) -> str | None:
+    """One '🎯 <label> : p=… · q=… · edge=…' line from (entry_price, pnl) pairs.
+
+    p = average entry price (the price paid). q = win rate = wins/(wins+losses),
+    the realized proxy for the true win probability. edge = q − p (in points) is
+    the whole game — the bot is +EV only when q > p (user 2026-06-22)."""
+    prices = [e for e, _ in pairs if e and e > 0]
+    wins = sum(1 for _, pnl in pairs if pnl > 0)
+    losses = sum(1 for _, pnl in pairs if pnl < 0)
+    decided = wins + losses
+    if not prices or decided == 0:
+        return None
+    p = sum(prices) / len(prices)
+    q = wins / decided
+    edge_pts = (q - p) * 100.0
+    return (f"  🎯 {label} : p={p:.2f} · q={q * 100:.0f}% · "
+            f"edge(q−p)={edge_pts:+.1f} pts (N={decided})")
+
+
+def _v4_performance_lines(today_trades: list[dict] | None = None) -> list[str]:
     """Compact v4 performance block (user 2026-06-21): ROI / Sharpe / profit
-    factor / max drawdown from the realized ledger, plus the categories at or
-    near the data-driven auto-disable threshold. Fail-soft (returns [])."""
+    factor / max drawdown from the realized ledger, the p/q/edge breakdown
+    (all-time + today, user 2026-06-22), plus the categories at or near the
+    data-driven auto-disable threshold. Fail-soft (returns [])."""
     try:
         from polymarket_bot import forecast
         from polymarket_bot.categories import category_stats
@@ -1192,6 +1219,20 @@ def _v4_performance_lines() -> list[str]:
             f"  📈 ROI : {roi:+.1f}%  •  Sharpe : {sharpe:.2f}  •  "
             f"PF : {pf:.2f}  •  Max DD : -${abs(mdd):.2f}",
         ]
+        # p / q / edge — the core "do we have an advantage?" numbers.
+        alltime = _pq_line(
+            "Tout-temps",
+            [(_float_safe(r.get("entry_price")), _record_pnl(r)) for r in records],
+        )
+        if alltime:
+            lines.append(alltime)
+        if today_trades:
+            day = _pq_line(
+                "Aujourd'hui",
+                [(_float_safe(t.get("entry")), _float_safe(t.get("pnl"))) for t in today_trades],
+            )
+            if day:
+                lines.append(day)
         stats = category_stats(records)
         risky = sorted(
             [(c, s) for c, s in stats.items()
@@ -1275,9 +1316,10 @@ def cycle_once() -> None:
         "",
     ]
 
-    # v4 performance block (user 2026-06-21): ROI / Sharpe / PF / max DD +
+    # v4 performance block (user 2026-06-21): ROI / Sharpe / PF / max DD,
+    # the p/q/edge breakdown (all-time + today, user 2026-06-22), and
     # categories near the auto-disable threshold. Empty until ≥10 closed trades.
-    parts.extend(_v4_performance_lines())
+    parts.extend(_v4_performance_lines(today_trades))
 
     # Tous les trades clôturés aujourd'hui, du meilleur à la pire perte (en bas).
     # load_todays_trades() trie déjà par PnL décroissant.
