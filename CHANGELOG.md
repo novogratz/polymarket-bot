@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **Resolved positions now close promptly at their TRUE value** (user 2026-06-21, "some bets don't seem to close when they should / redeemed up with 0 or with gains"). `_sync_live_positions` gained a resolution-reconcile pass over the Data API holdings: a position the chain marks **`redeemable`** is booked as a **resolved win** (closed at its full on-chain value), and a position whose value has collapsed below the dust floor **and whose endDate has passed** is booked as a **resolved loss at ~$0**. Previously a settled loser was dropped by the min-value filter and written off at its **stale ~0.50 mid-price** (overstating realized P&L / equity), and a redeemable winner could sit "open" until a +6h/8h expiry timer. The past-endDate guard means a mid-game gap (low value but still live) is **not** mis-booked as a loss. Diagnostic on the live wallet confirmed the "résolution en cours" 15-min crypto positions were genuinely *pending oracle settlement* (`redeemable=false`, curPrice≈0.50), not lost — the bot now books them the moment the chain settles them. New `ResolvedReconcileTests`.
+
 ### Added
 
 - **Resolution-safety filter (always-on, survives unban)** (user 2026-06-21, "do everything"). New `race_min_resolution_clarity` (set to **60** in both profiles): `_build_eligible_candidates` skips any market whose `resolution_clarity` (in `forecast.py`) is below the threshold — subjective / ambiguous-settlement wording (judges' discretion, "deemed", "disputed", "considered", "to be determined", …). A clean objectively-resolvable market scores 100; one strong subjective marker drops it below 60. Unlike the EV/quality gates this needs **no history**, so it is the one structural protection that stays ON even under `unban_all_markets`. Tests: `ResolutionSafetyTests` in `tests/test_forecast.py`.
