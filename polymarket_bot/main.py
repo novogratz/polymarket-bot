@@ -2258,22 +2258,83 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
     except Exception as exc:
         return [{"action": "sync_skipped", "reason": f"{type(exc).__name__}: {exc}"}]
 
+    def _ended(item: dict[str, object]) -> bool:
+        """True if the market's endDate is comfortably in the past — used to
+        confirm a near-zero value is a RESOLVED loss, not a mid-game gap."""
+        raw = str(item.get("endDate") or item.get("eventEndDate") or "").strip()
+        if not raw:
+            return False
+        raw = raw.replace("Z", "+00:00").replace(" ", "T")
+        if raw.endswith("+00"):
+            raw += ":00"
+        try:
+            d = datetime.fromisoformat(raw)
+        except ValueError:
+            return False
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d < utc_now()
+
     active_by_token: dict[str, dict[str, object]] = {}
+    # v4 (user 2026-06-21): resolved positions the chain has settled but that
+    # linger open in the ledger. A `redeemable` position is a RESOLVED WINNER
+    # (claimable / auto-redeeming); a near-zero value PAST its endDate is a
+    # RESOLVED LOSER settled to ~0. Both are booked at their TRUE on-chain
+    # value below — promptly, instead of waiting on the expiry timers or (the
+    # old bug) writing a loser off at its stale ~0.50 mid-price.
+    resolved_by_token: dict[str, dict[str, object]] = {}
     for item in live_positions:
         token_id = str(item.get("asset") or "")
         if not token_id:
             continue
         size = _float(item.get("size"))
-        current_value = _float(item.get("currentValue"))
-        if size <= 0 or current_value < settings.live_position_min_value_usd:
+        if size <= 0:
             continue
-        active_by_token[token_id] = item
+        current_value = _float(item.get("currentValue"))
+        redeemable = bool(item.get("redeemable"))
+        if redeemable or (current_value < settings.live_position_min_value_usd and _ended(item)):
+            resolved_by_token[token_id] = item
+        elif current_value < settings.live_position_min_value_usd:
+            continue  # low value but not confirmed resolved → treat as before
+        else:
+            active_by_token[token_id] = item
 
     local_by_token = {
         str(position.get("token_id")): position
         for position in portfolio.positions
         if position.get("live") and position.get("token_id")
     }
+
+    # Book resolved positions FIRST (win = redeemable, loss = settled-to-~0),
+    # at the actual on-chain value. Closed here, they are skipped by the
+    # vanish-close and active-update passes below (which only touch open ones).
+    for token_id, item in resolved_by_token.items():
+        position = local_by_token.get(token_id)
+        if position is None or position.get("status") != "open":
+            continue
+        if _position_age_minutes(position) < 5.0:
+            report.append({"action": "skipped_resolve_too_young", "token_id": token_id})
+            continue
+        shares = float(position.get("shares") or 0.0)
+        current_value = _float(item.get("currentValue"))
+        redeemable = bool(item.get("redeemable"))
+        exit_price = max(0.0, min(1.0, (current_value / shares) if shares > 0 else 0.0))
+        cost_basis = float(position.get("stake") or 0.0)
+        position["status"] = "closed"
+        position["closed_at"] = utc_now().isoformat()
+        position["sync_closed"] = True
+        position["current_price"] = round(exit_price, 4)
+        position["resolved_redeemable"] = redeemable
+        position["realized_pnl"] = round(current_value - cost_basis, 2)
+        portfolio.cash = round(float(portfolio.cash or 0.0) + current_value, 2)
+        report.append({
+            "action": "resolved_win" if redeemable else "resolved_loss",
+            "token_id": token_id,
+            "value": round(current_value, 2),
+            "question": position.get("question"),
+        })
+        _notify_and_journal_sync_close(settings, position)
+
     for token_id, position in local_by_token.items():
         if position.get("status") == "open" and token_id not in active_by_token:
             # Data-api /positions lags the CLOB by 5-30s after a fill. Without

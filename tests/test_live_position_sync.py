@@ -179,5 +179,74 @@ class SyncLivePositionsTests(unittest.TestCase):
         self.assertTrue(portfolio.positions[0]["sync_closed"])
 
 
+class ResolvedReconcileTests(unittest.TestCase):
+    """v4 (user 2026-06-21): resolved positions are booked promptly at their
+    true on-chain value — redeemable winners as wins, settled-to-~0 losers at
+    $0 (not the stale mid-price), and only once the market's endDate has passed."""
+
+    def _settings(self):
+        return Settings(
+            funder_address="0xabc", dry_run=True, sync_live_positions=True,
+            paper_balance_usd=1.0, trade_journal_path=Path("/private/tmp/journal.jsonl"),
+        )
+
+    def _portfolio(self, **pos):
+        base = {
+            "status": "open", "live": True, "token_id": "tok-1", "market_id": "m1",
+            "question": "Q", "outcome": "Up", "stake": 5.0, "shares": 6.0,
+            "current_price": 0.5, "opened_at": "2026-05-25T00:00:00+00:00",
+        }
+        base.update(pos)
+        return Portfolio(cash=0.0, positions=[base], pending_orders=[])
+
+    def _client(self, item):
+        class FakeDataApiClient:
+            def __init__(self, *a, **k):
+                pass
+
+            def positions(self, *, user, limit=500):
+                return [item]
+        return FakeDataApiClient
+
+    def test_redeemable_winner_booked_as_win(self):
+        # redeemable=True → resolved winner; close at full on-chain value.
+        item = {"asset": "tok-1", "size": 6.0, "currentValue": 5.94,
+                "redeemable": True, "endDate": "2026-06-21T22:00:00Z"}
+        settings, portfolio = self._settings(), self._portfolio()
+        with mock.patch("polymarket_bot.main.DataApiClient", self._client(item)):
+            report = _sync_live_positions(settings, portfolio)
+        p = portfolio.positions[0]
+        self.assertEqual(p["status"], "closed")
+        self.assertTrue(p["resolved_redeemable"])
+        self.assertAlmostEqual(p["realized_pnl"], 0.94, places=2)  # 5.94 - 5.00
+        self.assertEqual(report[0]["action"], "resolved_win")
+
+    def test_settled_loser_booked_at_zero_when_past_end(self):
+        # near-zero value + past endDate → resolved loss at ~0 (not stale 0.5).
+        item = {"asset": "tok-1", "size": 6.0, "currentValue": 0.06,
+                "redeemable": False, "endDate": "2026-06-21T22:00:00Z"}
+        settings, portfolio = self._settings(), self._portfolio()
+        with mock.patch("polymarket_bot.main.DataApiClient", self._client(item)):
+            report = _sync_live_positions(settings, portfolio)
+        p = portfolio.positions[0]
+        self.assertEqual(p["status"], "closed")
+        self.assertAlmostEqual(p["realized_pnl"], -4.94, places=2)  # 0.06 - 5.00
+        self.assertEqual(report[0]["action"], "resolved_loss")
+
+    def test_low_value_before_end_is_not_booked_as_resolved(self):
+        # near-zero but endDate in the FUTURE → mid-game gap, NOT resolved.
+        # Must not be booked as a resolved loss (it's a held favorite).
+        from datetime import timedelta
+        from polymarket_bot.models import utc_now
+        item = {"asset": "tok-1", "size": 6.0, "currentValue": 0.30,
+                "redeemable": False,
+                "endDate": (utc_now() + timedelta(hours=3)).isoformat()}
+        settings, portfolio = self._settings(), self._portfolio()
+        with mock.patch("polymarket_bot.main.DataApiClient", self._client(item)):
+            report = _sync_live_positions(settings, portfolio)
+        # Not resolved → no resolved_* action for this token.
+        self.assertNotIn("resolved", " ".join(str(r.get("action")) for r in report))
+
+
 if __name__ == "__main__":
     unittest.main()

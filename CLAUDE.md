@@ -165,7 +165,7 @@ When changing strategy/filters/sizing/exits: edit **both** `grinder.toml` and `g
 
 1. Load short-expiry Gamma markets (out to the widest ladder rung).
 2. Build eligible candidates (entry filters + exclusions); log a wide forward-observation net. Entries use the 4 h window (ladder disabled); same-game picks collapse to one (best bid wins).
-3. Sync live Polymarket positions into the ledger; refresh live USDC cash.
+3. Sync live Polymarket positions into the ledger; refresh live USDC cash. **Resolution reconcile (v4, `_sync_live_positions`):** a chain-`redeemable` holding is booked a resolved WIN at full value; one whose value collapsed below the dust floor AND whose endDate has passed is booked a resolved LOSS at ~$0 (not its stale mid-price). The past-endDate guard prevents mis-booking a mid-game gap; pending-oracle 15-min crypto (redeemable=false, curPrice≈0.50) stays open until the chain settles it.
 4. Run exits: live-book bid probe + resolved-exit (≥0.99, v4), confirmed −30% SL, expiry/open-market handling, winners-only sweep.
 5. (Daily drawdown halt — disabled.)
 6. Place new grinder picks with percentage sizing toward the cash floor.
