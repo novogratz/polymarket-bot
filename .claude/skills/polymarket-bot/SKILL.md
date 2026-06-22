@@ -129,7 +129,9 @@ The **only** Telegram message. Deterministic French "RAPPORT LIVE": fires on
 **startup**, then every `LIVE_ANALYST_CYCLE_SECONDS`, plus a daily 10:00 US/Eastern.
 Shows equity, **P&L since start (= equity − baseline)**, **total trades + win
 rate**, a **v4 performance block** (≥10 closed trades: ROI / Sharpe / profit
-factor / max DD + worst per-category ROIs, ⛔ on auto-disabled), open positions
+factor / max DD + a **p/q/edge** line all-time & today, `🎯 p=avg entry · q=win
+rate · edge(q−p)` — +EV only when q>p — + worst per-category ROIs, ⛔ on
+auto-disabled), open positions
 (sorted by expiry, each with its estimated end time), and a redemption watchdog
 (resolved-but-unpaid positions ≥ $1). No per-trade lists, no heartbeat, no BUY/SELL alerts.
 

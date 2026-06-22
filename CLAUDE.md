@@ -91,7 +91,7 @@ Boots the live grinder (`--profile grinder_b`, 10 s tick) + a dry paper twin + t
 The **only** Telegram message the live stack sends — deterministic, no AI. A French "RAPPORT LIVE" that fires **on startup**, then every `LIVE_ANALYST_CYCLE_SECONDS`, plus a daily 10:00 US/Eastern. Shows:
 - **Capital:** equity + **P&L since start = equity − baseline** ("depuis le début")
 - **Total trades + win rate** (count + %, V/D)
-- **v4 performance** (≥10 closed trades): `PERFORMANCE v4 :` ROI / Sharpe / profit factor / max drawdown, plus `🏷️ Catégories à risque :` (worst per-category ROIs, ⛔ on auto-disabled ones) — the data-driven governance at a glance (`_v4_performance_lines`)
+- **v4 performance** (≥10 closed trades): `PERFORMANCE v4 :` ROI / Sharpe / profit factor / max drawdown; a **p/q/edge** line for **all-time and today** (`🎯 p=avg entry price · q=win rate · edge(q−p) in pts` — the bot is +EV only when q>p, user 2026-06-22); plus `🏷️ Catégories à risque :` (worst per-category ROIs, ⛔ on auto-disabled ones) — the data-driven governance at a glance (`_v4_performance_lines` / `_pq_line`)
 - **Open positions** — sorted by expiry (soonest first), each with its estimated end time (`⏳ Fin prévue : HH:MM ET (dans XhYY)`)
 - **Redemption watchdog** — resolved positions with real value still awaiting payout (`redeemable: true`, value ≥ $1) are listed as `💰 GAINS RÉSOLUS EN ATTENTE DE PAIEMENT`; Polymarket auto-redeems, so this section is empty in normal operation — anything persisting two reports means claim manually on polymarket.com/portfolio
 
