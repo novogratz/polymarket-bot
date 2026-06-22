@@ -43,70 +43,83 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Synced to bot 1 (main grinder.toml) / bot 3 strategy 2026-06-16 (user:
-# "bring the same strategy as bot 1, the best bot ever"). Only the bankroll
-# baseline (starting_cash / assumed_live_balance_usd above) and scan_limit
-# differ from bot 1.
-#
-# Entry window 4h -> 8h (user 2026-06-17: "not enough bets"). Within 4h there's
-# usually only ~1 game and one-bet-per-game takes a single bet from it, so few
-# positions despite plenty of cash; 8h roughly doubles the distinct games in
-# the window (still same-day, no overnight holds). Hard cap (max_hours_cap=0 ->
-# single 8h window, no laddering).
+# v4 strategy — matches bot 1 (main grinder.toml) / bot 3 (user 2026-06-22:
+# "zaza not doing enough bets, match bot 1"). Bot 1's volume comes from the
+# v4 mechanics below (unban-all + fixed $5 stake + 12 orders/tick), NOT the
+# window. Only the bankroll baseline ([run]/[sizing] above) differs from bot 1;
+# zaza keeps the 8h window (bot 1 uses 4h) for extra volume.
 max_hours = 8.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
-# 750 markets/ordering (user 2026-06-16: match bot 1 exactly — full scan
-# breadth past the Gamma 100-row page cap, ~1,000-2,000 raw markets/tick).
+# 750 markets/ordering — full scan breadth past the Gamma 100-row page cap.
 scan_limit = 750
 
-min_liquidity_usd = 500.0
-min_volume_24h_usd = 300.0
+# v4 liquidity floors (user 2026-06-21): min volume $1000, min liquidity $250.
+min_liquidity_usd = 250.0
+min_volume_24h_usd = 1000.0
 
-# Entry band 0.85–0.97 (2026-05-30). Lower bound 0.85 carries a bit more gap
-# risk than 0.90, but the catastrophic categories (exact scores, coinflips,
-# weather) stay excluded and the per-bet cap bounds any single loss. Upper
-# bound 0.97 still leaves room up to ~1.0.
-min_price = 0.85
-max_price = 0.97
+# v4 entry band (user 2026-06-21): 0.80–0.94, with max_price_hard_cap = 0.96 as
+# the ABSOLUTE ceiling (0.97/0.98/0.99 never tradeable).
+min_price = 0.80
+max_price = 0.94
+max_price_hard_cap = 0.96
 
-# Spread 4¢ bounds slippage on the wider band's slightly thinner books.
 max_spread = 0.04
 
-# 15% = the HARD per-position cap (user 2026-06-14). Fresh entries open at the
-# lower initial_stake_pct (5%) and the dip double-down fills the reserved
-# headroom up to 15% — so the double-down always has room to add.
+# ── v4 FIXED-DOLLAR SIZING (user 2026-06-21) ─────────────────────────────
+# Every trade = EXACTLY $5, never more. No Kelly, no % of equity, no
+# averaging-down, no double-down. Risk per trade is hard-capped at $5, so the
+# full bankroll deploys across (bankroll / 5) positions. When fixed_stake_usd
+# > 0 the stake_pct/initial_stake_pct knobs are IGNORED (legacy % mode only).
 stake_usd = 1.0
-stake_pct = 0.15
-initial_stake_pct = 0.05
-# Dip double-down (user 2026-06-14, generalized): add to ANY held position
-# whose live ask has dipped below entry while it's still a favorite
-# (ask ≥ min_price 0.60). Once per position, never past the per-bet cap.
-double_down_enabled = true
+fixed_stake_usd = 5.0
+# v4: unban every category — governance shifts to the data-driven auto-disable
+# below; per-trade risk is bounded by the $5 fixed stake.
+unban_all_markets = true
+# Data-driven category auto-disable: after ≥ 100 realized trades in a category,
+# drop it if ROI < −5%. Forward-looking — a fresh bot disables nothing.
+category_min_samples = 100
+category_disable_roi = -0.05
+# v4 forecasting EV / quality gates — OPT-IN, 0 = off (a fresh bot would
+# otherwise starve before it has history to calibrate).
+min_edge = 0.0
+min_quality_score = 0.0
+forecast_prior = 0.95
+preferred_volume_usd = 5000.0
+# Resolution-safety filter (ALWAYS-ON): skip subjective/ambiguous settlement
+# wording even under unban_all. The one structural protection that survives.
+min_resolution_clarity = 60.0
+stake_pct = 0.35
+initial_stake_pct = 0.20
+# v4: double-down / averaging-down DISABLED — fixed $5 only.
+double_down_enabled = false
 double_down_min_dip = 0.01
 double_down_max_dip = 0.40
 double_down_min_price = 0.60
-max_orders_per_tick = 4
+# v4: open up to 12 new $5 positions per tick so the bankroll deploys fast
+# across many distinct games (each still passes every entry filter; one bet
+# per game/event). The $5 cap bounds risk regardless of count.
+max_orders_per_tick = 12
 cash_floor_pct = 0.01
 
 # Exit rules (match grinder.toml / bot 1):
 #   tp_pct = 1.0          → TP disabled; ride to resolution.
-#   sl_pct = 0.25         → CONTROLLED SL at -25%, SOCCER MONEYLINE ONLY,
-#                           confirmed over sl_confirm_ticks (3). All other
-#                           markets NEVER stop out (gate in
-#                           _is_soccer_moneyline_position).
-#   resolved at 0.97      → exit only when a REAL live-book bid clears the
-#                           dynamic threshold; min_profit_margin floors it
-#                           above entry so a 0.97 entry sells at 0.99.
-#   max_hold 4.5h         → backstop so nothing lingers after expiry.
+#   sl_pct = 0.30         → CONTROLLED SL at -30%, SPORT MONEYLINES ONLY,
+#                           confirmed over sl_confirm_ticks (3). Politics/awards
+#                           EXCLUDED; all else rides to resolution.
+#   sl_min_exit_price 0.50 → SL only fires while the bid is still ≥ 0.50 (an
+#                           orderly decline); a goal-crash gap below it
+#                           mean-reverts, so HOLD.
+#   resolved at 0.99      → winners exit at a real 0.99 bid, else ride to
+#                           on-chain settlement at 1.00.
 tp_pct = 1.0
-sl_pct = 0.25            # -25% confirmed SL, soccer moneyline only
+sl_pct = 0.30            # -30% confirmed SL, sport moneylines (user 2026-06-16)
 sl_confirm_ticks = 3
 sl_min_age_minutes = 5
+sl_min_exit_price = 0.50
 near_expiry_minutes = 5
-resolved_exit_threshold = 0.97
-# Dynamic TP (2026-06-15): exit must clear entry by this, capped 0.99 —
-# a 0.97 entry sells at 0.99, never break-even.
+resolved_exit_threshold = 0.99
+# Dynamic TP (2026-06-15): exit must clear entry by this, capped 0.99.
 min_profit_margin = 0.02
 
 # Binary arb disabled (set arb_threshold = 0.97 to re-enable).

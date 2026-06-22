@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **Zaza migrated to the v4 strategy to match bot 1** (user 2026-06-22, "zaza not doing enough bets, match bot 1"): `grinder_zaza.toml` was still on the pre-v4 config (15% stakes, 4 orders/tick, banned categories, 0.85–0.97 band) while bot 1 (main `grinder.toml`) and bot 3 (`grinder_b.toml`) had moved to v4. Ported the full v4 `[race]` to zaza: `unban_all_markets = true` (+ data-driven category auto-disable, `min_resolution_clarity = 60` always-on), `fixed_stake_usd = 5` (no %-sizing / double-down), `max_orders_per_tick = 12`, band 0.80–0.94 with `max_price_hard_cap = 0.96`, floors `min_liquidity 250 / min_volume 1000`, `sl_pct 0.30` + `sl_min_exit_price 0.50`, `resolved_exit_threshold 0.99`. Kept zaza's 8 h window (bot 1 uses 4 h) for extra volume. Measured effect: eligible candidates 10 → 31, distinct actionable bets per tick 2 → 9.
+
 ### Fixed
 
 - **Resolved positions now close promptly at their TRUE value** (user 2026-06-21, "some bets don't seem to close when they should / redeemed up with 0 or with gains"). `_sync_live_positions` gained a resolution-reconcile pass over the Data API holdings: a position the chain marks **`redeemable`** is booked as a **resolved win** (closed at its full on-chain value), and a position whose value has collapsed below the dust floor **and whose endDate has passed** is booked as a **resolved loss at ~$0**. Previously a settled loser was dropped by the min-value filter and written off at its **stale ~0.50 mid-price** (overstating realized P&L / equity), and a redeemable winner could sit "open" until a +6h/8h expiry timer. The past-endDate guard means a mid-game gap (low value but still live) is **not** mis-booked as a loss. Diagnostic on the live wallet confirmed the "résolution en cours" 15-min crypto positions were genuinely *pending oracle settlement* (`redeemable=false`, curPrice≈0.50), not lost — the bot now books them the moment the chain settles them. New `ResolvedReconcileTests`.
