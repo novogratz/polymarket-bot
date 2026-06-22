@@ -98,6 +98,8 @@ KILL_PROTECTED_PROFILES = {
     "kzerlepgm_baseline",
     "random",
     "grinder",                  # active live profile (2026-05-26)
+    "grinder_b",                # active live profile — bot 2/3 (run_live_b.sh)
+    "grinder_b2",               # active live profile — bot 2 looser (run_live_b2.sh)
     "claude_baseline_persist",  # active live profile (2026-05-20)
     "auto_mombreak_locktight",  # recent live, kept for comparison
     "whale_entry_detection",    # recent live, kept for comparison
