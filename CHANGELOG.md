@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- **Weather-only lane for bot 3** (user 2026-06-23: "bot 3 ONLY betting on weather stuff"): new `weather_only` profile flag (`POLYMARKET_RACE_WEATHER_ONLY`) + `is_weather_market` detector (temperature / °C / °F / weather / rainfall / snowfall / high-low temp). When on, entry selection keeps ONLY weather markets and **bypasses the normal weather ban** (weather is in the standard ban list). Set on `grinder_b.toml` (bot 3) with the entry window widened 4 h → 24 h, since weather markets resolve end-of-day (~22–46 h out) and were otherwise permanently out-of-window. `WeatherOnlyLaneTests` pin detection + the keep-only-weather / bypass-ban behavior. NOTE: the 0.80–0.94 favorite band still applies and weather markets rarely price there (they're longshots / coinflips / near-certs) — band tuning for the weather lane is pending a follow-up decision.
 - **p / q / edge in the live Telegram report** (user 2026-06-22). The 30-min LIVE REPORT's `PERFORMANCE v4` block now shows a `🎯` line **for all-time and for today**: `p` = average entry price paid, `q` = win rate (wins/(wins+losses), the realized proxy for the true win probability), and `edge(q−p)` in points. The bot is +EV only when `q > p`, so this surfaces the single number that decides whether the strategy has an advantage. Deterministic, fail-soft (`_pq_line` in `scripts/live_analyst.py`).
 
 ### Changed
