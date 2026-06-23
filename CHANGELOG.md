@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Best / worst category in the live report** (user 2026-06-23, "when you give p and q … give the top category where the bot made money and worst category"). The `PERFORMANCE v4` block now adds a `🥇 Meilleure catégorie … 🥶 Pire …` line right under the p/q/edge lines, ranking realized categories by **total $ P&L** (with ROI and trade count shown alongside). Skips the catch-all `other` bucket; collapses to a single entry when only one category has traded. `_v4_performance_lines` in `scripts/live_analyst.py`; appears once ≥10 closed trades exist.
+
 ## [4.0.0] - 2026-06-23
 
 Polymarket Bot **v4** — fixed-$5 sizing, unban-all with data-driven category governance, the empirical forecasting model (EV / quality / Sharpe / promotion gates), a stack of new outright bans (esports, macro-rate, "what-will-be-said", stocks, O/U lines), the soccer-moneyline gap fix, the daily self-learning sidecar, and a summarized, timeout-resilient live report.

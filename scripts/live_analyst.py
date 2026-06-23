@@ -1240,6 +1240,25 @@ def _v4_performance_lines(today_trades: list[dict] | None = None) -> list[str]:
             if day:
                 lines.append(day)
         stats = category_stats(records)
+        # Best / worst category by realized $ P&L (user 2026-06-23: "top category
+        # where the bot made money and worst category"). Ranked by dollars made,
+        # with ROI shown alongside. Skip the catch-all 'other' bucket.
+        ranked = sorted(
+            [(c, s) for c, s in stats.items() if c != "other" and s["trades"] > 0],
+            key=lambda kv: kv[1]["total_pnl"],
+        )
+        if ranked:
+            def _cat(c, s):
+                sign = "+" if s["total_pnl"] >= 0 else "-"
+                return (f"{c} {sign}${abs(s['total_pnl']):.2f} "
+                        f"({s['roi'] * 100:+.0f}%, {s['trades']})")
+            best_c, best_s = ranked[-1]
+            worst_c, worst_s = ranked[0]
+            cat_line = f"  🥇 Meilleure catégorie : {_cat(best_c, best_s)}"
+            # Only add a distinct worst when it isn't the same single category.
+            if worst_c != best_c:
+                cat_line += f"  •  🥶 Pire : {_cat(worst_c, worst_s)}"
+            lines.append(cat_line)
         risky = sorted(
             [(c, s) for c, s in stats.items()
              if c != "other" and s["trades"] >= 20 and s["roi"] < 0],
