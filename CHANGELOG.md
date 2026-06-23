@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-06-23
+
+Polymarket Bot **v4** — fixed-$5 sizing, unban-all with data-driven category governance, the empirical forecasting model (EV / quality / Sharpe / promotion gates), a stack of new outright bans (esports, macro-rate, "what-will-be-said", stocks, O/U lines), the soccer-moneyline gap fix, the daily self-learning sidecar, and a summarized, timeout-resilient live report.
+
 ### Changed
 
 - **Live Telegram report trimmed to a clear summary + top movers** (user 2026-06-22, "we open too many positions… simplify so it only shows a summary", "top 5 winning and top 5 where we lost"). With the bot now holding many positions the `RAPPORT LIVE` had grown to thousands of characters (every open position and every trade-of-the-day listed in full). Both detail lists — `TRADES DU JOUR` and `POSITIONS OUVERTES` — are now capped to the **top `LIVE_REPORT_TOP_N` winners + N worst losers** each (default **5**), with the remainder folded into a `… +X autres` line; the summary header above each list (counts, totals, latent P&L) still covers everything. Set `LIVE_REPORT_TOP_N=0` for summary-only. Only the shown titles are sent to the FR translator, and the per-position "Voir le match" link is dropped to keep each entry to two lines. New `_winners_losers` helper in `scripts/live_analyst.py`.
