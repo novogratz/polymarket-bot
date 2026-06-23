@@ -4,9 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **bot 3 + zaza realigned to bot 1** (user 2026-06-23, "align bot 3 + zaza with bot 1 — it's making money"): reverted bot 3's weather-only experiment (`weather_only` off, window 24 h → 4 h). Both `grinder_b.toml` and `grinder_zaza.toml` `[race]` sections are now **byte-identical to bot 1** (`grinder.toml`): v4 — 4 h window, 0.80–0.94 band (hard cap 0.96), `fixed_stake_usd = 5`, `unban_all_markets`, 12 orders/tick, `sl_pct 0.30` + `sl_min_exit_price 0.50`, `resolved_exit_threshold 0.99`. (zaza already matched; only bot 3 changed.) The `weather_only` flag + `is_weather_market` detector remain in code (disabled on all profiles) for future use.
+
 ### Added
 
-- **Weather-only lane for bot 3** (user 2026-06-23: "bot 3 ONLY betting on weather stuff"): new `weather_only` profile flag (`POLYMARKET_RACE_WEATHER_ONLY`) + `is_weather_market` detector (temperature / °C / °F / weather / rainfall / snowfall / high-low temp). When on, entry selection keeps ONLY weather markets and **bypasses the normal weather ban** (weather is in the standard ban list). Set on `grinder_b.toml` (bot 3) with the entry window widened 4 h → 24 h, since weather markets resolve end-of-day (~22–46 h out) and were otherwise permanently out-of-window. `WeatherOnlyLaneTests` pin detection + the keep-only-weather / bypass-ban behavior. NOTE: the 0.80–0.94 favorite band still applies and weather markets rarely price there (they're longshots / coinflips / near-certs) — band tuning for the weather lane is pending a follow-up decision.
+- **Weather-only lane** (user 2026-06-23): `weather_only` profile flag (`POLYMARKET_RACE_WEATHER_ONLY`) + `is_weather_market` detector (temperature / °C / °F / weather / rainfall / snowfall / high-low temp). When on, entry selection keeps ONLY weather markets and bypasses the normal weather ban. Briefly enabled on bot 3 then reverted (weather markets rarely price in the 0.80–0.94 favorite band). Flag stays in code, **off on every profile**. `WeatherOnlyLaneTests` pin detection + keep-only-weather / bypass-ban behavior.
 - **p / q / edge in the live Telegram report** (user 2026-06-22). The 30-min LIVE REPORT's `PERFORMANCE v4` block now shows a `🎯` line **for all-time and for today**: `p` = average entry price paid, `q` = win rate (wins/(wins+losses), the realized proxy for the true win probability), and `edge(q−p)` in points. The bot is +EV only when `q > p`, so this surfaces the single number that decides whether the strategy has an advantage. Deterministic, fail-soft (`_pq_line` in `scripts/live_analyst.py`).
 
 ### Changed
