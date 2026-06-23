@@ -130,8 +130,9 @@ The **only** Telegram message. Deterministic French "RAPPORT LIVE": fires on
 Shows equity, **P&L since start (= equity − baseline)**, **total trades + win
 rate**, a **v4 performance block** (≥10 closed trades: ROI / Sharpe / profit
 factor / max DD + a **p/q/edge** line all-time & today, `🎯 p=avg entry · q=win
-rate · edge(q−p)` — +EV only when q>p — + worst per-category ROIs, ⛔ on
-auto-disabled), open positions and trades-of-the-day **each capped to the top
+rate · edge(q−p)` — +EV only when q>p — + a **best/worst category** line
+(`🥇 Meilleure catégorie … 🥶 Pire …`, ranked by realized $ P&L) + worst
+per-category ROIs, ⛔ on auto-disabled), open positions and trades-of-the-day **each capped to the top
 `LIVE_REPORT_TOP_N` winners + N worst losers** (default 5, `_winners_losers`;
 rest folded into `… +X autres`; `=0` → summary only — user 2026-06-22 "I want
 something clear as a summary"), shown positions keeping their estimated end time,
