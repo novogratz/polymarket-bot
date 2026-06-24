@@ -321,6 +321,15 @@ def _build_eligible_candidates(
         if _is_soccer_moneyline_text(question, slug):
             lane_min_price = max(lane_min_price, SOCCER_MONEYLINE_MIN_ASK)
 
+        # Crypto-only entry floor (bot 2, user 2026-06-24): when
+        # race_crypto_min_price > 0, CRYPTO markets may enter below the favorite
+        # band (down to coinflip ~0.50) while every other category keeps the
+        # standard band. Only effective once crypto is un-banned (unban_all).
+        # 0 = off (bots 1/3/zaza), so they are unaffected.
+        crypto_min = float(getattr(settings, "race_crypto_min_price", 0.0) or 0.0)
+        if crypto_min > 0 and classify_market(market) == "crypto":
+            lane_min_price = crypto_min
+
         # v4 (user 2026-06-21): absolute entry-price ceiling — never buy above
         # the hard cap (0.96) no matter what race_max_price says, so 0.97/0.98/
         # 0.99 are never tradeable. 0 disables the clamp.

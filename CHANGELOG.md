@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- **Crypto re-admitted on bot 2 via a crypto-only entry floor** (user 2026-06-24: "put back crypto on bot 2"). New `[race].crypto_min_price` (env `POLYMARKET_RACE_CRYPTO_MIN_PRICE`, default 0 = off): when > 0, CRYPTO markets (`classify_market == "crypto"`) may enter below the favorite band, down to that floor, while every other category keeps `min_price`. `grinder_b.toml` sets it to **0.50** so the grinder can buy crypto coinflips; `grinder.toml`/`grinder_zaza` leave it at 0. Only effective once crypto is un-banned (`unban_all_markets`). ⚠️ crypto coinflips can settle at \$0 — accepted on bot 2 by design. Applied per-market in `_build_eligible_candidates`; bot 1/3/zaza unaffected.
 - **p / q / edge in the live Telegram report** (user 2026-06-22). The 30-min LIVE REPORT's `PERFORMANCE v4` block now shows a `🎯` line **for all-time and for today**: `p` = average entry price paid, `q` = win rate (wins/(wins+losses), the realized proxy for the true win probability), and `edge(q−p)` in points. The bot is +EV only when `q > p`, so this surfaces the single number that decides whether the strategy has an advantage. Deterministic, fail-soft (`_pq_line` in `scripts/live_analyst.py`).
 
 ### Fixed

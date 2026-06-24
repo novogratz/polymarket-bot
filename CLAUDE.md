@@ -72,7 +72,7 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 
 Three independent live bots, each with its own wallet, `.env`, and ledger.
 
-- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bots 2 & 3) — all grinder, keep strategy keys in sync. Live data (`paper_state.json`, journals, `starting_cash.txt`) is **gitignored = per-machine**; only code + profiles are shared.
+- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bots 2 & 3) — all grinder, keep strategy keys in sync **except bot 2's deliberate crypto divergence** (user 2026-06-24): `grinder_b.toml` sets `crypto_min_price = 0.50`, letting the grinder buy CRYPTO markets below the 0.80 favorite band (down to coinflips) while every other category keeps 0.80. Crypto is already un-banned everywhere via `unban_all_markets`; this floor is what actually lets crypto coinflips trade, and it is **bot 2 only** (`grinder.toml`/`grinder_zaza` leave `crypto_min_price` at 0 = off). Crypto coinflips can settle at $0 — accepted on bot 2 by design. Live data (`paper_state.json`, journals, `starting_cash.txt`) is **gitignored = per-machine**; only code + profiles are shared.
 - **Launchers:** `run_live_70.sh` (bot 1), `run_live_b.sh` (bots 2 & 3, grinder), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
 - **Per-machine baseline:** `data/starting_cash.txt` (gitignored) sets each bot's report baseline independently of the shared profile. Written by `fresh_start.py`. Both `live_analyst._starting_cash` and `notifications._total_pnl_vs_start` prefer it.
 

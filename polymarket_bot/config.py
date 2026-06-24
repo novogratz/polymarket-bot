@@ -385,6 +385,16 @@ class Settings:
     # Entries are never placed above this price, regardless of race_max_price
     # (user 2026-06-21: "never trade 0.97/0.98/0.99"). 0 disables the clamp.
     race_max_price_hard_cap: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MAX_PRICE_HARD_CAP", 0.0))
+    # ── Crypto-only entry floor (bot 2, user 2026-06-24) ─────────────────
+    # When > 0, CRYPTO markets (classify_market == "crypto") use THIS as their
+    # min entry ask instead of race_min_price — letting the grinder buy crypto
+    # below the favorite band (down to coinflip ~0.50). 0 disables it, so
+    # crypto is held to the same band as everything else (bots 1/3/zaza). Only
+    # affects crypto; every other category keeps race_min_price. NOTE: crypto
+    # coinflips can settle at $0 — this deliberately re-admits that risk on the
+    # bot that opts in. Requires unban_all_markets (or crypto un-banned) to
+    # have any effect.
+    race_crypto_min_price: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_CRYPTO_MIN_PRICE", 0.0))
     # ── v4: unban every market category ──────────────────────────────────
     # When true, is_excluded_market is bypassed at entry selection — every
     # category is allowed and governed instead by the data-driven category

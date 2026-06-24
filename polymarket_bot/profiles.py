@@ -281,6 +281,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "stake_pct": ("POLYMARKET_RACE_STAKE_PCT", "float"),
         "fixed_stake_usd": ("POLYMARKET_RACE_FIXED_STAKE_USD", "float"),
         "max_price_hard_cap": ("POLYMARKET_RACE_MAX_PRICE_HARD_CAP", "float"),
+        "crypto_min_price": ("POLYMARKET_RACE_CRYPTO_MIN_PRICE", "float"),
         "unban_all_markets": ("POLYMARKET_UNBAN_ALL_MARKETS", "bool"),
         "category_min_samples": ("POLYMARKET_RACE_CATEGORY_MIN_SAMPLES", "int"),
         "category_disable_roi": ("POLYMARKET_RACE_CATEGORY_DISABLE_ROI", "float"),

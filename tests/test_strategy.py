@@ -4590,6 +4590,31 @@ class V4ConfigTests(unittest.TestCase):
         unbanned = self._settings(unban_all_markets=True)
         self.assertTrue(_build_eligible_candidates([crypto], unbanned))
 
+    def test_crypto_min_price_lets_crypto_below_band_bot2_only(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        # Bot 2 (user 2026-06-24): crypto_min_price = 0.50 lets crypto enter
+        # below the 0.80 favorite band (down to coinflips), crypto ONLY.
+        crypto = self._market(0.55, question="Bitcoin Up or Down on June 21?",
+                              slug="bitcoin-up-or-down", mid="btc")
+        # Off (bots 1/3/zaza): 0.55 crypto is below the 0.80 band → rejected
+        # even with unban_all.
+        off = self._settings(unban_all_markets=True, race_crypto_min_price=0.0)
+        self.assertEqual(_build_eligible_candidates([crypto], off), [])
+        # On (bot 2): 0.55 crypto now passes the lowered crypto floor.
+        on = self._settings(unban_all_markets=True, race_crypto_min_price=0.50)
+        self.assertTrue(_build_eligible_candidates([crypto], on))
+        # Still crypto-ONLY: a non-crypto market at 0.55 stays blocked by the
+        # 0.80 band — the lowered floor must not leak to other categories.
+        non_crypto = self._market(0.55, question="Will the home team reach the final?",
+                                   slug="home-team-final", mid="m1")
+        self.assertEqual(_build_eligible_candidates([non_crypto], on), [])
+        # And the crypto floor itself still bites: with a 0.70 floor, a crypto
+        # market whose BOTH sides sit below 0.70 (0.60 / 0.42) is rejected.
+        high = self._settings(unban_all_markets=True, race_crypto_min_price=0.70)
+        deep = self._market(0.60, question="Ethereum Up or Down on June 21?",
+                            slug="ethereum-up-or-down", mid="eth")
+        self.assertEqual(_build_eligible_candidates([deep], high), [])
+
     def test_liquidity_and_volume_floors(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates
         s = self._settings(unban_all_markets=True)
