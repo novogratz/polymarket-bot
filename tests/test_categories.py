@@ -110,21 +110,17 @@ class CategoryGateTests(unittest.TestCase):
                      race_max_hours=4.0, race_min_liquidity_usd=250.0,
                      race_min_volume_24h_usd=1000.0, race_fixed_stake_usd=5.0,
                      unban_all_markets=True)
-        # NB: crypto can't be the auto-disable example any more — it is hard-banned
-        # even under unban_all. Use entertainment (data-driven disable) vs sports.
-        ent = self._market(0.90, "Will this movie win an Academy Award?",
-                           "academy-award", "ent")
+        crypto = self._market(0.90, "Bitcoin Up or Down on June 21?", "btc-updown", "btc")
         sports = self._market(0.90, "Lakers vs Celtics: who wins Game 7?", "nba-game7", "nba")
-        self.assertEqual(classify_category(ent["question"], ent["slug"]), "entertainment")
-        # With entertainment disabled, only the sports market survives.
+        # With crypto disabled, only the sports market survives.
         out = _build_eligible_candidates(
-            [ent, sports], s, disabled_categories={"entertainment"}
+            [crypto, sports], s, disabled_categories={"crypto"}
         )
         slugs = {c.slug for c, _ in out}
         self.assertIn("nba-game7", slugs)
-        self.assertNotIn("academy-award", slugs)
+        self.assertNotIn("btc-updown", slugs)
         # No disabled set → both survive.
-        out_all = _build_eligible_candidates([ent, sports], s)
+        out_all = _build_eligible_candidates([crypto, sports], s)
         self.assertEqual(len({c.slug for c, _ in out_all}), 2)
 
 

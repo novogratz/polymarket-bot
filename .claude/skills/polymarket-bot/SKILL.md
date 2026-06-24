@@ -43,11 +43,8 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   ignored while fixed sizing is on. **Double-down DISABLED**
   (`double_down_enabled = false`).
 - **Unban + category auto-disable (v4):** `unban_all_markets = true` bypasses
-  `is_excluded_market` at entry selection — every category allowed EXCEPT
-  **crypto, which is always banned** (`models.is_crypto_market`, an always-on
-  filter independent of the unban flag — user 2026-06-24 "ban crypto for all
-  bots 1 2 3"). Otherwise governed by the **data-driven category auto-disable**
-  (`categories.py`): ≥ 100 realized
+  `is_excluded_market` at entry selection — every category allowed, governed by
+  the **data-driven category auto-disable** (`categories.py`): ≥ 100 realized
   trades in a category AND ROI < −5% → dropped from selection
   (`race_category_min_samples` / `race_category_disable_roi`). Computed per tick
   from the realized ledger (fail-open); `other` never disabled. Risk bounded by

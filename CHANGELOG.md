@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
-- **Crypto banned outright on all bots, even under `unban_all_markets`** (user 2026-06-24, "ban crypto for all bots 1 2 3"; "please ban crypto from your algo"). v4's `unban_all_markets = true` was letting crypto Up/Down binaries through (they showed up as live losers — Bitcoin/Ethereum Up/Down). New `models.is_crypto_market` (reusing the existing crypto question/slug substrings) is now an **always-on filter** in `_build_eligible_candidates`, applied before the auto-disable governance and independent of the unban flag — exactly like the always-on resolution-safety gate. Crypto never reaches candidate selection on bot 1, 2, or 3. `is_excluded_market_light` (copy lane) refactored to reuse the same helper. Tests: `test_crypto_banned_even_under_unban_all`; the prior "unban lets crypto through" example switched to an O/U market, and the category-disable test switched its sample to entertainment. Bets remain a flat **$5** (`fixed_stake_usd = 5.0` in both profiles, unchanged).
+- **Crypto trading restored** (user 2026-06-24, "bring back crypto trading"). Reverts the always-on crypto ban (#103) on bots 1 & 2: `_build_eligible_candidates` no longer drops crypto, so under `unban_all_markets = true` crypto markets are tradeable again (still governed by the data-driven category auto-disable). `models.is_crypto_market` removed; `is_excluded_market_light` restored to its inline crypto check. On `kzer_windows` (bot 3 + zaza) the `race_ban_crypto` flag is set back to `false`. Bets remain a flat **$5**.
 
 ### Added
 
