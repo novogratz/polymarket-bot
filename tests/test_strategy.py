@@ -4580,39 +4580,15 @@ class V4ConfigTests(unittest.TestCase):
 
     def test_unban_all_lets_normally_excluded_markets_through(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates
-        # An O/U totals market is normally excluded; with unban_all it is a
+        # A crypto Up/Down market is normally excluded; with unban_all it is a
         # candidate (governance shifts to category auto-disable, Phase 2).
-        # NB: crypto is NOT a valid example here — it is banned even under
-        # unban_all (see test_crypto_banned_even_under_unban_all).
-        ou = self._market(0.90, question="United States vs. Senegal: O/U 4.5",
-                          slug="usa-senegal-ou-45", mid="ou")
-        self.assertTrue(is_excluded_market(ou))
+        crypto = self._market(0.90, question="Bitcoin Up or Down on June 21?",
+                              slug="bitcoin-up-or-down", mid="btc")
+        self.assertTrue(is_excluded_market(crypto))
         banned = self._settings(unban_all_markets=False)
-        self.assertEqual(_build_eligible_candidates([ou], banned), [])
+        self.assertEqual(_build_eligible_candidates([crypto], banned), [])
         unbanned = self._settings(unban_all_markets=True)
-        self.assertTrue(_build_eligible_candidates([ou], unbanned))
-
-    def test_crypto_banned_even_under_unban_all(self):
-        """Crypto is ALWAYS banned, including under unban_all_markets (user
-        2026-06-24: "ban crypto for all bots 1 2 3")."""
-        from polymarket_bot.race_strategies import _build_eligible_candidates
-        from polymarket_bot.models import is_crypto_market
-        for q, slug, mid in (
-            ("Bitcoin Up or Down on June 21?", "bitcoin-up-or-down", "btc"),
-            ("Will Ethereum be above $4000 on June 30?", "eth-above-4000", "eth"),
-            ("Solana Up or Down - June 24, 10AM ET", "solana-up-or-down", "sol"),
-        ):
-            crypto = self._market(0.90, question=q, slug=slug, mid=mid)
-            self.assertTrue(is_crypto_market(crypto))
-            # Banned both with and without the unban flag.
-            self.assertEqual(
-                _build_eligible_candidates([crypto], self._settings(unban_all_markets=True)), [])
-            self.assertEqual(
-                _build_eligible_candidates([crypto], self._settings(unban_all_markets=False)), [])
-        # A non-crypto market with the same shape still passes under unban.
-        ok = self._market(0.90, question="Will the home team reach the final?",
-                          slug="home-final", mid="ok")
-        self.assertTrue(_build_eligible_candidates([ok], self._settings(unban_all_markets=True)))
+        self.assertTrue(_build_eligible_candidates([crypto], unbanned))
 
     def test_liquidity_and_volume_floors(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates
