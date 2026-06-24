@@ -36,6 +36,7 @@ from .models import (
     SOCCER_MONEYLINE_MIN_ASK,
     Candidate,
     as_float,
+    is_crypto_market,
     is_excluded_market,
     parse_dt,
     parse_json_list,
@@ -241,6 +242,12 @@ def _build_eligible_candidates(
     out: list[tuple[Candidate, float]] = []
     for market in markets:
         if not unban_all and is_excluded_market(market):
+            continue
+        # Crypto is ALWAYS banned, even under unban_all_markets (user 2026-06-24:
+        # "ban crypto for all bots 1 2 3"). Like the resolution-safety filter it
+        # ignores the unban flag — crypto Up/Down binaries have no convergence
+        # edge and were a top loss category.
+        if is_crypto_market(market):
             continue
         # v4 data-driven governance: drop auto-disabled categories.
         if disabled and classify_market(market) in disabled:
