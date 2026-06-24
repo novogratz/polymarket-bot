@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **Crypto trading restored on bot 3 + zaza** (user 2026-06-24, "bring back crypto trading"). `ban_crypto` set back to `false` in `grinder_b.toml` + `grinder_zaza.toml`, so crypto markets are tradeable again under `unban_all_markets` (governed by the data-driven category auto-disable). The `race_ban_crypto` flag + `BanCryptoLaneTests` stay in code — flip the profile flag back to `true` to re-ban. Mirrors the main-branch revert of the bot 1/2 ban (#104).
+
 ### Added
 
 - **`ban_crypto` flag — crypto banned on bot 3 + zaza** (user 2026-06-24, "ban crypto on grinder 3 + zaza"): new `ban_crypto` profile flag (`POLYMARKET_RACE_BAN_CRYPTO`) drops any market that `classify_category` tags `crypto` at entry selection — an ALWAYS-ON exclusion that survives `unban_all_markets` (which otherwise bypasses the whole ban list). Set `true` on `grinder_b.toml` + `grinder_zaza.toml`; bot 1 (`grinder.toml`) leaves it off. Live scan confirmed 614 crypto markets dropped, 0 reach eligibility. `BanCryptoLaneTests` pin the drop-under-unban and the off-path.
