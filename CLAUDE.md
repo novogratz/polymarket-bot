@@ -72,7 +72,11 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 
 Three independent live bots, each with its own wallet, `.env`, and ledger.
 
-- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bots 2 & 3) — all grinder, keep strategy keys in sync **except bot 2's deliberate crypto divergence** (user 2026-06-24): `grinder_b.toml` sets `crypto_min_price = 0.50`, letting the grinder buy CRYPTO markets below the 0.80 favorite band (down to coinflips) while every other category keeps 0.80. Crypto is already un-banned everywhere via `unban_all_markets`; this floor is what actually lets crypto coinflips trade, and it is **bot 2 only** (`grinder.toml`/`grinder_zaza` leave `crypto_min_price` at 0 = off). Crypto coinflips can settle at $0 — accepted on bot 2 by design. Live data (`paper_state.json`, journals, `starting_cash.txt`) is **gitignored = per-machine**; only code + profiles are shared.
+- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bots 2 & 3) — all grinder, keep strategy keys in sync **except bot 2's deliberate divergences**:
+  - **Crypto floor** (user 2026-06-24): `grinder_b.toml` sets `crypto_min_price = 0.50`, letting the grinder buy CRYPTO markets below the 0.85 non-crypto floor (down to coinflips) while every other category keeps 0.85. Crypto is already un-banned everywhere via `unban_all_markets`; this floor is what actually lets crypto coinflips trade, and it is **bot 2 only**. Crypto coinflips can settle at $0 — accepted on bot 2 by design.
+  - **Tighter non-crypto entry floor** (agent 2026-06-24): `min_price = 0.85` (vs 0.80 on bot 1). The 0.80–0.85 price bucket had −8.1% ROI across 527 historical trades; raising the floor focuses bot 2 on the proven 0.85–0.94 band. `crypto_min_price` overrides this for crypto markets only.
+  - **Early category auto-disable** (agent 2026-06-24): `category_min_samples = 20` (vs 100 on bot 1). Soccer (21 trades, −26.7% ROI) is immediately auto-disabled at runtime. Bot 1 keeps the 100-sample conservative gate.
+  Live data (`paper_state.json`, journals, `starting_cash.txt`) is **gitignored = per-machine**; only code + profiles are shared.
 - **Launchers:** `run_live_70.sh` (bot 1), `run_live_b.sh` (bots 2 & 3, grinder), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
 - **Per-machine baseline:** `data/starting_cash.txt` (gitignored) sets each bot's report baseline independently of the shared profile. Written by `fresh_start.py`. Both `live_analyst._starting_cash` and `notifications._total_pnl_vs_start` prefer it.
 
