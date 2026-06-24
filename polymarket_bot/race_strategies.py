@@ -37,6 +37,7 @@ from .models import (
     Candidate,
     as_float,
     is_excluded_market,
+    is_hard_excluded_market,
     parse_dt,
     parse_json_list,
     utc_now,
@@ -241,6 +242,9 @@ def _build_eligible_candidates(
     out: list[tuple[Candidate, float]] = []
     for market in markets:
         if not unban_all and is_excluded_market(market):
+            continue
+        # Hard bans that survive unban_all_markets (esports + speech).
+        if is_hard_excluded_market(market):
             continue
         # v4 data-driven governance: drop auto-disabled categories.
         if disabled and classify_market(market) in disabled:

@@ -4590,6 +4590,24 @@ class V4ConfigTests(unittest.TestCase):
         unbanned = self._settings(unban_all_markets=True)
         self.assertTrue(_build_eligible_candidates([crypto], unbanned))
 
+    def test_esports_and_speech_blocked_even_with_unban_all(self):
+        # Hard bans (esports + speech) must survive unban_all_markets=True.
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        unbanned = self._settings(unban_all_markets=True)
+
+        dota = self._market(0.92, question="Dota 2: GamerLegion vs 4 Anchors - Map 1 Winner",
+                            slug="dota2-gamerlegion-vs-4anchors", mid="m1")
+        self.assertEqual(_build_eligible_candidates([dota], unbanned), [])
+
+        speech = self._market(0.92, question='Will Trump say "Hottest" during June 24 Rally?',
+                              slug="trump-say-hottest-rally", mid="m2")
+        self.assertEqual(_build_eligible_candidates([speech], unbanned), [])
+
+        # Crypto (a standard unban_all admission) still gets through.
+        crypto = self._market(0.90, question="Bitcoin Up or Down on June 21?",
+                              slug="bitcoin-up-or-down", mid="btc")
+        self.assertTrue(_build_eligible_candidates([crypto], unbanned))
+
     def test_crypto_min_price_lets_crypto_below_band_bot2_only(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates
         # Bot 2 (user 2026-06-24): crypto_min_price = 0.50 lets crypto enter

@@ -4,7 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **Esports and speech markets now blocked even under `unban_all_markets=true`** (agent 2026-06-24). Both bans live inside `is_excluded_market` which is bypassed by `unban_all`. A Dota 2 market ("GamerLegion vs 4 Anchors") and a speech market ("Will Trump say 'Hottest'…") both slipped through and entered. Fix: new `is_hard_excluded_market(market)` in `models.py` applies the esports (`is_esports_text`) and speech (`_SPEECH_MARKET_RE`) checks unconditionally, called in `_build_eligible_candidates` just after the `unban_all` gate — same pattern as the always-on `min_resolution_clarity` filter. Existing open positions are held; new esports/speech entries are blocked. Test added: `test_esports_and_speech_blocked_even_with_unban_all`.
+
 ### Changed (bot 2 only)
+
+- **Crypto coinflip floor disabled: `crypto_min_price` 0.50 → 0** (agent 2026-06-24, emergency rollback). The Gamma complement price for a neg_risk "Down" outcome (`1 − Up_bid`) is disconnected from the actual Down-token CLOB price. The grinder selected Down at Gamma-computed ask=0.61 (passes min_price=0.50 filter) but the FOK filled at the real CLOB ask=0.09–0.26, buying a 9–26% underdog instead of the intended 61% favorite. As Bitcoin rallied through the afternoon the cumulative Down losses were: −$4.28, −$4.91, −$4.25, −$3.40, −$4.61, −$7.82 (the last entry double-bought). `crypto_min_price` set to 0 (disabled) until the grinder verifies CLOB price ≈ Gamma complement before placing the FOK.
 
 - **Tighter non-crypto entry floor: 0.80 → 0.85** (agent 2026-06-24). Analysis of 527 realized trades showed the 0.80–0.85 price bucket had −8.1% ROI while 0.90–0.94 ran +3.5%. `grinder_b.toml` `min_price` raised from 0.80 to 0.85, keeping bot 1/3 at 0.80. Crypto is unaffected: `crypto_min_price = 0.50` overrides `min_price` for any market classified as `crypto`, so BTC/ETH/SOL coinflips still enter at 0.50–0.94.
 - **Soccer auto-disable now active: `category_min_samples` 100 → 20** (agent 2026-06-24). Soccer had 21 trades at −26.7% ROI (dominated by pre-ban O/U 4.5 losses and goal-gap crashes) but the 100-sample gate would never trigger within a normal season. Lowered to 20 so soccer (21 ≥ 20, ROI −26.7% < −5%) is auto-disabled at every tick. Live bot confirms `category auto-disable: ['soccer']`. Any category with ≥ 20 trades and ROI < −5% is blocked at entry selection.

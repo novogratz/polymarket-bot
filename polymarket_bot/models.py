@@ -418,6 +418,21 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
     return False
 
 
+def is_hard_excluded_market(market: dict) -> bool:
+    """Hard bans that survive unban_all_markets=True (unlike is_excluded_market).
+
+    Esports and speech markets are banned outright per user instructions and
+    must not be admitted regardless of category-governance settings.
+    """
+    q = str(market.get("question") or "").lower()
+    slug = str(market.get("slug") or "").lower()
+    if is_esports_text(q, slug):
+        return True
+    if _SPEECH_MARKET_RE.search(q) or _SPEECH_MARKET_RE.search(slug.replace("-", " ")):
+        return True
+    return False
+
+
 @dataclass(frozen=True)
 class Candidate:
     market_id: str
