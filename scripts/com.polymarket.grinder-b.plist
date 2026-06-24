@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS LaunchAgent for Grinder Bot 2 (watchdog).
+  Install:
+    cp scripts/com.polymarket.grinder-b.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.polymarket.grinder-b.plist
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.polymarket.grinder-b.plist
+    rm ~/Library/LaunchAgents/com.polymarket.grinder-b.plist
+
+  Check status:
+    launchctl list | grep polymarket
+
+  Logs:
+    tail -f /Users/benoitfloch/polymarket-bot/data/logs/watchdog_b.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.polymarket.grinder-b</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/benoitfloch/polymarket-bot/scripts/watchdog_b.sh</string>
+    </array>
+
+    <!-- Start on login AND restart automatically if the process exits -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/benoitfloch/polymarket-bot</string>
+
+    <!-- Stdout/stderr for the watchdog wrapper itself; run_live_b.sh has its own log -->
+    <key>StandardOutPath</key>
+    <string>/Users/benoitfloch/polymarket-bot/data/logs/launchd_grinder_b.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/benoitfloch/polymarket-bot/data/logs/launchd_grinder_b_err.log</string>
+
+    <!-- Minimal environment so uv / python are found -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/benoitfloch</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/benoitfloch/.cargo/bin:/Users/benoitfloch/.local/bin</string>
+    </dict>
+</dict>
+</plist>
