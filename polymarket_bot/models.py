@@ -340,6 +340,23 @@ _CRYPTO_QUESTION_SUBSTRINGS = (
 _CRYPTO_SLUG_SUBSTRINGS = ("updown", "up-or-down")
 
 
+def is_crypto_market(market: dict[str, Any]) -> bool:
+    """True for any crypto market — Up/Down binaries, price thresholds, named
+    coins (BTC/ETH/SOL/XRP/…).
+
+    Used as an ALWAYS-ON ban that survives ``unban_all_markets`` (user
+    2026-06-24: "ban crypto for all bots 1 2 3"): crypto never trades even when
+    the v4 unban flag bypasses the full ``is_excluded_market`` list. Crypto
+    Up/Down binaries have no ride-to-resolution convergence edge and were a top
+    loss category."""
+    q = str(market.get("question") or "").lower()
+    slug = str(market.get("slug") or "").lower()
+    return (
+        any(p in q for p in _CRYPTO_QUESTION_SUBSTRINGS)
+        or any(p in slug for p in _CRYPTO_SLUG_SUBSTRINGS)
+    )
+
+
 def is_excluded_market_light(market: dict[str, Any], now: datetime | None = None) -> bool:
     """Lighter exclusion for the COPY lane (bot 2): ban ONLY crypto + stocks
     (the user's standing outright bans). Everything the grinder excludes for
@@ -350,9 +367,7 @@ def is_excluded_market_light(market: dict[str, Any], now: datetime | None = None
     settings.smart_copy_light_exclusions)."""
     q = str(market.get("question") or "").lower()
     slug = str(market.get("slug") or "").lower()
-    if any(p in q for p in _CRYPTO_QUESTION_SUBSTRINGS) or any(
-        p in slug for p in _CRYPTO_SLUG_SUBSTRINGS
-    ):
+    if is_crypto_market(market):
         return True
     raw_q = str(market.get("question") or "")
     is_stock = (

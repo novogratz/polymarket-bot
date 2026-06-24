@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **Crypto banned outright on all bots, even under `unban_all_markets`** (user 2026-06-24, "ban crypto for all bots 1 2 3"; "please ban crypto from your algo"). v4's `unban_all_markets = true` was letting crypto Up/Down binaries through (they showed up as live losers — Bitcoin/Ethereum Up/Down). New `models.is_crypto_market` (reusing the existing crypto question/slug substrings) is now an **always-on filter** in `_build_eligible_candidates`, applied before the auto-disable governance and independent of the unban flag — exactly like the always-on resolution-safety gate. Crypto never reaches candidate selection on bot 1, 2, or 3. `is_excluded_market_light` (copy lane) refactored to reuse the same helper. Tests: `test_crypto_banned_even_under_unban_all`; the prior "unban lets crypto through" example switched to an O/U market, and the category-disable test switched its sample to entertainment. Bets remain a flat **$5** (`fixed_stake_usd = 5.0` in both profiles, unchanged).
+
 ### Added
 
 - **Best / worst category in the live report** (user 2026-06-23, "when you give p and q … give the top category where the bot made money and worst category"). The `PERFORMANCE v4` block now adds a `🥇 Meilleure catégorie … 🥶 Pire …` line right under the p/q/edge lines, ranking realized categories by **total $ P&L** (with ROI and trade count shown alongside). Skips the catch-all `other` bucket; collapses to a single entry when only one category has traded. `_v4_performance_lines` in `scripts/live_analyst.py`; appears once ≥10 closed trades exist.
