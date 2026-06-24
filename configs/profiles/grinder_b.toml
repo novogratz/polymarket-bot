@@ -92,6 +92,9 @@ fixed_stake_usd = 5.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
+# Ban crypto (user 2026-06-24): drop crypto markets even under unban_all —
+# an always-on category exclusion. Diverges from bot 1 (which leaves crypto on).
+ban_crypto = true
 # Data-driven category auto-disable (user 2026-06-21): after ≥ 100 realized
 # trades in a category, drop it from entry selection if its ROI < −5%.
 # Forward-looking — a fresh bot disables nothing.

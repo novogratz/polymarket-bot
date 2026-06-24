@@ -3564,6 +3564,44 @@ class WeatherOnlyLaneTests(unittest.TestCase):
         self.assertEqual(_build_eligible_candidates([weather], settings), [])
 
 
+class BanCryptoLaneTests(unittest.TestCase):
+    """User 2026-06-24: ban crypto on bot 3 + zaza even under unban_all."""
+
+    @staticmethod
+    def _market(mid, question, slug):
+        # Ask 0.93 clears the 0.92 soccer-moneyline floor so a non-crypto
+        # market isn't dropped for an unrelated reason.
+        return {
+            "id": mid, "question": question, "slug": slug,
+            "acceptingOrders": True, "liquidity": 1500, "volume24hr": 2000,
+            "bestBid": 0.92, "bestAsk": 0.93, "orderPriceMinTickSize": 0.01,
+            "outcomes": '["Yes", "No"]', "outcomePrices": '["0.93", "0.07"]',
+            "clobTokenIds": f'["tok-{mid}-y", "tok-{mid}-n"]',
+            "endDate": (utc_now() + timedelta(hours=2)).isoformat(),
+        }
+
+    def test_ban_crypto_drops_crypto_under_unban_all(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0,
+                            unban_all_markets=True, race_ban_crypto=True)
+        btc = self._market("c", "Will Bitcoin be above $100k on June 24?", "bitcoin-above-100k")
+        sport = self._market("s", "Will Team S win on 2026-06-24?", "team-s-win")
+        ids = {c.market_id for c, _ in _build_eligible_candidates([btc, sport], settings)}
+        self.assertEqual(ids, {"s"})  # crypto dropped, sport kept
+
+    def test_crypto_traded_when_ban_off_under_unban_all(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0,
+                            unban_all_markets=True, race_ban_crypto=False)
+        btc = self._market("c", "Will Bitcoin be above $100k on June 24?", "bitcoin-above-100k")
+        ids = {c.market_id for c, _ in _build_eligible_candidates([btc], settings)}
+        self.assertEqual(ids, {"c"})  # unban_all keeps crypto when ban off
+
+
 class DynamicEntryWindowTests(unittest.TestCase):
     """User rule 2026-06-11: prefer bets ≤4h from resolution; if nothing is
     actionable, widen the window 4 → 6 → 8 → 10 and stop at 12h max."""

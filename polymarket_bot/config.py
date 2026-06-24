@@ -353,6 +353,11 @@ class Settings:
     # (is_weather_market) and bypasses the normal ban list (weather is banned
     # there). Bot 3 is configured weather-only; the other bots leave this off.
     race_weather_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_WEATHER_ONLY", False))
+    # ── crypto ban (user 2026-06-24) ─────────────────────────────────────
+    # When true, crypto markets are dropped at entry selection EVEN under
+    # unban_all_markets — an always-on category exclusion (classify_category
+    # == "crypto"). Set on bot 3 + zaza; bot 1 leaves it off.
+    race_ban_crypto: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_BAN_CRYPTO", False))
     # ── v4: data-driven category auto-disable ────────────────────────────
     # The governance that replaces manual bans (user 2026-06-21): after at
     # least ``min_samples`` realized trades in a category, that category is

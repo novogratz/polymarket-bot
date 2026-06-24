@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **`ban_crypto` flag — crypto banned on bot 3 + zaza** (user 2026-06-24, "ban crypto on grinder 3 + zaza"): new `ban_crypto` profile flag (`POLYMARKET_RACE_BAN_CRYPTO`) drops any market that `classify_category` tags `crypto` at entry selection — an ALWAYS-ON exclusion that survives `unban_all_markets` (which otherwise bypasses the whole ban list). Set `true` on `grinder_b.toml` + `grinder_zaza.toml`; bot 1 (`grinder.toml`) leaves it off. Live scan confirmed 614 crypto markets dropped, 0 reach eligibility. `BanCryptoLaneTests` pin the drop-under-unban and the off-path.
+
 ### Changed
 
 - **bot 3 + zaza realigned to bot 1** (user 2026-06-23, "align bot 3 + zaza with bot 1 — it's making money"): reverted bot 3's weather-only experiment (`weather_only` off, window 24 h → 4 h). Both `grinder_b.toml` and `grinder_zaza.toml` `[race]` sections are now **byte-identical to bot 1** (`grinder.toml`): v4 — 4 h window, 0.80–0.94 band (hard cap 0.96), `fixed_stake_usd = 5`, `unban_all_markets`, 12 orders/tick, `sl_pct 0.30` + `sl_min_exit_price 0.50`, `resolved_exit_threshold 0.99`. (zaza already matched; only bot 3 changed.) The `weather_only` flag + `is_weather_market` detector remain in code (disabled on all profiles) for future use.
