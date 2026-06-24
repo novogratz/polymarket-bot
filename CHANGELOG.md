@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed (bot 2 only)
+
+- **Tighter non-crypto entry floor: 0.80 → 0.85** (agent 2026-06-24). Analysis of 527 realized trades showed the 0.80–0.85 price bucket had −8.1% ROI while 0.90–0.94 ran +3.5%. `grinder_b.toml` `min_price` raised from 0.80 to 0.85, keeping bot 1/3 at 0.80. Crypto is unaffected: `crypto_min_price = 0.50` overrides `min_price` for any market classified as `crypto`, so BTC/ETH/SOL coinflips still enter at 0.50–0.94.
+- **Soccer auto-disable now active: `category_min_samples` 100 → 20** (agent 2026-06-24). Soccer had 21 trades at −26.7% ROI (dominated by pre-ban O/U 4.5 losses and goal-gap crashes) but the 100-sample gate would never trigger within a normal season. Lowered to 20 so soccer (21 ≥ 20, ROI −26.7% < −5%) is auto-disabled at every tick. Live bot confirms `category auto-disable: ['soccer']`. Any category with ≥ 20 trades and ROI < −5% is blocked at entry selection.
+
 ### Added
 
 - **Crypto re-admitted on bot 2 via a crypto-only entry floor** (user 2026-06-24: "put back crypto on bot 2"). New `[race].crypto_min_price` (env `POLYMARKET_RACE_CRYPTO_MIN_PRICE`, default 0 = off): when > 0, CRYPTO markets (`classify_market == "crypto"`) may enter below the favorite band, down to that floor, while every other category keeps `min_price`. `grinder_b.toml` sets it to **0.50** so the grinder can buy crypto coinflips; `grinder.toml`/`grinder_zaza` leave it at 0. Only effective once crypto is un-banned (`unban_all_markets`). ⚠️ crypto coinflips can settle at \$0 — accepted on bot 2 by design. Applied per-market in `_build_eligible_candidates`; bot 1/3/zaza unaffected.
