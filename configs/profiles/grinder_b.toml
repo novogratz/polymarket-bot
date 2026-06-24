@@ -61,16 +61,18 @@ min_volume_24h_usd = 1000.0
 # v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
 # 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
 # is the ABSOLUTE ceiling — 0.97/0.98/0.99 are never tradeable.
-min_price = 0.80
+min_price = 0.85
 max_price = 0.94
 max_price_hard_cap = 0.96
 
 # Crypto-only entry floor (bot 2 ONLY, user 2026-06-24: "put back crypto on
 # bot 2"). Crypto is already un-banned here via unban_all_markets, but the
-# 0.80 band keeps the grinder out of crypto coinflips (~0.50). This lowers the
+# 0.85 band keeps the grinder out of crypto coinflips (~0.50). This lowers the
 # floor TO 0.50 for CRYPTO markets only — every other category still needs
-# 0.80. Bot 1/3/zaza leave this at 0 (off). WARNING: crypto coinflips can
+# 0.85. Bot 1/3/zaza leave this at 0 (off). WARNING: crypto coinflips can
 # settle at $0; this re-admits that risk on bot 2 by design. Set to 0 to revert.
+# Agent improvement 2026-06-24: raised non-crypto floor from 0.80 to 0.85;
+# the 0.80-0.85 bucket was -8.1% ROI across historical trades. Crypto keeps 0.50.
 crypto_min_price = 0.50
 
 # Spread 2¢ → 4¢ (2026-05-30): the wider 0.85-0.97 band includes slightly
@@ -94,10 +96,11 @@ fixed_stake_usd = 5.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
-# Data-driven category auto-disable (user 2026-06-21): after ≥ 100 realized
-# trades in a category, drop it from entry selection if its ROI < −5%.
-# Forward-looking — a fresh bot disables nothing.
-category_min_samples = 100
+# Data-driven category auto-disable: after ≥ min_samples realized trades in a
+# category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
+# at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh
+# bot disables nothing; "other" is never disabled.
+category_min_samples = 20
 category_disable_roi = -0.05
 # v4 forecasting EV / quality gates (user 2026-06-21) — OPT-IN, 0 = off.
 # The forecaster (forecast.py) calibrates a favorite's win probability per
