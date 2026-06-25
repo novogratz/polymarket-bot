@@ -421,7 +421,7 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
 def is_hard_excluded_market(market: dict) -> bool:
     """Hard bans that survive unban_all_markets=True (unlike is_excluded_market).
 
-    Esports and speech markets are banned outright per user instructions and
+    Esports, speech, and temperature/weather markets are banned outright and
     must not be admitted regardless of category-governance settings.
     """
     q = str(market.get("question") or "").lower()
@@ -429,6 +429,11 @@ def is_hard_excluded_market(market: dict) -> bool:
     if is_esports_text(q, slug):
         return True
     if _SPEECH_MARKET_RE.search(q) or _SPEECH_MARKET_RE.search(slug.replace("-", " ")):
+        return True
+    # Temperature/weather threshold markets: all resolve at the same daily time,
+    # drain all cash in a single sweep, and have no SL protection. Moving from
+    # the soft ban (is_excluded_market, bypassed by unban_all) to a hard ban.
+    if "°c" in q or "°f" in q or "temperature" in q:
         return True
     return False
 
