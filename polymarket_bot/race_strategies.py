@@ -2774,6 +2774,16 @@ def _run_race_tick(
         # dedup used to prevent — without it (race_stake_pct ≤ 0) top-ups
         # stay disabled entirely.
         topup_pos = portfolio.open_position_for_token(candidate.token_id)
+        # Belt-and-suspenders: same question+outcome fallback as _actionable_candidates,
+        # in case the first check missed due to token_id mismatch across Gamma scans.
+        if topup_pos is None and candidate.question:
+            topup_pos = next(
+                (p for p in portfolio.positions
+                 if p.get("status") == "open"
+                 and p.get("question") == candidate.question
+                 and p.get("outcome") == candidate.outcome),
+                None,
+            )
         topup_room = 0.0
         if topup_pos is not None:
             equity_now = float(portfolio.summary().get("equity", portfolio.cash))
