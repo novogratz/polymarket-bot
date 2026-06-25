@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **Cross-tick double-entry for crypto "Up or Down" hourly markets** (agent 2026-06-24). `_actionable_candidates` deduplicates open positions by `token_id` and by game-key, but for crypto hourly markets (`eventSlug` often empty, question doesn't match VS/win-on-date patterns) both checks can miss — causing a second tick to re-buy the same market as a fresh $5 position (booked as a top-up, doubling the stake). Fix: added a fallback check in `_actionable_candidates` that matches any open position with the same `(question, outcome)` pair when `open_position_for_token` returns None. Exact question+outcome is unambiguous across consecutive ticks; the fallback fires before the game-key check and correctly blocks re-entry when stake ≥ cap.
+
 - **Esports and speech markets now blocked even under `unban_all_markets=true`** (agent 2026-06-24). Both bans live inside `is_excluded_market` which is bypassed by `unban_all`. A Dota 2 market ("GamerLegion vs 4 Anchors") and a speech market ("Will Trump say 'Hottest'…") both slipped through and entered. Fix: new `is_hard_excluded_market(market)` in `models.py` applies the esports (`is_esports_text`) and speech (`_SPEECH_MARKET_RE`) checks unconditionally, called in `_build_eligible_candidates` just after the `unban_all` gate — same pattern as the always-on `min_resolution_clarity` filter. Existing open positions are held; new esports/speech entries are blocked. Test added: `test_esports_and_speech_blocked_even_with_unban_all`.
 
 ### Changed (bot 2 only)

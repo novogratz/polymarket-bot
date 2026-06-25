@@ -2426,6 +2426,19 @@ def _actionable_candidates(
         if portfolio.has_pending_token(c.token_id):
             continue
         open_pos = portfolio.open_position_for_token(c.token_id)
+        # Fallback: token_id lookup can miss for crypto Up/Down hourly markets
+        # (consecutive ticks both see the same market; the token_id or
+        # game-key from the Gamma scan doesn't match what was stored at fill).
+        # Exact question+outcome is unambiguous — if an open position has the
+        # same (question, outcome) pair, treat it as the same position.
+        if open_pos is None and c.question:
+            open_pos = next(
+                (p for p in portfolio.positions
+                 if p.get("status") == "open"
+                 and p.get("question") == c.question
+                 and p.get("outcome") == c.outcome),
+                None,
+            )
         if open_pos is not None:
             if cap - float(open_pos.get("stake") or 0.0) < _TOPUP_MIN_USD:
                 continue

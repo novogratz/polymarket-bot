@@ -73,7 +73,12 @@ max_price_hard_cap = 0.96
 # settle at $0; this re-admits that risk on bot 2 by design. Set to 0 to revert.
 # Agent improvement 2026-06-24: raised non-crypto floor from 0.80 to 0.85;
 # the 0.80-0.85 bucket was -8.1% ROI across historical trades. Crypto keeps 0.50.
-crypto_min_price = 0.50
+crypto_min_price = 0.0   # DISABLED 2026-06-24: Gamma complement pricing for neg_risk
+                         # Down outcomes (Down ask = 1 - Up_bid) does NOT match the
+                         # actual Down token CLOB price. FOK fills at real CLOB price
+                         # (e.g. 0.09-0.26) while bot filters at Gamma complement price
+                         # (0.61-0.69), causing massive losers. Re-enable only after
+                         # code verifies CLOB price ≈ Gamma complement before ordering.
 
 # Spread 2¢ → 4¢ (2026-05-30): the wider 0.85-0.97 band includes slightly
 # thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.
@@ -179,7 +184,11 @@ arb_max_stake_usd = 5.0
 
 [telemetry]
 quiet = false
-auto_interval_seconds = 10
+auto_interval_seconds = 30   # raised 10→30 (agent 2026-06-24): double-entry bug —
+                              # consecutive 10s ticks both saw the same eligible market
+                              # before the first FOK's position was registered in
+                              # _open_game_keys. 30s gives the API fill + ledger write
+                              # time to complete before the next scan.
 stdout_heartbeat_minutes = 15
 
 [filters]
