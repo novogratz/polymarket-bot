@@ -2440,7 +2440,14 @@ def _actionable_candidates(
                 None,
             )
         if open_pos is not None:
-            if cap - float(open_pos.get("stake") or 0.0) < _TOPUP_MIN_USD:
+            existing_stake = float(open_pos.get("stake") or 0.0)
+            # Guard: _sync_live_positions can zero stake when the live API
+            # hasn't indexed the fill yet (initialValue=0 glitch). With
+            # stake=0, topup_room = cap = _TOPUP_MIN_USD, and the strict
+            # `< _TOPUP_MIN_USD` check is False — the dedup fires `continue`
+            # only when topup_room < _TOPUP_MIN_USD, missing this edge case.
+            # Treat stake≤0 on an open position as "position is held, no room".
+            if existing_stake <= 0 or cap - existing_stake < _TOPUP_MIN_USD:
                 continue
         elif portfolio.has_open_event_position(c):
             continue
@@ -2790,8 +2797,12 @@ def _run_race_tick(
             # Passive top-up fills only to the ENTRY cap; the dip double-down
             # owns the headroom up to the hard per-position cap.
             cap = _entry_cap_usd(settings, equity_now)
-            topup_room = cap - float(topup_pos.get("stake") or 0.0)
-            if cap <= 0 or topup_room < _TOPUP_MIN_USD:
+            existing_stake = float(topup_pos.get("stake") or 0.0)
+            topup_room = cap - existing_stake
+            # Same stake=0 guard as _actionable_candidates: if _sync_live_positions
+            # zeroed the stake (live API initialValue=0 glitch), topup_room equals
+            # cap = _TOPUP_MIN_USD, slipping through the strict `< _TOPUP_MIN_USD` check.
+            if cap <= 0 or existing_stake <= 0 or topup_room < _TOPUP_MIN_USD:
                 rejected.append({"question": candidate.question, "reason": "topup_cap_reached"})
                 continue
         ev_slug = str(candidate.event_slug or "")
