@@ -4580,9 +4580,12 @@ class V4ConfigTests(unittest.TestCase):
 
     def test_unban_all_lets_normally_excluded_markets_through(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates
-        # A crypto Up/Down market is normally excluded; with unban_all it is a
-        # candidate (governance shifts to category auto-disable, Phase 2).
-        crypto = self._market(0.90, question="Bitcoin Up or Down on June 21?",
+        # A windowed (hourly) crypto Up/Down market is normally excluded by
+        # is_excluded_market; with unban_all it is a candidate (governance
+        # shifts to category auto-disable). The "Up or Down - HH:MM ET" format
+        # is the safe windowed kind; daily-EOD "Up or Down on DATE?" is
+        # hard-banned separately (see test_daily_crypto_price_hard_banned).
+        crypto = self._market(0.90, question="Bitcoin Up or Down - June 25, 3AM ET",
                               slug="bitcoin-up-or-down", mid="btc")
         self.assertTrue(is_excluded_market(crypto))
         banned = self._settings(unban_all_markets=False)
@@ -4603,16 +4606,37 @@ class V4ConfigTests(unittest.TestCase):
                               slug="trump-say-hottest-rally", mid="m2")
         self.assertEqual(_build_eligible_candidates([speech], unbanned), [])
 
-        # Crypto (a standard unban_all admission) still gets through.
-        crypto = self._market(0.90, question="Bitcoin Up or Down on June 21?",
+        # Windowed crypto (a standard unban_all admission) still gets through.
+        crypto = self._market(0.90, question="Bitcoin Up or Down - June 25, 3AM ET",
                               slug="bitcoin-up-or-down", mid="btc")
         self.assertTrue(_build_eligible_candidates([crypto], unbanned))
+
+    def test_daily_crypto_price_hard_banned(self):
+        # Daily EOD crypto price/direction markets are hard-banned even under
+        # unban_all_markets=True. They gap catastrophically on intraday swings.
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        unbanned = self._settings(unban_all_markets=True)
+
+        daily_dir = self._market(0.90, question="Bitcoin Up or Down on June 25?",
+                                 slug="bitcoin-updown-june25", mid="btc1")
+        self.assertEqual(_build_eligible_candidates([daily_dir], unbanned), [])
+
+        daily_price = self._market(0.90,
+                                   question="Will the price of BTC be above $60,000 on June 25?",
+                                   slug="btc-above-60k", mid="btc2")
+        self.assertEqual(_build_eligible_candidates([daily_price], unbanned), [])
+
+        # Windowed (hourly) markets are NOT affected.
+        windowed = self._market(0.90, question="Bitcoin Up or Down - June 25, 3AM ET",
+                                slug="bitcoin-up-or-down", mid="btc3")
+        self.assertTrue(_build_eligible_candidates([windowed], unbanned))
 
     def test_crypto_min_price_lets_crypto_below_band_bot2_only(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates
         # Bot 2 (user 2026-06-24): crypto_min_price = 0.50 lets crypto enter
         # below the 0.80 favorite band (down to coinflips), crypto ONLY.
-        crypto = self._market(0.55, question="Bitcoin Up or Down on June 21?",
+        # Use the windowed "Up or Down - HH:MM ET" format (not daily-EOD "on DATE?").
+        crypto = self._market(0.55, question="Bitcoin Up or Down - June 25, 3AM ET",
                               slug="bitcoin-up-or-down", mid="btc")
         # Off (bots 1/3/zaza): 0.55 crypto is below the 0.80 band → rejected
         # even with unban_all.
@@ -4629,7 +4653,7 @@ class V4ConfigTests(unittest.TestCase):
         # And the crypto floor itself still bites: with a 0.70 floor, a crypto
         # market whose BOTH sides sit below 0.70 (0.60 / 0.42) is rejected.
         high = self._settings(unban_all_markets=True, race_crypto_min_price=0.70)
-        deep = self._market(0.60, question="Ethereum Up or Down on June 21?",
+        deep = self._market(0.60, question="Ethereum Up or Down - June 25, 3AM ET",
                             slug="ethereum-up-or-down", mid="eth")
         self.assertEqual(_build_eligible_candidates([deep], high), [])
 

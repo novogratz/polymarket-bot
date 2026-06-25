@@ -110,7 +110,7 @@ class CategoryGateTests(unittest.TestCase):
                      race_max_hours=4.0, race_min_liquidity_usd=250.0,
                      race_min_volume_24h_usd=1000.0, race_fixed_stake_usd=5.0,
                      unban_all_markets=True)
-        crypto = self._market(0.90, "Bitcoin Up or Down on June 21?", "btc-updown", "btc")
+        crypto = self._market(0.90, "Bitcoin Up or Down - June 25, 3AM ET", "btc-updown", "btc")
         sports = self._market(0.90, "Lakers vs Celtics: who wins Game 7?", "nba-game7", "nba")
         # With crypto disabled, only the sports market survives.
         out = _build_eligible_candidates(

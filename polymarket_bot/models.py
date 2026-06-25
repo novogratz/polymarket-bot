@@ -298,6 +298,17 @@ _SPEECH_MARKET_RE = re.compile(
     r"\b(?:says?|said|saying|mentions?|mentioned|utters?|uttered)\b"
 )
 
+# Daily EOD crypto price/direction markets: "Will the price of BTC be above $X?"
+# and "Bitcoin Up or Down on June 25?" resolve at end-of-day, not in a short
+# momentum window. They move catastrophically on 5-10% intraday price swings
+# (BTC/ETH crashed 2026-06-25, wiping 4 positions at ~$4.25 each). The
+# profitable 15m/4h windowed markets use "Up or Down - June 25, HH:MM" (dash +
+# time), so they are NOT caught by this regex.
+_DAILY_CRYPTO_PRICE_RE = re.compile(
+    r"\b(?:up or down on|will the price of)\b",
+    re.IGNORECASE,
+)
+
 
 def is_esports_text(question: str, slug: str = "") -> bool:
     """True for any esports market — all are banned outright (2026-06-19)."""
@@ -434,6 +445,13 @@ def is_hard_excluded_market(market: dict) -> bool:
     # drain all cash in a single sweep, and have no SL protection. Moving from
     # the soft ban (is_excluded_market, bypassed by unban_all) to a hard ban.
     if "°c" in q or "°f" in q or "temperature" in q:
+        return True
+    # Daily EOD crypto price/direction markets: "Will the price of BTC be above
+    # $X on June 25?" and "Bitcoin Up or Down on June 25?" gap catastrophically
+    # on intraday price swings (2026-06-25: 4 positions ~$4.25 each). The
+    # profitable windowed markets ("Bitcoin Up or Down - June 25, 3AM ET") use
+    # "Up or Down - " and are NOT matched by this regex.
+    if _DAILY_CRYPTO_PRICE_RE.search(q):
         return True
     return False
 
