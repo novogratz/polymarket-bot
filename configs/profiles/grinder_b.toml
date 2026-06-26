@@ -43,20 +43,20 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Entry window: 4h MAX, hard (user 2026-06-14: "only bet on things expiring
-# in 4 hours maximum - never bet on more than 4 hours"). The dynamic ladder
-# is OFF — max_hours_cap = 0 makes the ladder a single [4h] rung, so nothing
-# beyond 4h is ever scanned or entered. (The 6/8/10/12h widening that ran
-# 2026-06-11..14 is disabled; flip max_hours_cap back above max_hours to
-# re-enable it.)
-max_hours = 4.0
+# Weather-only mode: window widened to 24h (user 2026-06-26). Weather markets
+# resolve end-of-day or at a specific local time, so a morning entry on a
+# "Will Phoenix exceed 105°F today?" market is 12-16h before resolution — the
+# 4h window never sees it. 24h lets us enter as soon as the market is live.
+max_hours = 24.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
 scan_limit = 750
 
-# v4 liquidity floors (user 2026-06-21): min volume $1000, min liquidity $250.
-min_liquidity_usd = 250.0
-min_volume_24h_usd = 1000.0
+# Weather markets are thinner than sports — lowered floors (user 2026-06-26).
+# Sports floors were $250 liquidity / $1000 volume. Weather markets have
+# shallower books; drop to $50 / $200 so they aren't filtered out on thinness.
+min_liquidity_usd = 50.0
+min_volume_24h_usd = 200.0
 
 # v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
 # 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
