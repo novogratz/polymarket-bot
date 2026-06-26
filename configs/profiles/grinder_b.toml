@@ -43,20 +43,17 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Weather-only mode: window widened to 24h (user 2026-06-26). Weather markets
-# resolve end-of-day or at a specific local time, so a morning entry on a
-# "Will Phoenix exceed 105°F today?" market is 12-16h before resolution — the
-# 4h window never sees it. 24h lets us enter as soon as the market is live.
-max_hours = 24.0
+# Entry window: 8h (user 2026-06-26) — faster cycle, only bets resolving within
+# the next 8h. Catches sports games starting soon and intraday markets.
+# Weather markets (24h window) were sold and disabled below.
+max_hours = 8.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
 scan_limit = 750
 
-# Weather markets are thinner than sports — lowered floors (user 2026-06-26).
-# Sports floors were $250 liquidity / $1000 volume. Weather markets have
-# shallower books; drop to $50 / $200 so they aren't filtered out on thinness.
-min_liquidity_usd = 50.0
-min_volume_24h_usd = 200.0
+# Restored sports-grade liquidity floors (user 2026-06-26).
+min_liquidity_usd = 250.0
+min_volume_24h_usd = 1000.0
 
 # v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
 # 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
@@ -101,17 +98,10 @@ fixed_stake_usd = 5.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
-# Weather-only mode (user 2026-06-26): restrict bot 2 to temperature/weather
-# threshold markets only. Lifts the hard weather ban and blocks everything else.
-weather_only = true
-# Open-Meteo forecast edge gate (agent 2026-06-26): only enter a weather market
-# when the model P(outcome correct) > market_ask + this margin. The model
-# queries Open-Meteo (free, no API key) for the daily high/low forecast and
-# fits a Normal distribution with horizon-scaled σ (1.5°C + 0.4°C/day_out)
-# over the stated temperature bracket. A 5-cent edge means the forecast agrees
-# the chosen side wins with at least 5% more probability than the market implies.
-# Fail-open: if the question cannot be parsed or the API is unreachable the
-# gate is bypassed and normal price filters apply.
+# Weather-only mode: DISABLED (user 2026-06-26) — back to general markets with
+# 8h window for faster cycling. Open-Meteo gate also inactive (only fires when
+# weather_only=true). Re-enable to return to weather-only mode.
+weather_only = false
 weather_forecast_min_edge = 0.05
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
