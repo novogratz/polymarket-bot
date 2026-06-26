@@ -463,6 +463,14 @@ def is_hard_excluded_market(market: dict) -> bool:
     # BTC/SOL/XRP Up or Down markets are NOT affected — they remain tradeable.
     if "ethereum" in q and "up or down" in q:
         return True
+    # Tweet/post-count weekly bracket markets: "Will Elon Musk post 220-239
+    # tweets from June 19 to June 26?" — no convergence signal, one posting
+    # spree flips the bracket. Banned outright (2026-06-12) in is_excluded_market
+    # but unban_all_markets=True bypasses that; these fall into "other" which
+    # never auto-disables. Slug check also catches "posts" markets whose slugs
+    # use the same of-tweets pattern (e.g. Zelenskyy posts = zelenskyy-of-tweets-*).
+    if "tweet" in q or "-tweets" in slug or "of-tweets" in slug:
+        return True
     return False
 
 

@@ -4691,6 +4691,29 @@ class V4ConfigTests(unittest.TestCase):
                             slug="solana-up-or-down", mid="sol")
         self.assertEqual(_build_eligible_candidates([deep], high), [])
 
+    def test_tweet_count_hard_banned_under_unban_all(self):
+        # Tweet/post-count weekly bracket markets are in is_excluded_market (soft ban)
+        # but unban_all_markets=True bypasses that and they land in "other" which
+        # never auto-disables. On 2026-06-26 the bot bought Musk tweets and
+        # Zelenskyy posts. Both must be caught by is_hard_excluded_market.
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        s = self._settings(unban_all_markets=True)
+
+        musk = self._market(0.90, question="Will Elon Musk post 220-239 tweets from June 19 to June 26, 2026?",
+                            slug="elon-musk-of-tweets-june-19-june-26", mid="m1")
+        self.assertEqual(_build_eligible_candidates([musk], s), [])
+
+        # Zelenskyy "posts" market: question says "posts" not "tweets", but slug
+        # has of-tweets — must still be caught.
+        zelensky = self._market(0.94, question="Will Zelenskyy post 60-79 posts from June 19 to June 26, 2026?",
+                                slug="zelenskyy-of-tweets-june-19-june-26-2026", mid="m2")
+        self.assertEqual(_build_eligible_candidates([zelensky], s), [])
+
+        # Slug pattern -tweets also blocked.
+        trump = self._market(0.90, question="Will Trump tweet about the Fed this week?",
+                             slug="trump-tweet-about-fed-tweets", mid="m3")
+        self.assertEqual(_build_eligible_candidates([trump], s), [])
+
     def test_liquidity_and_volume_floors(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates
         s = self._settings(unban_all_markets=True)
