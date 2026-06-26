@@ -230,6 +230,7 @@ def _build_eligible_candidates(
     # v4 (user 2026-06-21): when unban_all_markets is on, every category is
     # allowed — governance shifts to the data-driven category auto-disable.
     unban_all = bool(getattr(settings, "unban_all_markets", False))
+    weather_only = bool(getattr(settings, "race_weather_only", False))
     disabled = disabled_categories or set()
     # v4 forecasting EV/quality gates (user 2026-06-21) — opt-in, both 0 = off.
     min_edge = float(getattr(settings, "race_min_edge", 0.0) or 0.0)
@@ -243,8 +244,15 @@ def _build_eligible_candidates(
     for market in markets:
         if not unban_all and is_excluded_market(market):
             continue
-        # Hard bans that survive unban_all_markets (esports + speech).
-        if is_hard_excluded_market(market):
+        # weather_only: restrict to temperature/weather markets only, and lift
+        # the hard weather ban so they can actually pass.
+        if weather_only:
+            q_lower = str(market.get("question") or "").lower()
+            if not ("°c" in q_lower or "°f" in q_lower or "temperature" in q_lower):
+                continue
+        # Hard bans that survive unban_all_markets (esports, speech, weather).
+        # weather_ok=True lifts the weather clause for the weather-only bot.
+        if is_hard_excluded_market(market, weather_ok=weather_only):
             continue
         # v4 data-driven governance: drop auto-disabled categories.
         if disabled and classify_market(market) in disabled:

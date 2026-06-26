@@ -401,6 +401,10 @@ class Settings:
     # auto-disable (user 2026-06-21). Per-trade risk is capped by the fixed
     # stake above. False keeps the manual ban list.
     unban_all_markets: bool = field(default_factory=lambda: _bool_env("POLYMARKET_UNBAN_ALL_MARKETS", False))
+    # When true, only temperature/weather threshold markets are eligible — all
+    # other markets are blocked regardless of unban_all. Also lifts the hard
+    # weather ban so these markets can actually pass the candidate filter.
+    race_weather_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_WEATHER_ONLY", False))
     # ── v4: data-driven category auto-disable ────────────────────────────
     # The governance that replaces manual bans (user 2026-06-21): after at
     # least ``min_samples`` realized trades in a category, that category is

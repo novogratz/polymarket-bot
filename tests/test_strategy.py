@@ -4714,6 +4714,37 @@ class V4ConfigTests(unittest.TestCase):
                              slug="trump-tweet-about-fed-tweets", mid="m3")
         self.assertEqual(_build_eligible_candidates([trump], s), [])
 
+    def test_weather_only_mode(self):
+        # weather_only=True: only temperature/°C/°F markets pass; all others
+        # (sports, crypto, politics) are blocked. The hard weather ban is lifted.
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        s = self._settings(unban_all_markets=True, race_weather_only=True)
+
+        weather_c = self._market(0.90, question="Will the high temperature in Phoenix exceed 105°F on June 27?",
+                                 slug="phoenix-105f-june-27", mid="w1")
+        weather_f = self._market(0.88, question="Will it be above 30°C in Madrid on June 27?",
+                                 slug="madrid-30c-june-27", mid="w2")
+        sports = self._market(0.90, question="Will Real Madrid win on June 27?",
+                              slug="real-madrid-win", mid="s1")
+        crypto = self._market(0.90, question="Bitcoin Up or Down - June 27, 3AM ET",
+                              slug="btc-updown-3am", mid="c1")
+
+        result = _build_eligible_candidates([weather_c, weather_f, sports, crypto], s)
+        slugs = {c.slug for c, _ in result}
+        self.assertIn("phoenix-105f-june-27", slugs)
+        self.assertIn("madrid-30c-june-27", slugs)
+        self.assertNotIn("real-madrid-win", slugs)
+        self.assertNotIn("btc-updown-3am", slugs)
+
+    def test_weather_hard_banned_by_default(self):
+        # Without weather_only, temperature markets are hard-banned even under
+        # unban_all_markets=True.
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        s = self._settings(unban_all_markets=True, race_weather_only=False)
+        weather = self._market(0.90, question="Will it be above 30°C in Madrid on June 27?",
+                               slug="madrid-30c", mid="w1")
+        self.assertEqual(_build_eligible_candidates([weather], s), [])
+
     def test_liquidity_and_volume_floors(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates
         s = self._settings(unban_all_markets=True)

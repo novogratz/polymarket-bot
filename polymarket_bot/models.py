@@ -429,11 +429,13 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
     return False
 
 
-def is_hard_excluded_market(market: dict) -> bool:
+def is_hard_excluded_market(market: dict, weather_ok: bool = False) -> bool:
     """Hard bans that survive unban_all_markets=True (unlike is_excluded_market).
 
     Esports, speech, and temperature/weather markets are banned outright and
     must not be admitted regardless of category-governance settings.
+    ``weather_ok=True`` lifts only the weather check (used by the weather-only
+    bot which intentionally restricts itself to these markets).
     """
     q = str(market.get("question") or "").lower()
     slug = str(market.get("slug") or "").lower()
@@ -444,7 +446,8 @@ def is_hard_excluded_market(market: dict) -> bool:
     # Temperature/weather threshold markets: all resolve at the same daily time,
     # drain all cash in a single sweep, and have no SL protection. Moving from
     # the soft ban (is_excluded_market, bypassed by unban_all) to a hard ban.
-    if "°c" in q or "°f" in q or "temperature" in q:
+    # weather_ok=True lifts this for the weather-only bot mode.
+    if not weather_ok and ("°c" in q or "°f" in q or "temperature" in q):
         return True
     # Daily EOD crypto price/direction markets: "Will the price of BTC be above
     # $X on June 25?" and "Bitcoin Up or Down on June 25?" gap catastrophically
