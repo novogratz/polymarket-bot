@@ -4631,6 +4631,31 @@ class V4ConfigTests(unittest.TestCase):
                                 slug="bitcoin-up-or-down", mid="btc3")
         self.assertTrue(_build_eligible_candidates([windowed], unbanned))
 
+    def test_eth_windowed_range_hard_banned(self):
+        # ETH "Up or Down" markets with explicit time ranges (HH:MM-HH:MM format)
+        # have a complement-pricing bug: the Down token fills far below the
+        # Gamma-computed complement, causing ~$4.50 losses (2× on 2026-06-25).
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        unbanned = self._settings(unban_all_markets=True)
+
+        eth_15m = self._market(0.90, question="Ethereum Up or Down - June 25, 9:00PM-9:15PM ET",
+                                slug="eth-updown-9pm", mid="eth1")
+        self.assertEqual(_build_eligible_candidates([eth_15m], unbanned), [])
+
+        eth_4h = self._market(0.90, question="Ethereum Up or Down - June 25, 8:00PM-12:00AM ET",
+                               slug="eth-updown-4h", mid="eth2")
+        self.assertEqual(_build_eligible_candidates([eth_4h], unbanned), [])
+
+        # ETH hourly markets ("4PM ET", no HH:MM-HH:MM range) are NOT banned.
+        eth_hourly = self._market(0.90, question="Ethereum Up or Down - June 25, 9PM ET",
+                                   slug="eth-updown-9pm-hourly", mid="eth3")
+        self.assertTrue(_build_eligible_candidates([eth_hourly], unbanned))
+
+        # BTC windowed ranges are also NOT banned (different underlying dynamic).
+        btc_range = self._market(0.90, question="Bitcoin Up or Down - June 25, 9:00PM-9:15PM ET",
+                                  slug="btc-updown-9pm", mid="btc1")
+        self.assertTrue(_build_eligible_candidates([btc_range], unbanned))
+
     def test_crypto_min_price_lets_crypto_below_band_bot2_only(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates
         # Bot 2 (user 2026-06-24): crypto_min_price = 0.50 lets crypto enter
