@@ -4631,10 +4631,12 @@ class V4ConfigTests(unittest.TestCase):
                                 slug="bitcoin-up-or-down", mid="btc3")
         self.assertTrue(_build_eligible_candidates([windowed], unbanned))
 
-    def test_eth_windowed_range_hard_banned(self):
-        # ETH "Up or Down" markets with explicit time ranges (HH:MM-HH:MM format)
-        # have a complement-pricing bug: the Down token fills far below the
-        # Gamma-computed complement, causing ~$4.50 losses (2× on 2026-06-25).
+    def test_eth_windowed_hard_banned_all_formats(self):
+        # ALL ETH "Up or Down" markets are banned — both range (HH:MM-HH:MM)
+        # and hourly ("9PM ET"). The Down neg_risk token fills 5-15¢ below the
+        # Gamma complement, causing sub-floor entries and large losses when
+        # direction goes wrong (ETH 6AM: entry 0.800 vs 0.85 floor; ETH 2AM:
+        # −$4.11). BTC/SOL/XRP remain tradeable — not affected by this bug.
         from polymarket_bot.race_strategies import _build_eligible_candidates
         unbanned = self._settings(unban_all_markets=True)
 
@@ -4646,15 +4648,21 @@ class V4ConfigTests(unittest.TestCase):
                                slug="eth-updown-4h", mid="eth2")
         self.assertEqual(_build_eligible_candidates([eth_4h], unbanned), [])
 
-        # ETH hourly markets ("4PM ET", no HH:MM-HH:MM range) are NOT banned.
+        # Hourly ETH ("9PM ET") is now ALSO banned — same complement bug, smaller
+        # divergence but still causes sub-floor fills and occasional large losses.
         eth_hourly = self._market(0.90, question="Ethereum Up or Down - June 25, 9PM ET",
                                    slug="eth-updown-9pm-hourly", mid="eth3")
-        self.assertTrue(_build_eligible_candidates([eth_hourly], unbanned))
+        self.assertEqual(_build_eligible_candidates([eth_hourly], unbanned), [])
 
-        # BTC windowed ranges are also NOT banned (different underlying dynamic).
+        # BTC windowed ranges are NOT banned (complement divergence far smaller).
         btc_range = self._market(0.90, question="Bitcoin Up or Down - June 25, 9:00PM-9:15PM ET",
                                   slug="btc-updown-9pm", mid="btc1")
         self.assertTrue(_build_eligible_candidates([btc_range], unbanned))
+
+        # BTC hourly also not banned.
+        btc_hourly = self._market(0.90, question="Bitcoin Up or Down - June 26, 6AM ET",
+                                   slug="btc-updown-6am", mid="btc2")
+        self.assertTrue(_build_eligible_candidates([btc_hourly], unbanned))
 
     def test_crypto_min_price_lets_crypto_below_band_bot2_only(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates
@@ -4677,9 +4685,10 @@ class V4ConfigTests(unittest.TestCase):
         self.assertEqual(_build_eligible_candidates([non_crypto], on), [])
         # And the crypto floor itself still bites: with a 0.70 floor, a crypto
         # market whose BOTH sides sit below 0.70 (0.60 / 0.42) is rejected.
+        # Use SOL (not ETH, which is hard-banned regardless of floor).
         high = self._settings(unban_all_markets=True, race_crypto_min_price=0.70)
-        deep = self._market(0.60, question="Ethereum Up or Down - June 25, 3AM ET",
-                            slug="ethereum-up-or-down", mid="eth")
+        deep = self._market(0.60, question="Solana Up or Down - June 25, 3AM ET",
+                            slug="solana-up-or-down", mid="sol")
         self.assertEqual(_build_eligible_candidates([deep], high), [])
 
     def test_liquidity_and_volume_floors(self):

@@ -453,16 +453,15 @@ def is_hard_excluded_market(market: dict) -> bool:
     # "Up or Down - " and are NOT matched by this regex.
     if _DAILY_CRYPTO_PRICE_RE.search(q):
         return True
-    # ETH windowed "Up or Down" markets with explicit time ranges
-    # (e.g. "Ethereum Up or Down - June 25, 9:00PM-9:15PM ET") have a
-    # systematic complement-pricing bug: the Down neg_risk token fills on
-    # the CLOB far below the Gamma-computed complement (1 − Up_bid), causing
-    # ~$4.50 unavoidable losses per hit (2× today: −$4.91, −$4.06).
-    # ETH hourly markets ("4PM ET", "9PM ET") lack the HH:MM-HH:MM range
-    # pattern and are unaffected — they remain tradeable.
-    if "ethereum" in q and "up or down" in q and re.search(
-        r"\d{1,2}:\d{2}[ap]m-\d{1,2}:\d{2}[ap]m", q
-    ):
+    # ALL ETH "Up or Down" windowed markets are banned. The Down neg_risk token
+    # fills on the CLOB far below the Gamma-computed complement (1 − Up_bid),
+    # causing sub-floor entries (0.800 vs 0.85 floor) and large losses when
+    # direction goes wrong. Range windows have ~15¢ divergence (−$4.91, −$4.06
+    # on 2026-06-25); hourly windows have 5-10¢ divergence (ETH 6AM entered at
+    # 0.800, crashed to 0.700; ETH 2AM −$4.11). Today's ETH hourly net ≈ $0
+    # despite 7 small wins, because 2 directional losses fully offset them.
+    # BTC/SOL/XRP Up or Down markets are NOT affected — they remain tradeable.
+    if "ethereum" in q and "up or down" in q:
         return True
     return False
 
