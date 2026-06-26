@@ -2865,7 +2865,7 @@ def _close_confirmed_resolved_losses(settings: Settings, strategy_name: str) -> 
     if not candidates:
         return []
 
-    gamma = GammaClient(settings.gamma_api_base_url)
+    gamma = GammaClient(settings.gamma_base_url)
     closed_records: list[dict] = []
     changed = False
     now = utc_now()
