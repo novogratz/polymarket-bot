@@ -405,6 +405,11 @@ class Settings:
     # other markets are blocked regardless of unban_all. Also lifts the hard
     # weather ban so these markets can actually pass the candidate filter.
     race_weather_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_WEATHER_ONLY", False))
+    # Open-Meteo forecast edge gate (OPT-IN, 0 = off): only enter a weather
+    # market when the model probability for the chosen outcome exceeds the
+    # market ask by at least this margin.  Needs no history — the model uses
+    # real temperature forecasts, not realized trade data.
+    race_weather_forecast_min_edge: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_WEATHER_FORECAST_MIN_EDGE", 0.0))
     # ── v4: data-driven category auto-disable ────────────────────────────
     # The governance that replaces manual bans (user 2026-06-21): after at
     # least ``min_samples`` realized trades in a category, that category is

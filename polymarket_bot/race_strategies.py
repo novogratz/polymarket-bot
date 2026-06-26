@@ -46,6 +46,7 @@ from .news_strategy import _asset_key, _event_slug, _quote_for_outcome
 from .portfolio import Portfolio
 from .pricing import _fetch_clob_quotes, ensure_open_positions_in_pool
 from .trading import build_client, execute_live_sell, execute_live_trade, live_best_bid
+from .weather_forecast import forecast_outcome_probability, parse_weather_question
 
 
 def _step(settings: Settings, msg: str) -> None:
@@ -379,6 +380,23 @@ def _build_eligible_candidates(
                     continue
                 if min_quality > 0 and ev["quality"] < min_quality:
                     continue
+            # Weather forecast edge gate (OPT-IN, 0 = off): compare the
+            # Open-Meteo model probability for this outcome against the
+            # market ask; skip when the forecast doesn't support the trade.
+            # Fail-open: None (parse failure or API unavailable) → allow.
+            weather_min_edge = float(
+                getattr(settings, "race_weather_forecast_min_edge", 0.0) or 0.0
+            )
+            if weather_only and weather_min_edge > 0:
+                try:
+                    parsed_w = parse_weather_question(question)
+                    if parsed_w is not None:
+                        model_prob = forecast_outcome_probability(parsed_w, outcome)
+                        if model_prob is not None and model_prob < best_ask + weather_min_edge:
+                            continue
+                except Exception:
+                    pass  # fail open
+
             outcome_momentum = one_day_change if index == 0 else -one_day_change
             candidate = Candidate(
                 market_id=market_id,

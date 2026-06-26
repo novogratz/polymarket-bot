@@ -104,6 +104,15 @@ unban_all_markets = true
 # Weather-only mode (user 2026-06-26): restrict bot 2 to temperature/weather
 # threshold markets only. Lifts the hard weather ban and blocks everything else.
 weather_only = true
+# Open-Meteo forecast edge gate (agent 2026-06-26): only enter a weather market
+# when the model P(outcome correct) > market_ask + this margin. The model
+# queries Open-Meteo (free, no API key) for the daily high/low forecast and
+# fits a Normal distribution with horizon-scaled σ (1.5°C + 0.4°C/day_out)
+# over the stated temperature bracket. A 5-cent edge means the forecast agrees
+# the chosen side wins with at least 5% more probability than the market implies.
+# Fail-open: if the question cannot be parsed or the API is unreachable the
+# gate is bypassed and normal price filters apply.
+weather_forecast_min_edge = 0.05
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh
