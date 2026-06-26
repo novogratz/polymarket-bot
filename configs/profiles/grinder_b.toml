@@ -43,17 +43,16 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Entry window: 8h (user 2026-06-26) — faster cycle, only bets resolving within
-# the next 8h. Catches sports games starting soon and intraday markets.
-# Weather markets (24h window) were sold and disabled below.
-max_hours = 8.0
+# Entry window: 24h (user 2026-06-26) — weather markets resolve within 24h;
+# wider window captures all of tomorrow's weather forecasts.
+max_hours = 24.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
 scan_limit = 750
 
-# Restored sports-grade liquidity floors (user 2026-06-26).
-min_liquidity_usd = 250.0
-min_volume_24h_usd = 1000.0
+# Weather-grade liquidity floors (lower — weather markets are thinner).
+min_liquidity_usd = 50.0
+min_volume_24h_usd = 200.0
 
 # v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
 # 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
@@ -98,10 +97,9 @@ fixed_stake_usd = 5.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
-# Weather-only mode: DISABLED (user 2026-06-26) — back to general markets with
-# 8h window for faster cycling. Open-Meteo gate also inactive (only fires when
-# weather_only=true). Re-enable to return to weather-only mode.
-weather_only = false
+# Weather-only mode: ENABLED (user 2026-06-26) — only bet on weather markets,
+# cross-checked against Open-Meteo forecast before entry.
+weather_only = true
 weather_forecast_min_edge = 0.05
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
