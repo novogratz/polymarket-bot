@@ -309,7 +309,14 @@ def _fetch_live_equity() -> tuple[float, float] | None:
         from polymarket_bot.config import Settings
         from polymarket_bot.trading import build_client
         from polymarket_bot.smart_money import DataApiClient
-        profile_path = REPO_ROOT / "configs" / "profiles" / "grinder.toml"
+        # Use the active bot's profile (POLYMARKET_PROFILE_LABEL), not grinder.toml.
+        # Hardcoding grinder.toml here caused bot 2 to load bot 1's
+        # assumed_live_balance_usd, triggering a bogus floor that returned the
+        # stale assumed value ($60) instead of the real CLOB balance.
+        label = os.environ.get("POLYMARKET_PROFILE_LABEL", "grinder")
+        profile_path = REPO_ROOT / "configs" / "profiles" / f"{label}.toml"
+        if not profile_path.exists():
+            profile_path = REPO_ROOT / "configs" / "profiles" / "grinder.toml"
         if profile_path.exists():
             apply_profile_to_env(load_profile(profile_path), override=False)
         settings = Settings()
@@ -340,14 +347,6 @@ def _fetch_live_equity() -> tuple[float, float] | None:
                 pos_value += cv
         except Exception:
             pass
-        equity = avail + pos_value
-        # Redemption lag guard: when a position resolves and disappears from the
-        # Data API, the USDC can take minutes to settle to the CLOB wallet.
-        # During that window equity looks artificially low. Use assumed_live_balance_usd
-        # as a floor so the report never shows a false crash mid-settlement.
-        assumed = float(getattr(settings, "assumed_live_balance_usd", 0) or 0)
-        if assumed > 0 and equity < assumed * 0.5:
-            return assumed, 0.0
         return avail, pos_value
     except Exception:
         return None
@@ -1279,10 +1278,25 @@ def cycle_once() -> None:
     divider = "━━━━━━━━━━━━━━━━━━━━━━━━"
     bot_name = os.environ.get("POLYMARKET_BOT_NAME", "Grinder Bot 1")
 
+    # Health status: single-line verdict at the top of every report.
+    _open_losing = sum(
+        1 for p in open_pos
+        if (float(p.get("current_price") or 0) - float(p.get("entry_price") or 0)) < 0
+    )
+    _open_total = len(open_pos)
+    if net_pct >= 0 and _open_losing <= _open_total // 2:
+        _health = "🟢 COMPTE EN BONNE SANTÉ"
+    elif net_pct > -10 and _open_losing <= _open_total:
+        _health = "🟡 COMPTE STABLE"
+    else:
+        _health = "🔴 COMPTE EN DANGER"
+
     parts = [
         f"📋 *RAPPORT LIVE — {date_str}* _{stamp}_",
         f"_Polymarket · {bot_name}_",
         divider,
+        "",
+        f"{_health}",
         "",
         "*PROFITS & PERTES :*",
         f"  {_mood(net)} Capital : ${snap.equity:.2f}  "
