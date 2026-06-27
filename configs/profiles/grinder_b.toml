@@ -99,7 +99,7 @@ unban_all_markets = true
 # Weather-only mode: ENABLED (user 2026-06-26) — only bet on weather markets,
 # cross-checked against Open-Meteo forecast before entry.
 weather_only = true
-weather_forecast_min_edge = 0.05
+weather_forecast_min_edge = 0.10   # raised 0.05→0.10: multi-model σ is tighter now
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh

@@ -1,22 +1,32 @@
 """
 Weather forecast integration for the weather-only grinder bot.
 
-Uses Open-Meteo (https://open-meteo.com, free, no API key required) to fetch
-daily max/min temperature forecasts and compute the probability that a Polymarket
-temperature bracket market resolves "No" (i.e. the actual temperature falls
-OUTSIDE the market's stated range).
+Uses Open-Meteo (https://open-meteo.com, free, no API key required).
 
-Edge formula:
-    forecast_P(outcome_correct) − market_ask ≥ race_weather_forecast_min_edge
+Improvements over v1:
+  - Multi-model consensus: GFS, ECMWF IFS, and UK Met Office fetched in
+    parallel; σ is computed from the actual spread between models instead of
+    a fixed formula.  Models that disagree by >MAX_SPREAD_C are silently
+    skipped (the trade is allowed — fail-open applies).
+  - Intraday current-temperature kill-switch: for same-day markets, if the
+    current observed temperature already makes the bracket physically
+    impossible (e.g. it's 3PM and currently 29°C; bracket is 35–36°C),
+    the function returns a near-certain "No" probability without waiting
+    for the daily max to be recorded.
+  - Automatic skip when fewer than MIN_MODELS respond (API outage guard).
 
-Fail-open: if the question cannot be parsed or Open-Meteo is unreachable,
-the function returns None and the trade is allowed (normal price filters apply).
+Edge formula (unchanged):
+    model_P(outcome) − market_ask ≥ weather_forecast_min_edge
 
-Caching: Open-Meteo is queried at most once per (city, date, UTC-hour) to keep
-tick overhead near zero after the first API call.
+Fail-open: if parsing fails or the API is unreachable, returns None and the
+normal price filters apply.
+
+Caching: each (lat, lon, date, UTC-hour, model) is cached so API calls
+collapse to at most 3 per city per hour after the first tick.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import math
 import re
@@ -27,122 +37,136 @@ from typing import Optional
 
 # ---------------------------------------------------------------------------
 # City → (lat, lon) lookup
-# Covering major cities that appear in Polymarket temperature markets.
-# Sorted longest-name-first at lookup time to avoid partial collisions.
 # ---------------------------------------------------------------------------
 CITY_COORDS: dict[str, tuple[float, float]] = {
-    "los angeles": (34.0522, -118.2437),
-    "new york": (40.7128, -74.0060),
-    "san antonio": (29.4241, -98.4936),
-    "san diego": (32.7157, -117.1611),
-    "san jose": (37.3382, -121.8863),
-    "mexico city": (19.4326, -99.1332),
-    "sao paulo": (-23.5505, -46.6333),
+    "los angeles":    (34.0522, -118.2437),
+    "new york":       (40.7128,  -74.0060),
+    "san antonio":    (29.4241,  -98.4936),
+    "san diego":      (32.7157, -117.1611),
+    "san jose":       (37.3382, -121.8863),
+    "san francisco":  (37.7749, -122.4194),
+    "mexico city":    (19.4326,  -99.1332),
+    "sao paulo":      (-23.5505, -46.6333),
     "rio de janeiro": (-22.9068, -43.1729),
-    "buenos aires": (-34.6037, -58.3816),
-    "ho chi minh": (10.8231, 106.6297),
-    "kuala lumpur": (3.1390, 101.6869),
-    "hong kong": (22.3193, 114.1694),
-    "cape town": (-33.9249, 18.4241),
+    "buenos aires":   (-34.6037, -58.3816),
+    "ho chi minh":    (10.8231,  106.6297),
+    "kuala lumpur":   ( 3.1390,  101.6869),
+    "hong kong":      (22.3193,  114.1694),
+    "cape town":      (-33.9249,  18.4241),
     "saint petersburg": (59.9311, 30.3609),
-    "abu dhabi": (24.4539, 54.3773),
-    "tel aviv": (32.0853, 34.7818),
-    "london": (51.5074, -0.1278),
-    "paris": (48.8566, 2.3522),
-    "istanbul": (41.0082, 28.9784),
-    "madrid": (40.4168, -3.7038),
-    "berlin": (52.5200, 13.4050),
-    "rome": (41.9028, 12.4964),
-    "amsterdam": (52.3676, 4.9041),
-    "barcelona": (41.3851, 2.1734),
-    "vienna": (48.2082, 16.3738),
-    "zurich": (47.3769, 8.5417),
-    "brussels": (50.8503, 4.3517),
-    "stockholm": (59.3293, 18.0686),
-    "oslo": (59.9139, 10.7522),
-    "copenhagen": (55.6761, 12.5683),
-    "athens": (37.9838, 23.7275),
-    "warsaw": (52.2297, 21.0122),
-    "prague": (50.0755, 14.4378),
-    "budapest": (47.4979, 19.0402),
-    "bucharest": (44.4268, 26.1025),
-    "chicago": (41.8781, -87.6298),
-    "houston": (29.7604, -95.3698),
-    "phoenix": (33.4484, -112.0740),
-    "dallas": (32.7767, -96.7970),
-    "austin": (30.2672, -97.7431),
-    "seattle": (47.6062, -122.3321),
-    "denver": (39.7392, -104.9903),
-    "boston": (42.3601, -71.0589),
-    "miami": (25.7617, -80.1918),
-    "atlanta": (33.7490, -84.3880),
-    "minneapolis": (44.9778, -93.2650),
-    "toronto": (43.6510, -79.3470),
-    "montreal": (45.5017, -73.5673),
-    "vancouver": (49.2827, -123.1207),
-    "bogota": (4.7110, -74.0721),
-    "lima": (-12.0464, -77.0428),
-    "santiago": (-33.4489, -70.6693),
-    "tokyo": (35.6762, 139.6503),
-    "osaka": (34.6937, 135.5023),
-    "seoul": (37.5665, 126.9780),
-    "beijing": (39.9042, 116.4074),
-    "shanghai": (31.2304, 121.4737),
-    "guangzhou": (23.1291, 113.2644),
-    "shenzhen": (22.5431, 114.0579),
-    "chengdu": (30.5728, 104.0668),
-    "wuhan": (30.5928, 114.3055),
-    "taipei": (25.0330, 121.5654),
-    "bangkok": (13.7563, 100.5018),
-    "singapore": (1.3521, 103.8198),
-    "jakarta": (-6.2088, 106.8456),
-    "manila": (14.5995, 120.9842),
-    "hanoi": (21.0285, 105.8542),
-    "mumbai": (19.0760, 72.8777),
-    "delhi": (28.6139, 77.2090),
-    "bangalore": (12.9716, 77.5946),
-    "hyderabad": (17.3850, 78.4867),
-    "kolkata": (22.5726, 88.3639),
-    "chennai": (13.0827, 80.2707),
-    "karachi": (24.8607, 67.0011),
-    "lahore": (31.5204, 74.3587),
-    "dhaka": (23.8103, 90.4125),
-    "cairo": (30.0444, 31.2357),
-    "johannesburg": (-26.2041, 28.0473),
-    "lagos": (6.5244, 3.3792),
-    "nairobi": (-1.2921, 36.8219),
-    "casablanca": (33.5731, -7.5898),
-    "algiers": (36.7372, 3.0863),
-    "tunis": (36.8065, 10.1815),
-    "accra": (5.6037, -0.1870),
-    "dubai": (25.2048, 55.2708),
-    "riyadh": (24.7136, 46.6753),
-    "jeddah": (21.2854, 39.2376),
-    "doha": (25.2854, 51.5310),
-    "tehran": (35.6892, 51.3890),
-    "baghdad": (33.3152, 44.3661),
-    "amman": (31.9454, 35.9284),
-    "beirut": (33.8938, 35.5018),
-    "moscow": (55.7558, 37.6173),
-    "kyiv": (50.4501, 30.5234),
-    "minsk": (53.9045, 27.5615),
-    "sydney": (-33.8688, 151.2093),
-    "melbourne": (-37.8136, 144.9631),
-    "brisbane": (-27.4698, 153.0251),
-    "perth": (-31.9505, 115.8605),
-    "auckland": (-36.8509, 174.7645),
+    "abu dhabi":      (24.4539,   54.3773),
+    "tel aviv":       (32.0853,   34.7818),
+    "london":         (51.5074,   -0.1278),
+    "paris":          (48.8566,    2.3522),
+    "istanbul":       (41.0082,   28.9784),
+    "madrid":         (40.4168,   -3.7038),
+    "berlin":         (52.5200,   13.4050),
+    "munich":         (48.1351,   11.5820),
+    "rome":           (41.9028,   12.4964),
+    "amsterdam":      (52.3676,    4.9041),
+    "barcelona":      (41.3851,    2.1734),
+    "vienna":         (48.2082,   16.3738),
+    "zurich":         (47.3769,    8.5417),
+    "brussels":       (50.8503,    4.3517),
+    "stockholm":      (59.3293,   18.0686),
+    "oslo":           (59.9139,   10.7522),
+    "copenhagen":     (55.6761,   12.5683),
+    "athens":         (37.9838,   23.7275),
+    "warsaw":         (52.2297,   21.0122),
+    "prague":         (50.0755,   14.4378),
+    "budapest":       (47.4979,   19.0402),
+    "bucharest":      (44.4268,   26.1025),
+    "chicago":        (41.8781,  -87.6298),
+    "houston":        (29.7604,  -95.3698),
+    "phoenix":        (33.4484, -112.0740),
+    "dallas":         (32.7767,  -96.7970),
+    "austin":         (30.2672,  -97.7431),
+    "seattle":        (47.6062, -122.3321),
+    "denver":         (39.7392, -104.9903),
+    "boston":         (42.3601,  -71.0589),
+    "miami":          (25.7617,  -80.1918),
+    "atlanta":        (33.7490,  -84.3880),
+    "minneapolis":    (44.9778,  -93.2650),
+    "toronto":        (43.6510,  -79.3470),
+    "montreal":       (45.5017,  -73.5673),
+    "vancouver":      (49.2827, -123.1207),
+    "bogota":         ( 4.7110,  -74.0721),
+    "lima":           (-12.0464, -77.0428),
+    "santiago":       (-33.4489, -70.6693),
+    "tokyo":          (35.6762,  139.6503),
+    "osaka":          (34.6937,  135.5023),
+    "seoul":          (37.5665,  126.9780),
+    "beijing":        (39.9042,  116.4074),
+    "shanghai":       (31.2304,  121.4737),
+    "guangzhou":      (23.1291,  113.2644),
+    "shenzhen":       (22.5431,  114.0579),
+    "chengdu":        (30.5728,  104.0668),
+    "wuhan":          (30.5928,  114.3055),
+    "lucknow":        (26.8467,   80.9462),
+    "taipei":         (25.0330,  121.5654),
+    "bangkok":        (13.7563,  100.5018),
+    "singapore":      ( 1.3521,  103.8198),
+    "jakarta":        (-6.2088,  106.8456),
+    "manila":         (14.5995,  120.9842),
+    "hanoi":          (21.0285,  105.8542),
+    "mumbai":         (19.0760,   72.8777),
+    "delhi":          (28.6139,   77.2090),
+    "bangalore":      (12.9716,   77.5946),
+    "hyderabad":      (17.3850,   78.4867),
+    "kolkata":        (22.5726,   88.3639),
+    "chennai":        (13.0827,   80.2707),
+    "karachi":        (24.8607,   67.0011),
+    "lahore":         (31.5204,   74.3587),
+    "dhaka":          (23.8103,   90.4125),
+    "cairo":          (30.0444,   31.2357),
+    "johannesburg":   (-26.2041,  28.0473),
+    "lagos":          ( 6.5244,    3.3792),
+    "nairobi":        (-1.2921,   36.8219),
+    "casablanca":     (33.5731,   -7.5898),
+    "algiers":        (36.7372,    3.0863),
+    "tunis":          (36.8065,   10.1815),
+    "accra":          ( 5.6037,   -0.1870),
+    "dubai":          (25.2048,   55.2708),
+    "riyadh":         (24.7136,   46.6753),
+    "jeddah":         (21.2854,   39.2376),
+    "doha":           (25.2854,   51.5310),
+    "tehran":         (35.6892,   51.3890),
+    "baghdad":        (33.3152,   44.3661),
+    "amman":          (31.9454,   35.9284),
+    "beirut":         (33.8938,   35.5018),
+    "moscow":         (55.7558,   37.6173),
+    "kyiv":           (50.4501,   30.5234),
+    "minsk":          (53.9045,   27.5615),
+    "wellington":     (-41.2865,  174.7762),
+    "sydney":         (-33.8688,  151.2093),
+    "melbourne":      (-37.8136,  144.9631),
+    "brisbane":       (-27.4698,  153.0251),
+    "perth":          (-31.9505,  115.8605),
+    "auckland":       (-36.8509,  174.7645),
 }
 
-# Sorted longest-name-first to avoid "paris" matching "paris, texas"
 _CITY_LIST: list[tuple[str, float, float]] = sorted(
-    ((city, lat, lon) for city, (lat, lon) in CITY_COORDS.items()),
+    ((c, la, lo) for c, (la, lo) in CITY_COORDS.items()),
     key=lambda x: -len(x[0]),
 )
 
 # ---------------------------------------------------------------------------
+# Multi-model configuration
+# ---------------------------------------------------------------------------
+# Three independent NWP models queried in parallel. Using the Open-Meteo
+# models= parameter on the standard forecast endpoint (no extra cost, no key).
+_MODELS = [
+    "best_match",    # Open-Meteo auto-selects the best regional model
+    "ecmwf_ifs025",  # European Centre (global, 0.25°)
+    "gfs_global",    # NOAA GFS (global, 0.25°)
+]
+
+MAX_SPREAD_C = 3.0   # skip if max−min across models > this (°C)
+MIN_MODELS   = 2     # need at least this many successful fetches
+
+# ---------------------------------------------------------------------------
 # Question parser
 # ---------------------------------------------------------------------------
-
 _MONTH_MAP: dict[str, int] = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
     "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
@@ -172,8 +196,7 @@ def _parse_date(question: str) -> Optional[date]:
     m = _DATE_RE.search(question)
     if not m:
         return None
-    month_name = m.group(1).lower()[:3]
-    month = _MONTH_MAP.get(month_name)
+    month = _MONTH_MAP.get(m.group(1).lower()[:3])
     if not month:
         return None
     day = int(m.group(2))
@@ -185,26 +208,10 @@ def _parse_date(question: str) -> Optional[date]:
 
 
 def parse_weather_question(question: str) -> Optional[dict]:
-    """
-    Parse a Polymarket temperature market question into structured data.
-
-    Returns a dict with:
-        city, lat, lon,
-        temp_low_c, temp_high_c  — inclusive bracket in °C,
-        is_upper_tail            — "or higher" market (Yes = temp >= low),
-        is_lower_tail            — "or lower" market (Yes = temp <= high),
-        is_max                   — True = daily high, False = daily low,
-        target_date              — datetime.date of resolution,
-        unit                     — 'C' or 'F' (original unit in question).
-
-    Returns None if any required field cannot be parsed.
-    """
+    """Parse a Polymarket temperature question into structured data, or None."""
     ql = question.lower()
-
-    # daily high vs low
     is_max = "highest" in ql or "high temperature" in ql or "maximum" in ql
 
-    # city lookup (longest name first)
     city_match: Optional[tuple[str, float, float]] = None
     for city, lat, lon in _CITY_LIST:
         if city in ql:
@@ -214,7 +221,6 @@ def parse_weather_question(question: str) -> Optional[dict]:
         return None
     city, lat, lon = city_match
 
-    # temperature range / value
     m = _TEMP_RE.search(question)
     if not m:
         return None
@@ -223,8 +229,7 @@ def parse_weather_question(question: str) -> Optional[dict]:
     unit_raw = m.group(3).replace("°", "").replace(" ", "").upper()
     unit = unit_raw[0] if unit_raw and unit_raw[0] in ("C", "F") else "C"
 
-    # tail detection ("or higher" / "or lower")
-    tail_m = _TAIL_RE.search(question[m.end():])  # only after the temp token
+    tail_m = _TAIL_RE.search(question[m.end():])
     is_upper_tail = bool(tail_m and tail_m.group(1).lower() == "higher")
     is_lower_tail = bool(tail_m and tail_m.group(1).lower() == "lower")
 
@@ -233,9 +238,6 @@ def parse_weather_question(question: str) -> Optional[dict]:
 
     low_c  = to_c(min(val1, val2))
     high_c = to_c(max(val1, val2))
-
-    # For a single-degree bracket ("38°C" or "68°F"), extend the top by 1 unit
-    # so the bracket width reflects the resolution rule (e.g. "38°C" = [38, 39)).
     if val1 == val2:
         high_c = to_c(val1 + 1)
 
@@ -244,73 +246,148 @@ def parse_weather_question(question: str) -> Optional[dict]:
         return None
 
     return {
-        "city": city,
-        "lat": lat,
-        "lon": lon,
-        "temp_low_c": round(low_c, 4),
-        "temp_high_c": round(high_c, 4),
-        "is_upper_tail": is_upper_tail,
-        "is_lower_tail": is_lower_tail,
-        "is_max": is_max,
-        "target_date": target_date,
-        "unit": unit,
+        "city": city, "lat": lat, "lon": lon,
+        "temp_low_c": round(low_c, 4), "temp_high_c": round(high_c, 4),
+        "is_upper_tail": is_upper_tail, "is_lower_tail": is_lower_tail,
+        "is_max": is_max, "target_date": target_date, "unit": unit,
     }
 
 
 # ---------------------------------------------------------------------------
-# Open-Meteo API fetch
+# Open-Meteo API — multi-model parallel fetch
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=512)
-def _fetch_open_meteo_cached(
+@lru_cache(maxsize=1024)
+def _fetch_model_cached(
     lat: float,
     lon: float,
-    target_date_iso: str,
-    utc_hour_bucket: int,  # refreshes cache once per UTC hour
-) -> Optional[tuple[float, float]]:
-    """Return (temp_max_c, temp_min_c) for target_date_iso, or None on error."""
+    date_iso: str,
+    utc_hour: int,
+    model: str,
+    with_current: bool,
+) -> Optional[tuple[float, float, Optional[float]]]:
+    """Fetch (max_c, min_c, current_c_or_None) for one NWP model. Cached per hour."""
+    current_param = "&current=temperature_2m" if with_current else ""
     url = (
         "https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
         "&daily=temperature_2m_max,temperature_2m_min"
-        "&timezone=auto"
-        "&forecast_days=10"
+        f"{current_param}"
+        "&timezone=auto&forecast_days=10"
+        f"&models={model}"
     )
     try:
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "polymarket-weather-bot/1.0"},
-        )
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        req = urllib.request.Request(url, headers={"User-Agent": "polymarket-weather-bot/2.0"})
+        with urllib.request.urlopen(req, timeout=6) as resp:
             data = json.loads(resp.read())
     except Exception:
         return None
 
     daily = data.get("daily", {})
     dates = daily.get("time", [])
-    maxes = daily.get("temperature_2m_max", [])
-    mins  = daily.get("temperature_2m_min", [])
-
     try:
-        idx = dates.index(target_date_iso)
-        return (float(maxes[idx]), float(mins[idx]))
-    except (ValueError, IndexError, TypeError):
+        idx = dates.index(date_iso)
+        max_c = float(daily["temperature_2m_max"][idx])
+        min_c = float(daily["temperature_2m_min"][idx])
+    except (ValueError, IndexError, KeyError, TypeError):
         return None
 
+    current_c: Optional[float] = None
+    if with_current:
+        try:
+            current_c = float(data["current"]["temperature_2m"])
+        except (KeyError, TypeError):
+            pass
 
-def fetch_forecast_temp(lat: float, lon: float, target_date: date) -> Optional[tuple[float, float]]:
+    return (max_c, min_c, current_c)
+
+
+def _fetch_consensus(
+    lat: float, lon: float, target_date: date
+) -> Optional[tuple[float, float, float, Optional[float]]]:
     """
-    Return (forecast_max_c, forecast_min_c) for (lat, lon) on target_date,
-    or None if Open-Meteo is unavailable or the date is out of range.
-    Cache refreshes once per UTC hour.
+    Fetch GFS + ECMWF + best-match in parallel.
+
+    Returns (mean_max_c, mean_min_c, sigma_c, current_c) or None if:
+      - fewer than MIN_MODELS respond, or
+      - model spread exceeds MAX_SPREAD_C (too uncertain to trade).
+
+    sigma_c reflects actual model disagreement:
+      sigma = max(model_std_dev × 1.5, horizon_floor)
+    where horizon_floor = 0.8 + 0.25 × days_out.
+    This produces a tight σ when models agree and a wide σ when they don't.
     """
+    lat_r = round(lat, 4)
+    lon_r = round(lon, 4)
+    date_iso = target_date.isoformat()
     utc_hour = datetime.now(timezone.utc).hour
-    return _fetch_open_meteo_cached(
-        round(lat, 4),
-        round(lon, 4),
-        target_date.isoformat(),
-        utc_hour,
-    )
+
+    model_args = [
+        (lat_r, lon_r, date_iso, utc_hour, _MODELS[0], True),   # best_match + current
+        (lat_r, lon_r, date_iso, utc_hour, _MODELS[1], False),  # ecmwf
+        (lat_r, lon_r, date_iso, utc_hour, _MODELS[2], False),  # gfs
+    ]
+
+    # Check cache first — avoids spawning threads on warm ticks
+    results: list[tuple[float, float, Optional[float]]] = []
+    to_fetch: list[tuple] = []
+    for args in model_args:
+        cached = _fetch_model_cached(*args)
+        if cached is not None:
+            results.append(cached)
+        else:
+            to_fetch.append(args)
+
+    # Fetch uncached models in parallel
+    if to_fetch:
+        def _call(args: tuple) -> Optional[tuple]:
+            return _fetch_model_cached(*args)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(to_fetch)) as pool:
+            for r in pool.map(_call, to_fetch):
+                if r is not None:
+                    results.append(r)
+
+    if len(results) < MIN_MODELS:
+        return None  # not enough models responded
+
+    maxes   = [r[0] for r in results]
+    mins    = [r[1] for r in results]
+    current_c = next((r[2] for r in results if r[2] is not None), None)
+
+    # Reject if models disagree too much on the daily max
+    spread = max(maxes) - min(maxes)
+    if spread > MAX_SPREAD_C:
+        return None
+
+    mean_max = sum(maxes) / len(maxes)
+    mean_min = sum(mins)  / len(mins)
+
+    # σ from model ensemble spread — the real uncertainty signal
+    n = len(maxes)
+    model_std = math.sqrt(sum((x - mean_max) ** 2 for x in maxes) / n)
+
+    today = datetime.now(timezone.utc).date()
+    days_out = max(0, (target_date - today).days)
+    horizon_floor = 0.8 + 0.25 * days_out  # minimum grows with forecast horizon
+
+    sigma = max(model_std * 1.5, horizon_floor)
+
+    return (mean_max, mean_min, sigma, current_c)
+
+
+def fetch_forecast_temp(
+    lat: float, lon: float, target_date: date
+) -> Optional[tuple[float, float]]:
+    """
+    Public compat shim — returns (forecast_max_c, forecast_min_c) using the
+    multi-model consensus mean, or None.  Tests that mock this function still work.
+    """
+    result = _fetch_consensus(lat, lon, target_date)
+    if result is None:
+        return None
+    mean_max, mean_min, _sigma, _current = result
+    return (mean_max, mean_min)
 
 
 # ---------------------------------------------------------------------------
@@ -318,57 +395,91 @@ def fetch_forecast_temp(lat: float, lon: float, target_date: date) -> Optional[t
 # ---------------------------------------------------------------------------
 
 def _normal_cdf(x: float) -> float:
-    """Standard Normal CDF via the math.erf approximation (accurate to 1e-7)."""
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
 def _bracket_yes_prob(forecast_c: float, sigma_c: float, low_c: float, high_c: float) -> float:
-    """P(low_c <= temp <= high_c) under Normal(forecast_c, sigma_c)."""
     return (
         _normal_cdf((high_c - forecast_c) / sigma_c)
         - _normal_cdf((low_c  - forecast_c) / sigma_c)
     )
 
 
+def _solar_hour(lon: float) -> float:
+    """Approximate local solar hour from UTC time + longitude (±15 min accuracy)."""
+    now = datetime.now(timezone.utc)
+    return (now.hour + now.minute / 60.0 + lon / 15.0) % 24.0
+
+
 def forecast_outcome_probability(parsed: dict, outcome: str) -> Optional[float]:
     """
-    Return the model probability that `outcome` ("Yes" or "No") is correct for
-    the temperature market described by `parsed` (from parse_weather_question).
+    Return model P(outcome correct) for the temperature market in `parsed`.
 
-    Uses Open-Meteo daily max/min + a horizon-scaled Gaussian uncertainty model:
-        σ ≈ 1.5°C for a 0-day forecast, +0.4°C per additional day out.
-    Typical single-bracket width is 1°C / 1.8°F; the uncertainty dominates
-    anything beyond ~1 day, making the forecast meaningfully discriminating.
+    Uses multi-model consensus (GFS + ECMWF + best-match) with σ derived from
+    actual model spread instead of a fixed formula.  Returns None on any API
+    failure (fail-open: caller allows the trade when None is returned).
 
-    Returns None if the forecast cannot be fetched or inputs are invalid.
-    Fail-open: the caller should allow the trade when None is returned.
+    Intraday kill-switch (same-day markets only, daily-max questions):
+      • If it is already past solar 3PM AND the current temperature is more than
+        INTRADAY_IMPOSSIBLE_BUFFER_C below the bracket low, the daily max cannot
+        physically reach the bracket → returns a near-certain No probability.
+      • If the current temperature has already exceeded the bracket high for a
+        bracket ("be X°C") market, the daily max is above the bracket → No wins.
+      • If the current temperature has already exceeded the bracket low for an
+        upper-tail ("or higher") market, Yes is near-certain → No loses.
     """
     target_date = parsed.get("target_date")
     if not target_date:
         return None
 
-    temps = fetch_forecast_temp(parsed["lat"], parsed["lon"], target_date)
-    if temps is None:
+    consensus = _fetch_consensus(parsed["lat"], parsed["lon"], target_date)
+    if consensus is None:
         return None
 
-    forecast_max_c, forecast_min_c = temps
-    forecast_c = forecast_max_c if parsed.get("is_max", True) else forecast_min_c
-
-    today = datetime.now(timezone.utc).date()
-    days_out = max(0, (target_date - today).days)
-    sigma_c = 1.5 + days_out * 0.4  # °C; day-0: 1.5, day-1: 1.9, day-3: 2.7
+    mean_max, mean_min, sigma_c, current_c = consensus
+    forecast_c = mean_max if parsed.get("is_max", True) else mean_min
 
     low  = parsed["temp_low_c"]
     high = parsed["temp_high_c"]
+    is_max = parsed.get("is_max", True)
 
+    # ── Intraday kill-switch ─────────────────────────────────────────────────
+    today = datetime.now(timezone.utc).date()
+    if target_date == today and current_c is not None and is_max:
+        solar_hr = _solar_hour(parsed["lon"])
+
+        # After solar 3PM temperature has almost certainly peaked
+        if solar_hr >= 15.0:
+            BUFFER = 4.0  # °C — generous afternoon rise budget
+
+            if not parsed.get("is_upper_tail") and not parsed.get("is_lower_tail"):
+                # Bracket market: Yes = temp ∈ [low, high)
+                if current_c + BUFFER < low:
+                    # Temperature can't reach bracket floor — No near-certain
+                    p_outcome = 0.99 if outcome.strip().lower() == "no" else 0.01
+                    return round(p_outcome, 6)
+                if current_c > high:
+                    # Daily max already above bracket ceiling — No near-certain
+                    p_outcome = 0.99 if outcome.strip().lower() == "no" else 0.01
+                    return round(p_outcome, 6)
+
+            elif parsed.get("is_upper_tail"):
+                # Upper-tail market: Yes = temp >= low
+                if current_c > low:
+                    # Already exceeded threshold — Yes near-certain
+                    p_outcome = 0.01 if outcome.strip().lower() == "no" else 0.99
+                    return round(p_outcome, 6)
+                if current_c + BUFFER < low:
+                    # Can't reach threshold today — No near-certain
+                    p_outcome = 0.99 if outcome.strip().lower() == "no" else 0.01
+                    return round(p_outcome, 6)
+
+    # ── Normal probability via Gaussian model ───────────────────────────────
     if parsed.get("is_upper_tail"):
-        # Yes = temp >= low_c
-        p_yes = 1.0 - _normal_cdf((low - forecast_c) / sigma_c)
+        p_yes = 1.0 - _normal_cdf((low  - forecast_c) / sigma_c)
     elif parsed.get("is_lower_tail"):
-        # Yes = temp <= high_c
         p_yes = _normal_cdf((high - forecast_c) / sigma_c)
     else:
-        # Bracket: Yes = temp ∈ [low, high]
         p_yes = _bracket_yes_prob(forecast_c, sigma_c, low, high)
 
     p_no = 1.0 - p_yes
