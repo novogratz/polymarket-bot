@@ -3518,6 +3518,52 @@ class EntryWindowStartOrCloseTests(unittest.TestCase):
         self.assertEqual(ids, {"close3", "start2"})
 
 
+class WeatherOnlyLaneTests(unittest.TestCase):
+    """User 2026-06-23: bot 3 bets ONLY on weather markets — non-weather is
+    dropped at entry, and the lane bypasses the normal weather ban."""
+
+    @staticmethod
+    def _market(mid, question, slug):
+        return {
+            "id": mid, "question": question, "slug": slug,
+            "acceptingOrders": True, "liquidity": 1500, "volume24hr": 2000,
+            "bestBid": 0.90, "bestAsk": 0.91, "orderPriceMinTickSize": 0.01,
+            "outcomes": '["Yes", "No"]', "outcomePrices": '["0.91", "0.09"]',
+            "clobTokenIds": f'["tok-{mid}-y", "tok-{mid}-n"]',
+            "endDate": (utc_now() + timedelta(hours=2)).isoformat(),
+        }
+
+    def test_is_weather_market_detection(self):
+        from polymarket_bot.models import is_weather_market
+
+        self.assertTrue(is_weather_market(
+            {"question": "Highest temperature in NYC on June 23?", "slug": "nyc-high-temp"}))
+        self.assertTrue(is_weather_market(
+            {"question": "Will the high be above 30°C in Paris?", "slug": "paris"}))
+        self.assertFalse(is_weather_market(
+            {"question": "Will Team A win on 2026-06-23?", "slug": "team-a-win"}))
+
+    def test_weather_only_keeps_only_weather_and_bypasses_ban(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0,
+                            race_weather_only=True)
+        weather = self._market("w", "Highest temperature in NYC on 2026-06-23?", "nyc-high-temp")
+        sports = self._market("s", "Will Team S win on 2026-06-23?", "team-s-win")
+        ids = {c.market_id for c, _ in _build_eligible_candidates([weather, sports], settings)}
+        self.assertEqual(ids, {"w"})  # only weather; weather passes despite the ban
+
+    def test_weather_banned_when_lane_off(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        # weather_only off + unban off (default) → weather is banned outright.
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0)
+        weather = self._market("w", "Highest temperature in NYC on 2026-06-23?", "nyc-high-temp")
+        self.assertEqual(_build_eligible_candidates([weather], settings), [])
+
+
 class DynamicEntryWindowTests(unittest.TestCase):
     """User rule 2026-06-11: prefer bets ≤4h from resolution; if nothing is
     actionable, widen the window 4 → 6 → 8 → 10 and stop at 12h max."""

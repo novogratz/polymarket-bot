@@ -391,6 +391,11 @@ class Settings:
     # auto-disable (user 2026-06-21). Per-trade risk is capped by the fixed
     # stake above. False keeps the manual ban list.
     unban_all_markets: bool = field(default_factory=lambda: _bool_env("POLYMARKET_UNBAN_ALL_MARKETS", False))
+    # ── weather-only lane (user 2026-06-23) ──────────────────────────────
+    # When true, entry selection keeps ONLY weather / temperature markets
+    # (is_weather_market) and bypasses the normal ban list (weather is banned
+    # there). Bot 3 is configured weather-only; the other bots leave this off.
+    race_weather_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_WEATHER_ONLY", False))
     # ── v4: data-driven category auto-disable ────────────────────────────
     # The governance that replaces manual bans (user 2026-06-21): after at
     # least ``min_samples`` realized trades in a category, that category is

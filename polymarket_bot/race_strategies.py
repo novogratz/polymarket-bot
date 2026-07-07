@@ -37,6 +37,7 @@ from .models import (
     Candidate,
     as_float,
     is_excluded_market,
+    is_weather_market,
     parse_dt,
     parse_json_list,
     utc_now,
@@ -229,6 +230,9 @@ def _build_eligible_candidates(
     # v4 (user 2026-06-21): when unban_all_markets is on, every category is
     # allowed — governance shifts to the data-driven category auto-disable.
     unban_all = bool(getattr(settings, "unban_all_markets", False))
+    # Weather-only lane (user 2026-06-23): restrict entry to ONLY weather /
+    # temperature markets. Bypasses the ban list (weather is banned there).
+    weather_only = bool(getattr(settings, "race_weather_only", False))
     disabled = disabled_categories or set()
     # v4 forecasting EV/quality gates (user 2026-06-21) — opt-in, both 0 = off.
     min_edge = float(getattr(settings, "race_min_edge", 0.0) or 0.0)
@@ -240,7 +244,12 @@ def _build_eligible_candidates(
     min_clarity = float(getattr(settings, "race_min_resolution_clarity", 0.0) or 0.0)
     out: list[tuple[Candidate, float]] = []
     for market in markets:
-        if not unban_all and is_excluded_market(market):
+        if weather_only:
+            # Keep ONLY weather markets; this lane bypasses the ban list
+            # (weather is itself banned there).
+            if not is_weather_market(market):
+                continue
+        elif not unban_all and is_excluded_market(market):
             continue
         # v4 data-driven governance: drop auto-disabled categories.
         if disabled and classify_market(market) in disabled:

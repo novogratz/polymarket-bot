@@ -8,17 +8,26 @@ description: Claude Code skill for the Polymarket grinder bot. Use for any chang
 Deterministic favorite-grinder bot for Polymarket binary markets. **No LLM in the
 scan or trade-selection path** — the engine is pure Python over Polymarket APIs.
 
-## Current strategy — `grinder` (race mode)
+## Current strategy — `grinder` (race mode) — WEATHER-ONLY
 
 Buy a heavily-favored binary outcome and ride it to resolution.
 
 - **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1) and
   `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
+- **WEATHER-ONLY lane (user 2026-07-06, "put bot 1 to the same strategy as
+  bot 2 which is weather only bets"):** `weather_only = true`
+  (`POLYMARKET_RACE_WEATHER_ONLY`) in BOTH profiles — entry selection keeps
+  ONLY weather / temperature markets (`is_weather_market` in `models.py`:
+  temperature, °C/°F, weather, rainfall, snowfall, high/low temp) and
+  bypasses the ban list (weather is itself banned there). Every non-weather
+  market is dropped. Ported from `kzer_windows` (bot 3's 2026-06-23
+  experiment); `WeatherOnlyLaneTests` pin the behavior.
 - **Entry:** ask ∈ **[0.80, 0.94]**, absolute hard cap **0.96**
   (`max_price_hard_cap`, v4 2026-06-21 — 0.97+ never tradeable),
   **game starts OR market closes within
-  ≤ 4 h** (user 2026-06-14; dynamic widening OFF via `max_hours_cap=0`),
-  (`max_hours=4`,
+  ≤ 24 h** (weather-only 2026-07-06 — weather resolves end-of-day ~22–46 h
+  out, a 4 h window has zero weather candidates; dynamic widening OFF via
+  `max_hours_cap=0`), (`max_hours=24`,
   `daily_expiry_fallback=false`; user 2026-06-12). **One bet per GAME**
   (`_dedup_same_game` on date-truncated event slug + team names — one game
   spans several Polymarket events; `_open_game_keys` blocks across ticks;

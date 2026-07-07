@@ -43,13 +43,12 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Entry window: 4h MAX, hard (user 2026-06-14: "only bet on things expiring
-# in 4 hours maximum - never bet on more than 4 hours"). The dynamic ladder
-# is OFF — max_hours_cap = 0 makes the ladder a single [4h] rung, so nothing
-# beyond 4h is ever scanned or entered. (The 6/8/10/12h widening that ran
-# 2026-06-11..14 is disabled; flip max_hours_cap back above max_hours to
-# re-enable it.)
-max_hours = 4.0
+# Entry window 24h — WEATHER-ONLY lane (user 2026-07-06: all bots on main run
+# weather-only). Weather/temperature markets resolve at END OF DAY (typically
+# ~22h and ~46h out), so the previous 4h window left them permanently
+# out-of-window (0 weather candidates). 24h captures the same-day weather
+# batch. Hard cap (max_hours_cap=0 -> single 24h window, no laddering).
+max_hours = 24.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
 scan_limit = 750
@@ -86,6 +85,11 @@ fixed_stake_usd = 5.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
+# WEATHER-ONLY lane (user 2026-07-06): bots on main bet ONLY on weather /
+# temperature markets — every non-weather market is dropped at entry
+# selection, and this lane bypasses the normal weather ban (is_weather_market
+# in models.py).
+weather_only = true
 # Data-driven category auto-disable (user 2026-06-21): after ≥ 100 realized
 # trades in a category, drop it from entry selection if its ROI < −5%.
 # Forward-looking — a fresh bot disables nothing.

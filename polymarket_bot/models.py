@@ -418,6 +418,36 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
     return False
 
 
+# Weather / temperature markets — normally banned (see _EXCLUDED_QUESTION_
+# SUBSTRINGS), but the weather-only lane (user 2026-06-23) restricts a bot to
+# THESE markets exclusively, so it needs a positive detector.
+_WEATHER_SUBSTRINGS = (
+    "temperature",
+    "°c",
+    "°f",
+    "weather",
+    "rainfall",
+    "snowfall",
+    "degrees fahrenheit",
+    "degrees celsius",
+    "highest temp",
+    "lowest temp",
+    "high temp",
+    "low temp",
+)
+
+
+def is_weather_market(market: dict[str, Any]) -> bool:
+    """True for temperature / weather markets — the inverse of the weather ban.
+
+    Used by the ``weather_only`` lane to keep ONLY weather markets. Matches the
+    question or the de-slugged slug against curated, collision-safe substrings.
+    """
+    q = str(market.get("question") or "").lower()
+    slug = str(market.get("slug") or "").lower().replace("-", " ")
+    return any(p in q or p in slug for p in _WEATHER_SUBSTRINGS)
+
+
 @dataclass(frozen=True)
 class Candidate:
     market_id: str

@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (4 h window, hard maximum) at a **fixed $5 per trade** (v4, 2026-06-21), and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −30% confirmed stop-loss (sport moneylines only) and a hard "never sell below entry" floor. With `unban_all_markets` every category is allowed and governed by a data-driven category auto-disable. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. **Weather-only since 2026-07-06** (`weather_only` lane): bets exclusively on weather / temperature markets. Buys heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (24 h window, hard maximum — weather resolves end-of-day) at a **fixed $5 per trade** (v4, 2026-06-21), and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −30% confirmed stop-loss (sport moneylines only) and a hard "never sell below entry" floor. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -43,7 +43,9 @@ Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet,
 
 ### 1. Scan
 
-Every Gamma market closing within the 4 h window (hard max), fetched with two orderings (soonest-closing + highest-volume) and **full pagination past the API's silent 100-row cap** — ~1,000–2,000+ raw markets per tick depending on time of day.
+Every Gamma market closing within the 24 h window (hard max — widened from 4 h for the weather-only lane, since weather markets resolve end-of-day ~22–46 h out), fetched with two orderings (soonest-closing + highest-volume) and **full pagination past the API's silent 100-row cap** — ~1,000–2,000+ raw markets per tick depending on time of day.
+
+> **Weather-only lane (user 2026-07-06, ALL bots):** `weather_only = true` restricts entry selection to ONLY weather / temperature markets (`is_weather_market` in `models.py`: temperature, °C/°F, weather, rainfall, snowfall, high/low temp) and bypasses the normal weather ban below. Every non-weather market — sports, elections, crypto, everything — is dropped at entry selection. The exclusion table below documents the ban list that applies when the lane (and `unban_all_markets`) are off.
 
 ### 2. Excluded market types
 
@@ -74,7 +76,8 @@ Blocked globally (`models.is_excluded_market`) because no exit can protect again
 | Parameter | Value (`grinder.toml [race]`) |
 |---|---|
 | Price band (ask) | 0.80 – 0.94, absolute hard cap **0.96** (v4 2026-06-21 — 0.97+ never tradeable) |
-| Entry window | **game starts OR market closes within ≤ 4 h** (user 2026-06-14); dynamic widening disabled (`max_hours_cap = 0`) |
+| Entry window | **game starts OR market closes within ≤ 24 h** (weather-only lane, 2026-07-06 — weather resolves end-of-day); dynamic widening disabled (`max_hours_cap = 0`) |
+| Market type | **Weather / temperature ONLY** (`weather_only = true`, 2026-07-06) |
 | Max spread | ≤ 4¢ |
 | Min liquidity | $250 |
 | Min 24 h volume | $1000 |
