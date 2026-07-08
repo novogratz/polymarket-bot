@@ -214,6 +214,6 @@ max_entry_slippage = 0.02
 [exits]
 stop_loss_pct = 1.0
 stop_loss_min_age_minutes = 1
-max_hold_hours = 3.5
+max_hold_hours = 4.5
 near_expiry_exit_losers = false
 near_expiry_loser_minutes = 5
