@@ -2174,7 +2174,13 @@ def _position_cap_usd(settings: Settings, equity: float) -> float:
     v4 (user 2026-06-21): when ``race_fixed_stake_usd`` > 0, the cap IS the
     fixed dollar stake — a position can never exceed one $5 bet (no averaging
     or double-down headroom).
+
+    FULL-DEPLOY (user 2026-07-09, "100% of the account is always invested"):
+    with ``race_full_deploy`` there is NO per-position ceiling — a single
+    market may hold the whole account. Overrides the fixed stake.
     """
+    if getattr(settings, "race_full_deploy", False):
+        return max(0.0, equity)
     fixed = float(getattr(settings, "race_fixed_stake_usd", 0.0) or 0.0)
     if fixed > 0:
         return fixed
@@ -2196,7 +2202,13 @@ def _entry_cap_usd(settings: Settings, equity: float) -> float:
 
     v4 (user 2026-06-21): with ``race_fixed_stake_usd`` > 0 the entry cap IS
     the fixed stake (== the position cap, so there is no double-down headroom).
+
+    FULL-DEPLOY (user 2026-07-09): entry cap = full equity, so the top-up
+    lane keeps pushing leftover cash into already-held markets (which still
+    re-pass every entry filter each tick) until the account is 100% deployed.
     """
+    if getattr(settings, "race_full_deploy", False):
+        return max(0.0, equity)
     fixed = float(getattr(settings, "race_fixed_stake_usd", 0.0) or 0.0)
     if fixed > 0:
         return fixed
@@ -2225,6 +2237,14 @@ def _dynamic_stake_target(
     - The near-resolution boost (1.5× under 30 min, 1.25× under 1 h)
       scales the spread share but can never pierce the cap.
     """
+    # FULL-DEPLOY sizing (user 2026-07-09, "100% of the account is always
+    # invested"): spread ALL available cash across the actionable picks
+    # (cash / N each, no per-bet cap, no near-resolution boost). Whatever a
+    # depth-capped fill leaves behind re-deploys next tick via the top-up
+    # lane, so the account converges to fully invested. Overrides the fixed
+    # stake below.
+    if getattr(settings, "race_full_deploy", False):
+        return max(0.0, cash_above_floor / max(1, n_opportunities))
     # v4 fixed-dollar sizing (user 2026-06-21): every bet is EXACTLY the
     # fixed stake, capped only by the cash actually available — no spread
     # across opportunities, no near-resolution boost, no scaling.

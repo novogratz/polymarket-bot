@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. **Weather-only since 2026-07-06** (`weather_only` lane): bets exclusively on weather / temperature markets. Buys heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (24 h window, hard maximum — weather resolves end-of-day) at a **fixed $5 per trade** (v4, 2026-06-21), and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −30% confirmed stop-loss (sport moneylines only) and a hard "never sell below entry" floor. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. **Weather-only since 2026-07-06** (`weather_only` lane): bets exclusively on weather / temperature markets. Buys heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (24 h window, hard maximum — weather resolves end-of-day) with **full-deployment sizing** (2026-07-09: 100% of the account always invested — available cash is spread across the tick's picks, no per-position cap), and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −30% confirmed stop-loss (sport moneylines only) and a hard "never sell below entry" floor. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -90,12 +90,14 @@ There are **no price-movement gates** (removed 2026-06-10): markets that moved t
 
 Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) and the top `max_orders_per_tick` (**12** in v4 — open as many $5 bets per tick as there are distinct eligible games) become this tick's picks. Markets that can never execute — token already held at its cap, order pending, or event already held — are removed **before** ranking, so they never burn pick slots. **One bet per game:** a game is identified by its date-truncated event slug and the team names in the question (one game spans several Polymarket events — moneyline, `-more-markets`, `-first-to-score`); same-game candidates collapse to a single pick before ranking, an open position on the game blocks all its other markets, and the execution loop backstops same-tick repeats. The single best (highest-bid) candidate per game is kept (the soccer under-4.5 priority was dropped 2026-06-14).
 
-### 5. Sizing (v4 fixed-dollar — user 2026-06-21)
+### 5. Sizing (FULL-DEPLOY — user 2026-07-09)
 
-- **Every trade = EXACTLY $5** (`fixed_stake_usd = 5.0`). No Kelly, no %-of-equity, no martingale, no averaging-down, no double-down, no confidence scaling, no dynamic spread. When `fixed_stake_usd > 0` the three sizing functions short-circuit to the flat amount (capped only by available cash).
-- **Full capital deployment:** because risk is capped at $5 per trade, the whole bankroll deploys across `bankroll / 5` positions ($50 → 10, $100 → 20, $500 → 100). Worst single-trade loss is $5.
-- **Double-down disabled** (`double_down_enabled = false`) — fixed sizing means no averaging into a position.
-- Legacy `stake_pct`/`initial_stake_pct` Kelly knobs are ignored while fixed sizing is on (kept for the legacy % mode).
+- **100% of the account is always invested** (`full_deploy = true`). Each tick spreads ALL available cash across the actionable picks — `cash / N` per bet, no near-resolution boost, no per-bet cap.
+- **No per-position ceiling:** `_position_cap_usd` and `_entry_cap_usd` return full equity, so leftover cash (e.g. from a depth-capped FOK fill, or when no new market qualifies) keeps flowing into already-held markets via the top-up lane until the account is fully deployed. Every top-up re-passes every entry filter. **Worst-case loss on one market is the whole account.**
+- **No cash reserve** (`cash_floor_pct = 0`).
+- `full_deploy` **overrides** `fixed_stake_usd`; the retired v4 fixed-$5 mode (2026-06-21) is a one-line rollback (`full_deploy = false`, `fixed_stake_usd = 5.0`).
+- **Double-down disabled** (`double_down_enabled = false`); the top-up lane (which requires the ask to still pass all entry filters) is the only way a position grows.
+- Legacy `stake_pct`/`initial_stake_pct` Kelly knobs are ignored while full-deploy is on (kept for the legacy % mode).
 
 ### 6. Execution
 
