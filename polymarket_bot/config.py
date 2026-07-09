@@ -381,6 +381,16 @@ class Settings:
     # is hard-capped at this number, so the bankroll can be fully deployed
     # across bankroll / fixed_stake positions. 0 = off (legacy % sizing).
     race_fixed_stake_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FIXED_STAKE_USD", 0.0))
+    # ── FULL-DEPLOY sizing (user 2026-07-09) ─────────────────────────────
+    # When true, 100% of the account is always invested: each tick spreads
+    # ALL available cash across the actionable picks (cash / N each), there
+    # is NO per-position cap (entry + position caps = full equity), and the
+    # cash floor is ignored. Leftover cash keeps flowing into already-held
+    # markets via the top-up lane until the account is fully deployed.
+    # OVERRIDES race_fixed_stake_usd. Worst-case loss on one market is the
+    # whole account — explicit user mandate ("100% of the account is always
+    # invested"). False = fixed/legacy sizing.
+    race_full_deploy: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_FULL_DEPLOY", False))
     # ── v4: absolute hard ceiling on the ENTRY ask ───────────────────────
     # Entries are never placed above this price, regardless of race_max_price
     # (user 2026-06-21: "never trade 0.97/0.98/0.99"). 0 disables the clamp.

@@ -70,14 +70,17 @@ max_spread = 0.04
 # boost scales the spread share but never pierces the cap (handled in
 # race_strategies._dynamic_stake_target).
 stake_usd = 1.0
-# ── v4 FIXED-DOLLAR SIZING (user 2026-06-21) ─────────────────────────────
-# Every trade = EXACTLY $5, never more. No Kelly, no % of equity, no
-# martingale, no averaging-down, no double-down, no confidence scaling, no
-# dynamic sizing. Risk per trade is hard-capped at $5, so the full bankroll
-# can be deployed across (bankroll / 5) positions ($50 → 10, $500 → 100).
-# When fixed_stake_usd > 0 the stake_pct/initial_stake_pct knobs below are
-# IGNORED (kept only for legacy % mode).
-fixed_stake_usd = 5.0
+# ── FULL-DEPLOY SIZING (user 2026-07-09) ─────────────────────────────────
+# "100% of the account is always invested." Each tick spreads ALL available
+# cash across the actionable picks (cash / N each); there is NO per-position
+# cap (a single market may hold the whole account) and the cash floor is 0.
+# Leftover cash from depth-capped fills keeps flowing into already-held
+# markets via the top-up lane (each top-up re-passes every entry filter)
+# until the account is fully deployed. full_deploy OVERRIDES fixed_stake_usd;
+# the v4 fixed-$5 mode (user 2026-06-21) is retired but kept below for a
+# one-line rollback (set full_deploy = false, fixed_stake_usd = 5.0).
+full_deploy = true
+fixed_stake_usd = 0.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
@@ -125,7 +128,8 @@ double_down_min_price = 0.60
 # games (each still passes every entry filter; one bet per game/event). The $5
 # cap bounds risk regardless of count.
 max_orders_per_tick = 12
-cash_floor_pct = 0.01
+# Full-deploy (user 2026-07-09): no cash reserve — 100% invested.
+cash_floor_pct = 0.0
 
 # Exit rules:
 #   tp_pct = 1.0          → TP disabled; ride to resolution.

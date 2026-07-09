@@ -42,7 +42,17 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   values logged in the forward net only, pinned by tests.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
   dropped before pick-slot truncation.
-- **Sizing (v4 fixed-dollar — user 2026-06-21):** every trade = EXACTLY $5
+- **Sizing (FULL-DEPLOY — user 2026-07-09, "100% of the account is always
+  invested"):** `full_deploy = true` in BOTH profiles. Each tick spreads ALL
+  available cash across the actionable picks (`cash / N` per bet); the three
+  sizing functions return **full equity as the cap** (no per-position
+  ceiling), so leftover cash keeps flowing into already-held markets via the
+  top-up lane (each top-up re-passes every entry filter) until the account
+  is fully deployed. `cash_floor_pct = 0`. Worst-case loss on one market =
+  the whole account (explicit mandate). OVERRIDES `fixed_stake_usd`;
+  rollback = `full_deploy = false`, `fixed_stake_usd = 5.0`.
+  `FullDeploySizingTests` pin it.
+- **Sizing (RETIRED v4 fixed-dollar — user 2026-06-21):** every trade = EXACTLY $5
   (`fixed_stake_usd = 5.0`). No Kelly, no %-of-equity, no martingale, no
   averaging/double-down, no confidence scaling, no dynamic spread. The three
   sizing functions (`_position_cap_usd`, `_entry_cap_usd`,
