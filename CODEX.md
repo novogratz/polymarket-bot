@@ -14,13 +14,13 @@ MIT licensed. Tests run in CI — see `.github/workflows/test.yml`.
 
 ## Current state (v4 — 2026-06-21)
 
-**Live strategy:** `grinder` — heavy-favorite, ride-to-resolution. All 3 bots.  
+**Live strategy:** `grinder` — **WEATHER-ONLY** (2026-07-06), heavy-favorite, ride-to-resolution. All 3 bots.  
 **Config:** `configs/profiles/grinder.toml` (bot 1) / `grinder_b.toml` (bots 2 & 3).  
 **Launcher:** `bash scripts/run_live_70.sh` / `run_live_b.sh`. Do **not** use `run_all.sh` for live.  
-**Entry:** ask ∈ [0.80, 0.94], hard cap 0.96 (0.97+ never), ≤4h to close, spread ≤4¢, liq ≥$250, vol ≥$1000.  
-**Sizing:** **FIXED $5 per trade** (`fixed_stake_usd = 5.0`) — no Kelly/%/martingale/double-down. Bankroll deploys across `bankroll/5` positions.  
-**Universe:** `unban_all_markets = true` — every category allowed, governed by the data-driven category auto-disable (`categories.py`) + opt-in forecasting EV/quality gates (`forecast.py`).  
-**Exits:** resolved_exit at bid ≥**0.99** (else settle 1.0), confirmed −30% SL on soccer moneylines only, never-sell-below-entry, max-hold 4.5h. No TP, no pause-halts.
+**Universe:** `weather_only = true` — ONLY weather / temperature markets (`is_weather_market`); everything else dropped at selection. "weather" is a first-class category (2026-07-10), never auto-disabled while the lane is on.  
+**Entry:** ask ∈ [0.80, 0.94], hard cap 0.96 (0.97+ never), ≤24h to close (weather resolves end-of-day), spread ≤4¢, liq ≥$250, vol ≥$1000.  
+**Sizing:** **FULL-DEPLOY** (`full_deploy = true`, 2026-07-09) — 100% of the account always invested: cash/N across the tick's picks, NO per-position cap, top-up lane re-deploys leftovers. Worst case on one market = whole account. Rollback: `full_deploy=false, fixed_stake_usd=5.0`.  
+**Exits:** resolved_exit at bid ≥**0.99** (else settle 1.0), never-sell-below-entry, max-hold backstop. The −30% confirmed SL gates on soccer moneylines only → weather positions never stop out. No TP, no pause-halts.
 
 ## Project map
 

@@ -2,18 +2,19 @@
 
 Document maître expliquant **toutes les lanes** d'achat et toutes les conditions de vente du bot. Aucune ligne de code ici, juste la mécanique métier. Pour les paramètres, voir `docs/PROFILES.md`.
 
-## État actuel (v4 — 2026-06-21)
+## État actuel (WEATHER-ONLY + FULL-DEPLOY — 2026-07-10)
 
-**Stratégie LIVE :** `grinder` — mode race, scalp heavy-favorite near-resolution. Les 3 bots tournent le même grinder.
+**Stratégie LIVE :** `grinder` — mode race, **100% météo** (user 2026-07-06 : « weather only bets »). Les 3 bots… bots 1 & 2 (main) ne tradent QUE les marchés météo/température ; le grinder classique reste documenté ci-dessous.
 
-**Thèse :** un favori binaire à ask ∈ [0.80, 0.94] avec ≤4h à la fermeture price la near-certainty ; on paye le spread et on **ride jusqu'à la résolution** (1.0). L'edge est le gap entre le prix d'entrée et l'outcome qui se résout à 1.0.
+**Thèse :** un favori binaire météo à ask ∈ [0.80, 0.94] avec ≤24h à la fermeture (la météo se résout en fin de journée) price la near-certainty ; on paye le spread et on **ride jusqu'à la résolution** (1.0).
 
 **Config source de vérité :** `configs/profiles/grinder.toml` (bot 1) et `grinder_b.toml` (bots 2 & 3).
 
-**Paramètres clés v4 (user 2026-06-21, « Polymarket Bot v4 ») :**
-- **Entry :** ask ∈ [0.80, 0.94], **hard cap 0.96** (`max_price_hard_cap` — 0.97/0.98/0.99 jamais tradables), ≤4h (game start OU close), spread ≤4¢, liq ≥$250, vol 24h ≥$1000. Plancher 0.92 sur les moneylines soccer « Will X win on <date>? ».
-- **Sizing : FIXE $5 par trade** (`fixed_stake_usd = 5.0`) — pas de Kelly, %, martingale, averaging, double-down, scaling. Perte max par trade = $5 ; le bankroll se déploie sur `bankroll/5` positions. Double-down désactivé.
-- **Unban total** (`unban_all_markets = true`) : toutes catégories autorisées, gouvernées par l'**auto-disable data-driven** (`categories.py` : ≥100 trades & ROI < −5% → retirée).
+**Paramètres clés (weather-only 2026-07-06, full-deploy 2026-07-09) :**
+- **Univers : MÉTÉO UNIQUEMENT** (`weather_only = true`) — température, °C/°F, weather, rainfall, snowfall, high/low temp (`is_weather_market`). Tout le reste (sport, élections, crypto, …) est écarté à la sélection ; le ban météo normal est bypassé. « weather » est une catégorie v4 à part entière (2026-07-10) et **ne peut jamais être auto-disabled tant que la lane est active** (garde anti-famine).
+- **Entry :** ask ∈ [0.80, 0.94], **hard cap 0.96** (`max_price_hard_cap` — 0.97/0.98/0.99 jamais tradables), ≤24h (game start OU close — élargi de 4h pour la météo), spread ≤4¢, liq ≥$250, vol 24h ≥$1000.
+- **Sizing : FULL-DEPLOY** (`full_deploy = true`, user 2026-07-09 « 100% of the account is always invested ») — chaque tick répartit TOUT le cash dispo sur les picks actionnables (cash/N), **aucun plafond par position** (un seul marché peut porter tout le compte), `cash_floor_pct = 0`. Le cash résiduel (fills depth-capped) repart via la top-up lane jusqu'au déploiement complet. Rollback : `full_deploy = false`, `fixed_stake_usd = 5.0`.
+- **Unban total** (`unban_all_markets = true`) : sans effet pratique sous weather-only ; gouvernance data-driven (`categories.py` : ≥100 trades & ROI < −5% → retirée, sauf `weather` tant que la lane est ON).
 - **Modèle de forecasting** (`forecast.py`, opt-in) : `predicted_probability` calibré par (catégorie, bucket de prix), `edge = predicted − ask`, `quality_score` ; gates `min_edge`/`min_quality_score` OFF par défaut (besoin d'historique).
 - **Exits :** TP désactivé (ride to resolution), **resolved_exit à bid ≥0.99** (sinon settle à 1.0), SL confirmé −30% sur moneylines soccer uniquement (anti-gap ≥0.50), never-sell-below-entry. Daily DD halt DÉSACTIVÉ ; pas de pause-halts (user 2026-06-21).
 
@@ -293,9 +294,24 @@ Pour un dry-run sérieux ou la prod : `[noise_fallback] enabled = false`. Le bot
 
 ---
 
-## Sizing FIXE $5 — grinder v4 (user 2026-06-21)
+## Sizing FULL-DEPLOY — 100% investi (user 2026-07-09)
 
-Le grinder **v4** mise **exactement $5 par trade** (`fixed_stake_usd = 5.0`).
+**Règle ACTUELLE** (`full_deploy = true`, remplace le $5 fixe ci-dessous) :
+chaque tick répartit **tout le cash disponible** sur les picks actionnables —
+`cash / N` par pari, sans boost near-resolution. Les trois fonctions de sizing
+(`_position_cap_usd`, `_entry_cap_usd`, `_dynamic_stake_target`) renvoient
+**l'équité entière comme plafond** : aucun plafond par position, un seul marché
+peut porter tout le compte. Le cash résiduel d'un fill depth-capped (FOK borné
+à 90% de la profondeur du book) repart chaque tick via la top-up lane — chaque
+top-up repasse TOUS les filtres d'entrée — jusqu'au déploiement complet.
+`cash_floor_pct = 0` (aucune réserve). **Perte max sur un marché = tout le
+compte** — mandat explicite de l'utilisateur. Rollback une-ligne :
+`full_deploy = false`, `fixed_stake_usd = 5.0`. Pinné par
+`FullDeploySizingTests`.
+
+## Sizing FIXE $5 — grinder v4 (user 2026-06-21) — RETIRÉ 2026-07-09
+
+Le grinder **v4** misait **exactement $5 par trade** (`fixed_stake_usd = 5.0`).
 Pas de Kelly, pas de %-equity, pas de martingale, pas d'averaging-down, pas de
 double-down, pas de confidence scaling, pas de sizing dynamique.
 

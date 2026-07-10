@@ -5,8 +5,10 @@ description: Claude Code skill for the Polymarket grinder bot. Use for any chang
 
 # Polymarket Bot Skill
 
-Deterministic favorite-grinder bot for Polymarket binary markets. **No LLM in the
-scan or trade-selection path** — the engine is pure Python over Polymarket APIs.
+Deterministic **weather-only** favorite-grinder bot for Polymarket binary markets
+(since 2026-07-06 it bets exclusively on weather / temperature markets). **No LLM
+in the scan or trade-selection path** — the engine is pure Python over Polymarket
+APIs.
 
 ## Current strategy — `grinder` (race mode) — WEATHER-ONLY
 
@@ -150,7 +152,9 @@ Shows equity, **P&L since start (= equity − baseline)**, **total trades + win
 rate**, a **v4 performance block** (≥10 closed trades: ROI / Sharpe / profit
 factor / max DD + a **p/q/edge** line all-time & today, `🎯 p=avg entry · q=win
 rate · edge(q−p)` — +EV only when q>p — + a **best/worst category** line
-(`🥇 Meilleure catégorie … 🥶 Pire …`, ranked by realized $ P&L) + worst
+(`🥇 Meilleure catégorie … 🥶 Pire …`, ranked by realized $ P&L; "weather" is
+a first-class category since 2026-07-10, so the weather-only lane shows
+`weather +$X` here) + worst
 per-category ROIs, ⛔ on auto-disabled), open positions and trades-of-the-day **each capped to the top
 `LIVE_REPORT_TOP_N` winners + N worst losers** (default 5, `_winners_losers`;
 rest folded into `… +X autres`; `=0` → summary only — user 2026-06-22 "I want

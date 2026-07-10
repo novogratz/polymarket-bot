@@ -3563,6 +3563,21 @@ class WeatherOnlyLaneTests(unittest.TestCase):
         weather = self._market("w", "Highest temperature in NYC on 2026-06-23?", "nyc-high-temp")
         self.assertEqual(_build_eligible_candidates([weather], settings), [])
 
+    def test_auto_disable_can_never_starve_the_weather_lane(self):
+        # 2026-07-10: "weather" is a real category now — if its realized ROI
+        # dipped below the auto-disable threshold, the governance would drop
+        # the ONLY category the lane trades and the bot would starve. While
+        # weather_only is on, the user's explicit lane choice wins.
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0,
+                            race_weather_only=True)
+        weather = self._market("w", "Highest temperature in NYC on 2026-06-23?", "nyc-high-temp")
+        ids = {c.market_id for c, _ in _build_eligible_candidates(
+            [weather], settings, disabled_categories={"weather"})}
+        self.assertEqual(ids, {"w"})
+
 
 class DynamicEntryWindowTests(unittest.TestCase):
     """User rule 2026-06-11: prefer bets ≤4h from resolution; if nothing is

@@ -1,10 +1,10 @@
-# polymarket-bot
+# polymarket-bot 🌤️ — the weather bot
 
 [![tests](https://github.com/novogratz/polymarket-bot/actions/workflows/test.yml/badge.svg)](https://github.com/novogratz/polymarket-bot/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. **Weather-only since 2026-07-06** (`weather_only` lane): bets exclusively on weather / temperature markets. Buys heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (24 h window, hard maximum — weather resolves end-of-day) with **full-deployment sizing** (2026-07-09: 100% of the account always invested — available cash is spread across the tick's picks, no per-position cap), and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −30% confirmed stop-loss (sport moneylines only) and a hard "never sell below entry" floor. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. **Weather-only since 2026-07-06** (`weather_only` lane): bets exclusively on weather / temperature markets. Buys heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (24 h window, hard maximum — weather resolves end-of-day) with **full-deployment sizing** (2026-07-09: 100% of the account always invested — available cash is spread across the tick's picks, no per-position cap), and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00). Weather positions never stop out — the −30% confirmed stop-loss gates on sport moneylines only, and a hard "never sell below entry" floor protects every other exit path. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 

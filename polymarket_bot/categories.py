@@ -19,8 +19,10 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
-# The fixed v4 category set (user 2026-06-21).
+# The fixed v4 category set (user 2026-06-21; "weather" added 2026-07-10 so
+# the weather-only lane reports as its own category, not the catch-all).
 CATEGORIES = (
+    "weather",
     "politics",
     "economics",
     "crypto",
@@ -30,6 +32,14 @@ CATEGORIES = (
     "sports",
     "entertainment",
     "other",
+)
+
+# Weather first — the active weather-only lane (user 2026-07-06) must report
+# under its own bucket. Mirrors models._WEATHER_SUBSTRINGS.
+_WEATHER_RE = re.compile(
+    r"\b(?:temperature|weather|rainfall|snowfall|"
+    r"degrees (?:fahrenheit|celsius)|(?:highest|lowest|high|low) temp)\b"
+    r"|°c|°f"
 )
 
 # Word-bounded patterns (collision-safe). Checked in this order.
@@ -73,6 +83,8 @@ _SPORTS_RE = re.compile(
 def classify_category(question: str, slug: str = "") -> str:
     """Return the v4 category for a market (always one of CATEGORIES)."""
     text = f" {str(question or '').lower()} {str(slug or '').lower().replace('-', ' ')} "
+    if _WEATHER_RE.search(text):
+        return "weather"
     if _CRYPTO_RE.search(text):
         return "crypto"
     if _ECON_RE.search(text):

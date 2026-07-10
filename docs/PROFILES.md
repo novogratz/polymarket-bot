@@ -75,15 +75,17 @@ Cible : `.env` ne contient que secrets (`PRIVATE_KEY`, `API_KEY`...), endpoints 
 | `fresh_signal_bonus` | float | Bonus de score appliqué quand le BUY le plus récent est < 5 min. |
 | `priority_category_bonus` | float | Bonus de score pour les catégories priorisées (politique, économie). |
 
-## Section `[race]` — clés v4 (production config, 2026-06-21)
+## Section `[race]` — clés v4+ (weather-only 2026-07-06, full-deploy 2026-07-09)
 
 | Clé | Type | Rôle |
 |---|---|---|
-| `fixed_stake_usd` | float | **Sizing dollar fixe.** > 0 → chaque trade mise EXACTEMENT ce montant ($5), plafonné seulement par le cash dispo. Désactive Kelly / %-equity / martingale / averaging / double-down / scaling. `_position_cap_usd`, `_entry_cap_usd`, `_dynamic_stake_target` court-circuitent vers ce montant. 0 = mode % legacy. |
+| `weather_only` | bool | **Lane MÉTÉO UNIQUEMENT (ACTIVE, 2026-07-06).** `true` → la sélection ne garde QUE les marchés météo/température (`is_weather_market` : temperature, °C/°F, weather, rainfall, snowfall, high/low temp) et bypasse le ban météo normal. Tout le reste est écarté. Env var : `POLYMARKET_RACE_WEATHER_ONLY`. |
+| `full_deploy` | bool | **Sizing FULL-DEPLOY (ACTIF, 2026-07-09 — « 100% of the account is always invested »).** `true` → chaque tick répartit TOUT le cash dispo sur les picks (cash/N), aucun plafond par position (les trois fonctions de sizing renvoient l'équité entière), le cash résiduel repart via la top-up lane. OVERRIDE `fixed_stake_usd`. Perte max sur un marché = tout le compte. Env var : `POLYMARKET_RACE_FULL_DEPLOY`. |
+| `fixed_stake_usd` | float | **Sizing dollar fixe (RETIRÉ 2026-07-09 — c'est le rollback du full-deploy).** > 0 → chaque trade mise EXACTEMENT ce montant ($5), plafonné seulement par le cash dispo. Désactive Kelly / %-equity / martingale / averaging / double-down / scaling. Ignoré si `full_deploy = true`. 0 = off. |
 | `max_price_hard_cap` | float | Plafond ABSOLU du prix d'entrée (ask). L'entrée est clampée à ce prix quel que soit `max_price`, donc 0.97/0.98/0.99 jamais tradables. 0 = désactivé. |
-| `unban_all_markets` | bool | `true` → `is_excluded_market` est bypassé à la sélection : toutes les catégories autorisées, gouvernées par l'auto-disable data-driven (`categories.py`). Risque borné par `fixed_stake_usd`. Env var : `POLYMARKET_UNBAN_ALL_MARKETS`. |
+| `unban_all_markets` | bool | `true` → `is_excluded_market` est bypassé à la sélection : toutes les catégories autorisées, gouvernées par l'auto-disable data-driven (`categories.py`). Sans effet pratique sous `weather_only`. Env var : `POLYMARKET_UNBAN_ALL_MARKETS`. |
 | `category_min_samples` | int | Taille d'échantillon avant qu'une catégorie puisse être auto-désactivée (défaut 100). 0 = auto-disable off. |
-| `category_disable_roi` | float | Une catégorie avec ≥ `category_min_samples` trades réalisés ET un ROI < ce seuil (défaut −0.05) est retirée de la sélection. `other` jamais désactivée. |
+| `category_disable_roi` | float | Une catégorie avec ≥ `category_min_samples` trades réalisés ET un ROI < ce seuil (défaut −0.05) est retirée de la sélection. `other` jamais désactivée ; `weather` jamais désactivée tant que `weather_only` est ON (garde anti-famine, 2026-07-10). |
 | `min_edge` | float | **Gate EV opt-in (`forecast.py`).** > 0 → ne trade que si `predicted_probability − ask ≥ min_edge`. 0 = off. Cible recommandée après données : 0.03. |
 | `min_quality_score` | float | **Gate qualité opt-in.** > 0 → ne trade que si `quality_score` (0–100 ; edge / volume / clarté résolution / ROI catégorie & bucket) ≥ seuil. 0 = off. Cible : 70. |
 | `min_resolution_clarity` | float | **Filtre résolution-safety ALWAYS-ON.** > 0 → skip les marchés au settlement subjectif/ambigu (`resolution_clarity` < seuil ; defaut profils 60). Sans historique requis — reste actif sous `unban_all_markets`. 0 = off. |
