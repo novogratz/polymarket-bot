@@ -5,15 +5,15 @@ description: Codex skill for the Polymarket smart-money copy-trading bot. Use fo
 
 # Polymarket Bot Skill
 
-## Current state (v4 — 2026-06-21)
+## Current state (WEATHER-ONLY + FULL-DEPLOY — 2026-07-10)
 
-- **Live strategy:** `grinder` — race mode, heavy-favorite near-resolution. All 3 bots.
+- **Live strategy:** `grinder` — race mode, **WEATHER-ONLY** (2026-07-06): `weather_only = true` keeps ONLY weather / temperature markets (`is_weather_market`); everything else is dropped at selection. All 3 bots.
 - **Config:** `configs/profiles/grinder.toml` (bot 1) / `grinder_b.toml` (bots 2 & 3).
 - **Launcher:** `bash scripts/run_live_70.sh` / `run_live_b.sh` — preserve ledger/journal. Do NOT use `run_all.sh` for live (it resets the ledger).
-- **Sizing:** **FIXED $5/trade** (`fixed_stake_usd = 5.0`) — no Kelly/%/martingale/double-down; bankroll deploys across `bankroll/5` positions.
-- **Entry:** ask ∈ [0.80, 0.94], hard cap 0.96 (0.97+ never), ≤4h to close, spread ≤4¢, liq ≥$250, vol ≥$1000.
-- **Universe:** `unban_all_markets = true` — all categories, governed by data-driven category auto-disable (`categories.py`) + opt-in forecasting EV/quality gates (`forecast.py`).
-- **Exits:** resolved_exit at bid ≥**0.99** (else settle 1.0), confirmed −30% SL on soccer moneylines only, never-sell-below-entry, max-hold 4.5h. No TP, no pause-halts.
+- **Sizing:** **FULL-DEPLOY** (`full_deploy = true`, 2026-07-09) — 100% of the account always invested: cash/N across the tick's picks, NO per-position cap, top-up lane re-deploys leftovers. Worst case on one market = whole account. Rollback: `full_deploy=false, fixed_stake_usd=5.0`.
+- **Entry:** ask ∈ [0.80, 0.94], hard cap 0.96 (0.97+ never), ≤24h to close (weather resolves end-of-day), spread ≤4¢, liq ≥$250, vol ≥$1000.
+- **Universe:** weather only. "weather" is a first-class v4 category (2026-07-10), shown in the Telegram 🥇 line, never auto-disabled while the lane is on (starvation guard).
+- **Exits:** resolved_exit at bid ≥**0.99** (else settle 1.0), never-sell-below-entry, max-hold backstop. The −30% confirmed SL gates on soccer moneylines only → weather positions never stop out. No TP, no pause-halts.
 - **W/L record:** `data/realized_trade_cache.jsonl` (survives journal rotation).
 - **Analysts:** deterministic. The forecasting model (`forecast.py`) is deterministic arithmetic over the ledger — not an LLM.
 

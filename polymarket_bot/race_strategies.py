@@ -233,7 +233,13 @@ def _build_eligible_candidates(
     # Weather-only lane (user 2026-06-23): restrict entry to ONLY weather /
     # temperature markets. Bypasses the ban list (weather is banned there).
     weather_only = bool(getattr(settings, "race_weather_only", False))
-    disabled = disabled_categories or set()
+    disabled = set(disabled_categories or set())
+    # While the weather-only lane is on, the data-driven auto-disable must
+    # never drop "weather" — the lane trades nothing else, so disabling it
+    # would starve the bot entirely. The user's explicit lane choice wins
+    # over the governance (2026-07-10).
+    if weather_only:
+        disabled.discard("weather")
     # v4 forecasting EV/quality gates (user 2026-06-21) — opt-in, both 0 = off.
     min_edge = float(getattr(settings, "race_min_edge", 0.0) or 0.0)
     min_quality = float(getattr(settings, "race_min_quality_score", 0.0) or 0.0)

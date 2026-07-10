@@ -1,6 +1,6 @@
 # Agent Instructions
 
-Polymarket grinder bot — deterministic signal engine, live order execution, persistent trade journal, and read-only local dashboard. Treat `.env` and `data/` as local-only state. Never print private keys, API secrets, or wallet credentials.
+Polymarket **weather-only** grinder bot — deterministic signal engine, live order execution, persistent trade journal, and read-only local dashboard. Since 2026-07-06 the bot bets exclusively on weather / temperature markets. Treat `.env` and `data/` as local-only state. Never print private keys, API secrets, or wallet credentials.
 
 See `CLAUDE.md` and `CODEX.md` for agent-specific entry points. Structured skill files are in `.claude/skills/` and `.codex/skills/`.
 
@@ -22,9 +22,9 @@ uv run pmbot journal-stats
 bash scripts/run_live_70.sh
 ```
 
-## Current strategy (v4 — 2026-06-21)
+## Current strategy (WEATHER-ONLY + FULL-DEPLOY — 2026-07-10)
 
-**Grinder:** buy ask 0.80–0.94 (hard cap 0.96), ≤4h to close, hold until bid ≥ 0.99 (else settle 1.0). **Fixed $5 per trade** (no Kelly/%/double-down). `unban_all_markets` — all categories allowed, governed by the data-driven category auto-disable (`categories.py`) + opt-in forecasting EV/quality gates (`forecast.py`). Confirmed −30% SL on soccer moneylines only; never sell below entry. Up to 12 new $5 bets per tick. See `CLAUDE.md` / `docs/STRATEGIES.md`.
+**Weather-only grinder:** `weather_only = true` — entry selection keeps ONLY weather / temperature markets (`is_weather_market`); everything else is dropped. Buy ask 0.80–0.94 (hard cap 0.96), ≤24h to close (weather resolves end-of-day), hold until bid ≥ 0.99 (else settle 1.0). **Sizing: FULL-DEPLOY** (`full_deploy = true`, 2026-07-09) — 100% of the account always invested: each tick spreads ALL available cash across the picks (cash/N), no per-position cap, leftover cash re-deploys via the top-up lane. Worst-case loss on one market = the whole account. "weather" is a first-class category (2026-07-10) — shown in the Telegram 🥇 line and never auto-disabled while the lane is on. Confirmed −30% SL applies to soccer moneylines only, so weather positions never stop out — they ride to resolution; never sell below entry. See `CLAUDE.md` / `docs/STRATEGIES.md`.
 
 ## Code style
 
