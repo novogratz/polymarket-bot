@@ -682,6 +682,31 @@ def execute_live_trade(
     if topup_position is None and portfolio.has_open_event_position(candidate):
         raise ValueError("duplicate_open_sports_event")
 
+    # ── NO-REBET GUARD, ON-CHAIN (user 2026-07-11, "you cant rebet on an
+    # existing bet meaning each line will never surpass 5% of overall
+    # account") ────────────────────────────────────────────────────────────
+    # Under 5% fixed-fraction sizing a BUY on a token the WALLET already
+    # holds is refused at the last line of defense — the chain, not the
+    # ledger. This holds even when the local ledger is missing the position
+    # (sync lag, sync_closed mis-book, fresh restart): one buy per line,
+    # ever, so no line can exceed one 5% stake at cost. Fail-open on probe
+    # errors (a dead balance API must not freeze entries entirely — the
+    # ledger-level guards above still apply).
+    if (
+        not settings.dry_run
+        and getattr(settings, "race_full_deploy", False)
+        and candidate.token_id
+    ):
+        try:
+            held_on_chain = client.live_share_balance(str(candidate.token_id))
+        except Exception:
+            held_on_chain = None
+        if held_on_chain is not None and held_on_chain >= 1.0:
+            raise ValueError(
+                f"rebet_blocked: wallet already holds {held_on_chain:.2f} shares of "
+                f"this token — one bet per line, never reinforce (user 2026-07-11)"
+            )
+
     entry_price = round(min(candidate.best_ask + candidate.tick_size, 0.99), 3)
 
     # ANTI-PUMP PROTECTION: Don't follow if price moved too far from smart money entry.
