@@ -398,14 +398,6 @@ class Settings:
     # market — diversification wins over strict 100% deployment. 0 = uncapped
     # (the 2026-07-09 behavior).
     race_full_deploy_max_position_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FULL_DEPLOY_MAX_POSITION_PCT", 0.05))
-    # Redistribution patience (user 2026-07-11: "bot should still try 3 ticks
-    # to get new positions before distributing equally to all existing
-    # positions"): number of consecutive ticks with NO new eligible market
-    # before leftover cash is redistributed EQUALLY across all existing
-    # positions. The equal redistribution is exempt from the 5% line cap —
-    # equality is the constraint, not the cap (user 2026-07-11). 0 = never
-    # redistribute.
-    race_topup_dry_ticks: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_TOPUP_DRY_TICKS", 3))
     # ── v4: absolute hard ceiling on the ENTRY ask ───────────────────────
     # Entries are never placed above this price, regardless of race_max_price
     # (user 2026-06-21: "never trade 0.97/0.98/0.99"). 0 disables the clamp.

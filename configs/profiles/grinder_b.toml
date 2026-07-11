@@ -74,27 +74,19 @@ max_spread = 0.04
 # boost scales the spread share but never pierces the cap (handled in
 # race_strategies._dynamic_stake_target).
 stake_usd = 1.0
-# ── FULL-DEPLOY SIZING + DIVERSIFICATION CAP (user 2026-07-09/10) ────────
-# "100% of the account is always invested." Each tick spreads ALL available
-# cash across the actionable picks (cash / N each) and the cash floor is 0.
-# Leftover cash from depth-capped fills keeps flowing into already-held
-# markets via the top-up lane (each top-up re-passes every entry filter).
-# DIVERSIFICATION CAP (user 2026-07-11, "each position must be maximum 5%
-# of the overall account - thats the rule - so if we have like $200 equity,
-# position is max $10"; tightened from 10% of 2026-07-10): no single
-# position may exceed 5% of equity (floored at $5), so the bankroll
-# spreads across ≥20 distinct weather markets when they exist; cash the cap
-# can't place waits for new markets rather than piling onto one. 0 = uncapped.
+# ── 5% FIXED-FRACTION SIZING — THE RULE (user 2026-07-11) ────────────────
+# "position max 5% of the overall account... you cant rebet on a position
+# that is already existing... replace the rule of $5 with the 5%." Every NEW
+# position stakes EXACTLY 5% of equity ($200 -> $10; floored at $5 for the
+# Polymarket minimum), the bankroll deploys across up to 20 distinct weather
+# markets, and a held market is NEVER bought again — no top-up, no
+# redistribution, no double-down, no re-bet on an existing line. Cash that
+# can't find a NEW market simply waits.
 # full_deploy OVERRIDES fixed_stake_usd; the v4 fixed-$5 mode (2026-06-21)
 # is retired but kept for a one-line rollback (full_deploy = false,
 # fixed_stake_usd = 5.0).
 full_deploy = true
 full_deploy_max_position_pct = 0.05
-# Redistribution patience (user 2026-07-11): try 3 ticks for NEW markets
-# first; only after 3 consecutive ticks with nothing new is leftover cash
-# split EQUALLY across all existing positions. That equal split is EXEMPT
-# from the 5% line cap — equality is the constraint. 0 = never redistribute.
-topup_dry_ticks = 3
 fixed_stake_usd = 0.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.

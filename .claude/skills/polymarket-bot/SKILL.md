@@ -44,22 +44,16 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   values logged in the forward net only, pinned by tests.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
   dropped before pick-slot truncation.
-- **Sizing (FULL-DEPLOY + DIVERSIFICATION CAP — user 2026-07-09/11):**
-  `full_deploy = true` + `full_deploy_max_position_pct = 0.05` in BOTH
-  profiles. Each tick spreads ALL available cash across the actionable picks
-  (`cash / N` per bet), and **no position may exceed 5% of equity**
-  (`_full_deploy_cap_usd`, floored at $5; 0 = uncapped — user 2026-07-10
-  "positions at $90 when bankroll total is $200 is not acceptable...
-  diversifying between the different bets weather at different locations").
-  Held lines never occupy pick slots; after `topup_dry_ticks` (3)
-  consecutive ticks with NO new eligible market, leftover cash is split
-  EQUALLY (cash/N) over all existing positions whose market still re-passes
-  the entry filters (`_maybe_redistribute_to_held`) — the equal split is
-  EXEMPT from the 5% cap (user 2026-07-11: "it doesnt need to be 5%... as
-  long as its equally distributed AND bot did try 3 ticks"). A new market
-  resets the counter; fresh entries stay capped at 5%.
-  `cash_floor_pct = 0`. Worst-case loss on one market ≈ 5% of equity.
-  OVERRIDES `fixed_stake_usd`; rollback = `full_deploy = false`,
+- **Sizing (5% FIXED-FRACTION, NO REINFORCEMENT — user 2026-07-11 THE
+  RULE):** `full_deploy = true` + `full_deploy_max_position_pct = 0.05` in
+  BOTH profiles. Every NEW position stakes EXACTLY 5% of equity ($200 → $10,
+  $5 floor) — the stake is the cap itself, not cash/N, so the bankroll
+  deploys across up to 20 distinct lines. **A held market is NEVER bought
+  again** ("you cant rebet on a position that is already existing"): held
+  tokens are dropped from pick slots (`_actionable_candidates`) — no top-up,
+  no redistribution, no double-down. Cash without a NEW market waits. The
+  3-tick redistribution (#121) was REMOVED same-day (10 s ticks → fired in
+  ~30 s, pumped one line to $33). Rollback: `full_deploy = false`,
   `fixed_stake_usd = 5.0`. `FullDeploySizingTests` pin it.
 - **Sizing (RETIRED v4 fixed-dollar — user 2026-06-21):** every trade = EXACTLY $5
   (`fixed_stake_usd = 5.0`). No Kelly, no %-of-equity, no martingale, no

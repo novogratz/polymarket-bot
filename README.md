@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. **Weather-only since 2026-07-06** (`weather_only` lane): bets exclusively on weather / temperature markets. Buys heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (24 h window, hard maximum — weather resolves end-of-day) with **full-deployment sizing under a diversification cap** (2026-07-09/11: 100% of the account invested, spread across the tick's picks, no position above 5% of equity), and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00). Weather positions never stop out — the −30% confirmed stop-loss gates on sport moneylines only, and a hard "never sell below entry" floor protects every other exit path. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. **Weather-only since 2026-07-06** (`weather_only` lane): bets exclusively on weather / temperature markets. Buys heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (24 h window, hard maximum — weather resolves end-of-day) with **5% fixed-fraction sizing** (2026-07-11: every new position = exactly 5% of equity, a held market is never bought again), and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00). Weather positions never stop out — the −30% confirmed stop-loss gates on sport moneylines only, and a hard "never sell below entry" floor protects every other exit path. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -90,15 +90,14 @@ There are **no price-movement gates** (removed 2026-06-10): markets that moved t
 
 Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) and the top `max_orders_per_tick` (**12** in v4 — open as many $5 bets per tick as there are distinct eligible games) become this tick's picks. Markets that can never execute — token already held at its cap, order pending, or event already held — are removed **before** ranking, so they never burn pick slots. **One bet per game:** a game is identified by its date-truncated event slug and the team names in the question (one game spans several Polymarket events — moneyline, `-more-markets`, `-first-to-score`); same-game candidates collapse to a single pick before ranking, an open position on the game blocks all its other markets, and the execution loop backstops same-tick repeats. The single best (highest-bid) candidate per game is kept (the soccer under-4.5 priority was dropped 2026-06-14).
 
-### 5. Sizing (FULL-DEPLOY + diversification cap — user 2026-07-09/11)
+### 5. Sizing (5% fixed-fraction, no reinforcement — user 2026-07-11)
 
-- **100% of the account invested, spread wide** (`full_deploy = true`). Each tick spreads ALL available cash across the actionable picks — `cash / N` per bet, no near-resolution boost.
-- **Diversification cap (2026-07-10):** no single position may exceed **`full_deploy_max_position_pct` = 5% of equity** (floored at $5 for Polymarket's minimum; 0 = uncapped). A $90 position on a $200 bankroll is impossible — the bankroll spreads across ≥20 distinct weather markets (different cities) when they exist. Cash the cap can't place waits for new markets instead of piling onto one; diversification wins over strict 100% deployment.
-- **3-tick patience, then uncapped equal redistribution (2026-07-11):** fresh markets always get first claim on the cash and held lines never occupy pick slots. Only after `topup_dry_ticks` (3) consecutive ticks with NO new eligible market is leftover cash split EQUALLY (cash/N) across all existing positions whose market still re-passes every entry filter — and that equal split is exempt from the 5% cap: equality is the constraint. A new market resets the counter; fresh entries stay capped at 5%.
+- **Every NEW position = exactly 5% of equity** (`full_deploy_max_position_pct = 0.05`; $200 → $10 per line, floored at $5 for Polymarket's minimum). The stake is the cap itself, not a cash/N spread — 40 eligible markets still means 5% each, so the bankroll deploys across up to 20 distinct weather markets.
+- **A held market is never bought again** — no top-up, no redistribution, no double-down, no re-bet: held tokens are dropped from the pick slots entirely. Cash that can't find a NEW market waits.
+- The 3-tick equal redistribution (2026-07-11, #121) was removed the same day: with a 10 s tick it fired after ~30 s and concentrated cash into single lines.
 - **No cash reserve** (`cash_floor_pct = 0`).
-- `full_deploy` **overrides** `fixed_stake_usd`; the retired v4 fixed-$5 mode (2026-06-21) is a one-line rollback (`full_deploy = false`, `fixed_stake_usd = 5.0`).
-- **Double-down disabled** (`double_down_enabled = false`); the top-up lane (which requires the ask to still pass all entry filters) is the only way a position grows.
-- Legacy `stake_pct`/`initial_stake_pct` Kelly knobs are ignored while full-deploy is on (kept for the legacy % mode).
+- `full_deploy` **overrides** `fixed_stake_usd`; rollback to fixed-$5 = `full_deploy = false`, `fixed_stake_usd = 5.0`.
+- Legacy `stake_pct`/`initial_stake_pct` Kelly knobs are ignored while this mode is on.
 
 ### 6. Execution
 
