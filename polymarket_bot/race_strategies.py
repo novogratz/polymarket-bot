@@ -2176,7 +2176,7 @@ def _full_deploy_cap_usd(settings: Settings, equity: float) -> float:
     User 2026-07-10 ("positions at $90 when bankroll total is $200 is not
     acceptable... take more positions if you still have more money, while
     diversifying between the different bets"): cap each position at
-    ``race_full_deploy_max_position_pct`` of equity (default 10%) so the
+    ``race_full_deploy_max_position_pct`` of equity (default 5%) so the
     bankroll spreads across many distinct markets instead of piling onto
     one. Floored at $5 so a small bankroll can still meet Polymarket's
     5-share minimum. pct ≤ 0 → uncapped (the 2026-07-09 behavior).

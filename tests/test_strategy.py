@@ -4033,27 +4033,28 @@ class FullDeploySizingTests(unittest.TestCase):
         self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 4, 3.0), 200.0)
 
     def test_diversification_cap_bounds_every_bet(self):
-        # User 2026-07-10: a $90 position on a $200 bankroll must be
-        # impossible. Default cap = 10% of equity.
+        # User 2026-07-11 THE RULE: "each position must be maximum 5% of the
+        # overall account - thats the rule - so if we have like $200 equity,
+        # position is max $10" (tightened from the 10% of 2026-07-10).
         from polymarket_bot.race_strategies import (
             _dynamic_stake_target, _entry_cap_usd, _position_cap_usd,
         )
-        s = self._settings()  # default pct = 0.10
-        self.assertAlmostEqual(s.race_full_deploy_max_position_pct, 0.10)
-        # $200 bankroll, 1 opportunity → $20 max, NOT $200.
-        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 1, 3.0), 20.0)
-        # Both caps = 10% of equity → the top-up lane stops at $20 too.
-        self.assertAlmostEqual(_position_cap_usd(s, 200.0), 20.0)
-        self.assertAlmostEqual(_entry_cap_usd(s, 200.0), 20.0)
+        s = self._settings()  # default pct = 0.05
+        self.assertAlmostEqual(s.race_full_deploy_max_position_pct, 0.05)
+        # $200 bankroll, 1 opportunity → $10 max, NOT $200.
+        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 1, 3.0), 10.0)
+        # Both caps = 5% of equity → the top-up lane stops at $10 too.
+        self.assertAlmostEqual(_position_cap_usd(s, 200.0), 10.0)
+        self.assertAlmostEqual(_entry_cap_usd(s, 200.0), 10.0)
         # Plenty of opportunities → cash/N still rules under the cap.
-        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 20, 3.0), 10.0)
+        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 40, 3.0), 5.0)
 
     def test_cap_floors_at_5_for_small_bankrolls(self):
-        # 10% of $30 = $3 < Polymarket's ~5-share minimum → floor at $5.
+        # 5% of $60 = $3 < Polymarket's ~5-share minimum → floor at $5.
         from polymarket_bot.race_strategies import _position_cap_usd
 
         s = self._settings()
-        self.assertAlmostEqual(_position_cap_usd(s, 30.0), 5.0)
+        self.assertAlmostEqual(_position_cap_usd(s, 60.0), 5.0)
         # But never above equity itself.
         self.assertAlmostEqual(_position_cap_usd(s, 4.0), 4.0)
 
