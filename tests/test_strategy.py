@@ -4076,6 +4076,33 @@ class FullDeploySizingTests(unittest.TestCase):
         self.assertFalse(s.race_full_deploy)
         self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 1, 3.0), 5.0)
 
+    def test_topups_spread_equally_and_never_pierce_the_5pct_line(self):
+        # User 2026-07-11: "just do 5% max per positions and if there are not
+        # enough positions spread the $ equally between all existing
+        # positions". This mirrors the execution loop's arithmetic for a tick
+        # with NO new markets and 3 held positions with room: each top-up
+        # targets cash/N, clamped to (5% cap − current stake); a line already
+        # at its cap gets NOTHING.
+        from polymarket_bot.race_strategies import (
+            _dynamic_stake_target, _entry_cap_usd,
+        )
+        s = self._settings()  # 5% cap
+        equity, cash = 200.0, 30.0
+        cap = _entry_cap_usd(s, equity)          # $10 per line
+        self.assertAlmostEqual(cap, 10.0)
+        held_stakes = [4.0, 6.0, 10.0]           # third is AT the cap
+        n = 3
+        target = _dynamic_stake_target(s, equity, cash, n, 3.0)
+        self.assertAlmostEqual(target, 10.0)     # cash/3 = $10, == cap
+        topups = [min(target, max(0.0, cap - st)) for st in held_stakes]
+        # Equal-spread within each line's remaining room; capped line gets $0.
+        self.assertAlmostEqual(topups[0], 6.0)   # 4 → 10
+        self.assertAlmostEqual(topups[1], 4.0)   # 6 → 10
+        self.assertAlmostEqual(topups[2], 0.0)   # already at 5%
+        # No line ever ends above 5% of equity.
+        for st, add in zip(held_stakes, topups):
+            self.assertLessEqual(st + add, cap + 1e-9)
+
 
 class PriceMovementNeverExcludesTests(unittest.TestCase):
     """User decision 2026-06-10: markets that moved recently must stay
