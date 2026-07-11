@@ -4013,38 +4013,56 @@ class DynamicStakeTargetTests(unittest.TestCase):
 
 class FullDeploySizingTests(unittest.TestCase):
     """FULL-DEPLOY sizing (user 2026-07-09, "100% of the account is always
-    invested"): each tick spreads ALL available cash across the actionable
-    picks, no per-position cap, entry cap = full equity (top-up lane keeps
-    deploying leftover cash). Overrides race_fixed_stake_usd."""
+    invested") + DIVERSIFICATION CAP (user 2026-07-10, "positions at $90 when
+    bankroll total is $200 is not acceptable"): cash spreads across the picks
+    but no position may exceed full_deploy_max_position_pct of equity (10%
+    default, $5 floor). Overrides race_fixed_stake_usd."""
 
     @staticmethod
     def _settings(**kw):
         return Settings(race_full_deploy=True,
                         smart_max_position_ceiling_usd=0.0, **kw)
 
-    def test_spreads_all_cash_across_opportunities(self):
+    def test_spreads_all_cash_across_opportunities_uncapped(self):
         from polymarket_bot.race_strategies import _dynamic_stake_target
 
-        s = self._settings()
-        # 1 opportunity → the whole cash pile on it.
+        s = self._settings(race_full_deploy_max_position_pct=0.0)
+        # pct=0 → uncapped (the 2026-07-09 behavior): 1 opportunity → the
+        # whole cash pile on it; 4 → cash/4 each.
         self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 1, 3.0), 800.0)
-        # 4 opportunities → cash/4 each; no 20%-of-equity cap.
         self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 4, 3.0), 200.0)
 
-    def test_no_per_position_or_entry_cap(self):
-        from polymarket_bot.race_strategies import _entry_cap_usd, _position_cap_usd
+    def test_diversification_cap_bounds_every_bet(self):
+        # User 2026-07-10: a $90 position on a $200 bankroll must be
+        # impossible. Default cap = 10% of equity.
+        from polymarket_bot.race_strategies import (
+            _dynamic_stake_target, _entry_cap_usd, _position_cap_usd,
+        )
+        s = self._settings()  # default pct = 0.10
+        self.assertAlmostEqual(s.race_full_deploy_max_position_pct, 0.10)
+        # $200 bankroll, 1 opportunity → $20 max, NOT $200.
+        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 1, 3.0), 20.0)
+        # Both caps = 10% of equity → the top-up lane stops at $20 too.
+        self.assertAlmostEqual(_position_cap_usd(s, 200.0), 20.0)
+        self.assertAlmostEqual(_entry_cap_usd(s, 200.0), 20.0)
+        # Plenty of opportunities → cash/N still rules under the cap.
+        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 20, 3.0), 10.0)
 
-        s = self._settings(race_stake_pct=0.10, race_initial_stake_pct=0.05)
-        # Both caps = full equity — one market may hold the whole account,
-        # and the top-up lane keeps pushing leftover cash into it.
-        self.assertAlmostEqual(_position_cap_usd(s, 1000.0), 1000.0)
-        self.assertAlmostEqual(_entry_cap_usd(s, 1000.0), 1000.0)
+    def test_cap_floors_at_5_for_small_bankrolls(self):
+        # 10% of $30 = $3 < Polymarket's ~5-share minimum → floor at $5.
+        from polymarket_bot.race_strategies import _position_cap_usd
+
+        s = self._settings()
+        self.assertAlmostEqual(_position_cap_usd(s, 30.0), 5.0)
+        # But never above equity itself.
+        self.assertAlmostEqual(_position_cap_usd(s, 4.0), 4.0)
 
     def test_overrides_fixed_stake(self):
         from polymarket_bot.race_strategies import (
             _dynamic_stake_target, _entry_cap_usd, _position_cap_usd,
         )
-        s = self._settings(race_fixed_stake_usd=5.0)
+        s = self._settings(race_fixed_stake_usd=5.0,
+                           race_full_deploy_max_position_pct=0.0)
         self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 1, 3.0), 800.0)
         self.assertAlmostEqual(_position_cap_usd(s, 1000.0), 1000.0)
         self.assertAlmostEqual(_entry_cap_usd(s, 1000.0), 1000.0)
