@@ -74,16 +74,22 @@ max_spread = 0.04
 # boost scales the spread share but never pierces the cap (handled in
 # race_strategies._dynamic_stake_target).
 stake_usd = 1.0
-# ── FULL-DEPLOY SIZING (user 2026-07-09) ─────────────────────────────────
+# ── FULL-DEPLOY SIZING + DIVERSIFICATION CAP (user 2026-07-09/10) ────────
 # "100% of the account is always invested." Each tick spreads ALL available
-# cash across the actionable picks (cash / N each); there is NO per-position
-# cap (a single market may hold the whole account) and the cash floor is 0.
+# cash across the actionable picks (cash / N each) and the cash floor is 0.
 # Leftover cash from depth-capped fills keeps flowing into already-held
-# markets via the top-up lane (each top-up re-passes every entry filter)
-# until the account is fully deployed. full_deploy OVERRIDES fixed_stake_usd;
-# the v4 fixed-$5 mode (user 2026-06-21) is retired but kept below for a
-# one-line rollback (set full_deploy = false, fixed_stake_usd = 5.0).
+# markets via the top-up lane (each top-up re-passes every entry filter).
+# DIVERSIFICATION CAP (user 2026-07-10, "positions at $90 when bankroll
+# total is $200 is not acceptable... take more positions... diversifying
+# between the different bets weather at different locations"): no single
+# position may exceed 10% of equity (floored at $5), so the bankroll
+# spreads across ≥10 distinct weather markets when they exist; cash the cap
+# can't place waits for new markets rather than piling onto one. 0 = uncapped.
+# full_deploy OVERRIDES fixed_stake_usd; the v4 fixed-$5 mode (2026-06-21)
+# is retired but kept for a one-line rollback (full_deploy = false,
+# fixed_stake_usd = 5.0).
 full_deploy = true
+full_deploy_max_position_pct = 0.10
 fixed_stake_usd = 0.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.

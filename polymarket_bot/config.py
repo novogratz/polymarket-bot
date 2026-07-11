@@ -387,10 +387,16 @@ class Settings:
     # is NO per-position cap (entry + position caps = full equity), and the
     # cash floor is ignored. Leftover cash keeps flowing into already-held
     # markets via the top-up lane until the account is fully deployed.
-    # OVERRIDES race_fixed_stake_usd. Worst-case loss on one market is the
-    # whole account — explicit user mandate ("100% of the account is always
-    # invested"). False = fixed/legacy sizing.
+    # OVERRIDES race_fixed_stake_usd. False = fixed/legacy sizing.
     race_full_deploy: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_FULL_DEPLOY", False))
+    # Diversification cap for full-deploy (user 2026-07-10: "positions at $90
+    # when bankroll total is $200 is not acceptable... take more positions...
+    # diversifying between the different bets"): no single position may exceed
+    # this fraction of equity (floored at $5 so small bankrolls can still meet
+    # Polymarket's minimum order). Cash the cap can't place stays idle rather
+    # than piling onto one market — diversification wins over strict 100%
+    # deployment. 0 = uncapped (the 2026-07-09 behavior).
+    race_full_deploy_max_position_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FULL_DEPLOY_MAX_POSITION_PCT", 0.10))
     # ── v4: absolute hard ceiling on the ENTRY ask ───────────────────────
     # Entries are never placed above this price, regardless of race_max_price
     # (user 2026-06-21: "never trade 0.97/0.98/0.99"). 0 disables the clamp.
