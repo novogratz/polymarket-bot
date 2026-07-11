@@ -4076,32 +4076,125 @@ class FullDeploySizingTests(unittest.TestCase):
         self.assertFalse(s.race_full_deploy)
         self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 1, 3.0), 5.0)
 
-    def test_topups_spread_equally_and_never_pierce_the_5pct_line(self):
-        # User 2026-07-11: "just do 5% max per positions and if there are not
-        # enough positions spread the $ equally between all existing
-        # positions". This mirrors the execution loop's arithmetic for a tick
-        # with NO new markets and 3 held positions with room: each top-up
-        # targets cash/N, clamped to (5% cap − current stake); a line already
-        # at its cap gets NOTHING.
+    def test_held_lines_never_eat_pick_slots_under_full_deploy(self):
+        # User 2026-07-11: additions to existing positions happen ONLY via
+        # the equal redistribution — a held token is dropped from the
+        # actionable pick slots entirely.
         from polymarket_bot.race_strategies import (
-            _dynamic_stake_target, _entry_cap_usd,
+            _actionable_candidates, _build_eligible_candidates,
         )
-        s = self._settings()  # 5% cap
-        equity, cash = 200.0, 30.0
-        cap = _entry_cap_usd(s, equity)          # $10 per line
-        self.assertAlmostEqual(cap, 10.0)
-        held_stakes = [4.0, 6.0, 10.0]           # third is AT the cap
-        n = 3
-        target = _dynamic_stake_target(s, equity, cash, n, 3.0)
-        self.assertAlmostEqual(target, 10.0)     # cash/3 = $10, == cap
-        topups = [min(target, max(0.0, cap - st)) for st in held_stakes]
-        # Equal-spread within each line's remaining room; capped line gets $0.
-        self.assertAlmostEqual(topups[0], 6.0)   # 4 → 10
-        self.assertAlmostEqual(topups[1], 4.0)   # 6 → 10
-        self.assertAlmostEqual(topups[2], 0.0)   # already at 5%
-        # No line ever ends above 5% of equity.
-        for st, add in zip(held_stakes, topups):
-            self.assertLessEqual(st + add, cap + 1e-9)
+        s = Settings(race_min_price=0.85, race_max_price=0.97,
+                     race_max_spread=0.04, race_max_hours=4.0,
+                     race_weather_only=True, race_full_deploy=True)
+        held = _redistribution_market("h", "Highest temperature in Paris on 2026-07-11?", "paris-temp")
+        fresh = _redistribution_market("f", "Highest temperature in Milan on 2026-07-11?", "milan-temp")
+        eligible = _build_eligible_candidates([held, fresh], s)
+        portfolio = Portfolio(cash=100.0, positions=[])
+        held_cand = next(c for c, _ in eligible if c.market_id == "h")
+        pos = portfolio.record_live_position(held_cand, 2.0, entry_price=0.91)
+        pos["strategy"] = "grinder"
+        ids = {c.market_id for c, _ in _actionable_candidates(eligible, portfolio, s)}
+        self.assertEqual(ids, {"f"})
+
+
+def _redistribution_market(mid, question, slug):
+    return {
+        "id": mid, "question": question, "slug": slug,
+        "acceptingOrders": True, "liquidity": 1500, "volume24hr": 2000,
+        "bestBid": 0.90, "bestAsk": 0.91, "orderPriceMinTickSize": 0.01,
+        "outcomes": '["Yes", "No"]', "outcomePrices": '["0.91", "0.09"]',
+        "clobTokenIds": f'["tok-{mid}-y", "tok-{mid}-n"]',
+        "endDate": (utc_now() + timedelta(hours=2)).isoformat(),
+    }
+
+
+class EqualRedistributionTests(unittest.TestCase):
+    """User 2026-07-11: 'bot should still try 3 ticks to get new positions
+    before distributing equally to all existing positions... when
+    redistributing it doesnt need to be 5% it can be more as long as its
+    equally distributed AND bot did try 3 ticks'."""
+
+    def setUp(self):
+        from polymarket_bot import race_strategies
+        race_strategies._DRY_TICKS["count"] = 0
+        self._orig_execute = race_strategies.execute_live_trade
+        self.placed = []
+        tests_self = self
+
+        def _fake_execute(client, settings, candidate, portfolio, *,
+                          min_trade_usd, max_trade_usd, strategy, signal):
+            from polymarket_bot.trading import LiveTradeResult
+            tests_self.placed.append({"token": candidate.token_id, "stake": max_trade_usd})
+            return LiveTradeResult(order={}, response={"status": "matched"}, candidate=candidate)
+
+        race_strategies.execute_live_trade = _fake_execute
+
+    def tearDown(self):
+        from polymarket_bot import race_strategies
+        race_strategies.execute_live_trade = self._orig_execute
+        race_strategies._DRY_TICKS["count"] = 0
+
+    @staticmethod
+    def _setup(cash=100.0):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        s = Settings(race_min_price=0.85, race_max_price=0.97,
+                     race_max_spread=0.04, race_max_hours=4.0,
+                     race_weather_only=True, race_full_deploy=True,
+                     race_topup_dry_ticks=3, dry_run=True)
+        m1 = _redistribution_market("a", "Highest temperature in Paris on 2026-07-11?", "paris-temp")
+        m2 = _redistribution_market("b", "Highest temperature in Milan on 2026-07-11?", "milan-temp")
+        eligible = _build_eligible_candidates([m1, m2], s)
+        portfolio = Portfolio(cash=cash, positions=[])
+        for c, _ in eligible:
+            p = portfolio.record_live_position(c, 2.0, entry_price=0.91)
+            p["strategy"] = "grinder"
+        portfolio.cash = cash  # restore after the debits above
+        return s, portfolio, eligible
+
+    def test_waits_three_dry_ticks_then_splits_equally_above_the_cap(self):
+        from polymarket_bot.race_strategies import _maybe_redistribute_to_held
+
+        s, portfolio, eligible = self._setup(cash=100.0)
+        # Ticks 1 and 2 with nothing new: patience, no orders.
+        for _ in range(2):
+            out = _maybe_redistribute_to_held(None, s, portfolio, eligible, False, "grinder")
+            self.assertEqual(out, [])
+        self.assertEqual(self.placed, [])
+        # Tick 3: split $100 equally over the 2 held lines — $50 each,
+        # WAY above the 5% cap (~$5 on ~$100 equity): equality is the rule.
+        out = _maybe_redistribute_to_held(None, s, portfolio, eligible, False, "grinder")
+        self.assertEqual(len(out), 2)
+        stakes = sorted(p["stake"] for p in self.placed)
+        self.assertAlmostEqual(stakes[0], stakes[1], places=1)  # EQUAL split
+        self.assertGreater(stakes[0], 40.0)  # far above the 5% line cap
+
+    def test_a_new_market_resets_the_patience_counter(self):
+        from polymarket_bot import race_strategies
+        from polymarket_bot.race_strategies import _maybe_redistribute_to_held
+
+        s, portfolio, eligible = self._setup()
+        _maybe_redistribute_to_held(None, s, portfolio, eligible, False, "grinder")
+        _maybe_redistribute_to_held(None, s, portfolio, eligible, False, "grinder")
+        self.assertEqual(race_strategies._DRY_TICKS["count"], 2)
+        # New actionable market this tick → counter resets, no redistribution.
+        out = _maybe_redistribute_to_held(None, s, portfolio, eligible, True, "grinder")
+        self.assertEqual(out, [])
+        self.assertEqual(race_strategies._DRY_TICKS["count"], 0)
+        self.assertEqual(self.placed, [])
+
+    def test_disabled_when_dry_ticks_zero_or_full_deploy_off(self):
+        from polymarket_bot.race_strategies import _maybe_redistribute_to_held
+
+        s, portfolio, eligible = self._setup()
+        s_off = Settings(race_full_deploy=True, race_topup_dry_ticks=0, dry_run=True)
+        for _ in range(5):
+            self.assertEqual(
+                _maybe_redistribute_to_held(None, s_off, portfolio, eligible, False, "grinder"), [])
+        s_no_fd = Settings(race_full_deploy=False, race_topup_dry_ticks=3, dry_run=True)
+        for _ in range(5):
+            self.assertEqual(
+                _maybe_redistribute_to_held(None, s_no_fd, portfolio, eligible, False, "grinder"), [])
+        self.assertEqual(self.placed, [])
 
 
 class PriceMovementNeverExcludesTests(unittest.TestCase):

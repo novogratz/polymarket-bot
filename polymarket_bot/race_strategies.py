@@ -2472,6 +2472,12 @@ def _actionable_candidates(
             continue
         open_pos = portfolio.open_position_for_token(c.token_id)
         if open_pos is not None:
+            if getattr(settings, "race_full_deploy", False):
+                # Full-deploy (user 2026-07-11): held lines never eat pick
+                # slots — additions to existing positions happen ONLY via the
+                # equal redistribution after race_topup_dry_ticks ticks with
+                # no new market (_maybe_redistribute_to_held).
+                continue
             if cap - float(open_pos.get("stake") or 0.0) < _TOPUP_MIN_USD:
                 continue
         elif portfolio.has_open_event_position(c):
@@ -2486,6 +2492,129 @@ def _actionable_candidates(
     # One bet per game within the tick: collapse same-game candidates to a
     # single pick, preferring soccer's under-4.5 line over the rest.
     return _dedup_same_game(out)
+
+
+# Consecutive ticks with no NEW eligible market (full-deploy redistribution
+# patience, user 2026-07-11). Module-level: one live strategy per process; a
+# restart resets the counter, which just means the bot re-tries fresh markets
+# for another few ticks — the safe direction.
+_DRY_TICKS = {"count": 0}
+
+
+def _maybe_redistribute_to_held(
+    client: Any,
+    settings: Settings,
+    portfolio: Portfolio,
+    eligible: list[tuple[Candidate, float]],
+    had_new_bets: bool,
+    strategy_name: str,
+) -> list[dict[str, Any]]:
+    """Equal redistribution of leftover cash into EXISTING positions.
+
+    User 2026-07-11: "bot should still try 3 ticks to get new positions
+    before distributing equally to all existing positions... when
+    redistributing to existing positions it doesnt need to be 5% it can be
+    more as long as its equally distributed AND bot did try 3 ticks".
+
+    - A tick with at least one NEW actionable market resets the patience
+      counter — fresh markets always take priority for the cash.
+    - After ``race_topup_dry_ticks`` consecutive ticks with nothing new,
+      available cash is split EQUALLY (cash / N) across every open position
+      whose market is still eligible this tick (re-passes all entry filters
+      — never averages into a crashed or expired line; ineligible lines are
+      skipped and the cash spreads over the rest).
+    - The equal share is EXEMPT from the 5% diversification cap: equality is
+      the constraint. Fresh entries stay capped at 5%.
+    """
+    if not getattr(settings, "race_full_deploy", False):
+        return []
+    dry_needed = int(getattr(settings, "race_topup_dry_ticks", 0) or 0)
+    if dry_needed <= 0:
+        return []
+    if had_new_bets:
+        _DRY_TICKS["count"] = 0
+        return []
+    _DRY_TICKS["count"] += 1
+    if _DRY_TICKS["count"] < dry_needed:
+        _step(
+            settings,
+            f"   redistribution: waiting ({_DRY_TICKS['count']}/{dry_needed} dry ticks)",
+        )
+        return []
+    cash_floor = float(portfolio.summary().get("equity", portfolio.cash)) * settings.race_cash_floor_pct
+    cash_above_floor = max(0.0, portfolio.cash - cash_floor)
+    if cash_above_floor < 1.0:
+        return []
+    by_token = {c.token_id: c for c, _ in eligible if c.token_id}
+    targets: list[tuple[dict[str, Any], Candidate]] = []
+    for position in portfolio.positions:
+        if position.get("status") != "open" or not position.get("live"):
+            continue
+        if str(position.get("strategy") or "") not in (strategy_name, "live_sync"):
+            continue
+        token_id = str(position.get("token_id") or "")
+        if not token_id or portfolio.has_pending_token(token_id):
+            continue
+        candidate = by_token.get(token_id)
+        if candidate is None or not candidate.best_ask:
+            continue
+        targets.append((position, candidate))
+    if not targets:
+        return []
+    share = cash_above_floor / len(targets)
+    executed: list[dict[str, Any]] = []
+    for position, candidate in targets:
+        ask = float(candidate.best_ask or 0.0)
+        # Polymarket's 5-share minimum — a share too small to trade is
+        # skipped (the cash waits), NOT bumped: bumping would break equality.
+        if ask <= 0 or share < settings.min_order_shares * ask:
+            continue
+        stake = min(share, max(0.0, portfolio.cash - cash_floor))
+        if stake < 1.0:
+            break
+        signal_payload = {
+            "question": candidate.question,
+            "selection_reason": (
+                f"{strategy_name} equal_redistribution {candidate.outcome} "
+                f"ask={candidate.best_ask} after {_DRY_TICKS['count']} dry ticks"
+            ),
+            "selection_metrics": {
+                "current_ask": candidate.best_ask,
+                "current_bid": candidate.best_bid,
+                "hours_to_close": round(candidate.hours_to_close or 0.0, 3),
+                "liquidity": candidate.liquidity,
+                "equal_share": round(share, 2),
+                "targets": len(targets),
+            },
+            "tag": f"{strategy_name}_redistribution",
+        }
+        try:
+            result = execute_live_trade(
+                client,
+                settings,
+                candidate,
+                portfolio,
+                min_trade_usd=1.0,
+                max_trade_usd=stake,
+                strategy=strategy_name,
+                signal=signal_payload,
+            )
+            executed.append({
+                "strategy": strategy_name,
+                "order": result.order,
+                "response": result.response,
+                "signal": signal_payload,
+                "redistribution": True,
+            })
+            portfolio.save(settings.state_path)
+        except Exception as exc:
+            _step(settings, f"   redistribution skip {candidate.question[:40]}: {exc}")
+    if executed:
+        _step(
+            settings,
+            f"   redistribution: ${cash_above_floor:.2f} equally over {len(targets)} held lines (${share:.2f} each)",
+        )
+    return executed
 
 
 def _execute_double_downs(
@@ -2892,6 +3021,16 @@ def _run_race_tick(
                 _emit_mirror_signal(candidate, strategy_name)
         except Exception as exc:
             rejected.append({"question": candidate.question, "reason": f"{type(exc).__name__}: {exc}"})
+
+    # ── Equal redistribution pass (full-deploy, user 2026-07-11) ────────────
+    # Fresh markets always get first claim on the cash. Only after
+    # race_topup_dry_ticks consecutive ticks with NO new actionable market is
+    # leftover cash split EQUALLY across all existing positions (exempt from
+    # the 5% line cap — equality is the constraint).
+    redistribution = _maybe_redistribute_to_held(
+        client, settings, portfolio, eligible, bool(actionable), strategy_name
+    )
+    executed.extend(redistribution)
 
     # ── Binary arbitrage pass ────────────────────────────────────────────────
     # After normal grinder entries, scan all markets for YES+NO < threshold.
