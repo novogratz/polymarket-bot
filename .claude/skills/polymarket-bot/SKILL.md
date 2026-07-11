@@ -51,9 +51,13 @@ Buy a heavily-favored binary outcome and ride it to resolution.
   (`_full_deploy_cap_usd`, floored at $5; 0 = uncapped — user 2026-07-10
   "positions at $90 when bankroll total is $200 is not acceptable...
   diversifying between the different bets weather at different locations").
-  Leftover cash flows into held markets via the top-up lane (each top-up
-  re-passes every entry filter) UP TO the cap, then waits for new distinct
-  markets — diversification wins over strict 100% deployment.
+  Held lines never occupy pick slots; after `topup_dry_ticks` (3)
+  consecutive ticks with NO new eligible market, leftover cash is split
+  EQUALLY (cash/N) over all existing positions whose market still re-passes
+  the entry filters (`_maybe_redistribute_to_held`) — the equal split is
+  EXEMPT from the 5% cap (user 2026-07-11: "it doesnt need to be 5%... as
+  long as its equally distributed AND bot did try 3 ticks"). A new market
+  resets the counter; fresh entries stay capped at 5%.
   `cash_floor_pct = 0`. Worst-case loss on one market ≈ 5% of equity.
   OVERRIDES `fixed_stake_usd`; rollback = `full_deploy = false`,
   `fixed_stake_usd = 5.0`. `FullDeploySizingTests` pin it.

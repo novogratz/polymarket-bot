@@ -90,6 +90,11 @@ stake_usd = 1.0
 # fixed_stake_usd = 5.0).
 full_deploy = true
 full_deploy_max_position_pct = 0.05
+# Redistribution patience (user 2026-07-11): try 3 ticks for NEW markets
+# first; only after 3 consecutive ticks with nothing new is leftover cash
+# split EQUALLY across all existing positions. That equal split is EXEMPT
+# from the 5% line cap — equality is the constraint. 0 = never redistribute.
+topup_dry_ticks = 3
 fixed_stake_usd = 0.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.

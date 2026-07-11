@@ -13,7 +13,7 @@ Document maître expliquant **toutes les lanes** d'achat et toutes les condition
 **Paramètres clés (weather-only 2026-07-06, full-deploy 2026-07-09) :**
 - **Univers : MÉTÉO UNIQUEMENT** (`weather_only = true`) — température, °C/°F, weather, rainfall, snowfall, high/low temp (`is_weather_market`). Tout le reste (sport, élections, crypto, …) est écarté à la sélection ; le ban météo normal est bypassé. « weather » est une catégorie v4 à part entière (2026-07-10) et **ne peut jamais être auto-disabled tant que la lane est active** (garde anti-famine).
 - **Entry :** ask ∈ [0.80, 0.94], **hard cap 0.96** (`max_price_hard_cap` — 0.97/0.98/0.99 jamais tradables), ≤24h (game start OU close — élargi de 4h pour la météo), spread ≤4¢, liq ≥$250, vol 24h ≥$1000.
-- **Sizing : FULL-DEPLOY + CAP DE DIVERSIFICATION** (`full_deploy = true`, `full_deploy_max_position_pct = 0.05`, user 2026-07-09/11) — chaque tick répartit TOUT le cash dispo sur les picks actionnables (cash/N), avec **aucune position au-delà de 5% de l'équité** (plancher $5 ; user 2026-07-10 : « positions at $90 when bankroll total is $200 is not acceptable... diversifying between the different bets weather at different locations »). `cash_floor_pct = 0`. Le cash résiduel repart via la top-up lane jusqu'au cap, puis attend de NOUVEAUX marchés distincts (autres villes). Rollback : `full_deploy = false`, `fixed_stake_usd = 5.0`.
+- **Sizing : FULL-DEPLOY + CAP DE DIVERSIFICATION** (`full_deploy = true`, `full_deploy_max_position_pct = 0.05`, user 2026-07-09/11) — chaque tick répartit TOUT le cash dispo sur les picks actionnables (cash/N), avec **aucune position au-delà de 5% de l'équité** (plancher $5 ; user 2026-07-10 : « positions at $90 when bankroll total is $200 is not acceptable... diversifying between the different bets weather at different locations »). `cash_floor_pct = 0`. **Patience 3 ticks + redistribution égale SANS cap (user 2026-07-11)** : les lignes déjà détenues ne prennent plus de pick slots ; après `topup_dry_ticks` (3) ticks consécutifs sans nouveau marché, le cash restant est réparti ÉQUITABLEMENT (cash/N) sur toutes les positions existantes (marché repassant les filtres) — cette répartition égale est EXEMPTE du cap 5%. Un nouveau marché remet le compteur à zéro. Rollback : `full_deploy = false`, `fixed_stake_usd = 5.0`.
 - **Unban total** (`unban_all_markets = true`) : sans effet pratique sous weather-only ; gouvernance data-driven (`categories.py` : ≥100 trades & ROI < −5% → retirée, sauf `weather` tant que la lane est ON).
 - **Modèle de forecasting** (`forecast.py`, opt-in) : `predicted_probability` calibré par (catégorie, bucket de prix), `edge = predicted − ask`, `quality_score` ; gates `min_edge`/`min_quality_score` OFF par défaut (besoin d'historique).
 - **Exits :** TP désactivé (ride to resolution), **resolved_exit à bid ≥0.99** (sinon settle à 1.0), SL confirmé −30% sur moneylines soccer uniquement (anti-gap ≥0.50), never-sell-below-entry. Daily DD halt DÉSACTIVÉ ; pas de pause-halts (user 2026-06-21).
@@ -304,12 +304,15 @@ near-resolution — avec le **cap de diversification** (user 2026-07-10,
 positions... diversifying between the different bets weather at different
 locations ») : **aucune position au-delà de 5% de l'équité** (plancher $5
 pour le minimum Polymarket ; `_full_deploy_cap_usd`, 0 = sans cap). Les trois
-fonctions de sizing passent par ce cap, donc la top-up lane s'arrête aussi à
-10% : le cash résiduel d'un fill depth-capped (FOK borné à 90% de la
-profondeur du book) complète les positions jusqu'au cap — chaque top-up
-repasse TOUS les filtres d'entrée — puis attend de NOUVEAUX marchés distincts
-(autres villes) au lieu de s'empiler. La diversification prime sur le 100%
-strict. `cash_floor_pct = 0` (aucune réserve). Perte max sur un marché ≈ 10%
+fonctions de sizing passent par ce cap pour les NOUVELLES entrées.
+**Redistribution (user 2026-07-11)** : les lignes détenues ne prennent plus de
+pick slots ; après `topup_dry_ticks` (3) ticks consécutifs sans nouveau marché
+éligible, `_maybe_redistribute_to_held` répartit le cash restant
+ÉQUITABLEMENT (cash/N) sur toutes les positions existantes dont le marché
+repasse TOUS les filtres d'entrée — répartition EXEMPTE du cap 5% (l'égalité
+est la contrainte ; « it doesnt need to be 5%... as long as its equally
+distributed AND bot did try 3 ticks »). Un nouveau marché remet le compteur à
+zéro. La diversification prime sur le 100% strict. `cash_floor_pct = 0` (aucune réserve). Perte max sur un marché ≈ 10%
 de l'équité. Rollback une-ligne : `full_deploy = false`,
 `fixed_stake_usd = 5.0`. Pinné par `FullDeploySizingTests`.
 
