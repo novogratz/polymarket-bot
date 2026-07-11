@@ -4110,6 +4110,82 @@ def _redistribution_market(mid, question, slug):
     }
 
 
+class NoRebetGuardTests(unittest.TestCase):
+    """User 2026-07-11: "you cant rebet on an existing bet meaning each line
+    will never surpass 5% of overall account". The guard is ON-CHAIN — a live
+    BUY on a token the wallet already holds is refused inside
+    execute_live_trade, even when the local ledger has no such position
+    (sync lag / sync_closed mis-book / fresh restart)."""
+
+    @staticmethod
+    def _candidate():
+        return Candidate(
+            market_id="m-rebet",
+            question="Will the highest temperature in Paris be 37°C on July 11?",
+            slug="paris-37",
+            end_date=utc_now() + timedelta(hours=6),
+            hours_to_close=6,
+            liquidity=1300,
+            volume=2000,
+            outcome="No",
+            price=0.85,
+            token_id="tok-paris",
+            score=1,
+            url="",
+            best_bid=0.84,
+            best_ask=0.85,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+
+    def test_live_buy_refused_when_wallet_already_holds_the_token(self):
+        class FakeClient:
+            def live_share_balance(self, token_id):
+                return 76.4  # the wallet already holds this line
+
+        settings = Settings(race_full_deploy=True, dry_run=False,
+                            min_order_shares=5.0)
+        portfolio = Portfolio(cash=100.0, positions=[])  # ledger knows NOTHING
+        with self.assertRaises(ValueError) as ctx:
+            execute_live_trade(FakeClient(), settings, self._candidate(),
+                               portfolio, min_trade_usd=1.0, max_trade_usd=5.0)
+        self.assertIn("rebet_blocked", str(ctx.exception))
+
+    def test_guard_fails_open_when_the_balance_probe_errors(self):
+        class FakeClient:
+            def live_share_balance(self, token_id):
+                raise RuntimeError("balance api down")
+
+            def live_available_balance(self):
+                return 0.0  # forces a later, DIFFERENT failure
+
+        settings = Settings(race_full_deploy=True, dry_run=False,
+                            min_order_shares=5.0)
+        portfolio = Portfolio(cash=100.0, positions=[])
+        try:
+            execute_live_trade(FakeClient(), settings, self._candidate(),
+                               portfolio, min_trade_usd=1.0, max_trade_usd=5.0)
+        except Exception as exc:
+            self.assertNotIn("rebet_blocked", str(exc))
+
+    def test_guard_off_in_legacy_mode(self):
+        class FakeClient:
+            def live_share_balance(self, token_id):
+                return 76.4
+
+            def live_available_balance(self):
+                return 0.0
+
+        settings = Settings(race_full_deploy=False, dry_run=False,
+                            min_order_shares=5.0)
+        portfolio = Portfolio(cash=100.0, positions=[])
+        try:
+            execute_live_trade(FakeClient(), settings, self._candidate(),
+                               portfolio, min_trade_usd=1.0, max_trade_usd=5.0)
+        except Exception as exc:
+            self.assertNotIn("rebet_blocked", str(exc))
+
+
 class PriceMovementNeverExcludesTests(unittest.TestCase):
     """User decision 2026-06-10: markets that moved recently must stay
     tradeable — the 1h flux gates AND the day-change gates (>10% day move,
