@@ -19,7 +19,7 @@ MIT licensed. Tests run in CI — see `.github/workflows/test.yml`.
 **Launcher:** `bash scripts/run_live_70.sh` / `run_live_b.sh`. Do **not** use `run_all.sh` for live.  
 **Universe:** `weather_only = true` — ONLY weather / temperature markets (`is_weather_market`); everything else dropped at selection. "weather" is a first-class category (2026-07-10), never auto-disabled while the lane is on.  
 **Entry:** ask ∈ [0.80, 0.94], hard cap 0.96 (0.97+ never), ≤24h to close (weather resolves end-of-day), spread ≤4¢, liq ≥$250, vol ≥$1000.  
-**Sizing:** **FULL-DEPLOY + diversification cap** (`full_deploy = true`, `full_deploy_max_position_pct = 0.10`, 2026-07-09/10) — 100% of the account invested, spread wide: cash/N across the tick's picks, **no position may exceed 10% of equity** ($5 floor), top-up lane re-deploys leftovers up to the cap then waits for new distinct markets. Rollback: `full_deploy=false, fixed_stake_usd=5.0`.  
+**Sizing:** **FULL-DEPLOY + diversification cap** (`full_deploy = true`, `full_deploy_max_position_pct = 0.05`, 2026-07-09/11) — 100% of the account invested, spread wide: cash/N across the tick's picks, **no position may exceed 5% of equity** ($5 floor), top-up lane re-deploys leftovers up to the cap then waits for new distinct markets. Rollback: `full_deploy=false, fixed_stake_usd=5.0`.  
 **Exits:** resolved_exit at bid ≥**0.99** (else settle 1.0), never-sell-below-entry, max-hold backstop. The −30% confirmed SL gates on soccer moneylines only → weather positions never stop out. No TP, no pause-halts.
 
 ## Project map
