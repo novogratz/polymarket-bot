@@ -4,9 +4,14 @@ Document maître expliquant **toutes les lanes** d'achat et toutes les condition
 
 ## État actuel (v4 — 2026-06-21)
 
-**Stratégie LIVE :** `grinder` — mode race, scalp heavy-favorite near-resolution. Les 3 bots tournent le même grinder.
+Le moteur (`polymarket_bot/race_strategies.py`) est **générique** : même pipeline scan → exclude → filter → rank → size → execute → manage exits pour toutes les stratégies, configuré par profil TOML. **Deux modes tournent en live aujourd'hui, pas le même sur les 3 bots :**
 
-**Thèse :** un favori binaire à ask ∈ [0.80, 0.94] avec ≤4h à la fermeture price la near-certainty ; on paye le spread et on **ride jusqu'à la résolution** (1.0). L'edge est le gap entre le prix d'entrée et l'outcome qui se résout à 1.0.
+- **Bot 1** (`grinder.toml`) : mode **grinder — général**, toutes catégories de marché.
+- **Bots 2 & 3** (`grinder_b.toml`) : mode **weather** (`weather_only = true`, pivot user 2026-06-26) — c'est le **focus live actuel de l'équipe**. Voir la section dédiée plus bas.
+
+Le reste de ce document décrit d'abord le grinder (toujours en détail — c'est le mode général-purpose, encore live sur le bot 1), puis le mode weather.
+
+**Thèse (grinder) :** un favori binaire à ask ∈ [0.80, 0.94] avec ≤4h à la fermeture price la near-certainty ; on paye le spread et on **ride jusqu'à la résolution** (1.0). L'edge est le gap entre le prix d'entrée et l'outcome qui se résout à 1.0.
 
 **Config source de vérité :** `configs/profiles/grinder.toml` (bot 1) et `grinder_b.toml` (bots 2 & 3).
 
@@ -18,6 +23,17 @@ Document maître expliquant **toutes les lanes** d'achat et toutes les condition
 - **Exits :** TP désactivé (ride to resolution), **resolved_exit à bid ≥0.99** (sinon settle à 1.0), SL confirmé −30% sur moneylines soccer uniquement (anti-gap ≥0.50), never-sell-below-entry. Daily DD halt DÉSACTIVÉ ; pas de pause-halts (user 2026-06-21).
 
 Le smart-money path original (lanes décrites ci-dessous) est disponible dans la codebase mais n'est pas utilisé en live — le grinder mode race ne fait pas de leaderboard fetch.
+
+## Mode weather (focus live actuel — bots 2 & 3)
+
+Même moteur que le grinder (même pipeline, même sizing $5 fixe, même plancher de sortie 0.99, même règle never-sell-below-entry) mais avec l'univers de candidats restreint aux **marchés de température / bracket de degrés** (« Will the high in `<city>` be `X`–`Y`°C/°F on `<date>`? ») et un modèle d'edge additionnel qui filtre l'entrée, implémenté dans `polymarket_bot/weather_forecast.py` et activé par profil via `race_weather_only` (`weather_only = true` dans `configs/profiles/grinder_b.toml`, bots 2 & 3).
+
+- **Consensus multi-modèle Open-Meteo :** pour chaque marché candidat, le bot interroge en parallèle plusieurs modèles météo gratuits (GFS, ECMWF IFS, best-match/UK Met Office). Le σ (incertitude) est dérivé de l'écart réel entre les modèles plutôt que d'une formule fixe ; un modèle qui diverge des autres de plus de `MAX_SPREAD_C` (3.0°C) est silencieusement écarté, et le lookup entier est skip (fail-open — les filtres prix normaux continuent de s'appliquer) si moins de `MIN_MODELS` (2) répondent.
+- **Gate d'edge (`race_weather_forecast_min_edge`) :** le consensus + σ donnent une probabilité de bracket via un modèle normal-CDF, `model_P(outcome) − market_ask`. Le trade n'est pris que si cet edge ≥ le seuil configuré — le bot 2 fixe `weather_forecast_min_edge = 0.10`. Défaut `0.0` (off), aucun historique requis (le modèle utilise des prévisions météo réelles, pas le journal de trades).
+- **Garde-fou bracket-margin (`race_weather_min_bracket_margin_c`) :** ajouté après une perte réelle (Qingdao, 2026-06-28 : prévision ECMWF 28.1°C vs bracket à 29°C — marge de 0.9°C — résolu en perte). Les paris « No » sont skip si le consensus modèle est à moins de ce seuil en °C du threshold du bracket. Le bot 2 fixe `weather_min_bracket_margin_c = 2.0` ; défaut `0.0` (off).
+- **Kill-switch intraday :** pour les marchés same-day (max journalier), une fois passé 15h solaires sur le lieu du marché, la fonction compare la température déjà observée au bracket : si le maximum journalier ne peut physiquement plus atteindre le bracket (ou l'a déjà dépassé), elle retourne une probabilité quasi-certaine immédiatement, sans attendre l'enregistrement du max du jour.
+- **Fail-open partout :** toute erreur API, erreur de parsing, ou historique manquant retourne `None` et les filtres prix/liquidité normaux s'appliquent — une panne du forecast ne bloque jamais le trading, elle retire juste le gate d'edge additionnel pour ce tick.
+- Sizing et exits identiques au grinder ($5 fixe, plancher winner 0.99, never-sell-below-entry) ; le profil du bot 2 élargit la fenêtre d'entrée à 24h (`max_hours = 24.0`, les marchés météo se résolvent en moins d'un jour) et utilise des planchers de liquidité adaptés (`min_liquidity_usd = 50`, `min_volume_24h_usd = 200` — carnets plus fins que le sport).
 
 ## Vue d'ensemble d'un tick
 

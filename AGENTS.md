@@ -1,6 +1,6 @@
 # Agent Instructions
 
-Polymarket grinder bot — deterministic signal engine, live order execution, persistent trade journal, and read-only local dashboard. Treat `.env` and `data/` as local-only state. Never print private keys, API secrets, or wallet credentials.
+Polymarket trading engine — deterministic signal engine, live order execution, persistent trade journal, and read-only local dashboard. The engine supports multiple strategies (grinder, weather, smart-money) off a shared pipeline; current live focus is the weather strategy (bots 2 & 3) plus grinder (bot 1, general-purpose). Treat `.env` and `data/` as local-only state. Never print private keys, API secrets, or wallet credentials.
 
 See `CLAUDE.md` and `CODEX.md` for agent-specific entry points. Structured skill files are in `.claude/skills/` and `.codex/skills/`.
 

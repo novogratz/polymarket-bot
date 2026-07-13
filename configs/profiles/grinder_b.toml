@@ -100,6 +100,10 @@ unban_all_markets = true
 # cross-checked against Open-Meteo forecast before entry.
 weather_only = true
 weather_forecast_min_edge = 0.10   # raised 0.05→0.10: multi-model σ is tighter now
+# Bracket margin guard (2026-06-28): skip "No" bet if any model is within
+# this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
+# bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.
+weather_min_bracket_margin_c = 2.0
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh

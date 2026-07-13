@@ -6,6 +6,8 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path.** The only sanctioned LLM use is the *offline* `auto_improve` self-tuner (see Safety), which never touches the live loop.
 
+**Positioning.** This is a general-purpose prediction-market trading engine (`polymarket_bot/race_strategies.py`) that can run several strategies off a TOML profile — the same scan/filter/rank/size/execute/exit pipeline, pointed at a different candidate set and edge model per profile. The team's **current live focus is the weather strategy** (bots 2 & 3, `grinder_b.toml`, `weather_only = true` — see "Multi-bot layout" below for the full mechanics). Bot 1 (`grinder.toml`) still runs the engine's general-purpose configuration, **grinder mode**, documented in the section immediately below. A smart-money copy-trading lane also exists in the codebase (`polymarket_bot/smart_money.py`) but is not currently run live.
+
 ## New machine / fresh account setup
 
 1. **Install uv**: `curl -LsSf https://astral.sh/uv/install.sh | sh` → open a new terminal.
@@ -28,9 +30,11 @@ The live trade loop is **fully deterministic — no LLM in the scanning or trade
 6. **Make one manual trade on polymarket.com** — new accounts must place at least one UI trade to register the maker address with the CLOB, else API orders fail with `maker address not allowed, please use the deposit wallet flow`.
 7. Run the bot (see Launch).
 
-## Strategy — `grinder` (race mode)
+## Strategy — `grinder` (race mode) — the general-purpose mode
 
-Buy a heavily-favored binary outcome near its resolution and **ride it to resolution**. The edge is the implied-probability gap between the entry price and a near-certain outcome settling at 1.0. Source of truth: `configs/profiles/grinder.toml` (bot 1) and `configs/profiles/grinder_b.toml` (bots 2 & 3) — keep their strategy keys in sync. All three bots run this same grinder strategy. Selector `select_grinder` in `polymarket_bot/race_strategies.py`.
+This is the engine's general-purpose mode, not its only mode — bot 1 runs it live across every market category. Bots 2 & 3 instead run the **weather strategy** (same engine, `race_weather_only=true`, candidates restricted to temperature markets + an Open-Meteo forecast edge gate); that divergence is documented under "Multi-bot layout" below rather than duplicated here.
+
+Buy a heavily-favored binary outcome near its resolution and **ride it to resolution**. The edge is the implied-probability gap between the entry price and a near-certain outcome settling at 1.0. Source of truth: `configs/profiles/grinder.toml` (bot 1) and `configs/profiles/grinder_b.toml` (bots 2 & 3) — keep their strategy keys in sync (except bot 2/3's deliberate weather-mode divergence). Selector `select_grinder` in `polymarket_bot/race_strategies.py`.
 
 **Entry** (`_build_eligible_candidates`):
 - price (ask) ∈ **[0.80, 0.94]** with an absolute **hard cap 0.96** (`race_max_price_hard_cap`, user 2026-06-21 v4 — 0.97/0.98/0.99 never tradeable), **game STARTS or market CLOSES within ≤ 4 h** (user 2026-06-14: only fast-resolving bets — a game in progress that doesn't close inside the window is dropped). The dynamic widening ladder is disabled (`race_max_hours=4`, `race_max_hours_cap=0` → single `[4h]` window).
@@ -72,8 +76,9 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 
 Three independent live bots, each with its own wallet, `.env`, and ledger.
 
-- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bots 2 & 3) — all grinder, keep strategy keys in sync **except bot 2's deliberate divergences**:
-  - **Crypto floor** (user 2026-06-24): `grinder_b.toml` sets `crypto_min_price = 0.50`, letting the grinder buy CRYPTO markets below the 0.85 non-crypto floor (down to coinflips) while every other category keeps 0.85. Crypto is already un-banned everywhere via `unban_all_markets`; this floor is what actually lets crypto coinflips trade, and it is **bot 2 only**. Crypto coinflips can settle at $0 — accepted on bot 2 by design.
+- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bots 2 & 3) — same engine, keep shared strategy keys in sync **except bot 2/3's deliberate divergences**, the biggest of which is mode itself:
+  - **Weather-only mode is the current live strategy on bots 2 & 3** (`weather_only = true` / `race_weather_only`, user 2026-06-26): candidates are restricted to temperature/degree-bracket markets, cross-checked against a multi-model Open-Meteo forecast consensus before entry (`polymarket_bot/weather_forecast.py`). `weather_forecast_min_edge = 0.10` requires the model probability to beat the market ask by ≥10 pts; `weather_min_bracket_margin_c = 2.0` skips "No" bets when the forecast sits within 2 °C of the bracket threshold (added after a real loss — Qingdao, ECMWF 28.1°C vs a 29°C bracket). Bot 2's profile also widens the entry window to 24h (`max_hours = 24.0`, weather markets resolve within a day) and lowers the liquidity floors accordingly (weather books are thinner than sports). Sizing/exits are unchanged from grinder mode. Bot 1 does **not** run weather mode.
+  - **Crypto floor** (user 2026-06-24, currently disabled — see `crypto_min_price = 0.0` in `grinder_b.toml`): `grinder_b.toml` can set `crypto_min_price > 0` to let the grinder buy CRYPTO markets below the 0.85 non-crypto floor (down to coinflips) while every other category keeps 0.85. Crypto is already un-banned everywhere via `unban_all_markets`; this floor is what actually lets crypto coinflips trade, and it is **bot 2 only**. Crypto coinflips can settle at $0 — accepted on bot 2 by design when enabled.
   - **Tighter non-crypto entry floor** (agent 2026-06-24): `min_price = 0.85` (vs 0.80 on bot 1). The 0.80–0.85 price bucket had −8.1% ROI across 527 historical trades; raising the floor focuses bot 2 on the proven 0.85–0.94 band. `crypto_min_price` overrides this for crypto markets only.
   - **Early category auto-disable** (agent 2026-06-24): `category_min_samples = 20` (vs 100 on bot 1). Soccer (21 trades, −26.7% ROI) is immediately auto-disabled at runtime. Bot 1 keeps the 100-sample conservative gate.
   Live data (`paper_state.json`, journals, `starting_cash.txt`) is **gitignored = per-machine**; only code + profiles are shared.

@@ -2,6 +2,7 @@
 
 ## Ground rules
 
+- This is a multi-strategy engine (grinder, weather, smart-money share the same pipeline) — changes should keep strategy-specific logic behind profile/config toggles rather than hardcoding one strategy's assumptions into the shared path.
 - The trading scan path stays deterministic Python over Polymarket APIs. **No LLM call** in scanning or trade-selection code.
 - Live trading requires the `--live` flag on `pmbot auto-loop`. The `--yes` flag is for script automation only.
 - No random or unfiltered live trade entry. Any new strategy must define explicit entry criteria, spread filters, sizing caps, and duplicate-position guards.

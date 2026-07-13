@@ -373,7 +373,7 @@ def _fetch_consensus(
 
     sigma = max(model_std * 1.5, horizon_floor)
 
-    return (mean_max, mean_min, sigma, current_c)
+    return (mean_max, mean_min, sigma, current_c, max(maxes))
 
 
 def fetch_forecast_temp(
@@ -386,7 +386,7 @@ def fetch_forecast_temp(
     result = _fetch_consensus(lat, lon, target_date)
     if result is None:
         return None
-    mean_max, mean_min, _sigma, _current = result
+    mean_max, mean_min, _sigma, _current, _max_model = result
     return (mean_max, mean_min)
 
 
@@ -411,7 +411,9 @@ def _solar_hour(lon: float) -> float:
     return (now.hour + now.minute / 60.0 + lon / 15.0) % 24.0
 
 
-def forecast_outcome_probability(parsed: dict, outcome: str) -> Optional[float]:
+def forecast_outcome_probability(
+    parsed: dict, outcome: str, min_bracket_margin_c: float = 0.0
+) -> Optional[float]:
     """
     Return model P(outcome correct) for the temperature market in `parsed`.
 
@@ -436,11 +438,36 @@ def forecast_outcome_probability(parsed: dict, outcome: str) -> Optional[float]:
     if consensus is None:
         return None
 
-    mean_max, mean_min, sigma_c, current_c = consensus
+    mean_max, mean_min, sigma_c, current_c, max_model_c = consensus
     forecast_c = mean_max if parsed.get("is_max", True) else mean_min
 
     low  = parsed["temp_low_c"]
     high = parsed["temp_high_c"]
+
+    # Bracket margin guard: for "No" bets, skip if models are too close to the
+    # bracket threshold (Qingdao lesson 2026-06-28: ECMWF 28.1°C vs 29°C → loss).
+    if min_bracket_margin_c > 0 and outcome.strip().lower() == "no" and parsed.get("is_max", True):
+        is_upper_tail = parsed.get("is_upper_tail")
+        is_lower_tail = parsed.get("is_lower_tail")
+        if is_upper_tail:
+            # ≥X°C markets: guard fires when hottest model is below-but-close to
+            # threshold. When forecast exceeds threshold, edge gate blocks it instead
+            # (predicted No prob ≈ 0%). Negative margin (forecast above threshold)
+            # is NOT guarded here — the edge gate already handles it.
+            threshold = low
+            margin = threshold - max_model_c
+            if 0 <= margin < min_bracket_margin_c:
+                return None
+        elif not is_lower_tail:
+            # Exact-bracket "be X°C" markets: guard fires when the model CONSENSUS
+            # (mean_max) is within min_bracket_margin_c of the bracket's nominal
+            # degree (low). Unlike ≥X°C, being above OR near the bracket puts the
+            # forecast inside the bucket — "No" loses. Use mean_max not max_model_c
+            # so one outlier model far above the bracket can't mask two others that
+            # land squarely in it (Munich lesson 2026-06-29: BM 29.8°C masked
+            # ECMWF 27.9°C + GFS 27.3°C, both inside the 27°C bucket).
+            if abs(mean_max - low) < min_bracket_margin_c:
+                return None
     is_max = parsed.get("is_max", True)
 
     # ── Intraday kill-switch ─────────────────────────────────────────────────

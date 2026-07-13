@@ -153,8 +153,8 @@ class TestParseWeatherQuestion(unittest.TestCase):
 # Consensus tuple: (mean_max_c, mean_min_c, sigma_c, current_c_or_None)
 # ---------------------------------------------------------------------------
 
-def _consensus(max_c, min_c, sigma=1.2, current_c=None):
-    return (max_c, min_c, sigma, current_c)
+def _consensus(max_c, min_c, sigma=1.2, current_c=None, max_model_c=None):
+    return (max_c, min_c, sigma, current_c, max_model_c if max_model_c is not None else max_c)
 
 
 class TestForecastOutcomeProbability(unittest.TestCase):

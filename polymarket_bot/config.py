@@ -410,6 +410,10 @@ class Settings:
     # market ask by at least this margin.  Needs no history — the model uses
     # real temperature forecasts, not realized trade data.
     race_weather_forecast_min_edge: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_WEATHER_FORECAST_MIN_EDGE", 0.0))
+    # Minimum °C gap between the highest model forecast and the bracket threshold
+    # for "No" bets. Qingdao lesson (2026-06-28): ECMWF at 28.1°C vs 29°C
+    # bracket (0.9°C margin) resolved as a loss. Set to 2.0 on bot 2.
+    race_weather_min_bracket_margin_c: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_WEATHER_MIN_BRACKET_MARGIN_C", 0.0))
     # ── v4: data-driven category auto-disable ────────────────────────────
     # The governance that replaces manual bans (user 2026-06-21): after at
     # least ``min_samples`` realized trades in a category, that category is

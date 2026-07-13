@@ -1170,7 +1170,10 @@ def _pq_line(label: str, pairs: list[tuple[float, float]]) -> str | None:
             f"edge(q−p)={edge_pts:+.1f} pts (N={decided})")
 
 
-def _v4_performance_lines(today_trades: list[dict] | None = None) -> list[str]:
+def _v4_performance_lines(
+    today_trades: list[dict] | None = None,
+    account_roi_pct: float | None = None,
+) -> list[str]:
     """Compact v4 performance block (user 2026-06-21): ROI / Sharpe / profit
     factor / max drawdown from the realized ledger, the p/q/edge breakdown
     (all-time + today, user 2026-06-22), plus the categories at or near the
@@ -1185,7 +1188,13 @@ def _v4_performance_lines(today_trades: list[dict] | None = None) -> list[str]:
         ]
         if len(records) < 10:
             return []
-        roi = forecast.roi(records) * 100.0
+        # ROI here is equity-vs-baseline (same number as the "Capital" line
+        # above, user 2026-07-13: "it must be the same as since beginning") —
+        # not forecast.roi()'s pnl/cost-staked average, which understates the
+        # account's actual growth since capital is redeployed across many
+        # trades. Falls back to the trade-level figure if the caller doesn't
+        # have an account baseline (e.g. a future non-report caller).
+        roi = account_roi_pct if account_roi_pct is not None else forecast.roi(records) * 100.0
         sharpe = forecast.sharpe_ratio(records)
         pf = forecast.profit_factor(records)
         mdd = forecast.max_drawdown(records)
@@ -1309,7 +1318,7 @@ def cycle_once() -> None:
     # v4 performance block (user 2026-06-21): ROI / Sharpe / PF / max DD,
     # the p/q/edge breakdown (all-time + today, user 2026-06-22), and
     # categories near the auto-disable threshold. Empty until ≥10 closed trades.
-    parts.extend(_v4_performance_lines(today_trades))
+    parts.extend(_v4_performance_lines(today_trades, account_roi_pct=net_pct))
 
     # Tous les trades clôturés aujourd'hui, du meilleur à la pire perte (en bas).
     # load_todays_trades() trie déjà par PnL décroissant.

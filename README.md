@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets. Buys heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (4 h window, hard maximum) at a **fixed $5 per trade** (v4, 2026-06-21), and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −30% confirmed stop-loss (sport moneylines only) and a hard "never sell below entry" floor. With `unban_all_markets` every category is allowed and governed by a data-driven category auto-disable. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+A general-purpose, deterministic trading engine for [Polymarket](https://polymarket.com) binary prediction markets. The same scan → exclude → filter → rank → size → execute → manage-exits pipeline (`polymarket_bot/race_strategies.py`) can run several different strategies off a TOML profile, with **no LLM anywhere in the scan or trade-selection path**. The team's **current live focus is the weather strategy** (bots 2 & 3): buy temperature/degree-bracket markets gated by a multi-model Open-Meteo forecast consensus (see [Weather mode](#weather-mode--current-live-focus) below). Bot 1 still runs the engine's general-purpose configuration, **grinder mode**: buy heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (4 h window, hard maximum) across any market category at a **fixed $5 per trade** (v4, 2026-06-21), holding until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00), with a controlled −30% confirmed stop-loss (sport moneylines only) and a hard "never sell below entry" floor. With `unban_all_markets` every category is allowed and governed by a data-driven category auto-disable. A third lane, **smart-money copy-trading** (`polymarket_bot/smart_money.py`), also exists in the codebase but is not currently run live. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -31,7 +31,7 @@ bash scripts/run_live_70.sh
 
 Starts the live grinder (**10 s tick**) alongside a dry paper twin and a read-only **live analyst** sidecar that posts a Telegram **LIVE REPORT** — on startup, then on a fixed cadence (`LIVE_ANALYST_CYCLE_SECONDS`), plus a daily 10:00 ET fire. The report shows **equity, P&L since start, total trades + win rate, and open positions** — nothing else (no per-trade lists, no heartbeat, no BUY/SELL spam). The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path**.
 
-Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet, ledger, and per-bot analyst (`run_live_70.sh` = bot 1, `run_live_b.sh` = bots 2 & 3, `run_live_win.sh` on the `kzer_windows` branch). Each keeps a per-machine baseline (`data/starting_cash.txt`); reset any bot with `scripts/fresh_start.py` (wipes closed-trade history, keeps open trades).
+Three live bots run independently, each with its own wallet, ledger, and per-bot analyst: bot 1 (`run_live_70.sh`) runs **grinder mode**, bots 2 & 3 (`run_live_b.sh`, plus `run_live_win.sh` on the `kzer_windows` branch) run **weather mode**. Each keeps a per-machine baseline (`data/starting_cash.txt`); reset any bot with `scripts/fresh_start.py` (wipes closed-trade history, keeps open trades).
 
 > **Do not use `run_all.sh` for live trading.** It resets the ledger on startup and launches a retired 95-profile dry race.
 
@@ -39,7 +39,22 @@ Three live bots run independently (Grinder Bot 1/2/3), each with its own wallet,
 
 ## Strategy
 
-**Thesis.** A binary market at ask 0.80–0.94 within a few hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0. Every tick (10 s) it runs the same deterministic pipeline: **scan → exclude → filter → rank → size → execute → manage exits**. No LLM is ever in this path.
+The engine supports more than one strategy off the same pipeline; each live bot is just a TOML profile pointing the engine at a different candidate set and edge model. Two are live today: **weather mode** (bots 2 & 3, current focus) and **grinder mode** (bot 1, the general-purpose configuration, documented in detail below since it's still trading live capital). A third lane, smart-money copy-trading, exists in the codebase (`polymarket_bot/smart_money.py`) but isn't run live.
+
+### Weather mode — current live focus
+
+Weather mode is the same deterministic engine as grinder (same scan/rank/size/execute machinery, same $5 fixed stake, same 0.99 winner floor and never-sell-below-entry rule) but with the candidate set restricted to **temperature / degree-bracket markets** ("Will the high in `<city>` be `X`–`Y`°C/°F on `<date>`?") and an extra forecast-based edge model gating entry, implemented in `polymarket_bot/weather_forecast.py` and switched on per-profile via `race_weather_only` (`weather_only = true` in `configs/profiles/grinder_b.toml`, bots 2 & 3).
+
+- **Forecast consensus.** For each candidate market, the bot fetches same-day/next-day forecasts from multiple free Open-Meteo models (GFS, ECMWF IFS, best-match/UK Met Office) in parallel. σ (uncertainty) is derived from the actual spread between the models rather than a fixed formula; models that disagree with each other by more than `MAX_SPREAD_C` (3.0 °C) are silently dropped, and the whole lookup is skipped (fail-open — normal price filters still apply) if fewer than `MIN_MODELS` (2) respond.
+- **Edge gate (`race_weather_forecast_min_edge`).** The consensus forecast + σ are turned into a bracket-probability via a normal-CDF model, `model_P(outcome) − market_ask`. A trade is only taken when that edge is ≥ the configured minimum — bot 2 sets `weather_forecast_min_edge = 0.10`. Default is `0.0` (off) so a fresh bot doesn't starve on missing history — this gate needs no trade history, only live forecast data.
+- **Bracket-margin guard (`race_weather_min_bracket_margin_c`).** Added after a real loss (Qingdao, 2026-06-28: ECMWF forecast 28.1 °C vs a 29 °C bracket threshold — a 0.9 °C margin — resolved as a loss). "No" bets are skipped outright when the model consensus sits within this many °C of the bracket's threshold, i.e. too close to call. Bot 2 sets `weather_min_bracket_margin_c = 2.0`; default `0.0` (off).
+- **Intraday kill-switch.** For same-day, daily-max markets, once it's past solar 3 PM at the market's location the function checks the *already-observed* current temperature against the bracket: if the daily max physically can't reach the bracket (or has already blown past it), it returns a near-certain probability immediately instead of waiting for the day's max to be recorded.
+- **Fail-open throughout.** Any API failure, parse failure, or missing history returns `None` and the normal price/liquidity filters apply — a forecast outage never blocks trading outright, it just removes the extra edge gate for that tick.
+- Sizing and exits are unchanged from grinder mode (fixed $5 stake, 0.99 winner floor, never-sell-below-entry); bot 2's profile widens the entry window to 24 h (`max_hours = 24.0`, since weather markets resolve within a day) and uses weather-grade liquidity floors (`min_liquidity_usd = 50`, `min_volume_24h_usd = 200` — thinner books than sports).
+
+### Grinder mode — general-purpose
+
+**Thesis.** A binary market at ask 0.80–0.94 within a few hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0. Every tick (10 s) it runs the same deterministic pipeline: **scan → exclude → filter → rank → size → execute → manage exits**. No LLM is ever in this path. This is the general-purpose configuration — with `unban_all_markets` it trades any category, not just weather — and it's still what bot 1 runs live.
 
 ### 1. Scan
 
@@ -194,21 +209,23 @@ CI runs tests + lint on Python 3.11 / 3.12 for every push.
 ## Project structure
 
 ```
-configs/profiles/grinder.toml       live strategy — single source of truth
+configs/profiles/grinder.toml       bot 1 — grinder (general-purpose) — source of truth
+configs/profiles/grinder_b.toml     bots 2 & 3 — weather mode (current live focus)
 data/paper_state.json               live ledger (positions, cash)
 data/realized_trade_cache.jsonl     durable W/L record (survives resets)
 data/trade_journal.jsonl            per-trade metadata + exit reasons
 polymarket_bot/
   main.py              CLI, tick orchestration, sizing, journal writer
-  race_strategies.py   grinder entry/exit engine + arb scanner
+  race_strategies.py   engine: entry/exit pipeline shared by every strategy + arb scanner
+  weather_forecast.py  Open-Meteo multi-model consensus + edge/bracket-margin gates (weather mode)
   portfolio.py         local ledger and position accounting
   trading.py           live CLOB order placement
   gamma.py             Gamma market scan
   models.py            shared dataclasses, exclusion filters
-  smart_money.py       leaderboard fetch and signal scoring
+  smart_money.py       leaderboard fetch and signal scoring (not currently run live)
 scripts/
-  run_live_70.sh       canonical live launcher (Bot 1)
-  run_live_b.sh        Bot 2 launcher (grinder_b)
+  run_live_70.sh       canonical live launcher (Bot 1, grinder)
+  run_live_b.sh        Bots 2 & 3 launcher (grinder_b, weather mode)
   live_analyst.py      30 min Telegram LIVE REPORT sidecar (read-only)
   dry_analyst.py       15 min deterministic report + loser-kill
   auto_improve.py      opt-in self-improvement loop (auto-PR, off by default)

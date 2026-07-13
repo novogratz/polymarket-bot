@@ -1,5 +1,7 @@
 # Référence des profils TOML
 
+Le moteur supporte plusieurs stratégies (grinder général-purpose, weather, smart-money) sur le **même** pipeline — chaque profil TOML n'est qu'une configuration différente de ce pipeline. Le focus live actuel de l'équipe est la stratégie **weather** (bots 2 & 3, `grinder_b.toml`) ; le bot 1 (`grinder.toml`) tourne le mode grinder général-purpose. Voir `docs/STRATEGIES.md`.
+
 Un profil est un fichier TOML dans `configs/profiles/<nom>.toml` qui contient **toute la stratégie** (sizing, filtres, exits, fallbacks, persistance). Le bot le charge avec :
 
 ```bash
@@ -83,6 +85,9 @@ Cible : `.env` ne contient que secrets (`PRIVATE_KEY`, `API_KEY`...), endpoints 
 | `max_price_hard_cap` | float | Plafond ABSOLU du prix d'entrée (ask). L'entrée est clampée à ce prix quel que soit `max_price`, donc 0.97/0.98/0.99 jamais tradables. 0 = désactivé. |
 | `crypto_min_price` | float | **Plancher d'entrée CRYPTO uniquement** (bot 2, user 2026-06-24). > 0 → les marchés crypto (`classify_market == "crypto"`) entrent à partir de ce prix au lieu de `min_price`, ce qui autorise les coinflips crypto (~0.50) sous la bande favorite. Toutes les autres catégories gardent `min_price`. N'a d'effet que si crypto est dé-banni (`unban_all_markets`). 0 = off (bots 1/3/zaza). ⚠️ un coinflip crypto peut résoudre à \$0. Env var : `POLYMARKET_RACE_CRYPTO_MIN_PRICE`. |
 | `unban_all_markets` | bool | `true` → `is_excluded_market` est bypassé à la sélection : toutes les catégories autorisées, gouvernées par l'auto-disable data-driven (`categories.py`). Risque borné par `fixed_stake_usd`. Env var : `POLYMARKET_UNBAN_ALL_MARKETS`. |
+| `weather_only` | bool | **Mode weather — focus live actuel (bots 2 & 3).** `true` → seuls les marchés température/bracket de degrés sont éligibles, tout le reste est bloqué quel que soit `unban_all_markets` ; lève aussi le ban weather codé en dur pour laisser passer ces marchés au filtre. Implémenté dans `polymarket_bot/weather_forecast.py`. Défaut `false`. Env var : `POLYMARKET_RACE_WEATHER_ONLY`. |
+| `weather_forecast_min_edge` | float | Gate d'edge Open-Meteo (opt-in, 0 = off). N'entre que si `model_P(outcome) − ask ≥` ce seuil (consensus multi-modèle GFS/ECMWF/best-match). Bot 2 : `0.10`. Aucun historique requis. Env var : `POLYMARKET_RACE_WEATHER_FORECAST_MIN_EDGE`. |
+| `weather_min_bracket_margin_c` | float | Garde-fou bracket-margin (0 = off). Skip les paris « No » si le consensus modèle est à moins de X°C du threshold du bracket (leçon Qingdao 2026-06-28 : ECMWF 28.1°C vs bracket 29°C → perte). Bot 2 : `2.0`. Env var : `POLYMARKET_RACE_WEATHER_MIN_BRACKET_MARGIN_C`. |
 | `category_min_samples` | int | Taille d'échantillon avant qu'une catégorie puisse être auto-désactivée (défaut 100). 0 = auto-disable off. |
 | `category_disable_roi` | float | Une catégorie avec ≥ `category_min_samples` trades réalisés ET un ROI < ce seuil (défaut −0.05) est retirée de la sélection. `other` jamais désactivée. |
 | `min_edge` | float | **Gate EV opt-in (`forecast.py`).** > 0 → ne trade que si `predicted_probability − ask ≥ min_edge`. 0 = off. Cible recommandée après données : 0.03. |

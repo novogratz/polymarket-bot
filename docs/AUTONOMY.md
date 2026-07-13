@@ -5,6 +5,11 @@ the changes, driven by the **Claude Code CLI**. It is fenced so it can optimise
 exits and sizing but can never disturb the entry selection that drives the win
 rate.
 
+Scope note: this tuner only ever edits `configs/profiles/grinder.toml` — bot 1's
+general-purpose grinder mode. It does not touch `grinder_b.toml` (bots 2 & 3,
+currently running weather mode); a change has to be mirrored there by hand if
+it should reach them (see `CLAUDE.md` Safety section).
+
 ## What it does
 
 `scripts/auto_improve.py` (driven by `.github/workflows/auto-improve.yml`):

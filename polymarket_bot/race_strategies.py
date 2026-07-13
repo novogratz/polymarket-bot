@@ -387,12 +387,19 @@ def _build_eligible_candidates(
             weather_min_edge = float(
                 getattr(settings, "race_weather_forecast_min_edge", 0.0) or 0.0
             )
-            if weather_only and weather_min_edge > 0:
+            weather_min_margin_c = float(
+                getattr(settings, "race_weather_min_bracket_margin_c", 0.0) or 0.0
+            )
+            if weather_only and (weather_min_edge > 0 or weather_min_margin_c > 0):
                 try:
                     parsed_w = parse_weather_question(question)
                     if parsed_w is not None:
-                        model_prob = forecast_outcome_probability(parsed_w, outcome)
-                        if model_prob is not None and model_prob < best_ask + weather_min_edge:
+                        model_prob = forecast_outcome_probability(
+                            parsed_w, outcome, min_bracket_margin_c=weather_min_margin_c
+                        )
+                        if model_prob is None:
+                            continue  # margin guard or API failure → skip
+                        if weather_min_edge > 0 and model_prob < best_ask + weather_min_edge:
                             continue
                 except Exception:
                     pass  # fail open

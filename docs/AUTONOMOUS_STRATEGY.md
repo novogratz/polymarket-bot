@@ -1,5 +1,7 @@
 # Autonomous Strategy
 
+This document describes the **smart-money copy-trading** strategy specifically (leaderboard-driven wallet-copying) — one of several strategies the engine supports, not the current live one. The bots run live today on **grinder** mode (bot 1, general-purpose) and **weather** mode (bots 2 & 3, current focus); see `docs/STRATEGIES.md` and `CLAUDE.md` for those. This smart-money lane (`polymarket_bot/smart_money.py`) remains in the codebase and is kept accurate below, but isn't deployed.
+
 The bot's default autonomous mode is `auto-loop`. It is designed to avoid random trades and only enter when there is repeatable signal evidence in the public order flow. This document describes the per-tick decision flow, the sizing model, the exit waterfall, the auto-tuner, and the dashboard surface.
 
 ## Money-making thesis

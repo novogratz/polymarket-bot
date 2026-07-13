@@ -1,16 +1,57 @@
 ---
 name: polymarket-bot
-description: Claude Code skill for the Polymarket grinder bot. Use for any change to strategy, filters, sizing, exits, exclusions, reporting, or the reset/launch scripts.
+description: Claude Code skill for the Polymarket trading engine. Use for any change to strategy (grinder, weather, smart-money), filters, sizing, exits, exclusions, reporting, or the reset/launch scripts. Current live focus is the weather strategy (bots 2 & 3) plus grinder (bot 1, general-purpose).
 ---
 
 # Polymarket Bot Skill
 
-Deterministic favorite-grinder bot for Polymarket binary markets. **No LLM in the
-scan or trade-selection path** — the engine is pure Python over Polymarket APIs.
+A general-purpose, deterministic trading engine for Polymarket binary markets — the
+same scan/exclude/filter/rank/size/execute/exit pipeline (`polymarket_bot/race_strategies.py`)
+runs several strategies off a TOML profile. **No LLM in the scan or trade-selection
+path** — the engine is pure Python over Polymarket APIs. The team's **current live
+focus is the weather strategy** (bots 2 & 3, `race_weather_only=true`); bot 1 runs
+the engine's general-purpose configuration, grinder mode, documented in detail below.
+Smart-money copy-trading also exists in the codebase (`polymarket_bot/smart_money.py`)
+but isn't run live.
 
-## Current strategy — `grinder` (race mode)
+## Weather mode — current live focus (bots 2 & 3)
 
-Buy a heavily-favored binary outcome and ride it to resolution.
+Same engine as grinder (same $5 fixed stake, same 0.99 winner floor, same
+never-sell-below-entry rule) but candidates are restricted to **temperature /
+degree-bracket markets**, gated by an extra forecast edge model. Config:
+`configs/profiles/grinder_b.toml`, `weather_only = true`
+(`race_weather_only` in `polymarket_bot/config.py`). Implementation:
+`polymarket_bot/weather_forecast.py`.
+
+- **Multi-model consensus:** fetches Open-Meteo forecasts from multiple models
+  (GFS, ECMWF IFS, best-match/UK Met Office) in parallel; σ is derived from the
+  actual spread between models (not a fixed formula). Models disagreeing by
+  more than `MAX_SPREAD_C` (3.0°C) are dropped; the whole lookup is skipped
+  (fail-open) if fewer than `MIN_MODELS` (2) respond.
+- **Edge gate (`weather_forecast_min_edge`):** only enters when
+  `model_P(outcome) − market_ask ≥` the configured margin. Bot 2:
+  `weather_forecast_min_edge = 0.10`. Default `0.0` (off) — needs no trade
+  history, just live forecast data.
+- **Bracket-margin guard (`weather_min_bracket_margin_c`):** skips "No" bets
+  when the model consensus is within this many °C of the bracket threshold —
+  added after a real loss (Qingdao, 2026-06-28: ECMWF 28.1°C vs a 29°C
+  bracket, 0.9°C margin, resolved as a loss). Bot 2: `weather_min_bracket_margin_c
+  = 2.0`. Default `0.0` (off).
+- **Intraday kill-switch:** for same-day daily-max markets, once past solar
+  3PM at the market's location, checks the already-observed current
+  temperature against the bracket — if the daily max physically can't reach
+  it (or already exceeded it), returns a near-certain probability immediately.
+- **Fail-open:** any API/parse failure returns `None`; normal price/liquidity
+  filters still apply.
+- Bot 2's profile also widens the entry window to 24h (`max_hours = 24.0` —
+  weather markets resolve within a day) and lowers liquidity floors
+  (`min_liquidity_usd = 50`, `min_volume_24h_usd = 200`) vs. grinder's sports-grade floors.
+
+## Grinder mode — general-purpose (bot 1)
+
+Buy a heavily-favored binary outcome and ride it to resolution. This is the
+engine's general-purpose configuration — it trades every category (via
+`unban_all_markets`), not just weather.
 
 - **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1) and
   `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
@@ -117,8 +158,8 @@ Buy a heavily-favored binary outcome and ride it to resolution.
 
 3 independent live bots, each its own wallet / `.env` / ledger.
 
-- **Launchers:** `run_live_70.sh` (bot 1), `run_live_b.sh` (bots 2 & 3),
-  `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
+- **Launchers:** `run_live_70.sh` (bot 1, grinder), `run_live_b.sh` (bots 2 & 3,
+  weather mode), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
 - **Per-machine baseline:** `data/starting_cash.txt` (gitignored) — each bot's
   report baseline, independent of the shared profile. Written by `fresh_start.py`.
 - Ledger/journal/cache are gitignored = per-machine; only code + profiles are shared.
