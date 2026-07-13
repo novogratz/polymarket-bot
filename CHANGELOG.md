@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-07-13
+
+Polymarket Bot **v5** — weather-only on all 3 bots (temperature/degree-bracket markets exclusively), a multi-model Open-Meteo forecast edge gate with a bracket-margin safety guard (bots 2 & 3), 5%-fixed-fraction "no reinforcement" sizing replacing fixed-$5 (worst single-line loss ≈ 5% of equity, on-chain no-rebet guard), full-deploy diversification caps, weather as a first-class governance category, and the Telegram report's ROI line fixed to match the account-level P&L figure.
+
 ### Fixed
 
 - **Telegram LIVE REPORT's `PERFORMANCE v4` ROI now matches the Capital line** (user 2026-07-13, "the ROI line... it must be the same as since beginning above... it doesn't make sense we show 4.5% when it's like almost 100%"). The block showed `forecast.roi()` — average per-trade return on staked capital (~5%) — directly under the `Capital` line's equity-vs-baseline growth (~96%), two very different numbers both implicitly read as "the" ROI. `_v4_performance_lines` now takes the same equity-vs-baseline percentage the Capital line already computes and displays that instead; Sharpe/PF/max-DD are unchanged (still per-trade metrics).
