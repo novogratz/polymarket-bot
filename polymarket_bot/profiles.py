@@ -280,6 +280,8 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "stake_usd": ("POLYMARKET_RACE_STAKE_USD", "float"),
         "stake_pct": ("POLYMARKET_RACE_STAKE_PCT", "float"),
         "fixed_stake_usd": ("POLYMARKET_RACE_FIXED_STAKE_USD", "float"),
+        "full_deploy": ("POLYMARKET_RACE_FULL_DEPLOY", "bool"),
+        "full_deploy_max_position_pct": ("POLYMARKET_RACE_FULL_DEPLOY_MAX_POSITION_PCT", "float"),
         "max_price_hard_cap": ("POLYMARKET_RACE_MAX_PRICE_HARD_CAP", "float"),
         "crypto_min_price": ("POLYMARKET_RACE_CRYPTO_MIN_PRICE", "float"),
         "unban_all_markets": ("POLYMARKET_UNBAN_ALL_MARKETS", "bool"),

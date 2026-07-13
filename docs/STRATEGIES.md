@@ -2,38 +2,36 @@
 
 Document maître expliquant **toutes les lanes** d'achat et toutes les conditions de vente du bot. Aucune ligne de code ici, juste la mécanique métier. Pour les paramètres, voir `docs/PROFILES.md`.
 
-## État actuel (v4 — 2026-06-21)
+## État actuel (WEATHER-ONLY + FULL-DEPLOY — 2026-07-10)
 
-Le moteur (`polymarket_bot/race_strategies.py`) est **générique** : même pipeline scan → exclude → filter → rank → size → execute → manage exits pour toutes les stratégies, configuré par profil TOML. **Deux modes tournent en live aujourd'hui, pas le même sur les 3 bots :**
-
-- **Bot 1** (`grinder.toml`) : mode **grinder — général**, toutes catégories de marché.
-- **Bots 2 & 3** (`grinder_b.toml`) : mode **weather** (`weather_only = true`, pivot user 2026-06-26) — c'est le **focus live actuel de l'équipe**. Voir la section dédiée plus bas.
-
-Le reste de ce document décrit d'abord le grinder (toujours en détail — c'est le mode général-purpose, encore live sur le bot 1), puis le mode weather.
+Le moteur (`polymarket_bot/race_strategies.py`) est **générique** : même pipeline scan → exclude → filter → rank → size → execute → manage exits pour toutes les stratégies, configuré par profil TOML. **Stratégie LIVE : `grinder` — mode race, 100% météo (user 2026-07-06 : « weather only bets »). Les 3 bots ne tradent QUE les marchés météo/température** ; le grinder classique (toutes catégories) reste documenté ci-dessous mais n'est plus live sur aucun bot. Seuls les bots 2 & 3 (`grinder_b.toml`) ajoutent par-dessus un gate d'edge Open-Meteo multi-modèle (voir la section dédiée plus bas) — le bot 1 (`grinder.toml`) trade la météo sur les seules heuristiques prix/liquidité, sans forecast.
 
 **Thèse (grinder) :** un favori binaire à ask ∈ [0.80, 0.94] avec ≤4h à la fermeture price la near-certainty ; on paye le spread et on **ride jusqu'à la résolution** (1.0). L'edge est le gap entre le prix d'entrée et l'outcome qui se résout à 1.0.
 
+**Thèse (weather) :** un favori binaire météo à ask ∈ [0.80, 0.94] avec ≤24h à la fermeture (la météo se résout en fin de journée) price la near-certainty ; on paye le spread et on **ride jusqu'à la résolution** (1.0).
+
 **Config source de vérité :** `configs/profiles/grinder.toml` (bot 1) et `grinder_b.toml` (bots 2 & 3).
 
-**Paramètres clés v4 (user 2026-06-21, « Polymarket Bot v4 ») :**
-- **Entry :** ask ∈ [0.80, 0.94], **hard cap 0.96** (`max_price_hard_cap` — 0.97/0.98/0.99 jamais tradables), ≤4h (game start OU close), spread ≤4¢, liq ≥$250, vol 24h ≥$1000. Plancher 0.92 sur les moneylines soccer « Will X win on <date>? ».
-- **Sizing : FIXE $5 par trade** (`fixed_stake_usd = 5.0`) — pas de Kelly, %, martingale, averaging, double-down, scaling. Perte max par trade = $5 ; le bankroll se déploie sur `bankroll/5` positions. Double-down désactivé.
-- **Unban total** (`unban_all_markets = true`) : toutes catégories autorisées, gouvernées par l'**auto-disable data-driven** (`categories.py` : ≥100 trades & ROI < −5% → retirée).
+**Paramètres clés (weather-only 2026-07-06, full-deploy 2026-07-09) :**
+- **Univers : MÉTÉO UNIQUEMENT** (`weather_only = true`) — température, °C/°F, weather, rainfall, snowfall, high/low temp (`is_weather_market`). Tout le reste (sport, élections, crypto, …) est écarté à la sélection ; le ban météo normal est bypassé. « weather » est une catégorie v4 à part entière (2026-07-10) et **ne peut jamais être auto-disabled tant que la lane est active** (garde anti-famine).
+- **Entry :** ask ∈ [0.80, 0.94], **hard cap 0.96** (`max_price_hard_cap` — 0.97/0.98/0.99 jamais tradables), ≤24h (game start OU close — élargi de 4h pour la météo), spread ≤4¢, liq ≥$250, vol 24h ≥$1000.
+- **Sizing : FRACTION FIXE 5%, SANS RENFORCEMENT — LA RÈGLE (user 2026-07-11)** (`full_deploy = true`, `full_deploy_max_position_pct = 0.05`) — chaque NOUVELLE position mise EXACTEMENT 5% de l'équité ($200 → $10 ; plancher $5 pour le minimum Polymarket) ; le stake est le cap lui-même, pas cash/N, donc le bankroll se déploie sur jusqu'à 20 lignes distinctes. **Une ligne détenue n'est JAMAIS rachetée** (« you cant rebet on a position that is already existing ») : pas de top-up, pas de redistribution, pas de double-down — les tokens détenus sont exclus des pick slots. Le cash sans NOUVEAU marché attend. La redistribution 3-ticks (#121) a été SUPPRIMÉE le jour même (tick 10 s → déclenchée en ~30 s, une ligne pompée à $33). `cash_floor_pct = 0`. Rollback : `full_deploy = false`, `fixed_stake_usd = 5.0`.
+- **Unban total** (`unban_all_markets = true`) : sans effet pratique sous weather-only ; gouvernance data-driven (`categories.py` : ≥100 trades & ROI < −5% → retirée, sauf `weather` tant que la lane est ON).
 - **Modèle de forecasting** (`forecast.py`, opt-in) : `predicted_probability` calibré par (catégorie, bucket de prix), `edge = predicted − ask`, `quality_score` ; gates `min_edge`/`min_quality_score` OFF par défaut (besoin d'historique).
 - **Exits :** TP désactivé (ride to resolution), **resolved_exit à bid ≥0.99** (sinon settle à 1.0), SL confirmé −30% sur moneylines soccer uniquement (anti-gap ≥0.50), never-sell-below-entry. Daily DD halt DÉSACTIVÉ ; pas de pause-halts (user 2026-06-21).
 
 Le smart-money path original (lanes décrites ci-dessous) est disponible dans la codebase mais n'est pas utilisé en live — le grinder mode race ne fait pas de leaderboard fetch.
 
-## Mode weather (focus live actuel — bots 2 & 3)
+## Mode weather (stratégie live des 3 bots depuis 2026-07-06)
 
-Même moteur que le grinder (même pipeline, même sizing $5 fixe, même plancher de sortie 0.99, même règle never-sell-below-entry) mais avec l'univers de candidats restreint aux **marchés de température / bracket de degrés** (« Will the high in `<city>` be `X`–`Y`°C/°F on `<date>`? ») et un modèle d'edge additionnel qui filtre l'entrée, implémenté dans `polymarket_bot/weather_forecast.py` et activé par profil via `race_weather_only` (`weather_only = true` dans `configs/profiles/grinder_b.toml`, bots 2 & 3).
+Même moteur que le grinder (même pipeline, même sizing fraction fixe 5%, même plancher de sortie 0.99, même règle never-sell-below-entry) mais avec l'univers de candidats restreint aux **marchés de température / bracket de degrés** (« Will the high in `<city>` be `X`–`Y`°C/°F on `<date>`? »), activé par profil via `race_weather_only` (`weather_only = true` dans `grinder.toml` ET `grinder_b.toml`). **Seuls les bots 2 & 3** (`grinder_b.toml`) ajoutent par-dessus un modèle d'edge additionnel qui filtre l'entrée, implémenté dans `polymarket_bot/weather_forecast.py` — le bot 1 (`grinder.toml`) a `weather_only = true` mais aucun des deux gates ci-dessous configurés (tous deux à `0.0` = off), donc il trade la météo sur les seules heuristiques prix/liquidité.
 
 - **Consensus multi-modèle Open-Meteo :** pour chaque marché candidat, le bot interroge en parallèle plusieurs modèles météo gratuits (GFS, ECMWF IFS, best-match/UK Met Office). Le σ (incertitude) est dérivé de l'écart réel entre les modèles plutôt que d'une formule fixe ; un modèle qui diverge des autres de plus de `MAX_SPREAD_C` (3.0°C) est silencieusement écarté, et le lookup entier est skip (fail-open — les filtres prix normaux continuent de s'appliquer) si moins de `MIN_MODELS` (2) répondent.
 - **Gate d'edge (`race_weather_forecast_min_edge`) :** le consensus + σ donnent une probabilité de bracket via un modèle normal-CDF, `model_P(outcome) − market_ask`. Le trade n'est pris que si cet edge ≥ le seuil configuré — le bot 2 fixe `weather_forecast_min_edge = 0.10`. Défaut `0.0` (off), aucun historique requis (le modèle utilise des prévisions météo réelles, pas le journal de trades).
 - **Garde-fou bracket-margin (`race_weather_min_bracket_margin_c`) :** ajouté après une perte réelle (Qingdao, 2026-06-28 : prévision ECMWF 28.1°C vs bracket à 29°C — marge de 0.9°C — résolu en perte). Les paris « No » sont skip si le consensus modèle est à moins de ce seuil en °C du threshold du bracket. Le bot 2 fixe `weather_min_bracket_margin_c = 2.0` ; défaut `0.0` (off).
 - **Kill-switch intraday :** pour les marchés same-day (max journalier), une fois passé 15h solaires sur le lieu du marché, la fonction compare la température déjà observée au bracket : si le maximum journalier ne peut physiquement plus atteindre le bracket (ou l'a déjà dépassé), elle retourne une probabilité quasi-certaine immédiatement, sans attendre l'enregistrement du max du jour.
 - **Fail-open partout :** toute erreur API, erreur de parsing, ou historique manquant retourne `None` et les filtres prix/liquidité normaux s'appliquent — une panne du forecast ne bloque jamais le trading, elle retire juste le gate d'edge additionnel pour ce tick.
-- Sizing et exits identiques au grinder ($5 fixe, plancher winner 0.99, never-sell-below-entry) ; le profil du bot 2 élargit la fenêtre d'entrée à 24h (`max_hours = 24.0`, les marchés météo se résolvent en moins d'un jour) et utilise des planchers de liquidité adaptés (`min_liquidity_usd = 50`, `min_volume_24h_usd = 200` — carnets plus fins que le sport).
+- Sizing et exits identiques au grinder (fraction fixe 5%, plancher winner 0.99, never-sell-below-entry) ; les deux profils élargissent la fenêtre d'entrée à 24h (`max_hours = 24.0`, les marchés météo se résolvent en moins d'un jour) et le profil du bot 2 utilise des planchers de liquidité adaptés (`min_liquidity_usd = 50`, `min_volume_24h_usd = 200` — carnets plus fins que le sport).
 
 ## Vue d'ensemble d'un tick
 
@@ -309,9 +307,27 @@ Pour un dry-run sérieux ou la prod : `[noise_fallback] enabled = false`. Le bot
 
 ---
 
-## Sizing FIXE $5 — grinder v4 (user 2026-06-21)
+## Sizing FRACTION FIXE 5% — sans renforcement (user 2026-07-11)
 
-Le grinder **v4** mise **exactement $5 par trade** (`fixed_stake_usd = 5.0`).
+**Règle ACTUELLE** (`full_deploy = true` + `full_deploy_max_position_pct =
+0.05`, remplace le $5 fixe ci-dessous) : chaque NOUVELLE position mise
+**exactement 5% de l'équité** ($200 → $10, plancher $5 pour le minimum
+Polymarket). Le stake est le cap lui-même — PAS un partage cash/N — donc 40
+marchés éligibles donnent quand même 5% chacun et le bankroll se déploie sur
+jusqu'à 20 lignes distinctes. **Une ligne détenue n'est JAMAIS rachetée** :
+pas de top-up, pas de redistribution, pas de double-down, pas de re-bet —
+les tokens détenus sont exclus des pick slots (`_actionable_candidates`).
+Le cash qui ne trouve pas de NOUVEAU marché attend, point. (La redistribution
+« 3 ticks » de #121 a été supprimée le jour même : avec un tick de 10 s elle
+partait au bout de ~30 s et concentrait le cash sur une seule ligne — le bug
+Paris $33.) `cash_floor_pct = 0` (aucune réserve). Perte max par ligne ≈ 5%
+de l'équité. Rollback une-ligne : `full_deploy = false`,
+`fixed_stake_usd = 5.0` ; `full_deploy_max_position_pct = 0` = legacy cash/N
+sans cap. Pinné par `FullDeploySizingTests`.
+
+## Sizing FIXE $5 — grinder v4 (user 2026-06-21) — RETIRÉ 2026-07-09
+
+Le grinder **v4** misait **exactement $5 par trade** (`fixed_stake_usd = 5.0`).
 Pas de Kelly, pas de %-equity, pas de martingale, pas d'averaging-down, pas de
 double-down, pas de confidence scaling, pas de sizing dynamique.
 

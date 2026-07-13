@@ -1,6 +1,6 @@
 # Agent Instructions
 
-Polymarket trading engine — deterministic signal engine, live order execution, persistent trade journal, and read-only local dashboard. The engine supports multiple strategies (grinder, weather, smart-money) off a shared pipeline; current live focus is the weather strategy (bots 2 & 3) plus grinder (bot 1, general-purpose). Treat `.env` and `data/` as local-only state. Never print private keys, API secrets, or wallet credentials.
+Polymarket **weather-only** grinder bot — deterministic signal engine, live order execution, persistent trade journal, and read-only local dashboard. Since 2026-07-06 all 3 bots bet exclusively on weather / temperature markets; bots 2 & 3 additionally gate entries on a multi-model Open-Meteo forecast edge (`polymarket_bot/weather_forecast.py`). A general-purpose grinder mode (any category) and a smart-money lane also exist in the codebase but aren't run live. Treat `.env` and `data/` as local-only state. Never print private keys, API secrets, or wallet credentials.
 
 See `CLAUDE.md` and `CODEX.md` for agent-specific entry points. Structured skill files are in `.claude/skills/` and `.codex/skills/`.
 
@@ -22,9 +22,9 @@ uv run pmbot journal-stats
 bash scripts/run_live_70.sh
 ```
 
-## Current strategy (v4 — 2026-06-21)
+## Current strategy (WEATHER-ONLY + FULL-DEPLOY — 2026-07-10)
 
-**Grinder:** buy ask 0.80–0.94 (hard cap 0.96), ≤4h to close, hold until bid ≥ 0.99 (else settle 1.0). **Fixed $5 per trade** (no Kelly/%/double-down). `unban_all_markets` — all categories allowed, governed by the data-driven category auto-disable (`categories.py`) + opt-in forecasting EV/quality gates (`forecast.py`). Confirmed −30% SL on soccer moneylines only; never sell below entry. Up to 12 new $5 bets per tick. See `CLAUDE.md` / `docs/STRATEGIES.md`.
+**Weather-only grinder:** `weather_only = true` — entry selection keeps ONLY weather / temperature markets (`is_weather_market`); everything else is dropped. Buy ask 0.80–0.94 (hard cap 0.96), ≤24h to close (weather resolves end-of-day), hold until bid ≥ 0.99 (else settle 1.0). **Sizing: 5% FIXED-FRACTION, NO REINFORCEMENT** (`full_deploy = true`, `full_deploy_max_position_pct = 0.05`, 2026-07-11) — every NEW position = exactly 5% of equity ($5 floor); a held market is NEVER bought again; cash without a new market waits. "weather" is a first-class category (2026-07-10) — shown in the Telegram 🥇 line and never auto-disabled while the lane is on. Confirmed −30% SL applies to soccer moneylines only, so weather positions never stop out — they ride to resolution; never sell below entry. See `CLAUDE.md` / `docs/STRATEGIES.md`.
 
 ## Code style
 

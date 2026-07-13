@@ -381,6 +381,23 @@ class Settings:
     # is hard-capped at this number, so the bankroll can be fully deployed
     # across bankroll / fixed_stake positions. 0 = off (legacy % sizing).
     race_fixed_stake_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FIXED_STAKE_USD", 0.0))
+    # ── FULL-DEPLOY sizing (user 2026-07-09) ─────────────────────────────
+    # When true, 100% of the account is always invested: each tick spreads
+    # ALL available cash across the actionable picks (cash / N each), there
+    # is NO per-position cap (entry + position caps = full equity), and the
+    # cash floor is ignored. Leftover cash keeps flowing into already-held
+    # markets via the top-up lane until the account is fully deployed.
+    # OVERRIDES race_fixed_stake_usd. False = fixed/legacy sizing.
+    race_full_deploy: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_FULL_DEPLOY", False))
+    # Diversification cap for full-deploy (user 2026-07-11: "each position
+    # must be maximum 5% of the overall account - thats the rule - so if we
+    # have like $200 equity, position is max $10"; tightened from the 10% of
+    # 2026-07-10): no single position may exceed this fraction of equity
+    # (floored at $5 so small bankrolls can still meet Polymarket's minimum
+    # order). Cash the cap can't place stays idle rather than piling onto one
+    # market — diversification wins over strict 100% deployment. 0 = uncapped
+    # (the 2026-07-09 behavior).
+    race_full_deploy_max_position_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FULL_DEPLOY_MAX_POSITION_PCT", 0.05))
     # ── v4: absolute hard ceiling on the ENTRY ask ───────────────────────
     # Entries are never placed above this price, regardless of race_max_price
     # (user 2026-06-21: "never trade 0.97/0.98/0.99"). 0 disables the clamp.
@@ -401,9 +418,10 @@ class Settings:
     # auto-disable (user 2026-06-21). Per-trade risk is capped by the fixed
     # stake above. False keeps the manual ban list.
     unban_all_markets: bool = field(default_factory=lambda: _bool_env("POLYMARKET_UNBAN_ALL_MARKETS", False))
-    # When true, only temperature/weather threshold markets are eligible — all
-    # other markets are blocked regardless of unban_all. Also lifts the hard
-    # weather ban so these markets can actually pass the candidate filter.
+    # ── weather-only lane (user 2026-06-23; ALL bots as of 2026-07-06) ────
+    # When true, entry selection keeps ONLY weather / temperature markets
+    # (is_weather_market) and bypasses the normal ban list (weather is banned
+    # there).
     race_weather_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_WEATHER_ONLY", False))
     # Open-Meteo forecast edge gate (OPT-IN, 0 = off): only enter a weather
     # market when the model probability for the chosen outcome exceeds the

@@ -42,8 +42,11 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Entry window: 24h (user 2026-06-26) — weather markets resolve within 24h;
-# wider window captures all of tomorrow's weather forecasts.
+# Entry window 24h — WEATHER-ONLY lane (user 2026-06-26, extended to all bots
+# 2026-07-06). Weather/temperature markets resolve at END OF DAY (typically
+# ~22h and ~46h out), so the previous 4h window left them permanently
+# out-of-window (0 weather candidates). 24h captures the same-day weather
+# batch. Hard cap (max_hours_cap=0 -> single 24h window, no laddering).
 max_hours = 24.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
@@ -85,19 +88,28 @@ max_spread = 0.04
 # boost scales the spread share but never pierces the cap (handled in
 # race_strategies._dynamic_stake_target).
 stake_usd = 1.0
-# ── v4 FIXED-DOLLAR SIZING (user 2026-06-21) ─────────────────────────────
-# Every trade = EXACTLY $5, never more. No Kelly, no % of equity, no
-# martingale, no averaging-down, no double-down, no confidence scaling, no
-# dynamic sizing. Risk per trade is hard-capped at $5, so the full bankroll
-# can be deployed across (bankroll / 5) positions ($50 → 10, $500 → 100).
-# When fixed_stake_usd > 0 the stake_pct/initial_stake_pct knobs below are
-# IGNORED (kept only for legacy % mode).
-fixed_stake_usd = 5.0
+# ── 5% FIXED-FRACTION SIZING — THE RULE (user 2026-07-11) ────────────────
+# "position max 5% of the overall account... you cant rebet on a position
+# that is already existing... replace the rule of $5 with the 5%." Every NEW
+# position stakes EXACTLY 5% of equity ($200 -> $10; floored at $5 for the
+# Polymarket minimum), the bankroll deploys across up to 20 distinct weather
+# markets, and a held market is NEVER bought again — no top-up, no
+# redistribution, no double-down, no re-bet on an existing line. Cash that
+# can't find a NEW market simply waits.
+# full_deploy OVERRIDES fixed_stake_usd; the v4 fixed-$5 mode (2026-06-21)
+# is retired but kept for a one-line rollback (full_deploy = false,
+# fixed_stake_usd = 5.0).
+full_deploy = true
+full_deploy_max_position_pct = 0.05
+fixed_stake_usd = 0.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
-# Weather-only mode: ENABLED (user 2026-06-26) — only bet on weather markets,
-# cross-checked against Open-Meteo forecast before entry.
+# WEATHER-ONLY lane (user 2026-06-26, extended to all bots 2026-07-06): bet
+# ONLY on weather / temperature markets — every non-weather market is dropped
+# at entry selection, and this lane bypasses the normal weather ban
+# (is_weather_market in models.py). Entries are additionally cross-checked
+# against an Open-Meteo multi-model forecast before entry (below).
 weather_only = true
 weather_forecast_min_edge = 0.10   # raised 0.05→0.10: multi-model σ is tighter now
 # Bracket margin guard (2026-06-28): skip "No" bet if any model is within
@@ -107,7 +119,9 @@ weather_min_bracket_margin_c = 2.0
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh
-# bot disables nothing; "other" is never disabled.
+# bot disables nothing; "other" is never disabled. NOTE: while weather_only
+# is on, race_strategies.py never lets the auto-disable drop "weather" itself
+# (starvation guard, 2026-07-10) regardless of this sample size.
 category_min_samples = 20
 category_disable_roi = -0.05
 # v4 forecasting EV / quality gates (user 2026-06-21) — OPT-IN, 0 = off.
@@ -144,7 +158,8 @@ double_down_min_price = 0.60
 # games (each still passes every entry filter; one bet per game/event). The $5
 # cap bounds risk regardless of count.
 max_orders_per_tick = 12
-cash_floor_pct = 0.01
+# Full-deploy (user 2026-07-09): no cash reserve — 100% invested.
+cash_floor_pct = 0.0
 
 # Exit rules:
 #   tp_pct = 1.0          → TP disabled; ride to resolution.

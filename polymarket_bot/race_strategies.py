@@ -38,6 +38,7 @@ from .models import (
     as_float,
     is_excluded_market,
     is_hard_excluded_market,
+    is_weather_market,
     parse_dt,
     parse_json_list,
     utc_now,
@@ -231,8 +232,16 @@ def _build_eligible_candidates(
     # v4 (user 2026-06-21): when unban_all_markets is on, every category is
     # allowed — governance shifts to the data-driven category auto-disable.
     unban_all = bool(getattr(settings, "unban_all_markets", False))
+    # Weather-only lane (user 2026-06-23): restrict entry to ONLY weather /
+    # temperature markets. Bypasses the ban list (weather is banned there).
     weather_only = bool(getattr(settings, "race_weather_only", False))
-    disabled = disabled_categories or set()
+    disabled = set(disabled_categories or set())
+    # While the weather-only lane is on, the data-driven auto-disable must
+    # never drop "weather" — the lane trades nothing else, so disabling it
+    # would starve the bot entirely. The user's explicit lane choice wins
+    # over the governance (2026-07-10).
+    if weather_only:
+        disabled.discard("weather")
     # v4 forecasting EV/quality gates (user 2026-06-21) — opt-in, both 0 = off.
     min_edge = float(getattr(settings, "race_min_edge", 0.0) or 0.0)
     min_quality = float(getattr(settings, "race_min_quality_score", 0.0) or 0.0)
@@ -243,14 +252,13 @@ def _build_eligible_candidates(
     min_clarity = float(getattr(settings, "race_min_resolution_clarity", 0.0) or 0.0)
     out: list[tuple[Candidate, float]] = []
     for market in markets:
-        if not unban_all and is_excluded_market(market):
-            continue
-        # weather_only: restrict to temperature/weather markets only, and lift
-        # the hard weather ban so they can actually pass.
         if weather_only:
-            q_lower = str(market.get("question") or "").lower()
-            if not ("°c" in q_lower or "°f" in q_lower or "temperature" in q_lower):
+            # Keep ONLY weather markets; this lane bypasses the ban list
+            # (weather is itself banned there).
+            if not is_weather_market(market):
                 continue
+        elif not unban_all and is_excluded_market(market):
+            continue
         # Hard bans that survive unban_all_markets (esports, speech, weather).
         # weather_ok=True lifts the weather clause for the weather-only bot.
         if is_hard_excluded_market(market, weather_ok=weather_only):
@@ -2201,6 +2209,23 @@ def _run_btc_edge_pass(
 _TOPUP_MIN_USD = 5.0
 
 
+def _full_deploy_cap_usd(settings: Settings, equity: float) -> float:
+    """Per-position ceiling under full-deploy: the DIVERSIFICATION CAP.
+
+    User 2026-07-10 ("positions at $90 when bankroll total is $200 is not
+    acceptable... take more positions if you still have more money, while
+    diversifying between the different bets"): cap each position at
+    ``race_full_deploy_max_position_pct`` of equity (default 5%) so the
+    bankroll spreads across many distinct markets instead of piling onto
+    one. Floored at $5 so a small bankroll can still meet Polymarket's
+    5-share minimum. pct ≤ 0 → uncapped (the 2026-07-09 behavior).
+    """
+    pct = float(getattr(settings, "race_full_deploy_max_position_pct", 0.0) or 0.0)
+    if pct <= 0:
+        return max(0.0, equity)
+    return max(0.0, min(equity, max(5.0, equity * pct)))
+
+
 def _position_cap_usd(settings: Settings, equity: float) -> float:
     """HARD maximum total cost basis allowed on one position.
 
@@ -2211,7 +2236,16 @@ def _position_cap_usd(settings: Settings, equity: float) -> float:
     v4 (user 2026-06-21): when ``race_fixed_stake_usd`` > 0, the cap IS the
     fixed dollar stake — a position can never exceed one $5 bet (no averaging
     or double-down headroom).
+
+    FULL-DEPLOY (user 2026-07-09, "100% of the account is always invested"),
+    bounded by the DIVERSIFICATION CAP (user 2026-07-10, "positions at $90
+    when bankroll total is $200 is not acceptable"): each position is capped
+    at ``race_full_deploy_max_position_pct`` of equity so the cash spreads
+    across MORE distinct markets instead of piling onto one. Overrides the
+    fixed stake.
     """
+    if getattr(settings, "race_full_deploy", False):
+        return _full_deploy_cap_usd(settings, equity)
     fixed = float(getattr(settings, "race_fixed_stake_usd", 0.0) or 0.0)
     if fixed > 0:
         return fixed
@@ -2233,7 +2267,14 @@ def _entry_cap_usd(settings: Settings, equity: float) -> float:
 
     v4 (user 2026-06-21): with ``race_fixed_stake_usd`` > 0 the entry cap IS
     the fixed stake (== the position cap, so there is no double-down headroom).
+
+    FULL-DEPLOY (user 2026-07-09): the top-up lane keeps pushing leftover
+    cash into already-held markets (which still re-pass every entry filter
+    each tick) — but only up to the diversification cap (user 2026-07-10),
+    never the whole account onto one market.
     """
+    if getattr(settings, "race_full_deploy", False):
+        return _full_deploy_cap_usd(settings, equity)
     fixed = float(getattr(settings, "race_fixed_stake_usd", 0.0) or 0.0)
     if fixed > 0:
         return fixed
@@ -2262,6 +2303,23 @@ def _dynamic_stake_target(
     - The near-resolution boost (1.5× under 30 min, 1.25× under 1 h)
       scales the spread share but can never pierce the cap.
     """
+    # FULL-DEPLOY sizing (user 2026-07-09, "100% of the account is always
+    # invested"): spread ALL available cash across the actionable picks
+    # (cash / N each, no near-resolution boost), bounded per bet by the
+    # diversification cap (user 2026-07-10) so one market can never take a
+    # bankroll-sized bite. Whatever a depth-capped fill leaves behind
+    # re-deploys next tick via the top-up lane. Overrides the fixed stake
+    # below.
+    if getattr(settings, "race_full_deploy", False):
+        cap = _full_deploy_cap_usd(settings, equity)
+        pct = float(getattr(settings, "race_full_deploy_max_position_pct", 0.0) or 0.0)
+        if pct > 0:
+            # 5% FIXED-FRACTION sizing (user 2026-07-11, "replace the rule
+            # of $5 with the 5%"): every NEW position stakes exactly 5% of
+            # equity (the cap), regardless of how many markets are eligible.
+            # Cash deploys across up to 1/pct distinct lines.
+            return max(0.0, min(cap, cash_above_floor))
+        return max(0.0, min(cash_above_floor / max(1, n_opportunities), cap))
     # v4 fixed-dollar sizing (user 2026-06-21): every bet is EXACTLY the
     # fixed stake, capped only by the cash actually available — no spread
     # across opportunities, no near-resolution boost, no scaling.
@@ -2473,6 +2531,12 @@ def _actionable_candidates(
                 None,
             )
         if open_pos is not None:
+            if getattr(settings, "race_full_deploy", False):
+                # NO REINFORCEMENT (user 2026-07-11, "do not reinforce a
+                # position"): under 5% fixed-fraction sizing a held market is
+                # NEVER bought again — no top-up, no redistribution, no
+                # double-down. Cash waits for NEW markets instead.
+                continue
             existing_stake = float(open_pos.get("stake") or 0.0)
             # Guard: _sync_live_positions can zero stake when the live API
             # hasn't indexed the fill yet (initialValue=0 glitch). With

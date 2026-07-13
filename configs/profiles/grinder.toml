@@ -39,13 +39,12 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Entry window: 4h MAX, hard (user 2026-06-14: "only bet on things expiring
-# in 4 hours maximum - never bet on more than 4 hours"). The dynamic ladder
-# is OFF — max_hours_cap = 0 makes the ladder a single [4h] rung, so nothing
-# beyond 4h is ever scanned or entered. (The 6/8/10/12h widening that ran
-# 2026-06-11..14 is disabled; flip max_hours_cap back above max_hours to
-# re-enable it.)
-max_hours = 4.0
+# Entry window 24h — WEATHER-ONLY lane (user 2026-07-06: bot 1 joins bot 2 on
+# weather-only). Weather/temperature markets resolve at END OF DAY (typically
+# ~22h and ~46h out), so the previous 4h window left them permanently
+# out-of-window (0 weather candidates). 24h captures the same-day weather
+# batch. Hard cap (max_hours_cap=0 -> single 24h window, no laddering).
+max_hours = 24.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
 scan_limit = 750
@@ -71,17 +70,28 @@ max_spread = 0.04
 # boost scales the spread share but never pierces the cap (handled in
 # race_strategies._dynamic_stake_target).
 stake_usd = 1.0
-# ── v4 FIXED-DOLLAR SIZING (user 2026-06-21) ─────────────────────────────
-# Every trade = EXACTLY $5, never more. No Kelly, no % of equity, no
-# martingale, no averaging-down, no double-down, no confidence scaling, no
-# dynamic sizing. Risk per trade is hard-capped at $5, so the full bankroll
-# can be deployed across (bankroll / 5) positions ($50 → 10, $500 → 100).
-# When fixed_stake_usd > 0 the stake_pct/initial_stake_pct knobs below are
-# IGNORED (kept only for legacy % mode).
-fixed_stake_usd = 5.0
+# ── 5% FIXED-FRACTION SIZING — THE RULE (user 2026-07-11) ────────────────
+# "position max 5% of the overall account... you cant rebet on a position
+# that is already existing... replace the rule of $5 with the 5%." Every NEW
+# position stakes EXACTLY 5% of equity ($200 -> $10; floored at $5 for the
+# Polymarket minimum), the bankroll deploys across up to 20 distinct weather
+# markets, and a held market is NEVER bought again — no top-up, no
+# redistribution, no double-down, no re-bet on an existing line. Cash that
+# can't find a NEW market simply waits.
+# full_deploy OVERRIDES fixed_stake_usd; the v4 fixed-$5 mode (2026-06-21)
+# is retired but kept for a one-line rollback (full_deploy = false,
+# fixed_stake_usd = 5.0).
+full_deploy = true
+full_deploy_max_position_pct = 0.05
+fixed_stake_usd = 0.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
+# WEATHER-ONLY lane (user 2026-07-06: "put bot 1 to the same strategy as
+# bot 2 which is weather only bets"): every non-weather market is dropped at
+# entry selection, and this lane bypasses the normal weather ban
+# (is_weather_market in models.py).
+weather_only = true
 # Data-driven category auto-disable (user 2026-06-21): after ≥ 100 realized
 # trades in a category, drop it from entry selection if its ROI < −5%.
 # Forward-looking — a fresh bot disables nothing.
@@ -104,7 +114,7 @@ preferred_volume_usd = 5000.0
 # strong subjective marker drops below 60. The one structural protection that
 # survives the unban.
 min_resolution_clarity = 60.0
-stake_pct = 0.35
+stake_pct = 0.05
 initial_stake_pct = 0.20
 # Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held
 # position whose live ask has dipped below entry while it's still a favorite
@@ -121,7 +131,8 @@ double_down_min_price = 0.60
 # games (each still passes every entry filter; one bet per game/event). The $5
 # cap bounds risk regardless of count.
 max_orders_per_tick = 12
-cash_floor_pct = 0.01
+# Full-deploy (user 2026-07-09): no cash reserve — 100% invested.
+cash_floor_pct = 0.0
 
 # Exit rules:
 #   tp_pct = 1.0          → TP disabled; ride to resolution.

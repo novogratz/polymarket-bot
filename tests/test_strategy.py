@@ -3518,6 +3518,67 @@ class EntryWindowStartOrCloseTests(unittest.TestCase):
         self.assertEqual(ids, {"close3", "start2"})
 
 
+class WeatherOnlyLaneTests(unittest.TestCase):
+    """User 2026-06-23: bot 3 bets ONLY on weather markets — non-weather is
+    dropped at entry, and the lane bypasses the normal weather ban."""
+
+    @staticmethod
+    def _market(mid, question, slug):
+        return {
+            "id": mid, "question": question, "slug": slug,
+            "acceptingOrders": True, "liquidity": 1500, "volume24hr": 2000,
+            "bestBid": 0.90, "bestAsk": 0.91, "orderPriceMinTickSize": 0.01,
+            "outcomes": '["Yes", "No"]', "outcomePrices": '["0.91", "0.09"]',
+            "clobTokenIds": f'["tok-{mid}-y", "tok-{mid}-n"]',
+            "endDate": (utc_now() + timedelta(hours=2)).isoformat(),
+        }
+
+    def test_is_weather_market_detection(self):
+        from polymarket_bot.models import is_weather_market
+
+        self.assertTrue(is_weather_market(
+            {"question": "Highest temperature in NYC on June 23?", "slug": "nyc-high-temp"}))
+        self.assertTrue(is_weather_market(
+            {"question": "Will the high be above 30°C in Paris?", "slug": "paris"}))
+        self.assertFalse(is_weather_market(
+            {"question": "Will Team A win on 2026-06-23?", "slug": "team-a-win"}))
+
+    def test_weather_only_keeps_only_weather_and_bypasses_ban(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0,
+                            race_weather_only=True)
+        weather = self._market("w", "Highest temperature in NYC on 2026-06-23?", "nyc-high-temp")
+        sports = self._market("s", "Will Team S win on 2026-06-23?", "team-s-win")
+        ids = {c.market_id for c, _ in _build_eligible_candidates([weather, sports], settings)}
+        self.assertEqual(ids, {"w"})  # only weather; weather passes despite the ban
+
+    def test_weather_banned_when_lane_off(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        # weather_only off + unban off (default) → weather is banned outright.
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0)
+        weather = self._market("w", "Highest temperature in NYC on 2026-06-23?", "nyc-high-temp")
+        self.assertEqual(_build_eligible_candidates([weather], settings), [])
+
+    def test_auto_disable_can_never_starve_the_weather_lane(self):
+        # 2026-07-10: "weather" is a real category now — if its realized ROI
+        # dipped below the auto-disable threshold, the governance would drop
+        # the ONLY category the lane trades and the bot would starve. While
+        # weather_only is on, the user's explicit lane choice wins.
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0,
+                            race_weather_only=True)
+        weather = self._market("w", "Highest temperature in NYC on 2026-06-23?", "nyc-high-temp")
+        ids = {c.market_id for c, _ in _build_eligible_candidates(
+            [weather], settings, disabled_categories={"weather"})}
+        self.assertEqual(ids, {"w"})
+
+
 class DynamicEntryWindowTests(unittest.TestCase):
     """User rule 2026-06-11: prefer bets ≤4h from resolution; if nothing is
     actionable, widen the window 4 → 6 → 8 → 10 and stop at 12h max."""
@@ -3948,6 +4009,181 @@ class DynamicStakeTargetTests(unittest.TestCase):
         self.assertAlmostEqual(boosted, 60.0)  # (800/20) × 1.5
         capped = _dynamic_stake_target(self._settings(), 1000.0, 800.0, 3, 0.4)
         self.assertAlmostEqual(capped, 200.0)  # (800/3)×1.5=400 → cap
+
+
+class FullDeploySizingTests(unittest.TestCase):
+    """FULL-DEPLOY sizing (user 2026-07-09, "100% of the account is always
+    invested") + DIVERSIFICATION CAP (user 2026-07-10, "positions at $90 when
+    bankroll total is $200 is not acceptable"): cash spreads across the picks
+    but no position may exceed full_deploy_max_position_pct of equity (10%
+    default, $5 floor). Overrides race_fixed_stake_usd."""
+
+    @staticmethod
+    def _settings(**kw):
+        return Settings(race_full_deploy=True,
+                        smart_max_position_ceiling_usd=0.0, **kw)
+
+    def test_spreads_all_cash_across_opportunities_uncapped(self):
+        from polymarket_bot.race_strategies import _dynamic_stake_target
+
+        s = self._settings(race_full_deploy_max_position_pct=0.0)
+        # pct=0 → uncapped (the 2026-07-09 behavior): 1 opportunity → the
+        # whole cash pile on it; 4 → cash/4 each.
+        self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 1, 3.0), 800.0)
+        self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 4, 3.0), 200.0)
+
+    def test_diversification_cap_bounds_every_bet(self):
+        # User 2026-07-11 THE RULE: "each position must be maximum 5% of the
+        # overall account - thats the rule - so if we have like $200 equity,
+        # position is max $10" (tightened from the 10% of 2026-07-10).
+        from polymarket_bot.race_strategies import (
+            _dynamic_stake_target, _entry_cap_usd, _position_cap_usd,
+        )
+        s = self._settings()  # default pct = 0.05
+        self.assertAlmostEqual(s.race_full_deploy_max_position_pct, 0.05)
+        # $200 bankroll, 1 opportunity → $10 max, NOT $200.
+        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 1, 3.0), 10.0)
+        # Both caps = 5% of equity → the top-up lane stops at $10 too.
+        self.assertAlmostEqual(_position_cap_usd(s, 200.0), 10.0)
+        self.assertAlmostEqual(_entry_cap_usd(s, 200.0), 10.0)
+        # FIXED-FRACTION (user 2026-07-11, "replace the rule of $5 with the
+        # 5%"): every NEW position stakes exactly 5% of equity no matter how
+        # many markets are eligible — 40 opportunities still means $10 each.
+        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 40, 3.0), 10.0)
+
+    def test_cap_floors_at_5_for_small_bankrolls(self):
+        # 5% of $60 = $3 < Polymarket's ~5-share minimum → floor at $5.
+        from polymarket_bot.race_strategies import _position_cap_usd
+
+        s = self._settings()
+        self.assertAlmostEqual(_position_cap_usd(s, 60.0), 5.0)
+        # But never above equity itself.
+        self.assertAlmostEqual(_position_cap_usd(s, 4.0), 4.0)
+
+    def test_overrides_fixed_stake(self):
+        from polymarket_bot.race_strategies import (
+            _dynamic_stake_target, _entry_cap_usd, _position_cap_usd,
+        )
+        s = self._settings(race_fixed_stake_usd=5.0,
+                           race_full_deploy_max_position_pct=0.0)
+        self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 1, 3.0), 800.0)
+        self.assertAlmostEqual(_position_cap_usd(s, 1000.0), 1000.0)
+        self.assertAlmostEqual(_entry_cap_usd(s, 1000.0), 1000.0)
+
+    def test_off_by_default_and_fixed_stake_still_wins_when_off(self):
+        from polymarket_bot.race_strategies import _dynamic_stake_target
+
+        s = Settings(race_fixed_stake_usd=5.0,
+                     smart_max_position_ceiling_usd=0.0)
+        self.assertFalse(s.race_full_deploy)
+        self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 1, 3.0), 5.0)
+
+    def test_held_lines_are_never_bought_again(self):
+        # User 2026-07-11: "you cant rebet on a position that is already
+        # existing" — a held token is dropped from the actionable pick slots
+        # entirely; no top-up, no redistribution, no re-bet, ever.
+        from polymarket_bot.race_strategies import (
+            _actionable_candidates, _build_eligible_candidates,
+        )
+        s = Settings(race_min_price=0.85, race_max_price=0.97,
+                     race_max_spread=0.04, race_max_hours=4.0,
+                     race_weather_only=True, race_full_deploy=True)
+        held = _redistribution_market("h", "Highest temperature in Paris on 2026-07-11?", "paris-temp")
+        fresh = _redistribution_market("f", "Highest temperature in Milan on 2026-07-11?", "milan-temp")
+        eligible = _build_eligible_candidates([held, fresh], s)
+        portfolio = Portfolio(cash=100.0, positions=[])
+        held_cand = next(c for c, _ in eligible if c.market_id == "h")
+        pos = portfolio.record_live_position(held_cand, 2.0, entry_price=0.91)
+        pos["strategy"] = "grinder"
+        ids = {c.market_id for c, _ in _actionable_candidates(eligible, portfolio, s)}
+        self.assertEqual(ids, {"f"})
+
+
+def _redistribution_market(mid, question, slug):
+    return {
+        "id": mid, "question": question, "slug": slug,
+        "acceptingOrders": True, "liquidity": 1500, "volume24hr": 2000,
+        "bestBid": 0.90, "bestAsk": 0.91, "orderPriceMinTickSize": 0.01,
+        "outcomes": '["Yes", "No"]', "outcomePrices": '["0.91", "0.09"]',
+        "clobTokenIds": f'["tok-{mid}-y", "tok-{mid}-n"]',
+        "endDate": (utc_now() + timedelta(hours=2)).isoformat(),
+    }
+
+
+class NoRebetGuardTests(unittest.TestCase):
+    """User 2026-07-11: "you cant rebet on an existing bet meaning each line
+    will never surpass 5% of overall account". The guard is ON-CHAIN — a live
+    BUY on a token the wallet already holds is refused inside
+    execute_live_trade, even when the local ledger has no such position
+    (sync lag / sync_closed mis-book / fresh restart)."""
+
+    @staticmethod
+    def _candidate():
+        return Candidate(
+            market_id="m-rebet",
+            question="Will the highest temperature in Paris be 37°C on July 11?",
+            slug="paris-37",
+            end_date=utc_now() + timedelta(hours=6),
+            hours_to_close=6,
+            liquidity=1300,
+            volume=2000,
+            outcome="No",
+            price=0.85,
+            token_id="tok-paris",
+            score=1,
+            url="",
+            best_bid=0.84,
+            best_ask=0.85,
+            tick_size=0.01,
+            accepts_orders=True,
+        )
+
+    def test_live_buy_refused_when_wallet_already_holds_the_token(self):
+        class FakeClient:
+            def live_share_balance(self, token_id):
+                return 76.4  # the wallet already holds this line
+
+        settings = Settings(race_full_deploy=True, dry_run=False,
+                            min_order_shares=5.0)
+        portfolio = Portfolio(cash=100.0, positions=[])  # ledger knows NOTHING
+        with self.assertRaises(ValueError) as ctx:
+            execute_live_trade(FakeClient(), settings, self._candidate(),
+                               portfolio, min_trade_usd=1.0, max_trade_usd=5.0)
+        self.assertIn("rebet_blocked", str(ctx.exception))
+
+    def test_guard_fails_open_when_the_balance_probe_errors(self):
+        class FakeClient:
+            def live_share_balance(self, token_id):
+                raise RuntimeError("balance api down")
+
+            def live_available_balance(self):
+                return 0.0  # forces a later, DIFFERENT failure
+
+        settings = Settings(race_full_deploy=True, dry_run=False,
+                            min_order_shares=5.0)
+        portfolio = Portfolio(cash=100.0, positions=[])
+        try:
+            execute_live_trade(FakeClient(), settings, self._candidate(),
+                               portfolio, min_trade_usd=1.0, max_trade_usd=5.0)
+        except Exception as exc:
+            self.assertNotIn("rebet_blocked", str(exc))
+
+    def test_guard_off_in_legacy_mode(self):
+        class FakeClient:
+            def live_share_balance(self, token_id):
+                return 76.4
+
+            def live_available_balance(self):
+                return 0.0
+
+        settings = Settings(race_full_deploy=False, dry_run=False,
+                            min_order_shares=5.0)
+        portfolio = Portfolio(cash=100.0, positions=[])
+        try:
+            execute_live_trade(FakeClient(), settings, self._candidate(),
+                               portfolio, min_trade_usd=1.0, max_trade_usd=5.0)
+        except Exception as exc:
+            self.assertNotIn("rebet_blocked", str(exc))
 
 
 class PriceMovementNeverExcludesTests(unittest.TestCase):

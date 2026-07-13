@@ -1,6 +1,6 @@
 ---
 name: polymarket-bot
-description: Claude Code skill for the Polymarket trading engine. Use for any change to strategy (grinder, weather, smart-money), filters, sizing, exits, exclusions, reporting, or the reset/launch scripts. Current live focus is the weather strategy (bots 2 & 3) plus grinder (bot 1, general-purpose).
+description: Claude Code skill for the Polymarket trading engine. Use for any change to strategy (grinder, weather, smart-money), filters, sizing, exits, exclusions, reporting, or the reset/launch scripts. Current live strategy is weather-only on all 3 bots (bots 2 & 3 additionally forecast-gated).
 ---
 
 # Polymarket Bot Skill
@@ -8,20 +8,21 @@ description: Claude Code skill for the Polymarket trading engine. Use for any ch
 A general-purpose, deterministic trading engine for Polymarket binary markets — the
 same scan/exclude/filter/rank/size/execute/exit pipeline (`polymarket_bot/race_strategies.py`)
 runs several strategies off a TOML profile. **No LLM in the scan or trade-selection
-path** — the engine is pure Python over Polymarket APIs. The team's **current live
-focus is the weather strategy** (bots 2 & 3, `race_weather_only=true`); bot 1 runs
-the engine's general-purpose configuration, grinder mode, documented in detail below.
-Smart-money copy-trading also exists in the codebase (`polymarket_bot/smart_money.py`)
-but isn't run live.
+path** — the engine is pure Python over Polymarket APIs. **All 3 bots run weather-only
+live** since 2026-07-06 (`weather_only = true` in both `grinder.toml` and
+`grinder_b.toml`); the engine's general-purpose grinder configuration and a
+smart-money copy-trading lane (`polymarket_bot/smart_money.py`) also exist in the
+codebase but aren't run live.
 
-## Weather mode — current live focus (bots 2 & 3)
+## Weather mode — current live strategy (all 3 bots)
 
-Same engine as grinder (same $5 fixed stake, same 0.99 winner floor, same
+Same engine as grinder (same 5% fixed-fraction stake, same 0.99 winner floor, same
 never-sell-below-entry rule) but candidates are restricted to **temperature /
-degree-bracket markets**, gated by an extra forecast edge model. Config:
-`configs/profiles/grinder_b.toml`, `weather_only = true`
-(`race_weather_only` in `polymarket_bot/config.py`). Implementation:
-`polymarket_bot/weather_forecast.py`.
+degree-bracket markets** (`weather_only = true`, `race_weather_only` in
+`polymarket_bot/config.py`, both profiles). **Only bots 2 & 3** (`configs/profiles/grinder_b.toml`)
+additionally gate entry on a forecast edge model — bot 1 (`grinder.toml`) trades
+weather markets on price/liquidity heuristics alone, no forecast gate configured.
+Forecast implementation: `polymarket_bot/weather_forecast.py`.
 
 - **Multi-model consensus:** fetches Open-Meteo forecasts from multiple models
   (GFS, ECMWF IFS, best-match/UK Met Office) in parallel; σ is derived from the
@@ -47,19 +48,30 @@ degree-bracket markets**, gated by an extra forecast edge model. Config:
   weather markets resolve within a day) and lowers liquidity floors
   (`min_liquidity_usd = 50`, `min_volume_24h_usd = 200`) vs. grinder's sports-grade floors.
 
-## Grinder mode — general-purpose (bot 1)
+## Shared engine mechanics (entry/exit/sizing — currently applied under weather-only)
 
-Buy a heavily-favored binary outcome and ride it to resolution. This is the
-engine's general-purpose configuration — it trades every category (via
-`unban_all_markets`), not just weather.
+Buy a heavily-favored binary outcome and ride it to resolution. This describes
+the shared grinder engine's entry/exit/sizing mechanics, as run by **all 3
+bots under the weather-only lane** today. The engine also supports a
+general-purpose configuration (`weather_only = false`, `unban_all_markets`,
+trades every category) — not currently run live, same mechanics otherwise.
 
 - **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1) and
   `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
+- **WEATHER-ONLY lane (user 2026-07-06, "put bot 1 to the same strategy as
+  bot 2 which is weather only bets"):** `weather_only = true`
+  (`POLYMARKET_RACE_WEATHER_ONLY`) in BOTH profiles — entry selection keeps
+  ONLY weather / temperature markets (`is_weather_market` in `models.py`:
+  temperature, °C/°F, weather, rainfall, snowfall, high/low temp) and
+  bypasses the ban list (weather is itself banned there). Every non-weather
+  market is dropped. Ported from `kzer_windows` (bot 3's 2026-06-23
+  experiment); `WeatherOnlyLaneTests` pin the behavior.
 - **Entry:** ask ∈ **[0.80, 0.94]**, absolute hard cap **0.96**
   (`max_price_hard_cap`, v4 2026-06-21 — 0.97+ never tradeable),
   **game starts OR market closes within
-  ≤ 4 h** (user 2026-06-14; dynamic widening OFF via `max_hours_cap=0`),
-  (`max_hours=4`,
+  ≤ 24 h** (weather-only 2026-07-06 — weather resolves end-of-day ~22–46 h
+  out, a 4 h window has zero weather candidates; dynamic widening OFF via
+  `max_hours_cap=0`), (`max_hours=24`,
   `daily_expiry_fallback=false`; user 2026-06-12). **One bet per GAME**
   (`_dedup_same_game` on date-truncated event slug + team names — one game
   spans several Polymarket events; `_open_game_keys` blocks across ticks;
@@ -74,7 +86,18 @@ engine's general-purpose configuration — it trades every category (via
   values logged in the forward net only, pinned by tests.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
   dropped before pick-slot truncation.
-- **Sizing (v4 fixed-dollar — user 2026-06-21):** every trade = EXACTLY $5
+- **Sizing (5% FIXED-FRACTION, NO REINFORCEMENT — user 2026-07-11 THE
+  RULE):** `full_deploy = true` + `full_deploy_max_position_pct = 0.05` in
+  BOTH profiles. Every NEW position stakes EXACTLY 5% of equity ($200 → $10,
+  $5 floor) — the stake is the cap itself, not cash/N, so the bankroll
+  deploys across up to 20 distinct lines. **A held market is NEVER bought
+  again** ("you cant rebet on a position that is already existing"): held
+  tokens are dropped from pick slots (`_actionable_candidates`) — no top-up,
+  no redistribution, no double-down. Cash without a NEW market waits. The
+  3-tick redistribution (#121) was REMOVED same-day (10 s ticks → fired in
+  ~30 s, pumped one line to $33). Rollback: `full_deploy = false`,
+  `fixed_stake_usd = 5.0`. `FullDeploySizingTests` pin it.
+- **Sizing (RETIRED v4 fixed-dollar — user 2026-06-21):** every trade = EXACTLY $5
   (`fixed_stake_usd = 5.0`). No Kelly, no %-of-equity, no martingale, no
   averaging/double-down, no confidence scaling, no dynamic spread. The three
   sizing functions (`_position_cap_usd`, `_entry_cap_usd`,
@@ -171,10 +194,18 @@ The **only** Telegram message. Deterministic French "RAPPORT LIVE": fires on
 Shows equity, **P&L since start (= equity − baseline)**, **total trades + win
 rate**, a **v4 performance block** (≥10 closed trades: ROI / Sharpe / profit
 factor / max DD + a **p/q/edge** line all-time & today, `🎯 p=avg entry · q=win
-rate · edge(q−p)` — +EV only when q>p — + worst per-category ROIs, ⛔ on
-auto-disabled), open positions
-(sorted by expiry, each with its estimated end time), and a redemption watchdog
-(resolved-but-unpaid positions ≥ $1). No per-trade lists, no heartbeat, no BUY/SELL alerts.
+rate · edge(q−p)` — +EV only when q>p — + a **best/worst category** line
+(`🥇 Meilleure catégorie … 🥶 Pire …`, ranked by realized $ P&L; "weather" is
+a first-class category since 2026-07-10, so the weather-only lane shows
+`weather +$X` here) + worst
+per-category ROIs, ⛔ on auto-disabled), open positions and trades-of-the-day **each capped to the top
+`LIVE_REPORT_TOP_N` winners + N worst losers** (default 5, `_winners_losers`;
+rest folded into `… +X autres`; `=0` → summary only — user 2026-06-22 "I want
+something clear as a summary"), shown positions keeping their estimated end time,
+and a redemption watchdog (resolved-but-unpaid positions ≥ $1). No heartbeat, no
+BUY/SELL alerts. `_fetch_live_equity` retries the `/positions` API 3× and falls
+back to the local ledger on failure (never cash-only — that used to fabricate a
+"$60 / -$100" capital via a stale `assumed_live_balance_usd` floor, now removed).
 
 ## Reset workflow — `scripts/fresh_start.py`
 

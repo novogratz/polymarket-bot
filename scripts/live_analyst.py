@@ -122,6 +122,26 @@ _load_dotenv()
 
 CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))   # 30 minutes
 
+# The report is a SUMMARY, not a dump (user 2026-06-22: "I want something clear
+# as a summary", "top 5 winning and top 5 where we lost"). Both detail lists —
+# closed trades-of-the-day AND open positions — show only the top-N winners and
+# the N worst losers; the rest folds into a "+X autres" line, and the summary
+# header above each list still reflects ALL trades/positions (counts, totals,
+# latent P&L). Set LIVE_REPORT_TOP_N=0 to hide the detail entirely.
+_REPORT_TOP_N = int(os.environ.get("LIVE_REPORT_TOP_N", "5"))
+
+
+def _winners_losers(items: list[dict], pnl_key, n: int = _REPORT_TOP_N):
+    """Split `items` into (top-n winners, n worst losers) by `pnl_key`.
+
+    Winners are sorted best-first, losers worst-first. Zero-PnL items appear in
+    neither list (they only count toward the section's summary total). Returns
+    (winners, losers, hidden) where hidden = items not shown in either list."""
+    winners = sorted((x for x in items if pnl_key(x) > 0), key=pnl_key, reverse=True)[:n]
+    losers = sorted((x for x in items if pnl_key(x) < 0), key=pnl_key)[:n]
+    hidden = len(items) - len(winners) - len(losers)
+    return winners, losers, max(hidden, 0)
+
 
 @dataclass
 class LiveSnapshot:
@@ -330,23 +350,41 @@ def _fetch_live_equity() -> tuple[float, float] | None:
             avail = float(settings.paper_balance_usd or 0.0)
         # All active positions from Data API — same filter as _sync_live_positions:
         # size > 0 AND currentValue >= min_value (drops dust / redeemed positions).
+        # The /positions endpoint times out intermittently (HTTP 408 / socket
+        # timeout); retry a few times before giving up, because a single missed
+        # read here used to be catastrophic — see the failure handling below.
         pos_value = 0.0
+        positions_ok = False
         min_val = float(getattr(settings, "live_position_min_value_usd", 0.5) or 0.5)
-        try:
-            live_positions = DataApiClient(settings.data_api_base_url).positions(
-                user=settings.funder_address
-            )
-            for item in live_positions:
-                try:
-                    size = float(item.get("size") or 0)
-                    cv = float(item.get("currentValue") or 0)
-                except (TypeError, ValueError):
-                    continue
-                if size <= 0 or cv < min_val:
-                    continue
-                pos_value += cv
-        except Exception:
-            pass
+        for attempt in range(3):
+            try:
+                live_positions = DataApiClient(settings.data_api_base_url).positions(
+                    user=settings.funder_address
+                )
+                pos_value = 0.0
+                for item in live_positions:
+                    try:
+                        size = float(item.get("size") or 0)
+                        cv = float(item.get("currentValue") or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    if size <= 0 or cv < min_val:
+                        continue
+                    pos_value += cv
+                positions_ok = True
+                break
+            except Exception:
+                if attempt < 2:
+                    time.sleep(1.0)
+        # If the positions read never succeeded, equity is UNKNOWABLE from the
+        # live API. Returning cash-only would both understate equity by the full
+        # open-position value AND (when cash < assumed*0.5) make the old floor
+        # fabricate a stale fixed equity — exactly the "$60 / -$100" phantom the
+        # report showed on 2026-06-22 (wallet really held $160). Signal failure
+        # so load_live_snapshot falls back to the local ledger, which the live
+        # bot keeps synced with the real positions every tick.
+        if not positions_ok:
+            return None
         return avail, pos_value
     except Exception:
         return None
@@ -1218,6 +1256,25 @@ def _v4_performance_lines(
             if day:
                 lines.append(day)
         stats = category_stats(records)
+        # Best / worst category by realized $ P&L (user 2026-06-23: "top category
+        # where the bot made money and worst category"). Ranked by dollars made,
+        # with ROI shown alongside. Skip the catch-all 'other' bucket.
+        ranked = sorted(
+            [(c, s) for c, s in stats.items() if c != "other" and s["trades"] > 0],
+            key=lambda kv: kv[1]["total_pnl"],
+        )
+        if ranked:
+            def _cat(c, s):
+                sign = "+" if s["total_pnl"] >= 0 else "-"
+                return (f"{c} {sign}${abs(s['total_pnl']):.2f} "
+                        f"({s['roi'] * 100:+.0f}%, {s['trades']})")
+            best_c, best_s = ranked[-1]
+            worst_c, worst_s = ranked[0]
+            cat_line = f"  🥇 Meilleure catégorie : {_cat(best_c, best_s)}"
+            # Only add a distinct worst when it isn't the same single category.
+            if worst_c != best_c:
+                cat_line += f"  •  🥶 Pire : {_cat(worst_c, worst_s)}"
+            lines.append(cat_line)
         risky = sorted(
             [(c, s) for c, s in stats.items()
              if c != "other" and s["trades"] >= 20 and s["roi"] < 0],
@@ -1254,15 +1311,27 @@ def cycle_once() -> None:
     net_pct = (net / starting * 100) if starting > 0 else 0.0
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
+    # Cap the two detail lists (top-N winners + N worst losers each). The
+    # summary header above each list still reflects the full set; only the
+    # line-by-line detail is trimmed so the Telegram message stays short.
+    trade_winners, trade_losers, trades_hidden = _winners_losers(
+        today_trades, lambda t: float(t.get("pnl") or 0.0)
+    )
+    shown_trades = trade_winners + trade_losers
+    pos_winners, pos_losers, pos_hidden = _winners_losers(
+        open_pos, lambda p: float(p.get("unr", 0) or 0)
+    )
+    shown_pos = pos_winners + pos_losers
+
     # Track end-of-day equity so "Gains du jour" can show today's % progress
     # against yesterday's closing balance (not just the all-time start).
     yest_bal = _yesterday_equity()
     _record_daily_equity(snap.equity)
 
-    # Translate every market title once (English fallback on failure).
+    # Translate only the titles we actually show (English fallback on failure).
     fr = _translate_questions_fr(
-        [r.get("question") or "" for r in today_trades]
-        + [p.get("question") or "" for p in open_pos]
+        [r.get("question") or "" for r in shown_trades]
+        + [p.get("question") or "" for p in shown_pos]
     )
 
     def _q(en: str) -> str:
@@ -1337,7 +1406,7 @@ def cycle_once() -> None:
             f"Ratés : {n_loss}, Gains du jour : {_sign(day_pnl)}${abs(day_pnl):.2f} "
             f"/ {_sign(day_pct_vs_yest)}{abs(day_pct_vs_yest):.1f}% {base_lbl})"
         )
-        for r in today_trades:
+        for r in shown_trades:
             pnl = float(r["pnl"]); pct = float(r.get("pct", 0.0) or 0.0)
             mood = "🟢" if pnl > 0 else "🔴" if pnl < 0 else "⚪"
             s = "+" if pnl >= 0 else "-"
@@ -1360,6 +1429,8 @@ def cycle_once() -> None:
                 f"  {mood} {s}${abs(pnl):.2f} ({s}{abs(pct):.1f}%)  {detail}\n"
                 f"      _{_q(r.get('question') or '')}_"
             )
+        if trades_hidden > 0:
+            parts.append(f"  _… +{trades_hidden} autres trades (résumé ci-dessus)_")
         parts.append("")
 
     redeemable = load_redeemable_positions()
@@ -1383,7 +1454,7 @@ def cycle_once() -> None:
             f"*POSITIONS OUVERTES ({len(open_pos)}) : "
             f"{_mood(unrealized)} {_sign(unrealized)}${abs(unrealized):.2f}*"
         )
-        for p in open_pos:
+        for p in shown_pos:
             unr = float(p.get("unr", 0) or 0)
             cost = float(p.get("cost", 0) or 0)
             mtm = float(p.get("mtm", 0) or 0)
@@ -1398,10 +1469,9 @@ def cycle_once() -> None:
             )
             if expiry:
                 line += f"\n      {expiry}"
-            url = _market_url(p)
-            if url:
-                line += f"\n      [▶️ Voir le match]({url})"
             parts.append(line)
+        if pos_hidden > 0:
+            parts.append(f"  _… +{pos_hidden} autres positions (résumé ci-dessus)_")
         parts.append(f"  _Latent : {_sign(unrealized)}${abs(unrealized):.2f}_")
         parts.append("")
 

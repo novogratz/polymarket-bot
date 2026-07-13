@@ -27,10 +27,23 @@ class ClassifyCategoryTests(unittest.TestCase):
             ("Premier League: Arsenal vs Chelsea", "epl-arsenal-chelsea", "soccer"),
             ("Lakers vs Celtics NBA Finals Game 7", "nba-lakers-celtics", "sports"),
             ("Will the movie win Best Picture at the Oscars?", "oscars-best-picture", "entertainment"),
-            ("Will it rain in Paris tomorrow?", "paris-weather", "other"),
+            # Weather is its own category since 2026-07-10 (weather-only lane
+            # must report under its own bucket, not the catch-all).
+            ("Will it rain in Paris tomorrow?", "paris-weather", "weather"),
+            ("Highest temperature in NYC on July 9?", "highest-temperature-nyc-july-9", "weather"),
+            ("Will it reach 100°F in Phoenix today?", "phoenix-100f", "weather"),
+            ("Total rainfall in London this week above 20mm?", "london-rainfall", "weather"),
         ]
         for question, slug, expected in cases:
             self.assertEqual(classify_category(question, slug), expected, question)
+
+    def test_weather_beats_generic_sports_vs(self):
+        # "Higher temperature: Miami vs Dallas?" must classify weather, not
+        # the generic sports "vs" rule — weather is checked first.
+        self.assertEqual(
+            classify_category("Higher temperature: Miami vs Dallas?", "temp-miami-dallas"),
+            "weather",
+        )
 
     def test_classification_order_crypto_beats_sports_vs(self):
         # "Bitcoin ... vs ..." must classify crypto, not the generic sports vs.
