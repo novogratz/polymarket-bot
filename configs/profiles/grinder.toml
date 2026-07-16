@@ -142,7 +142,7 @@ preferred_volume_usd = 5000.0
 # strong subjective marker drops below 60. The one structural protection that
 # survives the unban.
 min_resolution_clarity = 60.0
-stake_pct = 0.35
+stake_pct = 0.15
 initial_stake_pct = 0.20
 # Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held
 # position whose live ask has dipped below entry while it's still a favorite
@@ -158,7 +158,7 @@ double_down_min_price = 0.60
 # $5 positions per tick so a fresh bankroll deploys fast across many distinct
 # games (each still passes every entry filter; one bet per game/event). The $5
 # cap bounds risk regardless of count.
-max_orders_per_tick = 12
+max_orders_per_tick = 16
 # Full-deploy (user 2026-07-09): no cash reserve — 100% invested.
 cash_floor_pct = 0.0
 
