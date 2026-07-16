@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **Bot 1 strategy synced to bot 2** (user 2026-07-15, "bot 2 grinder 2 doing better than bot 1 - so make bot 1 the same strategy as bot 2"). `grinder.toml`'s `[race]` section is now byte-identical to `grinder_b.toml`; only the bankroll baseline keys stay bot 1's own. Bot 1 gains: the **Open-Meteo multi-model forecast gate** (`weather_forecast_min_edge = 0.10` + `weather_min_bracket_margin_c = 2.0` — the bracket-margin guard from the Qingdao loss), weather-grade liquidity floors (liq ≥ $50, vol ≥ $200), the 0.85 entry floor (the 0.80–0.85 bucket was −8.1% ROI), `category_min_samples` 100 → 20, and the 30 s tick (double-entry fix).
+
 ## [5.0.0] - 2026-07-13
 
 Polymarket Bot **v5** — weather-only on all 3 bots (temperature/degree-bracket markets exclusively), a multi-model Open-Meteo forecast edge gate with a bracket-margin safety guard (bots 2 & 3), 5%-fixed-fraction "no reinforcement" sizing replacing fixed-$5 (worst single-line loss ≈ 5% of equity, on-chain no-rebet guard), full-deploy diversification caps, weather as a first-class governance category, and the Telegram report's ROI line fixed to match the account-level P&L figure.
