@@ -12,8 +12,12 @@
 [run]
 # Shared profile for the PRIMARY bot (run_live_70.sh). The second bot uses
 # its own grinder_b.toml — edit that one for that machine, never this.
-# Fresh start 2026-06-04: flat ledger, $13.45 real cash, 0 positions,
-# history cleared. Total P&L tracks from here.
+# 2026-07-15 (user: "bot 2 doing better than bot 1 - make bot 1 the same
+# strategy as bot 2"): [race] strategy keys are now BYTE-SYNCED to
+# grinder_b.toml — Open-Meteo forecast gate (min_edge 0.10 + 2.0°C bracket
+# margin), weather-grade liquidity floors (50/200), 0.85 entry floor,
+# category_min_samples 20, 30s tick. Only the bankroll baseline below is
+# bot 1's own.
 starting_cash = 60.0
 mode = "grinder"
 
@@ -39,8 +43,8 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Entry window 24h — WEATHER-ONLY lane (user 2026-07-06: bot 1 joins bot 2 on
-# weather-only). Weather/temperature markets resolve at END OF DAY (typically
+# Entry window 24h — WEATHER-ONLY lane (user 2026-06-26, extended to all bots
+# 2026-07-06). Weather/temperature markets resolve at END OF DAY (typically
 # ~22h and ~46h out), so the previous 4h window left them permanently
 # out-of-window (0 weather candidates). 24h captures the same-day weather
 # batch. Hard cap (max_hours_cap=0 -> single 24h window, no laddering).
@@ -49,16 +53,31 @@ max_hours_cap = 0.0
 daily_expiry_fallback = false
 scan_limit = 750
 
-# v4 liquidity floors (user 2026-06-21): min volume $1000, min liquidity $250.
-min_liquidity_usd = 250.0
-min_volume_24h_usd = 1000.0
+# Weather-grade liquidity floors (lower — weather markets are thinner).
+min_liquidity_usd = 50.0
+min_volume_24h_usd = 200.0
 
 # v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
 # 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
 # is the ABSOLUTE ceiling — 0.97/0.98/0.99 are never tradeable.
-min_price = 0.80
+min_price = 0.85
 max_price = 0.94
 max_price_hard_cap = 0.96
+
+# Crypto-only entry floor (bot 2 ONLY, user 2026-06-24: "put back crypto on
+# bot 2"). Crypto is already un-banned here via unban_all_markets, but the
+# 0.85 band keeps the grinder out of crypto coinflips (~0.50). This lowers the
+# floor TO 0.50 for CRYPTO markets only — every other category still needs
+# 0.85. Bot 1/3/zaza leave this at 0 (off). WARNING: crypto coinflips can
+# settle at $0; this re-admits that risk on bot 2 by design. Set to 0 to revert.
+# Agent improvement 2026-06-24: raised non-crypto floor from 0.80 to 0.85;
+# the 0.80-0.85 bucket was -8.1% ROI across historical trades. Crypto keeps 0.50.
+crypto_min_price = 0.0   # DISABLED 2026-06-24: Gamma complement pricing for neg_risk
+                         # Down outcomes (Down ask = 1 - Up_bid) does NOT match the
+                         # actual Down token CLOB price. FOK fills at real CLOB price
+                         # (e.g. 0.09-0.26) while bot filters at Gamma complement price
+                         # (0.61-0.69), causing massive losers. Re-enable only after
+                         # code verifies CLOB price ≈ Gamma complement before ordering.
 
 # Spread 2¢ → 4¢ (2026-05-30): the wider 0.85-0.97 band includes slightly
 # thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.
@@ -87,15 +106,24 @@ fixed_stake_usd = 0.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
-# WEATHER-ONLY lane (user 2026-07-06: "put bot 1 to the same strategy as
-# bot 2 which is weather only bets"): every non-weather market is dropped at
-# entry selection, and this lane bypasses the normal weather ban
-# (is_weather_market in models.py).
+# WEATHER-ONLY lane (user 2026-06-26, extended to all bots 2026-07-06): bet
+# ONLY on weather / temperature markets — every non-weather market is dropped
+# at entry selection, and this lane bypasses the normal weather ban
+# (is_weather_market in models.py). Entries are additionally cross-checked
+# against an Open-Meteo multi-model forecast before entry (below).
 weather_only = true
-# Data-driven category auto-disable (user 2026-06-21): after ≥ 100 realized
-# trades in a category, drop it from entry selection if its ROI < −5%.
-# Forward-looking — a fresh bot disables nothing.
-category_min_samples = 100
+weather_forecast_min_edge = 0.10   # raised 0.05→0.10: multi-model σ is tighter now
+# Bracket margin guard (2026-06-28): skip "No" bet if any model is within
+# this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
+# bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.
+weather_min_bracket_margin_c = 2.0
+# Data-driven category auto-disable: after ≥ min_samples realized trades in a
+# category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
+# at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh
+# bot disables nothing; "other" is never disabled. NOTE: while weather_only
+# is on, race_strategies.py never lets the auto-disable drop "weather" itself
+# (starvation guard, 2026-07-10) regardless of this sample size.
+category_min_samples = 20
 category_disable_roi = -0.05
 # v4 forecasting EV / quality gates (user 2026-06-21) — OPT-IN, 0 = off.
 # The forecaster (forecast.py) calibrates a favorite's win probability per
@@ -114,7 +142,7 @@ preferred_volume_usd = 5000.0
 # strong subjective marker drops below 60. The one structural protection that
 # survives the unban.
 min_resolution_clarity = 60.0
-stake_pct = 0.05
+stake_pct = 0.35
 initial_stake_pct = 0.20
 # Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held
 # position whose live ask has dipped below entry while it's still a favorite
@@ -138,12 +166,10 @@ cash_floor_pct = 0.0
 #   tp_pct = 1.0          → TP disabled; ride to resolution.
 #   sl_pct = 0.30         → CONTROLLED SL at -30%, SPORT MONEYLINES ONLY
 #                           ("Will <X> win on <date>?" Yes/No bets, any soccer
-#                           club regardless of league). Politics/elections and
-#                           awards are EXCLUDED; O/U totals and specials NEVER
-#                           stop out — they ride to resolution (user rule
-#                           2026-06-16, gate in _is_soccer_moneyline_position).
-#   sl_confirm_ticks = 3  → must stay past -30% for 3 consecutive ticks before
-#                           firing, so a one-tick thin-book blip can't trigger it.
+#                           club regardless of league). Politics/awards EXCLUDED;
+#                           all other markets NEVER stop out (user rule 2026-06-16,
+#                           gate in _is_soccer_moneyline_position).
+#   sl_confirm_ticks = 3  → must persist 3 consecutive ticks before firing.
 #   resolved at 0.99      → exit only when a REAL 0.99 bid exists on the live
 #                           book (the exit probes the live CLOB bid since
 #                           2026-06-10 — stale Gamma quotes used to hold
@@ -175,12 +201,13 @@ min_profit_margin = 0.02
 arb_threshold = 0.0
 arb_max_stake_usd = 5.0
 
-# Resting limit sell removed 2026-06-03 to match Bot 2 (grinder_b): ride the
-# winner all the way to resolved_exit_threshold instead of capping at 0.98.
-
 [telemetry]
 quiet = false
-auto_interval_seconds = 10
+auto_interval_seconds = 30   # raised 10→30 (agent 2026-06-24): double-entry bug —
+                              # consecutive 10s ticks both saw the same eligible market
+                              # before the first FOK's position was registered in
+                              # _open_game_keys. 30s gives the API fill + ledger write
+                              # time to complete before the next scan.
 stdout_heartbeat_minutes = 15
 
 [filters]

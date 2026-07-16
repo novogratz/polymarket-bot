@@ -63,3 +63,4 @@ docs/superpowers/
 data/live_config_snapshot.toml
 data/dry_run_config_snapshot.toml
 data/cache/
+backups_scratch_*/
