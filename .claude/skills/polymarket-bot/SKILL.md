@@ -57,7 +57,8 @@ general-purpose configuration (`weather_only = false`, `unban_all_markets`,
 trades every category) — not currently run live, same mechanics otherwise.
 
 - **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1) and
-  `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
+  `configs/profiles/grinder_b.toml` (bots 2 & 3), `configs/profiles/grinder_c.toml`
+  (grinder_c bot on this Mac — forecast-weather clone of grinder_b). Keep their strategy keys in sync.
 - **WEATHER-ONLY lane (user 2026-07-06, "put bot 1 to the same strategy as
   bot 2 which is weather only bets"):** `weather_only = true`
   (`POLYMARKET_RACE_WEATHER_ONLY`) in BOTH profiles — entry selection keeps
@@ -179,10 +180,12 @@ trades every category) — not currently run live, same mechanics otherwise.
 
 ## Multi-bot layout
 
-3 independent live bots, each its own wallet / `.env` / ledger.
+4 independent live bots, each its own wallet / `.env` / ledger.
 
 - **Launchers:** `run_live_70.sh` (bot 1, grinder), `run_live_b.sh` (bots 2 & 3,
-  weather mode), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
+  weather mode), `run_live_c.sh` (grinder_c bot on this Mac, added 2026-07-19 —
+  forecast-weather clone of grinder_b, Telegram "Grinder Bot 3"),
+  `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
 - **Per-machine baseline:** `data/starting_cash.txt` (gitignored) — each bot's
   report baseline, independent of the shared profile. Written by `fresh_start.py`.
 - Ledger/journal/cache are gitignored = per-machine; only code + profiles are shared.

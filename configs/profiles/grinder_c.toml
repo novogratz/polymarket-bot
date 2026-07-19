@@ -1,0 +1,269 @@
+# Profile "grinder_c" — Bot 3 (run_live_c.sh, this Mac), its own Telegram + wallet.
+# Independent of grinder.toml and grinder_b.toml: editing this never affects the
+# other bots and vice versa, so every bot can push/pull main freely (they own
+# different files). Cloned from grinder_b.toml (2026-07-19) — the forecast-gated
+# weather strategy (Open-Meteo min_edge 0.10 + 2.0°C bracket margin). Keep the
+# [race] strategy keys in sync with grinder_b.toml; only the bankroll baseline
+# below is bot 4's own.
+#
+# Profile "grinder" — heavy-favorite, ride-to-resolution.
+#
+# Thesis: buy near-certainty binary outcomes at 0.87–0.95 within 4h of close,
+# hold until bid ≥ 0.99. No stop-loss. 50% stake, 2 concurrent positions.
+#
+# Target: 2 wins/day → ~9%, 3 wins → ~13%. Each win = ~8.8% on stake = 4.4%
+# on account. Wider band + faster tick = more eligible markets per day.
+# Exclusion filters block all known gap-risk categories (exact scores, weather,
+# O/U 0.5/5.5+). No price-movement gates (removed 2026-06-10): fast movers
+# are often converging toward resolution and stay tradeable.
+
+[run]
+# Bot 4 baseline (2026-07-19 fresh start): $19 starting equity. Override on the
+# machine with fresh_start.py --equity if the real funded amount differs.
+starting_cash = 19.0
+mode = "grinder"
+
+[sizing]
+# 50% per trade — 2 wins/day hits ~9%, 3 wins hits ~13%.
+# One loss = -50% on stake, painful but recoverable with one follow-up win.
+# ceiling disabled (0) so stake scales with bankroll automatically.
+max_position_ceiling_usd = 0.0
+max_position_ceiling_pct = 0.54
+cash_floor_pct = 0.05
+position_pct = 0.50
+min_open_positions = 0
+starter_trade_usd = 1.5
+assumed_live_balance_usd = 19.0
+max_trade_usd = 0.0
+high_conviction_balance_fraction = 0.50
+
+[market_filters]
+min_liquidity_usd = 500.0
+min_volume_usd = 300.0
+
+[persistence]
+enabled = false
+
+[race]
+# Entry window 24h — WEATHER-ONLY lane (user 2026-06-26, extended to all bots
+# 2026-07-06). Weather/temperature markets resolve at END OF DAY (typically
+# ~22h and ~46h out), so the previous 4h window left them permanently
+# out-of-window (0 weather candidates). 24h captures the same-day weather
+# batch. REVERTED 48h -> 24h same day (user 2026-07-19, "it took a lot of
+# bets for 21 of july its way too far away... go back to 24h"): the 48h
+# experiment lasted hours — day+2 brackets fill the book with far-out bets
+# the user doesn't want. Hard cap (max_hours_cap=0 -> single 24h window,
+# no laddering).
+max_hours = 24.0
+max_hours_cap = 0.0
+daily_expiry_fallback = false
+scan_limit = 750
+
+# Weather-grade liquidity floors (lower — weather markets are thinner).
+min_liquidity_usd = 50.0
+min_volume_24h_usd = 200.0
+
+# v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
+# 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
+# is the ABSOLUTE ceiling — 0.97/0.98/0.99 are never tradeable.
+min_price = 0.85
+max_price = 0.94
+max_price_hard_cap = 0.96
+
+# Crypto-only entry floor (bot 2 ONLY, user 2026-06-24: "put back crypto on
+# bot 2"). Crypto is already un-banned here via unban_all_markets, but the
+# 0.85 band keeps the grinder out of crypto coinflips (~0.50). This lowers the
+# floor TO 0.50 for CRYPTO markets only — every other category still needs
+# 0.85. Bot 1/3/zaza leave this at 0 (off). WARNING: crypto coinflips can
+# settle at $0; this re-admits that risk on bot 2 by design. Set to 0 to revert.
+# Agent improvement 2026-06-24: raised non-crypto floor from 0.80 to 0.85;
+# the 0.80-0.85 bucket was -8.1% ROI across historical trades. Crypto keeps 0.50.
+crypto_min_price = 0.0   # DISABLED 2026-06-24: Gamma complement pricing for neg_risk
+                         # Down outcomes (Down ask = 1 - Up_bid) does NOT match the
+                         # actual Down token CLOB price. FOK fills at real CLOB price
+                         # (e.g. 0.09-0.26) while bot filters at Gamma complement price
+                         # (0.61-0.69), causing massive losers. Re-enable only after
+                         # code verifies CLOB price ≈ Gamma complement before ordering.
+
+# Spread 2¢ → 4¢ (2026-05-30): the wider 0.85-0.97 band includes slightly
+# thinner books; 2¢ was rejecting most of them. 4¢ still bounds slippage.
+max_spread = 0.04
+
+# Per-bet target spreads the available cash across the actionable opportunities
+# (cash/N), so a busy window funds every market instead of the first picks
+# taking the cap; a slow market gives each bet the full cap. The <30min/<1h
+# boost scales the spread share but never pierces the cap (handled in
+# race_strategies._dynamic_stake_target).
+stake_usd = 1.0
+# ── EQUAL-WEIGHT FULL DEPLOYMENT (user 2026-07-19) ───────────────────────
+# "i would expect cash to be close to 0$ - and i would like this all the
+# time... equally distributed meaning you dont over bet on something."
+# Every line targets an EQUAL share of the account: equity / N over ALL
+# lines (open positions + new eligible markets), bounded by the 10% cap
+# below (doubled from 5%, "double the positions allocations") and the $5
+# Polymarket floor. Held lines top up TOWARD that shared target — never
+# past it (line-cap guard chain-checks it too) — so cash converges to ~0
+# whenever ≥10 distinct lines exist while distribution stays equal by
+# construction. Supersedes the 2026-07-11 no-reinforcement rule.
+# full_deploy OVERRIDES fixed_stake_usd; rollback to fixed-$5 =
+# full_deploy = false, fixed_stake_usd = 5.0.
+full_deploy = true
+full_deploy_max_position_pct = 0.10
+# Leftover-cash redistribution (user 2026-07-19, "with more than 10
+# positions i would expect 100% of my cash being used... each position is
+# max 10% of the overall account"): with >= 10 open lines AND no fresh
+# market this tick, remaining cash is split EQUALLY across the
+# still-tradeable open lines WITH ROOM under the 10% cap — every add is
+# clamped to (cap − stake); the cap is ABSOLUTE. Finished/crashed/at-cap
+# lines are skipped and the cash spreads over the rest; what the cap can't
+# place waits for new lines. 0 = never redistribute.
+full_deploy_redistribute_min_lines = 10
+fixed_stake_usd = 0.0
+# v4: unban every category — governance shifts to the data-driven category
+# auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
+unban_all_markets = true
+# WEATHER-ONLY lane (user 2026-06-26, extended to all bots 2026-07-06): bet
+# ONLY on weather / temperature markets — every non-weather market is dropped
+# at entry selection, and this lane bypasses the normal weather ban
+# (is_weather_market in models.py). Entries are additionally cross-checked
+# against an Open-Meteo multi-model forecast before entry (below).
+weather_only = true
+weather_forecast_min_edge = 0.10   # raised 0.05→0.10: multi-model σ is tighter now
+# Bracket margin guard (2026-06-28): skip "No" bet if any model is within
+# this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
+# bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.
+weather_min_bracket_margin_c = 2.0
+# Data-driven category auto-disable: after ≥ min_samples realized trades in a
+# category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
+# at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh
+# bot disables nothing; "other" is never disabled. NOTE: while weather_only
+# is on, race_strategies.py never lets the auto-disable drop "weather" itself
+# (starvation guard, 2026-07-10) regardless of this sample size.
+category_min_samples = 20
+category_disable_roi = -0.05
+# v4 forecasting EV / quality gates (user 2026-06-21) — OPT-IN, 0 = off.
+# The forecaster (forecast.py) calibrates a favorite's win probability per
+# (category, price-bucket) from realized history; edge = predicted − ask. The
+# gates are OFF until there is enough history to calibrate (a fresh bot would
+# otherwise starve). Recommended once data exists: min_edge 0.03, quality 70.
+# Watch the distribution in `pmbot journal-stats` (by_v4_* / v4_performance)
+# before enabling.
+min_edge = 0.0
+min_quality_score = 0.0
+forecast_prior = 0.95
+preferred_volume_usd = 5000.0
+# Resolution-safety filter (user 2026-06-21): ALWAYS-ON (needs no history) —
+# skip markets with subjective/ambiguous settlement wording (judges' discretion,
+# "deemed", "disputed", …) even under unban_all. A clean market scores 100; one
+# strong subjective marker drops below 60. The one structural protection that
+# survives the unban.
+min_resolution_clarity = 60.0
+stake_pct = 0.35
+initial_stake_pct = 0.20
+# Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held
+# position whose live ask has dipped below entry while it's still a favorite
+# (probability > 0.60). Widened the max dip 0.08 -> 0.40 so a bigger slide
+# still doubles down — e.g. 0.83->0.78 AND 0.85->0.70 both qualify; the real
+# floor is min_price 0.60. Once per position, never past the per-bet cap.
+# v4 (user 2026-06-21): double-down / averaging-down DISABLED — fixed $5 only.
+double_down_enabled = false
+double_down_min_dip = 0.01
+double_down_max_dip = 0.40
+double_down_min_price = 0.60
+# v4 (user 2026-06-21): maximize bets within the 4h window — open up to 12 new
+# $5 positions per tick so a fresh bankroll deploys fast across many distinct
+# games (each still passes every entry filter; one bet per game/event). The $5
+# cap bounds risk regardless of count.
+max_orders_per_tick = 12
+# Full-deploy (user 2026-07-09): no cash reserve — 100% invested.
+cash_floor_pct = 0.0
+
+# Exit rules:
+#   tp_pct = 1.0          → TP disabled; ride to resolution.
+#   sl_pct = 0.30         → CONTROLLED SL at -30%, SPORT MONEYLINES ONLY
+#                           ("Will <X> win on <date>?" Yes/No bets, any soccer
+#                           club regardless of league). Politics/awards EXCLUDED;
+#                           all other markets NEVER stop out (user rule 2026-06-16,
+#                           gate in _is_soccer_moneyline_position).
+#   sl_confirm_ticks = 3  → must persist 3 consecutive ticks before firing.
+#   resolved at 0.99      → exit only when a REAL 0.99 bid exists on the live
+#                           book (the exit probes the live CLOB bid since
+#                           2026-06-10 — stale Gamma quotes used to hold
+#                           winners past 0.99). Briefly 0.98 the same day,
+#                           reverted: the displayed "98¢" is the midpoint, the
+#                           executable bid is often 0.96x, and on-chain
+#                           resolution pays 1.00 — selling at 0.98 gives up
+#                           real cents on bets that are about to settle.
+#   max_hold 4.5h         → backstop so nothing lingers after expiry.
+tp_pct = 1.0
+sl_pct = 0.30            # -30% confirmed SL, sport moneylines (user 2026-06-16)
+sl_confirm_ticks = 3
+sl_min_age_minutes = 5
+# Anti-gap floor (user 2026-06-17): the SL only fires while the live bid is
+# still ≥ 0.50 (orderly decline). A moneyline gapped below it is a goal-crash
+# that mean-reverts (Difaâ "No" 0.89 → 0.02 → resolved 1.0) — HOLD, don't dump.
+sl_min_exit_price = 0.50
+near_expiry_minutes = 5
+# v4 (user 2026-06-21, "sell at 0.99 as well"): winners exit at a real 0.99
+# bid, else ride to on-chain settlement at 1.00. One flat 0.99 across lanes.
+resolved_exit_threshold = 0.99
+# Dynamic TP (2026-06-15): exit must clear entry by this, capped 0.99 —
+# a 0.97 entry sells at 0.99, never break-even.
+min_profit_margin = 0.02
+
+# Binary arb disabled (set arb_threshold = 0.97 to re-enable).
+# Sizing now uses proportional stakes (larger stake on the expensive/likely
+# leg) so the guaranteed payout is equal regardless of outcome.
+arb_threshold = 0.0
+arb_max_stake_usd = 5.0
+
+[telemetry]
+quiet = false
+auto_interval_seconds = 30   # raised 10→30 (agent 2026-06-24): double-entry bug —
+                              # consecutive 10s ticks both saw the same eligible market
+                              # before the first FOK's position was registered in
+                              # _open_game_keys. 30s gives the API fill + ledger write
+                              # time to complete before the next scan.
+stdout_heartbeat_minutes = 15
+
+[filters]
+max_orders_per_tick = 2
+max_hours_to_close = 4.0
+min_trade_usd = 1.0
+max_absolute_spread = 0.02
+max_relative_spread = 0.08
+max_chase_premium = 0.03
+
+[noise_fallback]
+enabled = false
+
+[btc_edge]
+# BTC/ETH price threshold markets — fills dead time between sports sessions.
+# Black-Scholes model checks if current price gives ≥75% prob of staying above/below
+# threshold. Resolves every hour. Small cap ($5) — crypto is more volatile.
+enabled = false
+min_model_probability = 0.75
+min_edge_over_market = 0.05
+min_buy_price = 0.75
+max_buy_price = 0.97
+max_spread = 0.04
+min_trade_usd = 1.0
+per_trade_cap_usd = 5.0
+min_hours_to_close = 0.08
+volatility_days = 7
+
+[discovery]
+soon_hours = 1
+
+[crypto]
+max_hours_to_close = 1.0
+
+[execution]
+max_entry_slippage = 0.02
+
+[exits]
+stop_loss_pct = 1.0
+stop_loss_min_age_minutes = 1
+max_hold_hours = 4.5
+near_expiry_exit_losers = false
+near_expiry_loser_minutes = 5

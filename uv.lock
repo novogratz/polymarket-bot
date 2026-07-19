@@ -699,6 +699,7 @@ name = "polymarket-bot"
 version = "2.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "certifi" },
     { name = "eth-account" },
     { name = "py-clob-client" },
     { name = "py-clob-client-v2" },
@@ -713,6 +714,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "certifi", specifier = ">=2026.4.22" },
     { name = "eth-account", specifier = ">=0.13.7" },
     { name = "py-clob-client", specifier = ">=0.21.0" },
     { name = "py-clob-client-v2", specifier = ">=1.0.1" },

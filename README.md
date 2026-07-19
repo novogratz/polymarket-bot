@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets, built on a general-purpose deterministic engine (`polymarket_bot/race_strategies.py`, scan → exclude → filter → rank → size → execute → manage-exits, **no LLM anywhere in the scan or trade-selection path**) that can run several strategies off a TOML profile. **Weather-only since 2026-07-06** (`weather_only` lane, all 3 bots): bets exclusively on weather / temperature markets, each entry additionally cross-checked against a multi-model Open-Meteo forecast consensus with a minimum-edge gate and a bracket-margin safety guard (see [Weather mode](#weather-mode) below). Buys heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (24 h window, hard maximum — weather resolves end-of-day) with **equal-weight full deployment** (2026-07-19: cash ≈ $0 at all times, every line targets equity ÷ N, 10% per-line cap), and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00). Weather positions never stop out — the −30% confirmed stop-loss gates on sport moneylines only, and a hard "never sell below entry" floor protects every other exit path. A grinder mode (general-purpose, any market category) and a smart-money copy-trading lane also exist in the codebase but are not currently run live. Runs as up to 3 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets, built on a general-purpose deterministic engine (`polymarket_bot/race_strategies.py`, scan → exclude → filter → rank → size → execute → manage-exits, **no LLM anywhere in the scan or trade-selection path**) that can run several strategies off a TOML profile. **Weather-only since 2026-07-06** (`weather_only` lane, all 3 bots): bets exclusively on weather / temperature markets, each entry additionally cross-checked against a multi-model Open-Meteo forecast consensus with a minimum-edge gate and a bracket-margin safety guard (see [Weather mode](#weather-mode) below). Buys heavily-favored outcomes (ask 0.80–0.94, hard cap 0.96) close to resolution (24 h window, hard maximum — weather resolves end-of-day) with **equal-weight full deployment** (2026-07-19: cash ≈ $0 at all times, every line targets equity ÷ N, 10% per-line cap), and holds until a real 0.99 bid exists on the live order book (otherwise rides to on-chain settlement at 1.00). Weather positions never stop out — the −30% confirmed stop-loss gates on sport moneylines only, and a hard "never sell below entry" floor protects every other exit path. A grinder mode (general-purpose, any market category) and a smart-money copy-trading lane also exist in the codebase but are not currently run live. Runs as up to 4 independent bots. Ships an opt-in autonomous self-improvement loop that tunes the strategy's exit/sizing knobs via auto-merged pull requests (entry selection stays frozen).
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -31,7 +31,7 @@ bash scripts/run_live_70.sh
 
 Starts the live grinder (**10 s tick**) alongside a dry paper twin and a read-only **live analyst** sidecar that posts a Telegram **LIVE REPORT** — on startup, then on a fixed cadence (`LIVE_ANALYST_CYCLE_SECONDS`), plus a daily 10:00 ET fire. The report shows **equity, P&L since start, total trades + win rate, and open positions** — nothing else (no per-trade lists, no heartbeat, no BUY/SELL spam). The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path**.
 
-All three live bots (`run_live_70.sh` = bot 1, `run_live_b.sh` = bots 2 & 3, plus `run_live_win.sh` on `kzer_windows`) run independently, each with its own wallet and ledger, and all run **weather mode** as of 2026-07-06. Each keeps a per-machine baseline (`data/starting_cash.txt`); reset any bot with `scripts/fresh_start.py` (wipes closed-trade history, keeps open trades).
+All live bots (`run_live_70.sh` = bot 1, `run_live_b.sh` = bots 2 & 3, `run_live_c.sh` = the grinder_c bot on this Mac added 2026-07-19, plus `run_live_win.sh` on `kzer_windows`) run independently, each with its own wallet and ledger, and all run **weather mode** as of 2026-07-06. Each keeps a per-machine baseline (`data/starting_cash.txt`); reset any bot with `scripts/fresh_start.py` (wipes closed-trade history, keeps open trades).
 
 > **Do not use `run_all.sh` for live trading.** It resets the ledger on startup and launches a retired 95-profile dry race.
 
@@ -217,6 +217,7 @@ CI runs tests + lint on Python 3.11 / 3.12 for every push.
 ```
 configs/profiles/grinder.toml       bot 1 — weather mode — source of truth
 configs/profiles/grinder_b.toml     bots 2 & 3 — weather mode
+configs/profiles/grinder_c.toml     grinder_c bot (this Mac) — forecast-weather clone of grinder_b
 data/paper_state.json               live ledger (positions, cash)
 data/realized_trade_cache.jsonl     durable W/L record (survives resets)
 data/trade_journal.jsonl            per-trade metadata + exit reasons
@@ -232,6 +233,7 @@ polymarket_bot/
 scripts/
   run_live_70.sh       canonical live launcher (Bot 1, weather mode)
   run_live_b.sh        Bots 2 & 3 launcher (grinder_b, weather mode)
+  run_live_c.sh        grinder_c bot launcher (this Mac, forecast-weather clone of grinder_b)
   live_analyst.py      30 min Telegram LIVE REPORT sidecar (read-only)
   dry_analyst.py       15 min deterministic report + loser-kill
   auto_improve.py      opt-in self-improvement loop (auto-PR, off by default)

@@ -77,15 +77,15 @@ Buy a heavily-favored binary outcome near its resolution and **ride it to resolu
 
 ## Multi-bot layout
 
-Three independent live bots, each with its own wallet, `.env`, and ledger.
+Four independent live bots, each with its own wallet, `.env`, and ledger.
 
-- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bots 2 & 3) — same engine, keep shared strategy keys in sync **except bot 2/3's deliberate divergences**, the biggest of which is mode itself:
+- **Profiles:** `grinder.toml` (bot 1), `grinder_b.toml` (bots 2 & 3), `grinder_c.toml` (bot on this Mac, added 2026-07-19 — Telegram display name "Grinder Bot 3", bot @kzeR3PolymarketBot; a clone of `grinder_b.toml`'s forecast-gated weather stack with its own wallet + Telegram + $19 baseline; keep its `[race]` keys in sync with `grinder_b.toml`) — same engine, keep shared strategy keys in sync **except bot 2/3's deliberate divergences**, the biggest of which is mode itself:
   - **Weather-only mode is the current live strategy on ALL 3 bots** (`weather_only = true` / `race_weather_only`, bots 2 & 3 since user 2026-06-26, ported to bot 1 since user 2026-07-06 "put bot 1 to the same strategy as bot 2 which is weather only bets"): candidates are restricted to temperature/degree-bracket markets (`is_weather_market` in `models.py`). **Only bot 2 (and bot 3, sharing `grinder_b.toml`) additionally cross-checks against a multi-model Open-Meteo forecast consensus before entry** (`polymarket_bot/weather_forecast.py`) — `weather_forecast_min_edge = 0.10` requires the model probability to beat the market ask by ≥10 pts; `weather_min_bracket_margin_c = 2.0` skips "No" bets when the forecast sits within 2 °C of the bracket threshold (added after a real loss — Qingdao, ECMWF 28.1°C vs a 29°C bracket). Bot 1's `grinder.toml` has `weather_only = true` but neither forecast gate set (both default `0.0` = off), so it trades weather markets on price/liquidity heuristics alone, same as any other grinder candidate. Both profiles widen the entry window to 24h (`max_hours = 24.0`, weather markets resolve within a day); bot 2's profile also lowers the liquidity floors (weather books are thinner than sports). Sizing/exits are unchanged from grinder mode.
   - **Crypto floor** (user 2026-06-24, currently disabled — see `crypto_min_price = 0.0` in `grinder_b.toml`): `grinder_b.toml` can set `crypto_min_price > 0` to let the grinder buy CRYPTO markets below the 0.85 non-crypto floor (down to coinflips) while every other category keeps 0.85. Crypto is already un-banned everywhere via `unban_all_markets`; this floor is what actually lets crypto coinflips trade, and it is **bot 2 only**. Crypto coinflips can settle at $0 — accepted on bot 2 by design when enabled.
   - **Tighter non-crypto entry floor** (agent 2026-06-24): `min_price = 0.85` (vs 0.80 on bot 1). The 0.80–0.85 price bucket had −8.1% ROI across 527 historical trades; raising the floor focuses bot 2 on the proven 0.85–0.94 band. `crypto_min_price` overrides this for crypto markets only.
   - **Early category auto-disable** (agent 2026-06-24): `category_min_samples = 20` (vs 100 on bot 1). Soccer (21 trades, −26.7% ROI) is immediately auto-disabled at runtime. Bot 1 keeps the 100-sample conservative gate.
   Live data (`paper_state.json`, journals, `starting_cash.txt`) is **gitignored = per-machine**; only code + profiles are shared.
-- **Launchers:** `run_live_70.sh` (bot 1), `run_live_b.sh` (bots 2 & 3, grinder), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
+- **Launchers:** `run_live_70.sh` (bot 1), `run_live_b.sh` (bots 2 & 3, grinder), `run_live_c.sh` (grinder_c bot, this Mac), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
 - **Per-machine baseline:** `data/starting_cash.txt` (gitignored) sets each bot's report baseline independently of the shared profile. Written by `fresh_start.py`. Both `live_analyst._starting_cash` and `notifications._total_pnl_vs_start` prefer it.
 
 ## Launch
@@ -136,10 +136,10 @@ Run on a bot's own machine, **bot stopped**: backs up + wipes closed-trade histo
 - `polymarket_bot/main.py` — CLI commands and the strategy loop dispatch; tick orchestration; journal writer.
 - `polymarket_bot/portfolio.py` — local ledger (cash, open positions, exits).
 - `polymarket_bot/gamma.py` — Gamma market scan + reverse-lookup by clob_token_ids.
-- `scripts/run_live_70.sh` / `run_live_b.sh` / `run_live_win.sh` — live launchers (bot 1 / bots 2 & 3 grinder / Windows). Do NOT reset the ledger.
+- `scripts/run_live_70.sh` / `run_live_b.sh` / `run_live_c.sh` / `run_live_win.sh` — live launchers (bot 1 / bots 2 & 3 grinder / grinder_c bot on this Mac / Windows). Do NOT reset the ledger.
 - `scripts/live_analyst.py` — the Telegram RAPPORT LIVE (read-only sidecar).
 - `scripts/fresh_start.py` — per-machine reset (keeps open trades).
-- `configs/profiles/grinder.toml`, `grinder_b.toml` — grinder live profiles (bot 1 / bots 2 & 3).
+- `configs/profiles/grinder.toml`, `grinder_b.toml`, `grinder_c.toml` — grinder live profiles (bot 1 / bots 2 & 3 / grinder_c bot on this Mac, forecast-weather clone of grinder_b).
 - `docs/PROFILES.md` — exhaustive TOML key reference. `docs/STRATEGIES.md` — buy lanes + exit conditions. `docs/AUTONOMY.md` — offline self-tuner design.
 
 ## Development workflow
