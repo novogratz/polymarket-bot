@@ -69,7 +69,8 @@ trades every category) — not currently run live, same mechanics otherwise.
 - **Entry:** ask ∈ **[0.80, 0.94]**, absolute hard cap **0.96**
   (`max_price_hard_cap`, v4 2026-06-21 — 0.97+ never tradeable),
   **game starts OR market closes within
-  ≤ 24 h** (weather-only 2026-07-06 — weather resolves end-of-day ~22–46 h
+  ≤ 48 h** (48 h since 2026-07-19: today's + tomorrow's weather, doubling
+  the lines; weather resolves end-of-day ~22–46 h
   out, a 4 h window has zero weather candidates; dynamic widening OFF via
   `max_hours_cap=0`), (`max_hours=24`,
   `daily_expiry_fallback=false`; user 2026-06-12). **One bet per GAME**

@@ -47,8 +47,12 @@ enabled = false
 # 2026-07-06). Weather/temperature markets resolve at END OF DAY (typically
 # ~22h and ~46h out), so the previous 4h window left them permanently
 # out-of-window (0 weather candidates). 24h captures the same-day weather
-# batch. Hard cap (max_hours_cap=0 -> single 24h window, no laddering).
-max_hours = 24.0
+# batch. Widened 24h -> 48h (user 2026-07-19, "do point 2"): tomorrow's
+# weather markets are already listed and the multi-model forecast is still
+# strong at day+1 — a 48h window roughly doubles the simultaneous lines,
+# which means smaller equal shares, better diversification, and less idle
+# cash. Hard cap (max_hours_cap=0 -> single 48h window, no laddering).
+max_hours = 48.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
 scan_limit = 750
