@@ -210,6 +210,45 @@ class OpenPositionExpiryTests(unittest.TestCase):
                 live_analyst._get_settings_and_client = old_client
         self.assertEqual([r["question"] for r in rows], ["soon", "late", "no-date"])
 
+    def test_weather_positions_never_get_the_sports_match_termine_label(self):
+        # User 2026-07-19: weather markets carry a gameStartTime (start of
+        # the measurement day), so the kickoff+2h45 sports heuristic labelled
+        # them "Match terminé" all afternoon while still live. Weather
+        # questions must use end-of-day wording instead.
+        from datetime import datetime, timezone
+        now = datetime(2026, 7, 19, 16, 0, tzinfo=timezone.utc)
+        line = live_analyst._fmt_expiry_fr(
+            "2026-07-19T00:00:00+00:00",           # date-only Gamma endDate
+            "2026-07-19T04:00:00+00:00",           # "kickoff" 12h ago
+            now=now,
+            question="Will the highest temperature in Paris be 37°C on July 19?",
+        )
+        self.assertNotIn("Match terminé", line)
+        self.assertIn("fin de journée", line)
+
+    def test_weather_with_timed_end_shows_countdown_not_match_termine(self):
+        from datetime import datetime, timezone
+        now = datetime(2026, 7, 19, 16, 0, tzinfo=timezone.utc)
+        line = live_analyst._fmt_expiry_fr(
+            "2026-07-19T23:59:00+00:00",
+            "2026-07-19T04:00:00+00:00",
+            now=now,
+            question="Will the highest temperature in Milan be 31°C on July 19?",
+        )
+        self.assertNotIn("Match terminé", line)
+        self.assertIn("fin de journée", line)
+
+    def test_sports_positions_keep_the_match_termine_label(self):
+        from datetime import datetime, timezone
+        now = datetime(2026, 7, 19, 16, 0, tzinfo=timezone.utc)
+        line = live_analyst._fmt_expiry_fr(
+            "2026-07-19T00:00:00+00:00",
+            "2026-07-19T04:00:00+00:00",
+            now=now,
+            question="Will Real Madrid win on 2026-07-19?",
+        )
+        self.assertIn("Match terminé", line)
+
     def test_fmt_expiry_fr_future_past_and_missing(self):
         from datetime import datetime, timezone
         now = datetime(2026, 6, 11, 16, 0, tzinfo=timezone.utc)  # 12:00 ET

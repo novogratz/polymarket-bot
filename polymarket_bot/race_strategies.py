@@ -2579,6 +2579,7 @@ def _redistribute_leftover_cash(
     eligible: list[tuple[Candidate, float]],
     fresh_actionable: int,
     strategy_name: str,
+    markets: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Split leftover cash EQUALLY across open lines when nothing new exists.
 
@@ -2598,6 +2599,17 @@ def _redistribute_leftover_cash(
     Every add is CLAMPED to the line's remaining room under the 10% cap —
     the cap is absolute (the earlier same-day cap-exempt version lasted one
     commit); cash the cap can't place waits for new lines.
+
+    RELAXED top-up pool (user 2026-07-19, "positions called 'Match terminé'
+    but they are not... there is opportunity to increase those positions
+    too"): a held line's market often drifts out of the strict ENTRY pool —
+    the ask converges past ``max_price`` 0.94, or the Open-Meteo gate can no
+    longer certify ask+edge (impossible ≥ 0.95 by construction). For
+    TOP-UPS ONLY, held lines are matched against a second pool built with
+    ``max_price`` lifted to the 0.96 hard cap and the forecast/EV gates
+    off — every other filter (0.85 floor, spread, liquidity, 24h window,
+    acceptingOrders) still applies, so finished or fading lines stay
+    excluded. Fresh ENTRIES keep every strict gate.
     """
     if not getattr(settings, "race_full_deploy", False):
         return []
@@ -2618,6 +2630,21 @@ def _redistribute_leftover_cash(
     equity = float(portfolio.summary().get("equity", portfolio.cash))
     cap = _full_deploy_cap_usd(settings, equity)
     by_token = {c.token_id: c for c, _ in eligible if c.token_id}
+    if markets:
+        try:
+            relaxed = replace(
+                settings,
+                race_max_price=float(getattr(settings, "race_max_price_hard_cap", 0.0) or 0.96),
+                race_weather_forecast_min_edge=0.0,
+                race_weather_min_bracket_margin_c=0.0,
+                race_min_edge=0.0,
+                race_min_quality_score=0.0,
+            )
+            for c, _ in _build_eligible_candidates(markets, relaxed):
+                if c.token_id and c.token_id not in by_token:
+                    by_token[c.token_id] = c
+        except Exception as exc:
+            _step(settings, f"   redistribution relaxed-pool failed (fail-open): {exc}")
     targets: list[tuple[dict[str, Any], Candidate, float]] = []
     for position in open_lines:
         token_id = str(position.get("token_id") or "")
@@ -3122,7 +3149,8 @@ def _run_race_tick(
         if portfolio.open_position_for_token(c.token_id) is None
     )
     executed.extend(_redistribute_leftover_cash(
-        client, settings, portfolio, eligible, fresh_actionable, strategy_name
+        client, settings, portfolio, eligible, fresh_actionable, strategy_name,
+        markets=markets,
     ))
 
     # ── Binary arbitrage pass ────────────────────────────────────────────────
