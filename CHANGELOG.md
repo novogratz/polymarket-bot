@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- **Entry window reverted 48 h → 24 h** (user 2026-07-19, same day: "it took a lot of bets for 21 of july its way too far away bro... go back to 24h"). The 48 h experiment (#131) filled the book with day+2 brackets — forecast confidence aside, the user doesn't want capital parked that far from resolution. Back to `max_hours = 24` in both profiles; everything else from #131 unchanged (no other gate was touched).
+
+### Changed
+
 - **Entry window widened 24 h → 48 h** (user 2026-07-19, picking option 2 of the money-making review). Tomorrow's weather markets are already listed and the Open-Meteo multi-model forecast is still strong at day+1, so the 48 h window roughly **doubles the simultaneous lines** — smaller equal shares under the same 10% cap, better diversification, and less idle cash (directly serving "as many positions as possible" + "cash ≈ 0"). `max_hours = 48` in both profiles; single window, ladder still disabled; all other entry gates (0.85–0.94 band, forecast edge + bracket margin, liquidity, spread) unchanged.
 
 ### Fixed
