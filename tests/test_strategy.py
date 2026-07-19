@@ -4268,10 +4268,31 @@ class LeftoverRedistributionTests(unittest.TestCase):
         out = _redistribute_leftover_cash(None, s, portfolio, eligible, 0, "grinder")
         self.assertEqual(len(out), 12)
         stakes = [p["stake"] for p in self.placed]
-        # Equal split of the whole cash pile; every buy line-cap exempt.
+        # Equal split of the whole cash pile, NOT cap-exempt (10% absolute).
         self.assertAlmostEqual(stakes[0], 95.0 / 12, places=1)
         self.assertAlmostEqual(min(stakes), max(stakes), places=1)
-        self.assertTrue(all(p["exempt"] for p in self.placed))
+        self.assertFalse(any(p["exempt"] for p in self.placed))
+
+    def test_every_add_clamps_to_the_10pct_cap(self):
+        # User 2026-07-19 (refinement): "each position is max 10% of the
+        # overall account" — redistribution never pushes a line past the cap;
+        # at-cap lines get nothing and excess cash waits.
+        from polymarket_bot.race_strategies import (
+            _full_deploy_cap_usd, _redistribute_leftover_cash,
+        )
+        s, portfolio, eligible = self._setup(12, cash=500.0)
+        equity = float(portfolio.summary().get("equity", portfolio.cash))
+        cap = _full_deploy_cap_usd(s, equity)
+        # Push one line well past the cap — it must receive nothing.
+        # (cap scales with equity, so use 2x to stay decisively above it.)
+        portfolio.positions[0]["stake"] = cap * 2
+        _redistribute_leftover_cash(None, s, portfolio, eligible, 0, "grinder")
+        placed_tokens = {p["token"] for p in self.placed}
+        self.assertNotIn(portfolio.positions[0]["token_id"], placed_tokens)
+        # Every add fits inside the line's remaining room under the cap.
+        by_token = {p["token_id"]: float(p["stake"]) for p in portfolio.positions}
+        for p in self.placed:
+            self.assertLessEqual(by_token[p["token"]] + p["stake"], cap + 1e-6)
 
     def test_waits_for_fresh_markets_and_min_lines(self):
         from polymarket_bot.race_strategies import _redistribute_leftover_cash
