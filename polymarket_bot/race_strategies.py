@@ -2572,6 +2572,113 @@ def _actionable_candidates(
     return _dedup_same_game(out)
 
 
+def _redistribute_leftover_cash(
+    client: Any,
+    settings: Settings,
+    portfolio: Portfolio,
+    eligible: list[tuple[Candidate, float]],
+    fresh_actionable: int,
+    strategy_name: str,
+) -> list[dict[str, Any]]:
+    """Split leftover cash EQUALLY across open lines when nothing new exists.
+
+    User 2026-07-19: "with more than 10 positions i would expect 100% of my
+    cash being used... redistribute it to all open positions when there is
+    no new positions so we invest more cash". Fires only when ALL of:
+      - full-deploy is on and ``redistribute_min_lines`` > 0;
+      - the account holds ≥ ``redistribute_min_lines`` open lines (breadth
+        is already guaranteed, so growing lines past the 10% cap is the
+        user's explicit choice — the buys are placed ``line_cap_exempt``);
+      - this tick found NO fresh (not-yet-held) actionable market — new
+        markets always take priority for the cash;
+      - a held line's market still re-passes every entry filter this tick
+        (still in the eligible pool, still accepting orders) — finished
+        games awaiting resolution and crashed lines are skipped, and the
+        cash spreads equally over the healthy rest.
+    """
+    if not getattr(settings, "race_full_deploy", False):
+        return []
+    min_lines = int(getattr(settings, "race_full_deploy_redistribute_min_lines", 0) or 0)
+    if min_lines <= 0 or fresh_actionable > 0:
+        return []
+    open_lines = [
+        p for p in portfolio.positions
+        if p.get("status") == "open" and p.get("live")
+        and str(p.get("strategy") or "") in (strategy_name, "live_sync")
+    ]
+    if len(open_lines) < min_lines:
+        return []
+    cash_floor = float(portfolio.summary().get("equity", portfolio.cash)) * settings.race_cash_floor_pct
+    cash_above_floor = max(0.0, portfolio.cash - cash_floor)
+    if cash_above_floor < 2.0:
+        return []
+    by_token = {c.token_id: c for c, _ in eligible if c.token_id}
+    targets: list[tuple[dict[str, Any], Candidate]] = []
+    for position in open_lines:
+        token_id = str(position.get("token_id") or "")
+        if not token_id or portfolio.has_pending_token(token_id):
+            continue
+        candidate = by_token.get(token_id)
+        if candidate is None or not candidate.best_ask or not candidate.accepts_orders:
+            continue
+        targets.append((position, candidate))
+    if not targets:
+        return []
+    share = cash_above_floor / len(targets)
+    executed: list[dict[str, Any]] = []
+    for position, candidate in targets:
+        ask = float(candidate.best_ask or 0.0)
+        # Respect Polymarket's 5-share minimum; a too-small share is skipped
+        # (never bumped — bumping would break equality).
+        if ask <= 0 or share < settings.min_order_shares * ask:
+            continue
+        stake = min(share, max(0.0, portfolio.cash - cash_floor))
+        if stake < 1.0:
+            break
+        signal_payload = {
+            "question": candidate.question,
+            "selection_reason": (
+                f"{strategy_name} leftover_redistribution {candidate.outcome} "
+                f"ask={candidate.best_ask} over {len(targets)} lines"
+            ),
+            "selection_metrics": {
+                "current_ask": candidate.best_ask,
+                "current_bid": candidate.best_bid,
+                "equal_share": round(share, 2),
+                "targets": len(targets),
+            },
+            "tag": f"{strategy_name}_redistribution",
+        }
+        try:
+            result = execute_live_trade(
+                client,
+                settings,
+                candidate,
+                portfolio,
+                min_trade_usd=1.0,
+                max_trade_usd=stake,
+                strategy=strategy_name,
+                signal=signal_payload,
+                line_cap_exempt=True,
+            )
+            executed.append({
+                "strategy": strategy_name,
+                "order": result.order,
+                "response": result.response,
+                "signal": signal_payload,
+                "redistribution": True,
+            })
+            portfolio.save(settings.state_path)
+        except Exception as exc:
+            _step(settings, f"   redistribution skip {candidate.question[:40]}: {exc}")
+    if executed:
+        _step(
+            settings,
+            f"   redistribution: ${cash_above_floor:.2f} equally over {len(targets)} open lines (${share:.2f} each)",
+        )
+    return executed
+
+
 def _execute_double_downs(
     client: Any,
     settings: Settings,
@@ -2997,6 +3104,18 @@ def _run_race_tick(
                 _emit_mirror_signal(candidate, strategy_name)
         except Exception as exc:
             rejected.append({"question": candidate.question, "reason": f"{type(exc).__name__}: {exc}"})
+
+    # ── Leftover-cash redistribution (user 2026-07-19) ──────────────────────
+    # With ≥10 open lines and NO fresh market this tick, split remaining cash
+    # equally across the still-tradeable open lines (line-cap exempt) so the
+    # account stays ~100% invested.
+    fresh_actionable = sum(
+        1 for c, _ in actionable
+        if portfolio.open_position_for_token(c.token_id) is None
+    )
+    executed.extend(_redistribute_leftover_cash(
+        client, settings, portfolio, eligible, fresh_actionable, strategy_name
+    ))
 
     # ── Binary arbitrage pass ────────────────────────────────────────────────
     # After normal grinder entries, scan all markets for YES+NO < threshold.
