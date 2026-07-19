@@ -97,7 +97,7 @@ def _load_short_expiry_markets(settings: Settings) -> list[dict[str, Any]]:
             "limit": settings.edge_scan_limit,
             "end_date_min": now,
             "end_date_max": horizon,
-            "order": "end_date",
+            "order": "endDate",
             "ascending": True,
         },
         {

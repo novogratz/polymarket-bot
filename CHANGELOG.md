@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **Gamma scan 422 — soonest-closing batch silently dead** (seen live 2026-07-19: `race: gamma batch failed: HTTPError: HTTP Error 422`). Gamma dropped snake_case sort keys: `order=end_date` now returns 422 while `order=volume` still works, so every tick silently lost the soonest-closing half of its scan (fail-open kept only the volume batch — near-resolution markets ranked low on volume could be missed entirely). Sort key switched to the camelCase **`endDate`** in `gamma.py` (default), the race scan, the edge scan, and `polymarket.py`. Verified live (both orderings return rows again); `GammaSortKeyTests` pin the default and the race-scan orderings so the rejected snake_case form can never come back.
+
 ### Changed
 
 - **EQUAL-WEIGHT FULL DEPLOYMENT — cash ≈ $0 at all times** (user 2026-07-19, "double the positions allocations overall on the account when there is cash available, make sure that the positions are equally distributed... i would expect cash to be close to 0$ - and i would like this all the time"). Supersedes the 2026-07-11 no-reinforcement rule. Every line now targets an **equal share of the whole account** — `equity / N` over ALL lines (open positions + new actionable markets) — bounded by the per-line cap **doubled 5% → 10%** (`full_deploy_max_position_pct = 0.10`) and the $5 floor. Held lines **top up toward that shared target** (never past it), so the sum of targets = equity and cash converges to ~0 whenever ≥10 distinct lines exist, while distribution stays equal by construction. The on-chain guard becomes a **line-cap guard**: a live BUY is refused only when the wallet's existing holding is already worth ≥ the cap at the current ask (`line_cap_blocked`, replaces `rebet_blocked`). Example: $150 invested + $150 cash across 10 lines → each line targets $30 and the cash deploys. Tests updated (equal-weight targets, below-cap top-ups actionable/at-cap dropped, cap-guard refusal + under-cap allowance).

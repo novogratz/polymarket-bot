@@ -70,7 +70,7 @@ class PolymarketClient:
             "active": "true",
             "closed": "false",
             "limit": str(limit),
-            "order": "end_date",
+            "order": "endDate",
             "ascending": "true",
         }
         if end_date_min is not None:

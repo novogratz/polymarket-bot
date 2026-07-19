@@ -32,7 +32,7 @@ class GammaClient:
         active: bool = True,
         closed: bool = False,
         limit: int = 200,
-        order: str = "end_date",
+        order: str = "endDate",  # Gamma dropped snake_case sort keys (422 since 2026-07-19)
         ascending: bool = True,
         end_date_min: datetime | None = None,
         end_date_max: datetime | None = None,

@@ -84,3 +84,45 @@ class GammaPaginationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GammaSortKeyTests(unittest.TestCase):
+    """Gamma dropped snake_case sort keys on 2026-07-19 — order=end_date
+    started returning HTTP 422, silently killing the soonest-closing half of
+    every race scan (fail-open kept the volume batch only). The sort key must
+    be the camelCase ``endDate``, and the race scan must never send the
+    rejected snake_case form again."""
+
+    def test_default_order_is_camelcase_end_date(self):
+        captured = []
+
+        class _Capture(GammaClient):
+            def _get_json(self, path):
+                captured.append(path)
+                return []
+
+        _Capture().get_markets(limit=10)
+        self.assertIn("order=endDate", captured[0])
+        self.assertNotIn("order=end_date", captured[0])
+
+    def test_race_scan_orderings_are_endDate_and_volume(self):
+        from unittest import mock
+        from polymarket_bot.config import Settings
+        from polymarket_bot import race_strategies
+
+        captured = []
+
+        class _Capture(GammaClient):
+            def __init__(self, *a, **k):
+                super().__init__()
+
+            def _get_json(self, path):
+                captured.append(path)
+                return []
+
+        with mock.patch.object(race_strategies, "GammaClient", _Capture):
+            race_strategies._load_short_expiry_markets(Settings(race_scan_limit=10))
+        orders = [p for p in captured]
+        self.assertTrue(any("order=endDate" in p for p in orders), orders)
+        self.assertTrue(any("order=volume" in p for p in orders), orders)
+        self.assertFalse(any("order=end_date&" in p or p.endswith("order=end_date") for p in orders), orders)
