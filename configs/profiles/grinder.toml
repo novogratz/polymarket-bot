@@ -103,6 +103,13 @@ stake_usd = 1.0
 # full_deploy = false, fixed_stake_usd = 5.0.
 full_deploy = true
 full_deploy_max_position_pct = 0.10
+# Leftover-cash redistribution (user 2026-07-19, "with more than 10
+# positions i would expect 100% of my cash being used"): with >= 10 open
+# lines AND no fresh market this tick, remaining cash is split EQUALLY
+# across the still-tradeable open lines — line-cap EXEMPT (breadth is
+# already guaranteed by the line count; finished/crashed lines are skipped
+# and the cash spreads over the healthy rest). 0 = never redistribute.
+full_deploy_redistribute_min_lines = 10
 fixed_stake_usd = 0.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.

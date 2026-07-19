@@ -398,6 +398,15 @@ class Settings:
     # market — diversification wins over strict 100% deployment. 0 = uncapped
     # (the 2026-07-09 behavior).
     race_full_deploy_max_position_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FULL_DEPLOY_MAX_POSITION_PCT", 0.10))
+    # Leftover-cash redistribution (user 2026-07-19: "with more than 10
+    # positions i would expect 100% of my cash being used... redistribute it
+    # to all open positions when there is no new positions"). When the
+    # account holds at least this many open lines AND a tick finds NO fresh
+    # market to enter, leftover cash is split EQUALLY across all open lines
+    # whose market still re-passes the entry filters — EXEMPT from the
+    # per-line cap (breadth is already guaranteed by the line count).
+    # 0 = never redistribute.
+    race_full_deploy_redistribute_min_lines: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_FULL_DEPLOY_REDISTRIBUTE_MIN_LINES", 10))
     # ── v4: absolute hard ceiling on the ENTRY ask ───────────────────────
     # Entries are never placed above this price, regardless of race_max_price
     # (user 2026-06-21: "never trade 0.97/0.98/0.99"). 0 disables the clamp.

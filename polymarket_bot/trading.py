@@ -668,6 +668,7 @@ def execute_live_trade(
     max_trade_usd: float | None = None,
     strategy: str | None = None,
     signal: dict[str, Any] | None = None,
+    line_cap_exempt: bool = False,
 ) -> LiveTradeResult:
     if candidate.best_ask is None or candidate.best_ask <= 0:
         raise ValueError("candidate has no executable ask price")
@@ -692,8 +693,12 @@ def execute_live_trade(
     # current ask. Chain-checked, so it holds even when the local ledger is
     # missing the position (sync lag, sync_closed mis-book, restart).
     # Fail-open on probe errors — ledger-level guards still apply.
+    # ``line_cap_exempt`` (2026-07-19): the ≥10-lines leftover-cash
+    # redistribution deliberately grows lines past the cap — equality across
+    # the open lines is its constraint, so it bypasses this guard.
     if (
         not settings.dry_run
+        and not line_cap_exempt
         and getattr(settings, "race_full_deploy", False)
         and candidate.token_id
     ):

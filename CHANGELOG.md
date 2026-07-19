@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **Leftover-cash redistribution — 100% invested with ≥10 lines** (user 2026-07-19, "we still have too much cash being unused... redistribute it to all open positions when there is no new positions... with more than 10 positions i would expect 100% of my cash being used"). New `full_deploy_redistribute_min_lines` (env `POLYMARKET_RACE_FULL_DEPLOY_REDISTRIBUTE_MIN_LINES`, **10** in both profiles): when the account holds ≥10 open lines AND a tick finds NO fresh market, remaining cash is split **equally** across the open lines whose market still re-passes every entry filter — **exempt from the 10% line cap** (`line_cap_exempt` in `execute_live_trade`; breadth is already guaranteed by the line count). Finished games awaiting resolution and no-longer-eligible lines are skipped and the cash spreads over the healthy rest; fresh markets always take priority (any fresh actionable market suppresses the pass). `LeftoverRedistributionTests` pin the equal split, the fresh-market/min-lines/knob-off gates, and the skip-untradeable behavior.
+
 ### Fixed
 
 - **Gamma scan 422 — soonest-closing batch silently dead** (seen live 2026-07-19: `race: gamma batch failed: HTTPError: HTTP Error 422`). Gamma dropped snake_case sort keys: `order=end_date` now returns 422 while `order=volume` still works, so every tick silently lost the soonest-closing half of its scan (fail-open kept only the volume batch — near-resolution markets ranked low on volume could be missed entirely). Sort key switched to the camelCase **`endDate`** in `gamma.py` (default), the race scan, the edge scan, and `polymarket.py`. Verified live (both orderings return rows again); `GammaSortKeyTests` pin the default and the race-scan orderings so the rejected snake_case form can never come back.

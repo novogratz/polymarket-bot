@@ -4213,6 +4213,97 @@ class NoRebetGuardTests(unittest.TestCase):
             self.assertNotIn("line_cap_blocked", str(exc))
 
 
+class LeftoverRedistributionTests(unittest.TestCase):
+    """User 2026-07-19: "with more than 10 positions i would expect 100% of
+    my cash being used... redistribute it to all open positions when there
+    is no new positions". Fires only with >= min_lines open lines AND zero
+    fresh actionable markets; splits cash equally over still-tradeable held
+    lines, line-cap exempt."""
+
+    def setUp(self):
+        from polymarket_bot import race_strategies
+        self._orig_execute = race_strategies.execute_live_trade
+        self.placed = []
+        tests_self = self
+
+        def _fake_execute(client, settings, candidate, portfolio, *,
+                          min_trade_usd, max_trade_usd, strategy, signal,
+                          line_cap_exempt=False):
+            from polymarket_bot.trading import LiveTradeResult
+            tests_self.placed.append({"token": candidate.token_id,
+                                      "stake": max_trade_usd,
+                                      "exempt": line_cap_exempt})
+            return LiveTradeResult(order={}, response={"status": "matched"}, candidate=candidate)
+
+        race_strategies.execute_live_trade = _fake_execute
+
+    def tearDown(self):
+        from polymarket_bot import race_strategies
+        race_strategies.execute_live_trade = self._orig_execute
+
+    @staticmethod
+    def _setup(n_lines, cash=95.0):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+        s = Settings(race_min_price=0.85, race_max_price=0.97,
+                     race_max_spread=0.04, race_max_hours=24.0,
+                     race_weather_only=True, race_full_deploy=True,
+                     race_full_deploy_redistribute_min_lines=10,
+                     race_cash_floor_pct=0.0, dry_run=True)
+        markets = [
+            _redistribution_market(f"m{i}", f"Highest temperature in City{i} on 2026-07-19?", f"city{i}-temp")
+            for i in range(n_lines)
+        ]
+        eligible = _build_eligible_candidates(markets, s)
+        portfolio = Portfolio(cash=1000.0, positions=[])
+        for c, _ in eligible:
+            p = portfolio.record_live_position(c, 20.0, entry_price=0.91)
+            p["strategy"] = "grinder"
+        portfolio.cash = cash
+        return s, portfolio, eligible
+
+    def test_splits_cash_equally_over_open_lines_cap_exempt(self):
+        from polymarket_bot.race_strategies import _redistribute_leftover_cash
+
+        s, portfolio, eligible = self._setup(12, cash=95.0)
+        out = _redistribute_leftover_cash(None, s, portfolio, eligible, 0, "grinder")
+        self.assertEqual(len(out), 12)
+        stakes = [p["stake"] for p in self.placed]
+        # Equal split of the whole cash pile; every buy line-cap exempt.
+        self.assertAlmostEqual(stakes[0], 95.0 / 12, places=1)
+        self.assertAlmostEqual(min(stakes), max(stakes), places=1)
+        self.assertTrue(all(p["exempt"] for p in self.placed))
+
+    def test_waits_for_fresh_markets_and_min_lines(self):
+        from polymarket_bot.race_strategies import _redistribute_leftover_cash
+
+        # A fresh actionable market this tick -> new markets get the cash.
+        s, portfolio, eligible = self._setup(12)
+        self.assertEqual(
+            _redistribute_leftover_cash(None, s, portfolio, eligible, 1, "grinder"), [])
+        # Below the 10-line breadth floor -> never fires.
+        s2, portfolio2, eligible2 = self._setup(6)
+        self.assertEqual(
+            _redistribute_leftover_cash(None, s2, portfolio2, eligible2, 0, "grinder"), [])
+        # Disabled knob -> never fires.
+        s3, portfolio3, eligible3 = self._setup(12)
+        s3 = Settings(race_full_deploy=True,
+                      race_full_deploy_redistribute_min_lines=0, dry_run=True)
+        self.assertEqual(
+            _redistribute_leftover_cash(None, s3, portfolio3, eligible3, 0, "grinder"), [])
+        self.assertEqual(self.placed, [])
+
+    def test_untradeable_lines_are_skipped_and_cash_spreads_over_the_rest(self):
+        from polymarket_bot.race_strategies import _redistribute_leftover_cash
+
+        s, portfolio, eligible = self._setup(12, cash=60.0)
+        # 4 markets vanish from the eligible pool (finished games awaiting
+        # resolution) -> their lines get nothing; cash splits over the rest.
+        kept = eligible[:8]
+        out = _redistribute_leftover_cash(None, s, portfolio, kept, 0, "grinder")
+        self.assertEqual(len(out), 8)
+        self.assertAlmostEqual(self.placed[0]["stake"], 60.0 / 8, places=1)
+
+
 class PriceMovementNeverExcludesTests(unittest.TestCase):
     """User decision 2026-06-10: markets that moved recently must stay
     tradeable — the 1h flux gates AND the day-change gates (>10% day move,
