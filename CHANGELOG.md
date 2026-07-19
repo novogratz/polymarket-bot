@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **Entry window widened 24 h → 48 h** (user 2026-07-19, picking option 2 of the money-making review). Tomorrow's weather markets are already listed and the Open-Meteo multi-model forecast is still strong at day+1, so the 48 h window roughly **doubles the simultaneous lines** — smaller equal shares under the same 10% cap, better diversification, and less idle cash (directly serving "as many positions as possible" + "cash ≈ 0"). `max_hours = 48` in both profiles; single window, ladder still disabled; all other entry gates (0.85–0.94 band, forecast edge + bracket margin, liquidity, spread) unchanged.
+
 ### Fixed
 
 - **Weather positions no longer mislabelled "Match terminé"** (user 2026-07-19, "a lot of positions are called 'Match termine' but they are not"). Weather markets carry a `gameStartTime` (start of the measurement day), so the report's sports heuristic (kickoff + ~2h45 → "⌛ Match terminé — résolution en cours") fired all afternoon on markets that stay live until the daily high/low settles. Weather questions now skip the sports branch and show `🌡 Se résout en fin de journée (…)` with the real end time/countdown when known; sports wording unchanged. Pinned by three `OpenPositionExpiryTests` cases.
