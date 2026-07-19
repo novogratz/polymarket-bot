@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- **Redistribution now respects the 10% cap — the cap is ABSOLUTE** (user 2026-07-19 refinement, "make sure we have as many positions available possible at the same time and that each position is max 10% of the overall account"). The leftover-cash redistribution (#128) no longer bypasses the per-line cap: cash splits equally across open lines **with room** under 10%, every add is clamped to `cap − stake`, at-cap lines get nothing, and cash the cap can't place waits for new lines (breadth first — fresh markets still take priority). The `line_cap_exempt` path is no longer used by any caller.
+
+### Changed
+
 - **Leftover-cash redistribution — 100% invested with ≥10 lines** (user 2026-07-19, "we still have too much cash being unused... redistribute it to all open positions when there is no new positions... with more than 10 positions i would expect 100% of my cash being used"). New `full_deploy_redistribute_min_lines` (env `POLYMARKET_RACE_FULL_DEPLOY_REDISTRIBUTE_MIN_LINES`, **10** in both profiles): when the account holds ≥10 open lines AND a tick finds NO fresh market, remaining cash is split **equally** across the open lines whose market still re-passes every entry filter — **exempt from the 10% line cap** (`line_cap_exempt` in `execute_live_trade`; breadth is already guaranteed by the line count). Finished games awaiting resolution and no-longer-eligible lines are skipped and the cash spreads over the healthy rest; fresh markets always take priority (any fresh actionable market suppresses the pass). `LeftoverRedistributionTests` pin the equal split, the fresh-market/min-lines/knob-off gates, and the skip-untradeable behavior.
 
 ### Fixed

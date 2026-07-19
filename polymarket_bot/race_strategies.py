@@ -2584,17 +2584,20 @@ def _redistribute_leftover_cash(
 
     User 2026-07-19: "with more than 10 positions i would expect 100% of my
     cash being used... redistribute it to all open positions when there is
-    no new positions so we invest more cash". Fires only when ALL of:
+    no new positions", refined same day: "make sure we have as many
+    positions available possible at the same time and that each position is
+    max 10% of the overall account". Fires only when ALL of:
       - full-deploy is on and ``redistribute_min_lines`` > 0;
-      - the account holds ≥ ``redistribute_min_lines`` open lines (breadth
-        is already guaranteed, so growing lines past the 10% cap is the
-        user's explicit choice — the buys are placed ``line_cap_exempt``);
+      - the account holds ≥ ``redistribute_min_lines`` open lines;
       - this tick found NO fresh (not-yet-held) actionable market — new
-        markets always take priority for the cash;
+        markets (more lines!) always take priority for the cash;
       - a held line's market still re-passes every entry filter this tick
         (still in the eligible pool, still accepting orders) — finished
         games awaiting resolution and crashed lines are skipped, and the
         cash spreads equally over the healthy rest.
+    Every add is CLAMPED to the line's remaining room under the 10% cap —
+    the cap is absolute (the earlier same-day cap-exempt version lasted one
+    commit); cash the cap can't place waits for new lines.
     """
     if not getattr(settings, "race_full_deploy", False):
         return []
@@ -2612,8 +2615,10 @@ def _redistribute_leftover_cash(
     cash_above_floor = max(0.0, portfolio.cash - cash_floor)
     if cash_above_floor < 2.0:
         return []
+    equity = float(portfolio.summary().get("equity", portfolio.cash))
+    cap = _full_deploy_cap_usd(settings, equity)
     by_token = {c.token_id: c for c, _ in eligible if c.token_id}
-    targets: list[tuple[dict[str, Any], Candidate]] = []
+    targets: list[tuple[dict[str, Any], Candidate, float]] = []
     for position in open_lines:
         token_id = str(position.get("token_id") or "")
         if not token_id or portfolio.has_pending_token(token_id):
@@ -2621,18 +2626,22 @@ def _redistribute_leftover_cash(
         candidate = by_token.get(token_id)
         if candidate is None or not candidate.best_ask or not candidate.accepts_orders:
             continue
-        targets.append((position, candidate))
+        # 10% cap is ABSOLUTE (user 2026-07-19): only lines with room left.
+        room = cap - float(position.get("stake") or 0.0)
+        if room < 1.0:
+            continue
+        targets.append((position, candidate, room))
     if not targets:
         return []
     share = cash_above_floor / len(targets)
     executed: list[dict[str, Any]] = []
-    for position, candidate in targets:
+    for position, candidate, room in targets:
         ask = float(candidate.best_ask or 0.0)
         # Respect Polymarket's 5-share minimum; a too-small share is skipped
         # (never bumped — bumping would break equality).
-        if ask <= 0 or share < settings.min_order_shares * ask:
+        if ask <= 0 or min(share, room) < settings.min_order_shares * ask:
             continue
-        stake = min(share, max(0.0, portfolio.cash - cash_floor))
+        stake = min(share, room, max(0.0, portfolio.cash - cash_floor))
         if stake < 1.0:
             break
         signal_payload = {
@@ -2659,7 +2668,6 @@ def _redistribute_leftover_cash(
                 max_trade_usd=stake,
                 strategy=strategy_name,
                 signal=signal_payload,
-                line_cap_exempt=True,
             )
             executed.append({
                 "strategy": strategy_name,
