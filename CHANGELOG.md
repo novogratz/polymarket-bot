@@ -4,25 +4,23 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-07-19
+
+Polymarket Bot **v5.1** — equal-weight full deployment: cash ≈ $0 at all times, every line targets an equal share of the account under an absolute 10% per-line cap, leftover cash redistributes equally across open lines with room once ≥10 positions exist, bot 1 synced to bot 2's forecast-gated weather strategy, and the Gamma scan 422 fixed.
+
 ### Changed
 
 - **Redistribution now respects the 10% cap — the cap is ABSOLUTE** (user 2026-07-19 refinement, "make sure we have as many positions available possible at the same time and that each position is max 10% of the overall account"). The leftover-cash redistribution (#128) no longer bypasses the per-line cap: cash splits equally across open lines **with room** under 10%, every add is clamped to `cap − stake`, at-cap lines get nothing, and cash the cap can't place waits for new lines (breadth first — fresh markets still take priority). The `line_cap_exempt` path is no longer used by any caller.
 
-### Changed
-
 - **Leftover-cash redistribution — 100% invested with ≥10 lines** (user 2026-07-19, "we still have too much cash being unused... redistribute it to all open positions when there is no new positions... with more than 10 positions i would expect 100% of my cash being used"). New `full_deploy_redistribute_min_lines` (env `POLYMARKET_RACE_FULL_DEPLOY_REDISTRIBUTE_MIN_LINES`, **10** in both profiles): when the account holds ≥10 open lines AND a tick finds NO fresh market, remaining cash is split **equally** across the open lines whose market still re-passes every entry filter — **exempt from the 10% line cap** (`line_cap_exempt` in `execute_live_trade`; breadth is already guaranteed by the line count). Finished games awaiting resolution and no-longer-eligible lines are skipped and the cash spreads over the healthy rest; fresh markets always take priority (any fresh actionable market suppresses the pass). `LeftoverRedistributionTests` pin the equal split, the fresh-market/min-lines/knob-off gates, and the skip-untradeable behavior.
+
+- **EQUAL-WEIGHT FULL DEPLOYMENT — cash ≈ $0 at all times** (user 2026-07-19, "double the positions allocations overall on the account when there is cash available, make sure that the positions are equally distributed... i would expect cash to be close to 0$ - and i would like this all the time"). Supersedes the 2026-07-11 no-reinforcement rule. Every line now targets an **equal share of the whole account** — `equity / N` over ALL lines (open positions + new actionable markets) — bounded by the per-line cap **doubled 5% → 10%** (`full_deploy_max_position_pct = 0.10`) and the $5 floor. Held lines **top up toward that shared target** (never past it), so the sum of targets = equity and cash converges to ~0 whenever ≥10 distinct lines exist, while distribution stays equal by construction. The on-chain guard becomes a **line-cap guard**: a live BUY is refused only when the wallet's existing holding is already worth ≥ the cap at the current ask (`line_cap_blocked`, replaces `rebet_blocked`). Example: $150 invested + $150 cash across 10 lines → each line targets $30 and the cash deploys. Tests updated (equal-weight targets, below-cap top-ups actionable/at-cap dropped, cap-guard refusal + under-cap allowance).
+
+- **Bot 1 strategy synced to bot 2** (user 2026-07-15, "bot 2 grinder 2 doing better than bot 1 - so make bot 1 the same strategy as bot 2"). `grinder.toml`'s `[race]` section is now byte-identical to `grinder_b.toml`; only the bankroll baseline keys stay bot 1's own. Bot 1 gains: the **Open-Meteo multi-model forecast gate** (`weather_forecast_min_edge = 0.10` + `weather_min_bracket_margin_c = 2.0` — the bracket-margin guard from the Qingdao loss), weather-grade liquidity floors (liq ≥ $50, vol ≥ $200), the 0.85 entry floor (the 0.80–0.85 bucket was −8.1% ROI), `category_min_samples` 100 → 20, and the 30 s tick (double-entry fix).
 
 ### Fixed
 
 - **Gamma scan 422 — soonest-closing batch silently dead** (seen live 2026-07-19: `race: gamma batch failed: HTTPError: HTTP Error 422`). Gamma dropped snake_case sort keys: `order=end_date` now returns 422 while `order=volume` still works, so every tick silently lost the soonest-closing half of its scan (fail-open kept only the volume batch — near-resolution markets ranked low on volume could be missed entirely). Sort key switched to the camelCase **`endDate`** in `gamma.py` (default), the race scan, the edge scan, and `polymarket.py`. Verified live (both orderings return rows again); `GammaSortKeyTests` pin the default and the race-scan orderings so the rejected snake_case form can never come back.
-
-### Changed
-
-- **EQUAL-WEIGHT FULL DEPLOYMENT — cash ≈ $0 at all times** (user 2026-07-19, "double the positions allocations overall on the account when there is cash available, make sure that the positions are equally distributed... i would expect cash to be close to 0$ - and i would like this all the time"). Supersedes the 2026-07-11 no-reinforcement rule. Every line now targets an **equal share of the whole account** — `equity / N` over ALL lines (open positions + new actionable markets) — bounded by the per-line cap **doubled 5% → 10%** (`full_deploy_max_position_pct = 0.10`) and the $5 floor. Held lines **top up toward that shared target** (never past it), so the sum of targets = equity and cash converges to ~0 whenever ≥10 distinct lines exist, while distribution stays equal by construction. The on-chain guard becomes a **line-cap guard**: a live BUY is refused only when the wallet's existing holding is already worth ≥ the cap at the current ask (`line_cap_blocked`, replaces `rebet_blocked`). Example: $150 invested + $150 cash across 10 lines → each line targets $30 and the cash deploys. Tests updated (equal-weight targets, below-cap top-ups actionable/at-cap dropped, cap-guard refusal + under-cap allowance).
-
-### Changed
-
-- **Bot 1 strategy synced to bot 2** (user 2026-07-15, "bot 2 grinder 2 doing better than bot 1 - so make bot 1 the same strategy as bot 2"). `grinder.toml`'s `[race]` section is now byte-identical to `grinder_b.toml`; only the bankroll baseline keys stay bot 1's own. Bot 1 gains: the **Open-Meteo multi-model forecast gate** (`weather_forecast_min_edge = 0.10` + `weather_min_bracket_margin_c = 2.0` — the bracket-margin guard from the Qingdao loss), weather-grade liquidity floors (liq ≥ $50, vol ≥ $200), the 0.85 entry floor (the 0.80–0.85 bucket was −8.1% ROI), `category_min_samples` 100 → 20, and the 30 s tick (double-entry fix).
 
 ## [5.0.0] - 2026-07-13
 
