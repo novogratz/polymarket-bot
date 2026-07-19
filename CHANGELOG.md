@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- **EQUAL-WEIGHT FULL DEPLOYMENT — cash ≈ $0 at all times** (user 2026-07-19, "double the positions allocations overall on the account when there is cash available, make sure that the positions are equally distributed... i would expect cash to be close to 0$ - and i would like this all the time"). Supersedes the 2026-07-11 no-reinforcement rule. Every line now targets an **equal share of the whole account** — `equity / N` over ALL lines (open positions + new actionable markets) — bounded by the per-line cap **doubled 5% → 10%** (`full_deploy_max_position_pct = 0.10`) and the $5 floor. Held lines **top up toward that shared target** (never past it), so the sum of targets = equity and cash converges to ~0 whenever ≥10 distinct lines exist, while distribution stays equal by construction. The on-chain guard becomes a **line-cap guard**: a live BUY is refused only when the wallet's existing holding is already worth ≥ the cap at the current ask (`line_cap_blocked`, replaces `rebet_blocked`). Example: $150 invested + $150 cash across 10 lines → each line targets $30 and the cash deploys. Tests updated (equal-weight targets, below-cap top-ups actionable/at-cap dropped, cap-guard refusal + under-cap allowance).
+
+### Changed
+
 - **Bot 1 strategy synced to bot 2** (user 2026-07-15, "bot 2 grinder 2 doing better than bot 1 - so make bot 1 the same strategy as bot 2"). `grinder.toml`'s `[race]` section is now byte-identical to `grinder_b.toml`; only the bankroll baseline keys stay bot 1's own. Bot 1 gains: the **Open-Meteo multi-model forecast gate** (`weather_forecast_min_edge = 0.10` + `weather_min_bracket_margin_c = 2.0` — the bracket-margin guard from the Qingdao loss), weather-grade liquidity floors (liq ≥ $50, vol ≥ $200), the 0.85 entry floor (the 0.80–0.85 bucket was −8.1% ROI), `category_min_samples` 100 → 20, and the 30 s tick (double-entry fix).
 
 ## [5.0.0] - 2026-07-13

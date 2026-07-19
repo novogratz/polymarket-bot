@@ -15,7 +15,7 @@ Le moteur (`polymarket_bot/race_strategies.py`) est **générique** : même pipe
 **Paramètres clés (weather-only 2026-07-06, full-deploy 2026-07-09) :**
 - **Univers : MÉTÉO UNIQUEMENT** (`weather_only = true`) — température, °C/°F, weather, rainfall, snowfall, high/low temp (`is_weather_market`). Tout le reste (sport, élections, crypto, …) est écarté à la sélection ; le ban météo normal est bypassé. « weather » est une catégorie v4 à part entière (2026-07-10) et **ne peut jamais être auto-disabled tant que la lane est active** (garde anti-famine).
 - **Entry :** ask ∈ [0.80, 0.94], **hard cap 0.96** (`max_price_hard_cap` — 0.97/0.98/0.99 jamais tradables), ≤24h (game start OU close — élargi de 4h pour la météo), spread ≤4¢, liq ≥$250, vol 24h ≥$1000.
-- **Sizing : FRACTION FIXE 5%, SANS RENFORCEMENT — LA RÈGLE (user 2026-07-11)** (`full_deploy = true`, `full_deploy_max_position_pct = 0.05`) — chaque NOUVELLE position mise EXACTEMENT 5% de l'équité ($200 → $10 ; plancher $5 pour le minimum Polymarket) ; le stake est le cap lui-même, pas cash/N, donc le bankroll se déploie sur jusqu'à 20 lignes distinctes. **Une ligne détenue n'est JAMAIS rachetée** (« you cant rebet on a position that is already existing ») : pas de top-up, pas de redistribution, pas de double-down — les tokens détenus sont exclus des pick slots. Le cash sans NOUVEAU marché attend. La redistribution 3-ticks (#121) a été SUPPRIMÉE le jour même (tick 10 s → déclenchée en ~30 s, une ligne pompée à $33). `cash_floor_pct = 0`. Rollback : `full_deploy = false`, `fixed_stake_usd = 5.0`.
+- **Sizing : DÉPLOIEMENT TOTAL ÉQUIPONDÉRÉ (user 2026-07-19)** (`full_deploy = true`, `full_deploy_max_position_pct = 0.10`, doublé de 5%) — « cash close to 0$ all the time, equally distributed ». Chaque ligne vise une part ÉGALE du compte : equity / N sur TOUTES les lignes (positions ouvertes + nouveaux marchés éligibles), bornée par le cap 10% et le plancher $5. Somme des cibles = equity → le cash converge vers ~0 dès qu'il existe ≥10 lignes distinctes. Les lignes détenues se complètent VERS cette cible partagée — jamais au-delà (garde on-chain `line_cap_blocked` dans `execute_live_trade`). Remplace la règle « sans renforcement » du 2026-07-11. Rollback : `full_deploy = false`, `fixed_stake_usd = 5.0`.
 - **Unban total** (`unban_all_markets = true`) : sans effet pratique sous weather-only ; gouvernance data-driven (`categories.py` : ≥100 trades & ROI < −5% → retirée, sauf `weather` tant que la lane est ON).
 - **Modèle de forecasting** (`forecast.py`, opt-in) : `predicted_probability` calibré par (catégorie, bucket de prix), `edge = predicted − ask`, `quality_score` ; gates `min_edge`/`min_quality_score` OFF par défaut (besoin d'historique).
 - **Exits :** TP désactivé (ride to resolution), **resolved_exit à bid ≥0.99** (sinon settle à 1.0), SL confirmé −30% sur moneylines soccer uniquement (anti-gap ≥0.50), never-sell-below-entry. Daily DD halt DÉSACTIVÉ ; pas de pause-halts (user 2026-06-21).
@@ -307,23 +307,24 @@ Pour un dry-run sérieux ou la prod : `[noise_fallback] enabled = false`. Le bot
 
 ---
 
-## Sizing FRACTION FIXE 5% — sans renforcement (user 2026-07-11)
+## Sizing DÉPLOIEMENT TOTAL ÉQUIPONDÉRÉ (user 2026-07-19)
 
 **Règle ACTUELLE** (`full_deploy = true` + `full_deploy_max_position_pct =
-0.05`, remplace le $5 fixe ci-dessous) : chaque NOUVELLE position mise
-**exactement 5% de l'équité** ($200 → $10, plancher $5 pour le minimum
-Polymarket). Le stake est le cap lui-même — PAS un partage cash/N — donc 40
-marchés éligibles donnent quand même 5% chacun et le bankroll se déploie sur
-jusqu'à 20 lignes distinctes. **Une ligne détenue n'est JAMAIS rachetée** :
-pas de top-up, pas de redistribution, pas de double-down, pas de re-bet —
-les tokens détenus sont exclus des pick slots (`_actionable_candidates`).
-Le cash qui ne trouve pas de NOUVEAU marché attend, point. (La redistribution
-« 3 ticks » de #121 a été supprimée le jour même : avec un tick de 10 s elle
-partait au bout de ~30 s et concentrait le cash sur une seule ligne — le bug
-Paris $33.) `cash_floor_pct = 0` (aucune réserve). Perte max par ligne ≈ 5%
-de l'équité. Rollback une-ligne : `full_deploy = false`,
-`fixed_stake_usd = 5.0` ; `full_deploy_max_position_pct = 0` = legacy cash/N
-sans cap. Pinné par `FullDeploySizingTests`.
+0.10`, doublé de 5%) : « i would expect cash to be close to 0$ - and i would
+like this all the time... equally distributed meaning you dont over bet on
+something ». Chaque ligne vise une part ÉGALE du compte — `equity / N` sur
+TOUTES les lignes (positions ouvertes + nouveaux marchés actionnables ; le
+caller passe ce N total à `_dynamic_stake_target`) — bornée par le cap 10%
+par ligne et le plancher $5 Polymarket. La somme des cibles = l'équité, donc
+le cash converge vers ~0 dès qu'il existe ≥10 lignes distinctes. **Les
+lignes détenues se complètent VERS la cible partagée, jamais au-delà**
+(remplace la règle « sans renforcement » du 2026-07-11) : une ligne sous le
+cap reste actionnable, chaque achat est borné à (cible − stake), et la garde
+on-chain `line_cap_blocked` (`execute_live_trade`) refuse tout achat dès que
+la détention wallet vaut ≥ le cap au ask courant — même si le ledger local
+ignore la position. `cash_floor_pct = 0`. Perte max par ligne ≈ 10% de
+l'équité. Rollback : `full_deploy = false`, `fixed_stake_usd = 5.0`. Pinné
+par `FullDeploySizingTests` + `NoRebetGuardTests`.
 
 ## Sizing FIXE $5 — grinder v4 (user 2026-06-21) — RETIRÉ 2026-07-09
 

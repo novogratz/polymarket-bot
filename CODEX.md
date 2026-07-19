@@ -20,7 +20,7 @@ This is a general-purpose engine (`polymarket_bot/race_strategies.py`) that can 
 **Launcher:** `bash scripts/run_live_70.sh` / `run_live_b.sh`. Do **not** use `run_all.sh` for live.  
 **Universe:** `weather_only = true` — ONLY weather / temperature markets (`is_weather_market`); everything else dropped at selection. "weather" is a first-class category (2026-07-10), never auto-disabled while the lane is on.  
 **Entry:** ask ∈ [0.80, 0.94], hard cap 0.96 (0.97+ never), ≤24h to close (weather resolves end-of-day), spread ≤4¢, liq ≥$250, vol ≥$1000.  
-**Sizing:** **5% FIXED-FRACTION, NO REINFORCEMENT** (`full_deploy = true`, `full_deploy_max_position_pct = 0.05`, 2026-07-11) — every NEW position = exactly 5% of equity ($5 floor); a held market is NEVER bought again (no top-up/redistribution/re-bet); cash without a new market waits. Rollback: `full_deploy=false, fixed_stake_usd=5.0`.
+**Sizing:** **EQUAL-WEIGHT FULL DEPLOYMENT** (`full_deploy = true`, `full_deploy_max_position_pct = 0.10`, 2026-07-19) — cash ≈ $0 at all times: every line targets equity/N over all lines (10% cap, $5 floor); held lines top up toward the shared target, never past it (on-chain line-cap guard). Rollback: `full_deploy=false, fixed_stake_usd=5.0`.
 **Exits:** resolved_exit at bid ≥**0.99** (else settle 1.0), never-sell-below-entry, max-hold backstop. The −30% confirmed SL gates on soccer moneylines only → weather positions never stop out. No TP, no pause-halts.
 
 ## Project map

@@ -682,16 +682,16 @@ def execute_live_trade(
     if topup_position is None and portfolio.has_open_event_position(candidate):
         raise ValueError("duplicate_open_sports_event")
 
-    # ── NO-REBET GUARD, ON-CHAIN (user 2026-07-11, "you cant rebet on an
-    # existing bet meaning each line will never surpass 5% of overall
-    # account") ────────────────────────────────────────────────────────────
-    # Under 5% fixed-fraction sizing a BUY on a token the WALLET already
-    # holds is refused at the last line of defense — the chain, not the
-    # ledger. This holds even when the local ledger is missing the position
-    # (sync lag, sync_closed mis-book, fresh restart): one buy per line,
-    # ever, so no line can exceed one 5% stake at cost. Fail-open on probe
-    # errors (a dead balance API must not freeze entries entirely — the
-    # ledger-level guards above still apply).
+    # ── LINE-CAP GUARD, ON-CHAIN (2026-07-19; supersedes the 2026-07-11
+    # absolute no-rebet guard) ─────────────────────────────────────────────
+    # Equal-weight top-ups are allowed again (user 2026-07-19, "cash close
+    # to 0$... all the time... equally distributed"), so the chain-level
+    # backstop is now the LINE CAP: a live BUY is refused when the wallet's
+    # existing holding of this token is already worth ≥ the per-line cap
+    # (race_full_deploy_max_position_pct × equity, $5 floor), valued at the
+    # current ask. Chain-checked, so it holds even when the local ledger is
+    # missing the position (sync lag, sync_closed mis-book, restart).
+    # Fail-open on probe errors — ledger-level guards still apply.
     if (
         not settings.dry_run
         and getattr(settings, "race_full_deploy", False)
@@ -702,10 +702,16 @@ def execute_live_trade(
         except Exception:
             held_on_chain = None
         if held_on_chain is not None and held_on_chain >= 1.0:
-            raise ValueError(
-                f"rebet_blocked: wallet already holds {held_on_chain:.2f} shares of "
-                f"this token — one bet per line, never reinforce (user 2026-07-11)"
-            )
+            pct = float(getattr(settings, "race_full_deploy_max_position_pct", 0.0) or 0.0)
+            equity = float(portfolio.summary().get("equity", portfolio.cash))
+            line_cap = max(5.0, equity * pct) if pct > 0 else equity
+            held_value = held_on_chain * float(candidate.best_ask)
+            if held_value >= line_cap:
+                raise ValueError(
+                    f"line_cap_blocked: wallet already holds {held_on_chain:.2f} shares "
+                    f"(~${held_value:.2f}) ≥ line cap ${line_cap:.2f} — "
+                    f"equal distribution, never over-bet one line (user 2026-07-19)"
+                )
 
     entry_price = round(min(candidate.best_ask + candidate.tick_size, 0.99), 3)
 

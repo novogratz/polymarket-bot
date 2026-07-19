@@ -86,17 +86,16 @@ trades every category) — not currently run live, same mechanics otherwise.
   values logged in the forward net only, pinned by tests.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
   dropped before pick-slot truncation.
-- **Sizing (5% FIXED-FRACTION, NO REINFORCEMENT — user 2026-07-11 THE
-  RULE):** `full_deploy = true` + `full_deploy_max_position_pct = 0.05` in
-  BOTH profiles. Every NEW position stakes EXACTLY 5% of equity ($200 → $10,
-  $5 floor) — the stake is the cap itself, not cash/N, so the bankroll
-  deploys across up to 20 distinct lines. **A held market is NEVER bought
-  again** ("you cant rebet on a position that is already existing"): held
-  tokens are dropped from pick slots (`_actionable_candidates`) — no top-up,
-  no redistribution, no double-down. Cash without a NEW market waits. The
-  3-tick redistribution (#121) was REMOVED same-day (10 s ticks → fired in
-  ~30 s, pumped one line to $33). Rollback: `full_deploy = false`,
-  `fixed_stake_usd = 5.0`. `FullDeploySizingTests` pin it.
+- **Sizing (EQUAL-WEIGHT FULL DEPLOYMENT — user 2026-07-19, "cash close
+  to 0$ all the time, equally distributed"):** `full_deploy = true` +
+  `full_deploy_max_position_pct = 0.10` (doubled from 5%). Every line
+  targets equity / N over ALL lines (open + new actionable), 10% cap, $5
+  floor — sum of targets = equity so cash ≈ $0 whenever ≥10 lines exist.
+  Held lines top up TOWARD the shared target, never past it (below-cap
+  lines stay actionable; buys clamped to target − stake; on-chain line-cap
+  guard `line_cap_blocked` in execute_live_trade). Supersedes the
+  2026-07-11 no-reinforcement rule. Rollback: `full_deploy = false`,
+  `fixed_stake_usd = 5.0`.
 - **Sizing (RETIRED v4 fixed-dollar — user 2026-06-21):** every trade = EXACTLY $5
   (`fixed_stake_usd = 5.0`). No Kelly, no %-of-equity, no martingale, no
   averaging/double-down, no confidence scaling, no dynamic spread. The three

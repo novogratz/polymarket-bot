@@ -4039,24 +4039,26 @@ class FullDeploySizingTests(unittest.TestCase):
         from polymarket_bot.race_strategies import (
             _dynamic_stake_target, _entry_cap_usd, _position_cap_usd,
         )
-        s = self._settings()  # default pct = 0.05
-        self.assertAlmostEqual(s.race_full_deploy_max_position_pct, 0.05)
-        # $200 bankroll, 1 opportunity → $10 max, NOT $200.
-        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 1, 3.0), 10.0)
-        # Both caps = 5% of equity → the top-up lane stops at $10 too.
-        self.assertAlmostEqual(_position_cap_usd(s, 200.0), 10.0)
-        self.assertAlmostEqual(_entry_cap_usd(s, 200.0), 10.0)
-        # FIXED-FRACTION (user 2026-07-11, "replace the rule of $5 with the
-        # 5%"): every NEW position stakes exactly 5% of equity no matter how
-        # many markets are eligible — 40 opportunities still means $10 each.
-        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 40, 3.0), 10.0)
+        s = self._settings()  # default pct = 0.10 (doubled 2026-07-19)
+        self.assertAlmostEqual(s.race_full_deploy_max_position_pct, 0.10)
+        # $200 bankroll, 1 line → the 10% cap ($20), NOT $200.
+        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 1, 3.0), 20.0)
+        # Both caps = 10% of equity → top-ups stop at $20 too.
+        self.assertAlmostEqual(_position_cap_usd(s, 200.0), 20.0)
+        self.assertAlmostEqual(_entry_cap_usd(s, 200.0), 20.0)
+        # EQUAL WEIGHT (user 2026-07-19, "equally distributed... cash close
+        # to 0"): with 40 total lines each targets equity/40 = $5; with 10
+        # lines each targets $20 (the cap) — sum of targets = equity, so
+        # cash deploys fully whenever ≥10 lines exist.
+        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 40, 3.0), 5.0)
+        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 10, 3.0), 20.0)
 
     def test_cap_floors_at_5_for_small_bankrolls(self):
-        # 5% of $60 = $3 < Polymarket's ~5-share minimum → floor at $5.
+        # 10% of $40 = $4 < Polymarket's ~5-share minimum → floor at $5.
         from polymarket_bot.race_strategies import _position_cap_usd
 
         s = self._settings()
-        self.assertAlmostEqual(_position_cap_usd(s, 60.0), 5.0)
+        self.assertAlmostEqual(_position_cap_usd(s, 40.0), 5.0)
         # But never above equity itself.
         self.assertAlmostEqual(_position_cap_usd(s, 4.0), 4.0)
 
@@ -4078,10 +4080,10 @@ class FullDeploySizingTests(unittest.TestCase):
         self.assertFalse(s.race_full_deploy)
         self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 1, 3.0), 5.0)
 
-    def test_held_lines_are_never_bought_again(self):
-        # User 2026-07-11: "you cant rebet on a position that is already
-        # existing" — a held token is dropped from the actionable pick slots
-        # entirely; no top-up, no redistribution, no re-bet, ever.
+    def test_held_lines_topup_below_cap_but_drop_at_cap(self):
+        # User 2026-07-19 (supersedes the 2026-07-11 no-rebet rule): a held
+        # line stays actionable while below the equal-weight cap (top-ups
+        # toward the shared target), and is dropped once at/near the cap.
         from polymarket_bot.race_strategies import (
             _actionable_candidates, _build_eligible_candidates,
         )
@@ -4091,10 +4093,15 @@ class FullDeploySizingTests(unittest.TestCase):
         held = _redistribution_market("h", "Highest temperature in Paris on 2026-07-11?", "paris-temp")
         fresh = _redistribution_market("f", "Highest temperature in Milan on 2026-07-11?", "milan-temp")
         eligible = _build_eligible_candidates([held, fresh], s)
-        portfolio = Portfolio(cash=100.0, positions=[])
+        portfolio = Portfolio(cash=200.0, positions=[])
         held_cand = next(c for c, _ in eligible if c.market_id == "h")
         pos = portfolio.record_live_position(held_cand, 2.0, entry_price=0.91)
         pos["strategy"] = "grinder"
+        # $2 held, cap = 10% of equity ≈ $20 → still actionable (room > $5).
+        ids = {c.market_id for c, _ in _actionable_candidates(eligible, portfolio, s)}
+        self.assertEqual(ids, {"f", "h"})
+        # Grow the line to the cap → dropped from pick slots.
+        pos["stake"] = 20.0
         ids = {c.market_id for c, _ in _actionable_candidates(eligible, portfolio, s)}
         self.assertEqual(ids, {"f"})
 
@@ -4111,11 +4118,12 @@ def _redistribution_market(mid, question, slug):
 
 
 class NoRebetGuardTests(unittest.TestCase):
-    """User 2026-07-11: "you cant rebet on an existing bet meaning each line
-    will never surpass 5% of overall account". The guard is ON-CHAIN — a live
-    BUY on a token the wallet already holds is refused inside
-    execute_live_trade, even when the local ledger has no such position
-    (sync lag / sync_closed mis-book / fresh restart)."""
+    """LINE-CAP guard (2026-07-19, supersedes the 2026-07-11 absolute
+    no-rebet): equal-weight top-ups are allowed, so the on-chain backstop in
+    execute_live_trade now refuses a live BUY only when the wallet's
+    existing holding of the token is already worth >= the per-line cap
+    (pct x equity, $5 floor) at the current ask — chain-checked, so it holds
+    even when the local ledger is missing the position."""
 
     @staticmethod
     def _candidate():
@@ -4138,18 +4146,37 @@ class NoRebetGuardTests(unittest.TestCase):
             accepts_orders=True,
         )
 
-    def test_live_buy_refused_when_wallet_already_holds_the_token(self):
+    def test_live_buy_refused_when_held_value_reaches_the_line_cap(self):
         class FakeClient:
             def live_share_balance(self, token_id):
-                return 76.4  # the wallet already holds this line
+                return 76.4  # ~$65 at ask 0.85 — way past a $10 cap
 
         settings = Settings(race_full_deploy=True, dry_run=False,
+                            race_full_deploy_max_position_pct=0.10,
                             min_order_shares=5.0)
         portfolio = Portfolio(cash=100.0, positions=[])  # ledger knows NOTHING
         with self.assertRaises(ValueError) as ctx:
             execute_live_trade(FakeClient(), settings, self._candidate(),
                                portfolio, min_trade_usd=1.0, max_trade_usd=5.0)
-        self.assertIn("rebet_blocked", str(ctx.exception))
+        self.assertIn("line_cap_blocked", str(ctx.exception))
+
+    def test_live_topup_allowed_while_held_value_is_below_the_cap(self):
+        class FakeClient:
+            def live_share_balance(self, token_id):
+                return 4.0  # ~$3.40 at ask 0.85 — well under a $10 cap
+
+            def live_available_balance(self):
+                return 0.0  # forces a later, DIFFERENT failure
+
+        settings = Settings(race_full_deploy=True, dry_run=False,
+                            race_full_deploy_max_position_pct=0.10,
+                            min_order_shares=5.0)
+        portfolio = Portfolio(cash=100.0, positions=[])
+        try:
+            execute_live_trade(FakeClient(), settings, self._candidate(),
+                               portfolio, min_trade_usd=1.0, max_trade_usd=5.0)
+        except Exception as exc:
+            self.assertNotIn("line_cap_blocked", str(exc))
 
     def test_guard_fails_open_when_the_balance_probe_errors(self):
         class FakeClient:
@@ -4166,7 +4193,7 @@ class NoRebetGuardTests(unittest.TestCase):
             execute_live_trade(FakeClient(), settings, self._candidate(),
                                portfolio, min_trade_usd=1.0, max_trade_usd=5.0)
         except Exception as exc:
-            self.assertNotIn("rebet_blocked", str(exc))
+            self.assertNotIn("line_cap_blocked", str(exc))
 
     def test_guard_off_in_legacy_mode(self):
         class FakeClient:
@@ -4183,7 +4210,7 @@ class NoRebetGuardTests(unittest.TestCase):
             execute_live_trade(FakeClient(), settings, self._candidate(),
                                portfolio, min_trade_usd=1.0, max_trade_usd=5.0)
         except Exception as exc:
-            self.assertNotIn("rebet_blocked", str(exc))
+            self.assertNotIn("line_cap_blocked", str(exc))
 
 
 class PriceMovementNeverExcludesTests(unittest.TestCase):

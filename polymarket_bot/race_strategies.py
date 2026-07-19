@@ -2213,9 +2213,9 @@ def _full_deploy_cap_usd(settings: Settings, equity: float) -> float:
     """Per-position ceiling under full-deploy: the DIVERSIFICATION CAP.
 
     User 2026-07-10 ("positions at $90 when bankroll total is $200 is not
-    acceptable... take more positions if you still have more money, while
-    diversifying between the different bets"): cap each position at
-    ``race_full_deploy_max_position_pct`` of equity (default 5%) so the
+    acceptable"), doubled to 10% 2026-07-19 ("double the positions
+    allocations overall on the account when there is cash available"): cap
+    each position at ``race_full_deploy_max_position_pct`` of equity so the
     bankroll spreads across many distinct markets instead of piling onto
     one. Floored at $5 so a small bankroll can still meet Polymarket's
     5-share minimum. pct ≤ 0 → uncapped (the 2026-07-09 behavior).
@@ -2314,11 +2314,18 @@ def _dynamic_stake_target(
         cap = _full_deploy_cap_usd(settings, equity)
         pct = float(getattr(settings, "race_full_deploy_max_position_pct", 0.0) or 0.0)
         if pct > 0:
-            # 5% FIXED-FRACTION sizing (user 2026-07-11, "replace the rule
-            # of $5 with the 5%"): every NEW position stakes exactly 5% of
-            # equity (the cap), regardless of how many markets are eligible.
-            # Cash deploys across up to 1/pct distinct lines.
-            return max(0.0, min(cap, cash_above_floor))
+            # EQUAL-WEIGHT FULL DEPLOYMENT (user 2026-07-19, "i would expect
+            # cash to be close to 0$ - and i would like this all the time...
+            # equally distributed meaning you dont over bet on something"):
+            # every line targets an EQUAL share of the whole account —
+            # equity / N over ALL lines (open positions + new actionable
+            # markets, passed as n_opportunities by the caller) — bounded by
+            # the 10% cap and the $5 Polymarket floor. Sum of targets =
+            # equity, so cash converges to ~0 whenever ≥ 1/pct lines exist.
+            # Held lines top up TOWARD this same target (never past it), so
+            # distribution stays equal by construction.
+            equal_share = equity / max(1, n_opportunities)
+            return max(0.0, min(cap, max(5.0, equal_share)))
         return max(0.0, min(cash_above_floor / max(1, n_opportunities), cap))
     # v4 fixed-dollar sizing (user 2026-06-21): every bet is EXACTLY the
     # fixed stake, capped only by the cash actually available — no spread
@@ -2532,10 +2539,15 @@ def _actionable_candidates(
             )
         if open_pos is not None:
             if getattr(settings, "race_full_deploy", False):
-                # NO REINFORCEMENT (user 2026-07-11, "do not reinforce a
-                # position"): under 5% fixed-fraction sizing a held market is
-                # NEVER bought again — no top-up, no redistribution, no
-                # double-down. Cash waits for NEW markets instead.
+                # EQUAL-WEIGHT top-ups (user 2026-07-19, supersedes the
+                # 2026-07-11 no-reinforcement rule): a held line stays
+                # actionable while its cost basis sits below the equal-
+                # weight target — the execution loop clamps every buy to
+                # (target − stake), so a line can approach but never pass
+                # the shared target / 10% cap.
+                if cap - float(open_pos.get("stake") or 0.0) < _TOPUP_MIN_USD:
+                    continue
+                out.append((c, m))
                 continue
             existing_stake = float(open_pos.get("stake") or 0.0)
             # Guard: _sync_live_positions can zero stake when the live API
@@ -2827,9 +2839,16 @@ def _run_race_tick(
             f"   actionable: {len(actionable)}/{len(eligible)} (already-held/duplicate-event markets excluded from pick slots)",
         )
 
-    # Opportunity count drives per-bet sizing: many actionable markets →
-    # spread the cash; few → full per-bet cap (see _dynamic_stake_target).
-    n_opportunities = max(1, len(actionable))
+    # Opportunity count drives per-bet sizing. Under full-deploy the count
+    # is ALL lines — open positions + new actionable markets — so the
+    # equal-weight target equals equity / total lines (user 2026-07-19).
+    open_line_count = sum(
+        1 for p in portfolio.positions if p.get("status") == "open" and p.get("live")
+    )
+    if getattr(settings, "race_full_deploy", False):
+        n_opportunities = max(1, len(actionable) + open_line_count)
+    else:
+        n_opportunities = max(1, len(actionable))
 
     picks = select_fn(actionable)
 

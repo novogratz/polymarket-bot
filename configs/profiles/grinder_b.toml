@@ -88,19 +88,20 @@ max_spread = 0.04
 # boost scales the spread share but never pierces the cap (handled in
 # race_strategies._dynamic_stake_target).
 stake_usd = 1.0
-# ── 5% FIXED-FRACTION SIZING — THE RULE (user 2026-07-11) ────────────────
-# "position max 5% of the overall account... you cant rebet on a position
-# that is already existing... replace the rule of $5 with the 5%." Every NEW
-# position stakes EXACTLY 5% of equity ($200 -> $10; floored at $5 for the
-# Polymarket minimum), the bankroll deploys across up to 20 distinct weather
-# markets, and a held market is NEVER bought again — no top-up, no
-# redistribution, no double-down, no re-bet on an existing line. Cash that
-# can't find a NEW market simply waits.
-# full_deploy OVERRIDES fixed_stake_usd; the v4 fixed-$5 mode (2026-06-21)
-# is retired but kept for a one-line rollback (full_deploy = false,
-# fixed_stake_usd = 5.0).
+# ── EQUAL-WEIGHT FULL DEPLOYMENT (user 2026-07-19) ───────────────────────
+# "i would expect cash to be close to 0$ - and i would like this all the
+# time... equally distributed meaning you dont over bet on something."
+# Every line targets an EQUAL share of the account: equity / N over ALL
+# lines (open positions + new eligible markets), bounded by the 10% cap
+# below (doubled from 5%, "double the positions allocations") and the $5
+# Polymarket floor. Held lines top up TOWARD that shared target — never
+# past it (line-cap guard chain-checks it too) — so cash converges to ~0
+# whenever ≥10 distinct lines exist while distribution stays equal by
+# construction. Supersedes the 2026-07-11 no-reinforcement rule.
+# full_deploy OVERRIDES fixed_stake_usd; rollback to fixed-$5 =
+# full_deploy = false, fixed_stake_usd = 5.0.
 full_deploy = true
-full_deploy_max_position_pct = 0.05
+full_deploy_max_position_pct = 0.10
 fixed_stake_usd = 0.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
