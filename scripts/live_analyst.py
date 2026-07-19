@@ -604,7 +604,8 @@ def _rel_fr(target: "datetime", now: "datetime") -> str:
     return f"dans {minutes // (24 * 60)}j"
 
 
-def _fmt_expiry_fr(end_iso: str, game_start_iso: str = "", now: "datetime | None" = None) -> str:
+def _fmt_expiry_fr(end_iso: str, game_start_iso: str = "", now: "datetime | None" = None,
+                   question: str = "") -> str:
     """French end-of-market line for an open position.
 
     Three sources, in reliability order:
@@ -613,9 +614,35 @@ def _fmt_expiry_fr(end_iso: str, game_start_iso: str = "", now: "datetime | None
     - a date-only `endDate` (midnight-UTC Gamma stamp) → the DATE alone —
       never a fabricated "20:00 ET" from the midnight timestamp.
     Empty string when nothing is known.
+
+    WEATHER (2026-07-19, user: positions "called 'Match termine' but they
+    are not"): weather markets carry a `gameStartTime` too (start of the
+    measurement day), so the sports kickoff+2h45 heuristic mislabelled them
+    "Match terminé" all afternoon while the market stays live until the
+    daily high/low is settled. Weather questions skip the sports branch and
+    use endDate wording ("se résout en fin de journée").
     """
     if now is None:
         now = datetime.now(timezone.utc)
+    is_weather = False
+    if question:
+        try:
+            from polymarket_bot.models import is_weather_market
+            is_weather = is_weather_market({"question": question})
+        except Exception:
+            is_weather = False
+    if is_weather:
+        end = _parse_end_date(end_iso)
+        if end is None:
+            return "🌡 Se résout en fin de journée"
+        if _is_date_only(end):
+            day = end.astimezone(timezone.utc).strftime("%d/%m")
+            if now > end + timedelta(hours=24):
+                return f"⌛ Échéance passée (le {day}) — résolution en cours"
+            return f"🌡 Se résout en fin de journée (le {day})"
+        if (end - now).total_seconds() <= 0:
+            return f"⌛ Échéance passée ({_et_clock(end, now)}) — résolution en cours"
+        return f"🌡 Se résout en fin de journée — {_et_clock(end, now)} ({_rel_fr(end, now)})"
     gs = _parse_end_date(game_start_iso)
     if gs is not None:
         # Sports: the kickoff is the one reliable timestamp — show that.
@@ -1465,7 +1492,8 @@ def cycle_once() -> None:
                 f"{entry:.2f} → {cur:.2f}  |  ${cost:.2f} → ${mtm:.2f}  ({_sign(unr)}${abs(unr):.2f})"
             )
             expiry = _fmt_expiry_fr(
-                str(p.get("end_date") or ""), str(p.get("game_start") or "")
+                str(p.get("end_date") or ""), str(p.get("game_start") or ""),
+                question=str(p.get("question") or ""),
             )
             if expiry:
                 line += f"\n      {expiry}"

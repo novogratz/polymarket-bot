@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **Weather positions no longer mislabelled "Match terminé"** (user 2026-07-19, "a lot of positions are called 'Match termine' but they are not"). Weather markets carry a `gameStartTime` (start of the measurement day), so the report's sports heuristic (kickoff + ~2h45 → "⌛ Match terminé — résolution en cours") fired all afternoon on markets that stay live until the daily high/low settles. Weather questions now skip the sports branch and show `🌡 Se résout en fin de journée (…)` with the real end time/countdown when known; sports wording unchanged. Pinned by three `OpenPositionExpiryTests` cases.
+
+### Changed
+
+- **Redistribution reaches lines that drifted out of the entry band** (user 2026-07-19, "there is opportunity to increase those positions too"). A winning line's ask converges past `max_price` 0.94 — or the Open-Meteo gate can no longer certify `ask + 0.10` (impossible ≥ 0.95 by construction) — and the line silently dropped out of the redistribution's token map. Top-ups now match held lines against a second, RELAXED pool: `max_price` lifted to the 0.96 **hard cap** and forecast/EV gates off, with every other filter intact (0.85 floor, spread, liquidity, 24 h window, acceptingOrders). Fresh entries keep every strict gate; the 10% cap and equal split are unchanged. Fail-open if the relaxed pass errors.
+
 ## [5.1.0] - 2026-07-19
 
 Polymarket Bot **v5.1** — equal-weight full deployment: cash ≈ $0 at all times, every line targets an equal share of the account under an absolute 10% per-line cap, leftover cash redistributes equally across open lines with room once ≥10 positions exist, bot 1 synced to bot 2's forecast-gated weather strategy, and the Gamma scan 422 fixed.

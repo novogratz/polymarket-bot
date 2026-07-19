@@ -4313,6 +4313,36 @@ class LeftoverRedistributionTests(unittest.TestCase):
             _redistribute_leftover_cash(None, s3, portfolio3, eligible3, 0, "grinder"), [])
         self.assertEqual(self.placed, [])
 
+    def test_relaxed_pool_reaches_lines_above_the_entry_band(self):
+        # User 2026-07-19: a winning line converges past max_price 0.94 and
+        # drops out of the strict entry pool — the redistribution must still
+        # reach it via the relaxed pool (max_price lifted to the 0.96 hard
+        # cap, forecast gates off), up to the 10% cap.
+        from polymarket_bot.race_strategies import (
+            _build_eligible_candidates, _redistribute_leftover_cash,
+        )
+        s, portfolio, eligible = self._setup(12, cash=95.0)
+        s = Settings(race_min_price=0.85, race_max_price=0.94,
+                     race_max_price_hard_cap=0.96,
+                     race_max_spread=0.04, race_max_hours=24.0,
+                     race_weather_only=True, race_full_deploy=True,
+                     race_full_deploy_redistribute_min_lines=10,
+                     race_cash_floor_pct=0.0, dry_run=True)
+        # One held market's ask drifts to 0.95: out of the strict band.
+        drifted = _redistribution_market(
+            "m0", "Highest temperature in City0 on 2026-07-19?", "city0-temp")
+        drifted["bestAsk"] = 0.95
+        drifted["bestBid"] = 0.94
+        drifted["outcomePrices"] = '["0.95", "0.05"]'
+        markets = [drifted]
+        strict = _build_eligible_candidates(markets, s)
+        self.assertEqual(strict, [])  # gone from the entry pool...
+        eligible_now = [e for e in eligible if e[0].market_id != "m0"]
+        _redistribute_leftover_cash(None, s, portfolio, eligible_now, 0,
+                                    "grinder", markets=markets)
+        placed_tokens = {p["token"] for p in self.placed}
+        self.assertIn("tok-m0-y", placed_tokens)  # ...but still topped up
+
     def test_untradeable_lines_are_skipped_and_cash_spreads_over_the_rest(self):
         from polymarket_bot.race_strategies import _redistribute_leftover_cash
 
