@@ -711,12 +711,26 @@ def execute_live_trade(
             equity = float(portfolio.summary().get("equity", portfolio.cash))
             line_cap = max(5.0, equity * pct) if pct > 0 else equity
             held_value = held_on_chain * float(candidate.best_ask)
-            if held_value >= line_cap:
+            room = line_cap - held_value
+            # No room for even a minimum order → refuse outright (the wallet is
+            # already at/over the line cap on this token).
+            min_order_usd = max(1.0, settings.min_order_shares * float(candidate.best_ask))
+            if room < min_order_usd:
                 raise ValueError(
                     f"line_cap_blocked: wallet already holds {held_on_chain:.2f} shares "
                     f"(~${held_value:.2f}) ≥ line cap ${line_cap:.2f} — "
                     f"equal distribution, never over-bet one line (user 2026-07-19)"
                 )
+            # CLAMP the buy to the remaining room (2026-07-21): the block above
+            # only caught a line ALREADY at the cap — a line sitting just under
+            # it still took a full fresh-sized buy and overshot to ~2× the cap
+            # when the ledger failed to recognize the held line (topup misID via
+            # token_id/question mismatch, sync lag, or restart). Bounding every
+            # BUY by the chain-truth room means one order can never pierce the
+            # per-line cap, whatever the ledger thinks. (One 33°C Hong Kong line
+            # reached ~$67 on a ~$34 cap this way.)
+            if max_trade_usd is None or max_trade_usd > room:
+                max_trade_usd = round(room, 2)
 
     entry_price = round(min(candidate.best_ask + candidate.tick_size, 0.99), 3)
 

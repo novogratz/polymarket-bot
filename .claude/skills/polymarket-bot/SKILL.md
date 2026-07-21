@@ -95,7 +95,11 @@ trades every category) — not currently run live, same mechanics otherwise.
   floor — sum of targets = equity so cash ≈ $0 whenever ≥10 lines exist.
   Held lines top up TOWARD the shared target, never past it (below-cap
   lines stay actionable; buys clamped to target − stake; on-chain line-cap
-  guard `line_cap_blocked` in execute_live_trade). Supersedes the
+  guard in execute_live_trade CLAMPS every buy to the wallet's remaining
+  room under the cap (chain-truth, 2026-07-21) and blocks only when there's
+  no room for a min order — so a ledger-unrecognized held line can't be
+  re-bought as a fresh entry and overshoot to ~2× the cap; `line_cap_blocked`).
+  Supersedes the
   2026-07-11 no-reinforcement rule. Rollback: `full_deploy = false`,
   `fixed_stake_usd = 5.0`.
 - **Sizing (RETIRED v4 fixed-dollar — user 2026-06-21):** every trade = EXACTLY $5

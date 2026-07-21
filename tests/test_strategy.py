@@ -4212,6 +4212,40 @@ class NoRebetGuardTests(unittest.TestCase):
         except Exception as exc:
             self.assertNotIn("line_cap_blocked", str(exc))
 
+    def test_live_buy_is_clamped_to_room_not_allowed_to_overshoot(self):
+        """2026-07-21 fix: when the ledger doesn't recognize a held line, the
+        buy is sized as a fresh entry — a full cap-sized order ON TOP of the
+        existing holding, doubling it past the cap (one Hong Kong 33°C line hit
+        ~$67 on a ~$34 cap this way). The guard must CLAMP the order to the
+        remaining chain-truth room, not just block when already over."""
+        placed = {}
+
+        class FakeClient:
+            def live_share_balance(self, token_id):
+                return 3.0  # ~$2.55 at ask 0.85 → room = $10 cap − $2.55 = $7.45
+
+            def live_available_balance(self):
+                return 100.0
+
+            def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
+                placed["amount"] = amount
+                return ({"amount": amount}, {"success": True, "status": "matched",
+                                             "makingAmount": str(amount),
+                                             "takingAmount": str(amount / price),
+                                             "orderID": "x"})
+
+        settings = Settings(race_full_deploy=True, dry_run=False, quiet=True,
+                            race_full_deploy_max_position_pct=0.10,
+                            min_order_shares=5.0)
+        portfolio = Portfolio(cash=100.0, positions=[])  # ledger knows NOTHING
+        # A fresh-entry-sized request ($30) must be clamped to the ~$7.45 room,
+        # so the on-chain holding can never be pushed past the $10 line cap.
+        execute_live_trade(FakeClient(), settings, self._candidate(),
+                           portfolio, min_trade_usd=1.0, max_trade_usd=30.0)
+        self.assertIn("amount", placed)  # order placed, not blocked
+        self.assertLessEqual(placed["amount"], 7.45 + 0.01)  # clamped to room
+        self.assertGreater(placed["amount"], 0.0)
+
 
 class LeftoverRedistributionTests(unittest.TestCase):
     """User 2026-07-19: "with more than 10 positions i would expect 100% of
