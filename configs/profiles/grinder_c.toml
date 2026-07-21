@@ -18,9 +18,9 @@
 # are often converging toward resolution and stay tradeable.
 
 [run]
-# Bot 4 baseline (2026-07-19 fresh start): $19 starting equity. Override on the
+# Bot 3 baseline (reset 2026-07-21): $300 starting equity. Override on the
 # machine with fresh_start.py --equity if the real funded amount differs.
-starting_cash = 19.0
+starting_cash = 300.0
 mode = "grinder"
 
 [sizing]
@@ -33,7 +33,7 @@ cash_floor_pct = 0.05
 position_pct = 0.50
 min_open_positions = 0
 starter_trade_usd = 1.5
-assumed_live_balance_usd = 19.0
+assumed_live_balance_usd = 300.0
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.50
 
