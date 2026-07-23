@@ -99,6 +99,7 @@ KILL_PROTECTED_PROFILES = {
     "random",
     "grinder",                  # active live profile (2026-05-26)
     "grinder_b",                # active live profile — bot 2/3 (run_live_b.sh)
+    "grinder_c",                # active live profile — bot 3 (run_live_c.sh, 2026-07-23)
     "grinder_b2",               # active live profile — bot 2 looser (run_live_b2.sh)
     "claude_baseline_persist",  # active live profile (2026-05-20)
     "auto_mombreak_locktight",  # recent live, kept for comparison

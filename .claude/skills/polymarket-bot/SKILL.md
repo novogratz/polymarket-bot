@@ -57,15 +57,19 @@ general-purpose configuration (`weather_only = false`, `unban_all_markets`,
 trades every category) — not currently run live, same mechanics otherwise.
 
 - **Config (source of truth):** `configs/profiles/grinder.toml` (bot 1) and
-  `configs/profiles/grinder_b.toml` (bots 2 & 3). Keep their strategy keys in sync.
+  `configs/profiles/grinder_b.toml` (bots 2 & 3), `configs/profiles/grinder_c.toml`
+  (grinder_c bot on this Mac — forecast-weather clone of grinder_b). Keep their strategy keys in sync.
 - **WEATHER-ONLY lane (user 2026-07-06, "put bot 1 to the same strategy as
   bot 2 which is weather only bets"):** `weather_only = true`
   (`POLYMARKET_RACE_WEATHER_ONLY`) in BOTH profiles — entry selection keeps
   ONLY weather / temperature markets (`is_weather_market` in `models.py`:
   temperature, °C/°F, weather, rainfall, snowfall, high/low temp) and
   bypasses the ban list (weather is itself banned there). Every non-weather
-  market is dropped. Ported from `kzer_windows` (bot 3's 2026-06-23
-  experiment); `WeatherOnlyLaneTests` pin the behavior.
+  market is dropped. **Per-city bans (`_BANNED_WEATHER_CITIES`, user
+  2026-07-23): Helsinki** is dropped at entry (word-bounded on question +
+  slug); held bans still ride to resolution (never sold). Ported from
+  `kzer_windows` (bot 3's 2026-06-23 experiment); `WeatherOnlyLaneTests` pin
+  the behavior.
 - **Entry:** ask ∈ **[0.80, 0.94]**, absolute hard cap **0.96**
   (`max_price_hard_cap`, v4 2026-06-21 — 0.97+ never tradeable),
   **game starts OR market closes within
@@ -88,13 +92,22 @@ trades every category) — not currently run live, same mechanics otherwise.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
   dropped before pick-slot truncation.
 - **Sizing (EQUAL-WEIGHT FULL DEPLOYMENT — user 2026-07-19, "cash close
-  to 0$ all the time, equally distributed"):** `full_deploy = true` +
-  `full_deploy_max_position_pct = 0.10` (doubled from 5%). Every line
-  targets equity / N over ALL lines (open + new actionable), 10% cap, $5
-  floor — sum of targets = equity so cash ≈ $0 whenever ≥10 lines exist.
+  to 0$ all the time, equally distributed"):** `full_deploy = true`.
+  **Two-tier cap (user 2026-07-23, "prioritize more positions over 10% per
+  position — only do the 10% if there are not enough positions — put 5% as
+  default"):** `full_deploy_max_position_pct = 0.05` is the SOFT default
+  (entries/top-ups/chain guard) → spreads across ~20 lines;
+  `full_deploy_redistribute_max_position_pct = 0.10` is the HARD ceiling the
+  leftover-cash redistribution grows a line to, ONLY when no fresh market
+  exists (`_full_deploy_hard_cap_usd`). Every line targets equity / N over
+  ALL lines (open + new actionable), 5% soft cap, $5 floor.
   Held lines top up TOWARD the shared target, never past it (below-cap
   lines stay actionable; buys clamped to target − stake; on-chain line-cap
-  guard `line_cap_blocked` in execute_live_trade). Supersedes the
+  guard in execute_live_trade CLAMPS every buy to the wallet's remaining
+  room under the cap (chain-truth, 2026-07-21) and blocks only when there's
+  no room for a min order — so a ledger-unrecognized held line can't be
+  re-bought as a fresh entry and overshoot to ~2× the cap; `line_cap_blocked`).
+  Supersedes the
   2026-07-11 no-reinforcement rule. Rollback: `full_deploy = false`,
   `fixed_stake_usd = 5.0`.
 - **Sizing (RETIRED v4 fixed-dollar — user 2026-06-21):** every trade = EXACTLY $5
@@ -179,10 +192,12 @@ trades every category) — not currently run live, same mechanics otherwise.
 
 ## Multi-bot layout
 
-3 independent live bots, each its own wallet / `.env` / ledger.
+4 independent live bots, each its own wallet / `.env` / ledger.
 
 - **Launchers:** `run_live_70.sh` (bot 1, grinder), `run_live_b.sh` (bots 2 & 3,
-  weather mode), `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
+  weather mode), `run_live_c.sh` (grinder_c bot on this Mac, added 2026-07-19 —
+  forecast-weather clone of grinder_b, Telegram "Grinder Bot 3"),
+  `run_live_win.sh` (Windows). Branches: `main` + `kzer_windows`.
 - **Per-machine baseline:** `data/starting_cash.txt` (gitignored) — each bot's
   report baseline, independent of the shared profile. Written by `fresh_start.py`.
 - Ledger/journal/cache are gitignored = per-machine; only code + profiles are shared.
