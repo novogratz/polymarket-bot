@@ -2894,6 +2894,17 @@ def _run_race_tick(
                 min_samples=min_samples,
                 roi_threshold=float(getattr(settings, "race_category_disable_roi", -0.05)),
             )
+            # STARVATION GUARD at the SOURCE (bug 2026-07-23): the weather-only
+            # lane trades ONLY weather markets, so if a losing streak drags the
+            # weather category's ROI below the disable threshold the auto-disable
+            # would drop the one category the bot can trade — starving it. Older
+            # code discarded "weather" only inside _build_eligible_candidates, so
+            # the tick log still printed `category auto-disable: ['weather']`
+            # (alarming, and a latent starvation risk for any other consumer of
+            # this set). Discard it here so the log and every downstream use are
+            # consistent; the entry-filter guard stays as belt-and-suspenders.
+            if getattr(settings, "race_weather_only", False):
+                disabled_cats.discard("weather")
             if disabled_cats:
                 _step(settings, f"   category auto-disable: {sorted(disabled_cats)}")
         except Exception:
