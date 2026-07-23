@@ -28,12 +28,12 @@ export POLYMARKET_SYNC_LIVE_POSITIONS=1
 export SSL_CERT_FILE="${SSL_CERT_FILE:-$(uv run python -c 'import certifi; print(certifi.where())' 2>/dev/null)}"
 export REQUESTS_CA_BUNDLE="${REQUESTS_CA_BUNDLE:-$SSL_CERT_FILE}"
 
-# Bot 3 bankroll fallback = $9 (baseline reset 2026-07-23).
+# Bot 3 bankroll fallback = $15 (baseline reset 2026-07-23).
 # The bot reads the real USDC balance from CLOB each tick; these only kick in
 # if that read fails. MUST match grinder_c.toml starting_cash and
 # data/starting_cash.txt — a mismatched fallback skews "depuis le début" %.
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-9.0}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-9.0}
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-15.0}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-15.0}
 
 # 10s tick — 3× faster than 30s, catches more fleeting band entries.
 export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
