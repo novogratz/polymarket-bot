@@ -65,8 +65,11 @@ trades every category) — not currently run live, same mechanics otherwise.
   ONLY weather / temperature markets (`is_weather_market` in `models.py`:
   temperature, °C/°F, weather, rainfall, snowfall, high/low temp) and
   bypasses the ban list (weather is itself banned there). Every non-weather
-  market is dropped. Ported from `kzer_windows` (bot 3's 2026-06-23
-  experiment); `WeatherOnlyLaneTests` pin the behavior.
+  market is dropped. **Per-city bans (`_BANNED_WEATHER_CITIES`, user
+  2026-07-23): Helsinki** is dropped at entry (word-bounded on question +
+  slug); held bans still ride to resolution (never sold). Ported from
+  `kzer_windows` (bot 3's 2026-06-23 experiment); `WeatherOnlyLaneTests` pin
+  the behavior.
 - **Entry:** ask ∈ **[0.80, 0.94]**, absolute hard cap **0.96**
   (`max_price_hard_cap`, v4 2026-06-21 — 0.97+ never tradeable),
   **game starts OR market closes within
@@ -89,10 +92,15 @@ trades every category) — not currently run live, same mechanics otherwise.
   Scan paginates Gamma past its 100-row cap; held/pending/capped markets are
   dropped before pick-slot truncation.
 - **Sizing (EQUAL-WEIGHT FULL DEPLOYMENT — user 2026-07-19, "cash close
-  to 0$ all the time, equally distributed"):** `full_deploy = true` +
-  `full_deploy_max_position_pct = 0.10` (doubled from 5%). Every line
-  targets equity / N over ALL lines (open + new actionable), 10% cap, $5
-  floor — sum of targets = equity so cash ≈ $0 whenever ≥10 lines exist.
+  to 0$ all the time, equally distributed"):** `full_deploy = true`.
+  **Two-tier cap (user 2026-07-23, "prioritize more positions over 10% per
+  position — only do the 10% if there are not enough positions — put 5% as
+  default"):** `full_deploy_max_position_pct = 0.05` is the SOFT default
+  (entries/top-ups/chain guard) → spreads across ~20 lines;
+  `full_deploy_redistribute_max_position_pct = 0.10` is the HARD ceiling the
+  leftover-cash redistribution grows a line to, ONLY when no fresh market
+  exists (`_full_deploy_hard_cap_usd`). Every line targets equity / N over
+  ALL lines (open + new actionable), 5% soft cap, $5 floor.
   Held lines top up TOWARD the shared target, never past it (below-cap
   lines stay actionable; buys clamped to target − stake; on-chain line-cap
   guard in execute_live_trade CLAMPS every buy to the wallet's remaining

@@ -397,7 +397,17 @@ class Settings:
     # order). Cash the cap can't place stays idle rather than piling onto one
     # market — diversification wins over strict 100% deployment. 0 = uncapped
     # (the 2026-07-09 behavior).
-    race_full_deploy_max_position_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FULL_DEPLOY_MAX_POSITION_PCT", 0.10))
+    race_full_deploy_max_position_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FULL_DEPLOY_MAX_POSITION_PCT", 0.05))
+    # SOFT vs HARD per-line cap (user 2026-07-23: "prioritize more positions
+    # over 10% per position — only do the 10% if there are not enough
+    # positions — put 5% as default"). ``max_position_pct`` (5%) is the DEFAULT
+    # cap every fresh entry / top-up / the chain guard uses — it spreads the
+    # bankroll across ~20 lines. ``redistribute_max_position_pct`` (10%) is the
+    # HARD ceiling the leftover-cash redistribution is allowed to grow lines to,
+    # and ONLY when there is no fresh market to open (not enough new positions):
+    # the ≥10 held lines then grow from 5% toward 10% to soak up idle cash. 0
+    # falls back to the soft cap.
+    race_full_deploy_redistribute_max_position_pct: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_FULL_DEPLOY_REDISTRIBUTE_MAX_POSITION_PCT", 0.10))
     # Leftover-cash redistribution (user 2026-07-19: "with more than 10
     # positions i would expect 100% of my cash being used... redistribute it
     # to all open positions when there is no new positions"). When the

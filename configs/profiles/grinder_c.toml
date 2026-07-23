@@ -18,9 +18,10 @@
 # are often converging toward resolution and stay tradeable.
 
 [run]
-# Bot 3 baseline (reset 2026-07-21): $300 starting equity. Override on the
-# machine with fresh_start.py --equity if the real funded amount differs.
-starting_cash = 300.0
+# Bot 3 baseline (reset 2026-07-23): $390 starting equity, trades reset to 0.
+# Override on the machine with fresh_start.py --equity if the real funded
+# amount differs.
+starting_cash = 390.0
 mode = "grinder"
 
 [sizing]
@@ -33,7 +34,7 @@ cash_floor_pct = 0.05
 position_pct = 0.50
 min_open_positions = 0
 starter_trade_usd = 1.5
-assumed_live_balance_usd = 300.0
+assumed_live_balance_usd = 390.0
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.50
 
@@ -108,7 +109,15 @@ stake_usd = 1.0
 # full_deploy OVERRIDES fixed_stake_usd; rollback to fixed-$5 =
 # full_deploy = false, fixed_stake_usd = 5.0.
 full_deploy = true
-full_deploy_max_position_pct = 0.10
+# SOFT default cap = 5% (user 2026-07-23: "prioritize more positions over 10%
+# per position — only do the 10% if there are not enough positions — put 5%
+# as default"). Every fresh entry / top-up / the chain guard uses this, so the
+# bankroll spreads across ~20 lines.
+full_deploy_max_position_pct = 0.05
+# HARD cap = 10% — the ceiling the leftover-cash redistribution may grow a held
+# line to, and ONLY when a tick finds NO fresh market to open (not enough new
+# positions). The ≥10 held lines then grow 5% → 10% to soak up idle cash.
+full_deploy_redistribute_max_position_pct = 0.10
 # Leftover-cash redistribution (user 2026-07-19, "with more than 10
 # positions i would expect 100% of my cash being used... each position is
 # max 10% of the overall account"): with >= 10 open lines AND no fresh

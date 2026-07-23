@@ -210,6 +210,21 @@ def _log_forward_observations(markets: list[dict[str, Any]], settings: Settings)
     return len(rows)
 
 
+# Weather cities banned from entry (user 2026-07-23: "ban Helsinki from your
+# future bets"). Lower-case; matched word-bounded against the question and the
+# de-slugged slug so e.g. a city name can't collide with a substring. Extend
+# this set to ban more cities.
+_BANNED_WEATHER_CITIES: frozenset[str] = frozenset({"helsinki"})
+
+
+def _is_banned_weather_city(market: dict[str, Any]) -> bool:
+    """True when a weather market's location is on the per-city ban list."""
+    q = str(market.get("question") or "").lower()
+    slug = str(market.get("slug") or "").lower().replace("-", " ")
+    text = f"{q} {slug}"
+    return any(re.search(rf"\b{re.escape(city)}\b", text) for city in _BANNED_WEATHER_CITIES)
+
+
 def _build_eligible_candidates(
     markets: list[dict[str, Any]],
     settings: Settings,
@@ -256,6 +271,13 @@ def _build_eligible_candidates(
             # Keep ONLY weather markets; this lane bypasses the ban list
             # (weather is itself banned there).
             if not is_weather_market(market):
+                continue
+            # Per-city weather bans (user 2026-07-23: "ban Helsinki from your
+            # future bets"). Matched against the question + de-slugged slug as
+            # word-bounded substrings; a banned city's markets never enter and
+            # its held lines drop out of the top-up/redistribution pool too
+            # (any existing position still rides to resolution — never sold).
+            if _is_banned_weather_city(market):
                 continue
         elif not unban_all and is_excluded_market(market):
             continue
@@ -2226,6 +2248,24 @@ def _full_deploy_cap_usd(settings: Settings, equity: float) -> float:
     return max(0.0, min(equity, max(5.0, equity * pct)))
 
 
+def _full_deploy_hard_cap_usd(settings: Settings, equity: float) -> float:
+    """HARD per-line ceiling the leftover-cash redistribution may grow to.
+
+    User 2026-07-23 ("prioritize more positions over 10% per position — only
+    do the 10% if there are not enough positions — put 5% as default"): fresh
+    entries and top-ups use the SOFT cap (``_full_deploy_cap_usd``, 5%) so the
+    bankroll spreads across many lines; only when a tick finds NO new market to
+    open does redistribution grow the held lines from 5% toward THIS hard cap
+    (10%) to deploy the otherwise-idle cash. Falls back to the soft cap when
+    the hard pct is unset or below it.
+    """
+    hard_pct = float(getattr(settings, "race_full_deploy_redistribute_max_position_pct", 0.0) or 0.0)
+    soft = _full_deploy_cap_usd(settings, equity)
+    if hard_pct <= 0:
+        return soft
+    return max(soft, min(equity, max(5.0, equity * hard_pct)))
+
+
 def _position_cap_usd(settings: Settings, equity: float) -> float:
     """HARD maximum total cost basis allowed on one position.
 
@@ -2628,7 +2668,10 @@ def _redistribute_leftover_cash(
     if cash_above_floor < 2.0:
         return []
     equity = float(portfolio.summary().get("equity", portfolio.cash))
-    cap = _full_deploy_cap_usd(settings, equity)
+    # HARD cap here (user 2026-07-23): redistribution is the ONLY path allowed
+    # to grow a line past the 5% soft cap toward 10%, and only when no fresh
+    # market exists this tick (guaranteed by the fresh_actionable == 0 gate).
+    cap = _full_deploy_hard_cap_usd(settings, equity)
     by_token = {c.token_id: c for c, _ in eligible if c.token_id}
     if markets:
         try:
@@ -2695,6 +2738,11 @@ def _redistribute_leftover_cash(
                 max_trade_usd=stake,
                 strategy=strategy_name,
                 signal=signal_payload,
+                # Exempt from the 5% chain guard: redistribution deliberately
+                # grows held lines toward the 10% hard cap, and self-bounds via
+                # ``room = hard_cap − stake`` over KNOWN positions (no misID),
+                # so the guard's soft cap must not clamp it back to 5%.
+                line_cap_exempt=True,
             )
             executed.append({
                 "strategy": strategy_name,

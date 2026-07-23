@@ -106,7 +106,15 @@ stake_usd = 1.0
 # full_deploy OVERRIDES fixed_stake_usd; rollback to fixed-$5 =
 # full_deploy = false, fixed_stake_usd = 5.0.
 full_deploy = true
-full_deploy_max_position_pct = 0.10
+# SOFT default cap = 5% (user 2026-07-23: "prioritize more positions over 10%
+# per position — only do the 10% if there are not enough positions — put 5%
+# as default"). Every fresh entry / top-up / the chain guard uses this, so the
+# bankroll spreads across ~20 lines.
+full_deploy_max_position_pct = 0.05
+# HARD cap = 10% — the ceiling the leftover-cash redistribution may grow a held
+# line to, and ONLY when a tick finds NO fresh market to open (not enough new
+# positions). The ≥10 held lines then grow 5% → 10% to soak up idle cash.
+full_deploy_redistribute_max_position_pct = 0.10
 # Leftover-cash redistribution (user 2026-07-19, "with more than 10
 # positions i would expect 100% of my cash being used... each position is
 # max 10% of the overall account"): with >= 10 open lines AND no fresh

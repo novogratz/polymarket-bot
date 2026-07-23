@@ -3563,6 +3563,29 @@ class WeatherOnlyLaneTests(unittest.TestCase):
         weather = self._market("w", "Highest temperature in NYC on 2026-06-23?", "nyc-high-temp")
         self.assertEqual(_build_eligible_candidates([weather], settings), [])
 
+    def test_helsinki_is_banned_from_the_weather_lane(self):
+        # User 2026-07-23: "ban Helsinki from your future bets". A Helsinki
+        # weather market is dropped at entry selection even though it IS a
+        # valid weather market; every other city still passes.
+        from polymarket_bot.race_strategies import (
+            _build_eligible_candidates, _is_banned_weather_city,
+        )
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=24.0,
+                            race_weather_only=True)
+        helsinki = self._market(
+            "h", "Will the highest temperature in Helsinki be 20°C on 2026-07-23?",
+            "helsinki-high-temp-20c")
+        oslo = self._market(
+            "o", "Will the highest temperature in Oslo be 22°C on 2026-07-23?",
+            "oslo-high-temp-22c")
+        ids = {c.market_id for c, _ in _build_eligible_candidates([helsinki, oslo], settings)}
+        self.assertEqual(ids, {"o"})  # Helsinki dropped, Oslo kept
+        # Word-bounded: a slug substring can't collide (no false ban).
+        self.assertFalse(_is_banned_weather_city(oslo))
+        self.assertTrue(_is_banned_weather_city(helsinki))
+
     def test_auto_disable_can_never_starve_the_weather_lane(self):
         # 2026-07-10: "weather" is a real category now — if its realized ROI
         # dipped below the auto-disable threshold, the governance would drop
@@ -4033,25 +4056,27 @@ class FullDeploySizingTests(unittest.TestCase):
         self.assertAlmostEqual(_dynamic_stake_target(s, 1000.0, 800.0, 4, 3.0), 200.0)
 
     def test_diversification_cap_bounds_every_bet(self):
-        # User 2026-07-11 THE RULE: "each position must be maximum 5% of the
-        # overall account - thats the rule - so if we have like $200 equity,
-        # position is max $10" (tightened from the 10% of 2026-07-10).
+        # User 2026-07-23 THE RULE: "prioritize more positions over 10% per
+        # position — only do the 10% if there are not enough positions — put
+        # 5% as default" (soft default back to 5%; 10% is the redistribution-
+        # only hard cap, tested separately).
         from polymarket_bot.race_strategies import (
             _dynamic_stake_target, _entry_cap_usd, _position_cap_usd,
         )
-        s = self._settings()  # default pct = 0.10 (doubled 2026-07-19)
-        self.assertAlmostEqual(s.race_full_deploy_max_position_pct, 0.10)
-        # $200 bankroll, 1 line → the 10% cap ($20), NOT $200.
-        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 1, 3.0), 20.0)
-        # Both caps = 10% of equity → top-ups stop at $20 too.
-        self.assertAlmostEqual(_position_cap_usd(s, 200.0), 20.0)
-        self.assertAlmostEqual(_entry_cap_usd(s, 200.0), 20.0)
+        s = self._settings()  # default soft pct = 0.05 (2026-07-23)
+        self.assertAlmostEqual(s.race_full_deploy_max_position_pct, 0.05)
+        # $200 bankroll, 1 line → the 5% soft cap ($10), NOT $200.
+        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 1, 3.0), 10.0)
+        # Entry/top-up caps = 5% of equity → top-ups stop at $10 too.
+        self.assertAlmostEqual(_position_cap_usd(s, 200.0), 10.0)
+        self.assertAlmostEqual(_entry_cap_usd(s, 200.0), 10.0)
         # EQUAL WEIGHT (user 2026-07-19, "equally distributed... cash close
         # to 0"): with 40 total lines each targets equity/40 = $5; with 10
-        # lines each targets $20 (the cap) — sum of targets = equity, so
-        # cash deploys fully whenever ≥10 lines exist.
+        # lines each targets $10 (the soft cap). Reaching 100% deployment now
+        # needs ~20 lines — or the redistribution grows the held lines toward
+        # the 10% hard cap when no fresh market exists.
         self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 40, 3.0), 5.0)
-        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 10, 3.0), 20.0)
+        self.assertAlmostEqual(_dynamic_stake_target(s, 200.0, 200.0, 10, 3.0), 10.0)
 
     def test_cap_floors_at_5_for_small_bankrolls(self):
         # 10% of $40 = $4 < Polymarket's ~5-share minimum → floor at $5.
@@ -4302,21 +4327,24 @@ class LeftoverRedistributionTests(unittest.TestCase):
         out = _redistribute_leftover_cash(None, s, portfolio, eligible, 0, "grinder")
         self.assertEqual(len(out), 12)
         stakes = [p["stake"] for p in self.placed]
-        # Equal split of the whole cash pile, NOT cap-exempt (10% absolute).
+        # Equal split of the whole cash pile. Redistribution is CHAIN-cap
+        # exempt (2026-07-23): it self-bounds via room = 10% hard cap − stake
+        # over KNOWN positions, and must bypass the 5% soft guard to grow lines
+        # toward 10%.
         self.assertAlmostEqual(stakes[0], 95.0 / 12, places=1)
         self.assertAlmostEqual(min(stakes), max(stakes), places=1)
-        self.assertFalse(any(p["exempt"] for p in self.placed))
+        self.assertTrue(all(p["exempt"] for p in self.placed))
 
     def test_every_add_clamps_to_the_10pct_cap(self):
-        # User 2026-07-19 (refinement): "each position is max 10% of the
-        # overall account" — redistribution never pushes a line past the cap;
-        # at-cap lines get nothing and excess cash waits.
+        # User 2026-07-23: redistribution may grow a line only up to the 10%
+        # HARD cap (not the 5% soft entry cap), and never past it — at-cap
+        # lines get nothing and excess cash waits.
         from polymarket_bot.race_strategies import (
-            _full_deploy_cap_usd, _redistribute_leftover_cash,
+            _full_deploy_hard_cap_usd, _redistribute_leftover_cash,
         )
         s, portfolio, eligible = self._setup(12, cash=500.0)
         equity = float(portfolio.summary().get("equity", portfolio.cash))
-        cap = _full_deploy_cap_usd(s, equity)
+        cap = _full_deploy_hard_cap_usd(s, equity)
         # Push one line well past the cap — it must receive nothing.
         # (cap scales with equity, so use 2x to stay decisively above it.)
         portfolio.positions[0]["stake"] = cap * 2
