@@ -164,7 +164,7 @@ preferred_volume_usd = 5000.0
 # strong subjective marker drops below 60. The one structural protection that
 # survives the unban.
 min_resolution_clarity = 60.0
-stake_pct = 0.1
+stake_pct = 0.05
 initial_stake_pct = 0.20
 # Dip double-down (user 2026-06-14, widened 2026-06-16): add to ANY held
 # position whose live ask has dipped below entry while it's still a favorite
