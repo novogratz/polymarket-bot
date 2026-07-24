@@ -172,7 +172,7 @@ double_down_min_price = 0.60
 # $5 positions per tick so a fresh bankroll deploys fast across many distinct
 # games (each still passes every entry filter; one bet per game/event). The $5
 # cap bounds risk regardless of count.
-max_orders_per_tick = 20
+max_orders_per_tick = 19
 # Full-deploy (user 2026-07-09): no cash reserve — 100% invested.
 cash_floor_pct = 0.0
 
