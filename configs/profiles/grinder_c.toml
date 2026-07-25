@@ -18,10 +18,10 @@
 # are often converging toward resolution and stay tradeable.
 
 [run]
-# Bot 3 baseline (reset 2026-07-25): $100 starting equity, trades reset to 0.
+# Bot 3 baseline (reset 2026-07-25): $99 starting equity, trades reset to 0.
 # Override on the machine with fresh_start.py --equity if the real funded
 # amount differs.
-starting_cash = 100.0
+starting_cash = 99.0
 mode = "grinder"
 
 [sizing]
@@ -34,7 +34,7 @@ cash_floor_pct = 0.05
 position_pct = 0.50
 min_open_positions = 0
 starter_trade_usd = 1.5
-assumed_live_balance_usd = 100.0
+assumed_live_balance_usd = 99.0
 max_trade_usd = 0.0
 high_conviction_balance_fraction = 0.50
 
@@ -67,7 +67,9 @@ min_volume_24h_usd = 200.0
 # v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
 # 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
 # is the ABSOLUTE ceiling — 0.97/0.98/0.99 are never tradeable.
-min_price = 0.85
+# Price floor 0.85 -> 0.80 (user 2026-07-25, "bot not betting on enough
+# positions"): widen the entry band to admit more weather favorites.
+min_price = 0.80
 max_price = 0.94
 max_price_hard_cap = 0.96
 
@@ -137,11 +139,13 @@ unban_all_markets = true
 # (is_weather_market in models.py). Entries are additionally cross-checked
 # against an Open-Meteo multi-model forecast before entry (below).
 weather_only = true
-weather_forecast_min_edge = 0.10   # raised 0.05→0.10: multi-model σ is tighter now
-# Bracket margin guard (2026-06-28): skip "No" bet if any model is within
-# this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
-# bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.
-weather_min_bracket_margin_c = 2.0
+# FORECAST GATE OFF (user 2026-07-25, "why bot is not betting on more
+# positions"): the Open-Meteo edge gate (min_edge 0.10 + 2.0°C bracket margin)
+# was passing only ~2 of 122 weather markets. Bot 3 now trades weather markets
+# on price/liquidity heuristics alone (like bot 1) → ~20 eligible lines. Bots
+# 2 & 3 (grinder_b.toml) KEEP the gate. Re-enable = restore 0.10 / 2.0.
+weather_forecast_min_edge = 0.0
+weather_min_bracket_margin_c = 0.0
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh
