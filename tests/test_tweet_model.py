@@ -129,6 +129,10 @@ class TestTweetOutcomeProbability(unittest.TestCase):
         tweet_model._fitted_model.cache_clear()
         self._patchers = [
             patch.object(tweet_model, "_fetch_json", side_effect=self._fetch_json),
+            # Isolate from a real data/tweet_regime.json the live sidecar may
+            # have written on this machine — the synthetic feed must be priced
+            # with a neutral regime.
+            patch.object(tweet_model, "REGIME_FILE", "/nonexistent/tweet_regime.json"),
         ]
         for p in self._patchers:
             p.start()

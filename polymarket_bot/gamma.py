@@ -90,6 +90,23 @@ class GammaClient:
             offset += len(payload)
         return results
 
+    def get_event_markets_by_slug(self, slug: str) -> list[dict[str, Any]]:
+        """All markets of one event, looked up by its exact event slug.
+
+        Used by the tweet-only lane: the generic capped scans slice most
+        bracket markets out of an 8-day window, but the xtracker trackings
+        carry each counting window's exact Polymarket event slug, so the
+        lane fetches its events directly. Returns [] on miss or error shape.
+        """
+        clean = str(slug or "").strip().strip("/")
+        if not clean:
+            return []
+        payload = self._get_json(f"/events?{urllib.parse.urlencode({'slug': clean})}")
+        if not isinstance(payload, list) or not payload:
+            return []
+        markets = payload[0].get("markets")
+        return [m for m in markets if isinstance(m, dict)] if isinstance(markets, list) else []
+
     def get_markets_by_clob_token_ids(
         self,
         token_ids: list[str],

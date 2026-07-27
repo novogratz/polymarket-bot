@@ -154,6 +154,28 @@ def _posts_cached(handle: str, bucket: int) -> tuple:
     return tuple(stamps)
 
 
+def active_tracking_event_slugs() -> tuple[str, ...]:
+    """Event slugs of every ACTIVE xtracker counting window (all accounts).
+
+    The tracker's ``marketLink`` points at the exact Polymarket event page, so
+    the scan can fetch those events directly instead of hoping the capped
+    generic queries include their brackets. Cached with the users fetch
+    (5 min); returns () on any failure (the generic scan still runs).
+    """
+    try:
+        slugs = []
+        for user in _users_cached(_bucket()):
+            for tracking in user.get("trackings") or ():
+                if not tracking.get("isActive"):
+                    continue
+                link = str(tracking.get("marketLink") or "").rstrip("/")
+                if "/" in link:
+                    slugs.append(link.rsplit("/", 1)[-1])
+        return tuple(dict.fromkeys(slugs))
+    except Exception:
+        return ()
+
+
 def _parse_iso(raw: Any) -> Optional[datetime]:
     if not raw:
         return None

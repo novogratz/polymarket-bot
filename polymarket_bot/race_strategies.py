@@ -48,7 +48,7 @@ from .news_strategy import _asset_key, _event_slug, _quote_for_outcome
 from .portfolio import Portfolio
 from .pricing import _fetch_clob_quotes, ensure_open_positions_in_pool
 from .trading import build_client, execute_live_sell, execute_live_trade, live_best_bid
-from .tweet_model import parse_tweet_question, tweet_outcome_probability
+from .tweet_model import active_tracking_event_slugs, parse_tweet_question, tweet_outcome_probability
 from .weather_forecast import forecast_outcome_probability, parse_weather_question
 
 
@@ -62,7 +62,7 @@ def _load_short_expiry_markets(settings: Settings, max_hours: float | None = Non
     now = utc_now()
     horizon = now + timedelta(hours=max_hours if max_hours is not None else settings.race_max_hours)
     batches: list[list[dict[str, Any]]] = []
-    for kwargs in (
+    queries: list[dict[str, Any]] = [
         {
             "limit": settings.race_scan_limit,
             "end_date_min": now,
@@ -77,11 +77,28 @@ def _load_short_expiry_markets(settings: Settings, max_hours: float | None = Non
             "order": "volume",
             "ascending": False,
         },
-    ):
+    ]
+    for kwargs in queries:
         try:
             batches.append(client.get_markets(**kwargs))
         except Exception as exc:
             print(f"⚠️  race: gamma batch failed: {type(exc).__name__}: {exc}")
+    # Tweet-only lane (2026-07-27): the 8-day window holds thousands of
+    # markets, so the two capped generic queries slice most tweet brackets
+    # out (the first live tick saw 11 of ~100). Fetch the lane's events
+    # DIRECTLY — the xtracker trackings carry each counting window's exact
+    # Polymarket event slug — and merge/dedupe with the generic batches
+    # (which keep precedence for duplicate ids). Fail-open: any tracker or
+    # Gamma hiccup just leaves the generic scan.
+    if bool(getattr(settings, "race_tweet_only", False)):
+        try:
+            for event_slug in active_tracking_event_slugs():
+                try:
+                    batches.append(client.get_event_markets_by_slug(event_slug))
+                except Exception:
+                    continue
+        except Exception as exc:
+            print(f"⚠️  race: tweet event fetch failed (fail-open): {type(exc).__name__}: {exc}")
     merged: dict[str, dict[str, Any]] = {}
     for batch in batches:
         for market in batch:
