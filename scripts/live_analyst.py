@@ -625,12 +625,25 @@ def _fmt_expiry_fr(end_iso: str, game_start_iso: str = "", now: "datetime | None
     if now is None:
         now = datetime.now(timezone.utc)
     is_weather = False
+    is_tweet = False
     if question:
         try:
-            from polymarket_bot.models import is_weather_market
+            from polymarket_bot.models import is_tweet_market, is_weather_market
             is_weather = is_weather_market({"question": question})
+            is_tweet = is_tweet_market({"question": question})
         except Exception:
             is_weather = False
+            is_tweet = False
+    # TWEET-COUNT lane (2026-07-27): same mislabel class as weather — these
+    # positions ride multi-day counting windows, so the sports kickoff+2h45
+    # heuristic must never call them "Match terminé". Show the window end.
+    if is_tweet:
+        end = _parse_end_date(end_iso)
+        if end is None:
+            return "🐦 Se résout à la fin de la fenêtre de comptage"
+        if (end - now).total_seconds() <= 0:
+            return f"⌛ Fenêtre terminée ({_et_clock(end, now)}) — résolution en cours"
+        return f"🐦 Se résout à la fin de la fenêtre — {_et_clock(end, now)} ({_rel_fr(end, now)})"
     if is_weather:
         end = _parse_end_date(end_iso)
         if end is None:

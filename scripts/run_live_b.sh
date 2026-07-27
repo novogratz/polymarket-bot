@@ -12,6 +12,17 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# DUPLICATE GUARD (2026-07-27): a second live loop on the same wallet double-
+# trades every candidate (it happened when a manual launch raced the launchd
+# watchdog's copy). Refuse to start when one is already running — stop the
+# other stack first (launchctl unload ~/Library/LaunchAgents/
+# com.polymarket.grinder-b.plist for the watchdog copy).
+if pgrep -f "pmbot auto-loop --live" >/dev/null 2>&1; then
+    echo "[run_live] ABORT: another live pmbot auto-loop is already running:" >&2
+    pgrep -fl "pmbot auto-loop --live" >&2
+    exit 1
+fi
+
 # Daily logs: tee everything to a dated file under data/logs/ for debugging.
 LOG_DIR="$REPO_ROOT/data/logs"
 mkdir -p "$LOG_DIR"
