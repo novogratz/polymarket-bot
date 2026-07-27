@@ -355,8 +355,11 @@ def tweet_outcome_probability(parsed: dict, outcome: str) -> Optional[float]:
         if match is None:
             return None
         handle, start, end = match
-        stamps = _posts_cached(handle.lower(), _bucket(now.timestamp()))
-        model = _fitted_model(handle.lower(), _bucket(now.timestamp()))
+        # The xtracker API is CASE-SENSITIVE on handles (/users/zelenskyyua
+        # 404s while /users/ZelenskyyUa works) — always fetch with the exact
+        # handle from the user record. Only the regime-file lookup lowercases.
+        stamps = _posts_cached(handle, _bucket(now.timestamp()))
+        model = _fitted_model(handle, _bucket(now.timestamp()))
         if model is None:
             return None
         profile, r_daily = model

@@ -41,7 +41,27 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
 INTERVAL_S = int(os.environ.get("TWEET_REGIME_INTERVAL_SECONDS", "900"))
 REGIME_FILE = os.environ.get("POLYMARKET_TWEET_REGIME_FILE", "data/tweet_regime.json")
-HANDLES = [h.strip().lower() for h in os.environ.get("TWEET_REGIME_HANDLES", "elonmusk").split(",") if h.strip()]
+# NOTE: xtracker handles are CASE-SENSITIVE (/users/ZelenskyyUa works,
+# /users/zelenskyyua 404s) — keep them exactly as typed / as the API returns.
+HANDLES = [h.strip() for h in os.environ.get("TWEET_REGIME_HANDLES", "auto").split(",") if h.strip()]
+
+
+def _resolve_handles() -> list[str]:
+    """'auto' → every xtracker account with at least one ACTIVE counting
+    window (the count model prices all of them, so the regime layer should
+    watch all of them too). Fail-safe: elonmusk alone."""
+    if HANDLES != ["auto"]:
+        return HANDLES
+    try:
+        users = _get_json(f"{XTRACKER_BASE}/users").get("data") or []
+        auto = [
+            str(u.get("handle") or "")
+            for u in users
+            if any(t.get("isActive") for t in (u.get("trackings") or ()))
+        ]
+        return [h for h in auto if h] or ["elonmusk"]
+    except Exception:
+        return ["elonmusk"]
 
 _PROMPT = """You are monitoring the posting activity of the X account @{handle}.
 Here are their posts from the last 48 hours (newest first), one per line:
@@ -130,6 +150,7 @@ def main() -> None:
           f"handles={HANDLES} every {INTERVAL_S}s -> {REGIME_FILE}", flush=True)
     while True:
         try:
+            handles = _resolve_handles()
             current: dict = {}
             try:
                 with open(REGIME_FILE, encoding="utf-8") as fh:
@@ -137,11 +158,13 @@ def main() -> None:
             except Exception:
                 current = {}
             wrote = False
-            for handle in HANDLES:
+            for handle in handles:
                 try:
                     entry = _analyze(handle)
                     if entry is not None:
-                        current[handle] = entry
+                        # File keys are lowercase — tweet_model lowercases at
+                        # lookup; the fetch above keeps the exact-case handle.
+                        current[handle.lower()] = entry
                         wrote = True
                         print(f"[tweet-regime] {handle}: {entry['regime']} x{entry['multiplier']:.2f} "
                               f"— {entry['reason']}", flush=True)

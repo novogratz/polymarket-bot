@@ -141,7 +141,12 @@ max_chase_premium = 0.03
 enabled = false
 
 [btc_edge]
-enabled = false
+# ENABLED (user 2026-07-27 "do everything you can"): hourly BTC/ETH price-
+# threshold markets, model-gated (Black-Scholes >= 75% + >= 5 pt edge over
+# the market), $5 per-trade cap. Resolves every hour -> same-day turnover
+# between weather/tweet batches. The one crypto lane past decisions sanction
+# (the Up/Down coinflips stay excluded). Rollback: enabled = false.
+enabled = true
 min_model_probability = 0.75
 min_edge_over_market = 0.05
 min_buy_price = 0.75
