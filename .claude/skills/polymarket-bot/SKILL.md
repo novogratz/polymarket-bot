@@ -14,6 +14,15 @@ live** since 2026-07-06 (`weather_only = true` in both `grinder.toml` and
 smart-money copy-trading lane (`polymarket_bot/smart_money.py`) also exist in the
 codebase but aren't run live.
 
+**Branch `feat/tweet-count-lane` (2026-07-27, NOT merged/live):** proposed bot-2
+replacement — a `tweet_only` lane restricted to xtracker-backed tweet/post-count
+bracket markets, gated by a deterministic count model (`polymarket_bot/tweet_model.py`,
+`tweet_min_edge = 0.08` in `configs/profiles/tweet_b.toml`; `run_live_b.sh` switched
+to that profile), plus a LOCAL-OLLAMA-ONLY regime sidecar
+(`scripts/tweet_regime_sidecar.py`) whose output file the live loop merely reads.
+Mechanics mirror the weather lane (ban bypass, starvation-guarded "tweets" category,
+edge gate). See `docs/STRATEGIES.md` § "Lane tweet-count".
+
 ## Weather mode — current live strategy (all 3 bots)
 
 Same engine as grinder (same 5% fixed-fraction stake, same 0.99 winner floor, same

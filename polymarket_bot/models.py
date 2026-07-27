@@ -429,13 +429,14 @@ def is_excluded_market(market: dict[str, Any], now: datetime | None = None) -> b
     return False
 
 
-def is_hard_excluded_market(market: dict, weather_ok: bool = False) -> bool:
+def is_hard_excluded_market(market: dict, weather_ok: bool = False, tweet_ok: bool = False) -> bool:
     """Hard bans that survive unban_all_markets=True (unlike is_excluded_market).
 
     Esports, speech, and temperature/weather markets are banned outright and
     must not be admitted regardless of category-governance settings.
     ``weather_ok=True`` lifts only the weather check (used by the weather-only
-    bot which intentionally restricts itself to these markets).
+    bot which intentionally restricts itself to these markets); ``tweet_ok=True``
+    likewise lifts only the tweet-count check for the tweet-only lane.
     """
     q = str(market.get("question") or "").lower()
     slug = str(market.get("slug") or "").lower()
@@ -472,7 +473,9 @@ def is_hard_excluded_market(market: dict, weather_ok: bool = False) -> bool:
     # but unban_all_markets=True bypasses that; these fall into "other" which
     # never auto-disables. Slug check also catches "posts" markets whose slugs
     # use the same of-tweets pattern (e.g. Zelenskyy posts = zelenskyy-of-tweets-*).
-    if "tweet" in q or "-tweets" in slug or "of-tweets" in slug:
+    # tweet_ok=True lifts this for the tweet-only lane, whose xtracker-backed
+    # count model gives these markets the convergence signal they lack raw.
+    if not tweet_ok and ("tweet" in q or "-tweets" in slug or "of-tweets" in slug):
         return True
     return False
 
@@ -505,6 +508,19 @@ def is_weather_market(market: dict[str, Any]) -> bool:
     q = str(market.get("question") or "").lower()
     slug = str(market.get("slug") or "").lower().replace("-", " ")
     return any(p in q or p in slug for p in _WEATHER_SUBSTRINGS)
+
+
+def is_tweet_market(market: dict[str, Any]) -> bool:
+    """True for tweet/post-count bracket markets — the inverse of the tweet ban.
+
+    Used by the ``tweet_only`` lane to keep ONLY xtracker-backed count markets.
+    Deliberately the SAME predicate as the hard-ban clause in
+    ``is_hard_excluded_market`` so the lane's scope and the ban's scope can
+    never drift apart (what one admits is exactly what the other blocks).
+    """
+    q = str(market.get("question") or "").lower()
+    slug = str(market.get("slug") or "").lower()
+    return "tweet" in q or "-tweets" in slug or "of-tweets" in slug
 
 
 @dataclass(frozen=True)

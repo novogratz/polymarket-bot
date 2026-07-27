@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Tweet-count lane — proposed bot-2 replacement** (user 2026-07-27, branch `feat/tweet-count-lane`, NOT merged/live yet). New `tweet_only` lane: entry selection keeps ONLY xtracker-backed tweet/post-count bracket markets ("Will Elon Musk post 240-259 tweets from July 21 to July 28?") and lifts their hard ban — the exact same mechanics as the weather lane. Every entry is gated by a new deterministic count model (`polymarket_bot/tweet_model.py`): hour-of-week Poisson intensity + trailing-72h burst factor + negative-binomial tails, fitted per tick on the PUBLIC feed that resolves the market (xtracker.polymarket.com, post-level timestamps, full history in one call). `tweet_min_edge = 0.08` requires model-vs-ask edge ≥ 8 pts; a window that can't be matched to an xtracker tracking is skipped, never guessed. Calibration on 9 months of history (192 rolling weekly windows): realized win rate within ±2 pts of model probability across the 0.85–1.00 band. New profile `configs/profiles/tweet_b.toml` (clone of `grinder_b` with the lane swapped, 8-day entry window for the weekly brackets); `run_live_b.sh` switched to it. "tweets" is a first-class v4 category (starvation-guarded like weather). Optional regime sidecar `scripts/tweet_regime_sidecar.py`: LOCAL Ollama ONLY (default `qwen2.5:7b`) classifies the account's posting regime every 15 min and writes `data/tweet_regime.json`; the live loop only READS the file (stale >2h ignored, multiplier clamped [0.5, 2.0]) — no LLM call in the trade path, per the project's determinism rule.
+
 ### Changed
 
 - **Entry window reverted 48 h → 24 h** (user 2026-07-19, same day: "it took a lot of bets for 21 of july its way too far away bro... go back to 24h"). The 48 h experiment (#131) filled the book with day+2 brackets — forecast confidence aside, the user doesn't want capital parked that far from resolution. Back to `max_hours = 24` in both profiles; everything else from #131 unchanged (no other gate was touched).

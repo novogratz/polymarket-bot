@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Lance le bot en LIVE avec le profil grinder courant.
-# Toute la config vit dans configs/profiles/grinder.toml.
+# Lance le bot 2 en LIVE avec le profil TWEET-COUNT (remplacement de la
+# stratégie weather, user 2026-07-27). Toute la config vit dans
+# configs/profiles/tweet_b.toml.
 #
 # Ce script passe --yes : la confirmation interactive est skipée, donc aucun
 # besoin de TTY. Pour une exécution sans --yes (auto-loop --live tout court),
@@ -57,10 +58,10 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=0
 
 # Profile label exported BEFORE the live_analyst spawns, so the
 # sidecar inherits it (else it logs "(unknown)" in reports).
-export POLYMARKET_PROFILE_LABEL=grinder_b
+export POLYMARKET_PROFILE_LABEL=tweet_b
 
 # Name shown in the LIVE REPORT header/footer.
-export POLYMARKET_BOT_NAME="Grinder Bot 2"
+export POLYMARKET_BOT_NAME="Grinder Bot 2 — Tweets"
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
 # Every 8 hours: reads paper_state + realized_trade_cache and posts the
@@ -99,7 +100,7 @@ POLYMARKET_QUIET=1 \
     TELEGRAM_ALERT_TRADES=0 TELEGRAM_ALERT_TRADES_BUY=0 TELEGRAM_ALERT_TRADES_SELL=0 \
     TELEGRAM_ALERT_ERRORS=0 TELEGRAM_ALERT_THRESHOLDS=0 TELEGRAM_ALERT_HEARTBEAT=0 \
     TELEGRAM_ALERT_PORTFOLIO_UPDATES=0 TELEGRAM_ALERT_DAILY_SUMMARY=0 \
-    uv run pmbot auto-loop --dry-run --profile grinder_b --run grinder_b \
+    uv run pmbot auto-loop --dry-run --profile tweet_b --run tweet_b \
     2>&1 | sed -u 's/^/[dry-grinder] /' | tee -a "$RUN_LOG" &
 
 # ─── Autonomous report sidecar (deterministic — NO codex/claude/ollama) ─
@@ -119,5 +120,16 @@ TELEGRAM_CHAT_ID_DRY_RUN="" \
 DAILY_SELF_IMPROVE="${DAILY_SELF_IMPROVE:-1}" \
     bash scripts/daily_self_improve.sh 2>&1 | sed -u 's/^/[self-improve] /' | tee -a "$RUN_LOG" &
 
-uv run pmbot auto-loop --live --profile grinder_b --yes \
+# ─── Tweet-regime sidecar (OFFLINE, LOCAL OLLAMA ONLY — user 2026-07-27) ─
+# Every 15 min: asks a LOCAL Ollama model (default qwen2.5:7b) to classify
+# the tracked account's posting regime from its recent posts and writes
+# data/tweet_regime.json. The live loop only READS that file (stale >2h
+# ignored, multiplier clamped [0.5, 2.0]) — NO LLM call in the trade path.
+# Fully wrapped: Ollama down => nothing written, model falls back to 1.0.
+# Toggle with TWEET_REGIME_SIDECAR=0. Part of the process group.
+if [ "${TWEET_REGIME_SIDECAR:-1}" = "1" ]; then
+    uv run python scripts/tweet_regime_sidecar.py 2>&1 | sed -u 's/^/[tweet-regime] /' | tee -a "$RUN_LOG" &
+fi
+
+uv run pmbot auto-loop --live --profile tweet_b --yes \
     2>&1 | sed -u 's/^/[LIVE] /' | tee -a "$LIVE_LOG" "$RUN_LOG"

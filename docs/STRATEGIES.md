@@ -359,3 +359,16 @@ forecasting, voir `categories.py` / `forecast.py`).
 > entries 20 % / cap 35 %** (2026-06-18) → **FIXE $5** (2026-06-21, v4). Le
 > sizing Kelly (`f* = (p·b − q·a)/(a·b) ≈ 0.35` pour p≈0.97, b≈8.4 %, a≈1.0)
 > est conservé dans l'historique git mais n'est plus actif.
+
+## Lane tweet-count (PROPOSÉE 2026-07-27 — branch `feat/tweet-count-lane`, remplacement bot 2, pas encore live)
+
+Même moteur que le grinder/weather (même pipeline, même sizing full-deploy, même plancher 0.99, même never-sell-below-entry) mais l'univers est restreint aux **marchés de comptage de tweets/posts** (« Will Elon Musk post 240-259 tweets from July 21 to July 28, 2026? » — brackets de 20-25 tweets, événements 2-3 jours / hebdo / mensuels), activé par profil via `tweet_only = true` (`configs/profiles/tweet_b.toml`, lancé par `run_live_b.sh`).
+
+**Thèse :** la source de résolution est un compteur PUBLIC (xtracker.polymarket.com) qui expose les timestamps de chaque post en temps réel — la même propriété qui rend la météo battable. Le bot achète les côtés « No » (parfois « Yes ») lourdement favoris (bande 0.85–0.94) des brackets que le modèle juge quasi certains, et ride jusqu'à résolution. La foule price une estimation statique ; le modèle re-price à chaque tick depuis le comptage live.
+
+- **Modèle (`polymarket_bot/tweet_model.py`, déterministe, stdlib only) :** intensité de Poisson non-homogène avec profil heure-de-semaine (56 j d'historique, le cycle de sommeil d'Elon est réel), facteur d'activité 72h (les sprees s'auto-excitent), queues negative-binomial (surdispersion fittée sur 90 j de comptages journaliers). Fenêtres exactes (16:00 UTC hebdo, 04:00 UTC mensuel) résolues via les trackings xtracker — jamais devinées depuis le texte : pas de match → skip.
+- **Gate d'edge (`tweet_min_edge = 0.08`) :** n'entre que si `model_P(outcome) − ask ≥ 8 pts`. Calibration (2026-07-27, 9 mois d'historique elonmusk, 192 fenêtres hebdo glissantes) : win rate réalisé à ±2 pts de la probabilité modèle sur toute la bande 0.85–1.00.
+- **Fenêtre d'entrée 8 jours** (`max_hours = 192`) : les hebdos durent 7 j et l'edge est MAXIMAL plusieurs jours avant résolution (au snapshot du 2026-07-27 : +8 à +17 pts sur les brackets « No » de l'hebdo Jul 24-31, dans la bande d'entrée).
+- **Sidecar régime (`scripts/tweet_regime_sidecar.py`) — OLLAMA LOCAL UNIQUEMENT** (user 2026-07-27) : toutes les 15 min, un modèle local (défaut `qwen2.5:7b`) classe le régime de posting (surge/normal/quiet) depuis les posts récents et écrit `data/tweet_regime.json`. La boucle live ne fait QUE lire ce fichier (périmé >2h ignoré, multiplicateur clampé [0.5, 2.0]) — aucun appel LLM dans le chemin de trade.
+- **Risques nommés :** des sharps connus jouent ces marchés (l'edge est la discipline de modèle + les fenêtres overnight/tardives, pas la primauté) ; risque key-person (Elon arrête de tweeter / la série s'arrête) ; quirks du tracker (posts supprimés, règles de comptage des replies — le sidecar ne peut PAS re-parser les règles, relire le rules text à chaque nouvelle série).
+- **« tweets » est une catégorie v4 à part entière** (comme « weather » 2026-07-10) : reporting Telegram sous son propre bucket, et jamais auto-disabled tant que la lane est active (garde anti-famine).

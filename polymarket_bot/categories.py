@@ -23,6 +23,7 @@ from typing import Any
 # the weather-only lane reports as its own category, not the catch-all).
 CATEGORIES = (
     "weather",
+    "tweets",
     "politics",
     "economics",
     "crypto",
@@ -41,6 +42,12 @@ _WEATHER_RE = re.compile(
     r"degrees (?:fahrenheit|celsius)|(?:highest|lowest|high|low) temp)\b"
     r"|°c|°f"
 )
+
+# Tweet/post-count bracket markets (tweet-only lane, 2026-07-27) — checked
+# right after weather and BEFORE politics/crypto so "Will Trump post 50-74
+# tweets…" reports under its own bucket, not "politics". Mirrors
+# models.is_tweet_market ("of tweets" is the de-slugged "of-tweets" pattern).
+_TWEETS_RE = re.compile(r"\btweets?\b|\bof tweets\b")
 
 # Word-bounded patterns (collision-safe). Checked in this order.
 _CRYPTO_RE = re.compile(
@@ -70,7 +77,7 @@ _SOCCER_RE = re.compile(
 _ENTERTAINMENT_RE = re.compile(
     r"\b(?:movie|film|box office|album|grammy|oscar|academy award|emmy|"
     r"golden globe|palme|netflix|spotify|tiktok|billboard|rotten tomatoes|"
-    r"celebrity|streaming|youtube|mrbeast|tweet)\b|\bviews\b"
+    r"celebrity|streaming|youtube|mrbeast)\b|\bviews\b"
 )
 # Generic sports — checked AFTER soccer/ufc/golf so those keep their own bucket.
 _SPORTS_RE = re.compile(
@@ -85,6 +92,8 @@ def classify_category(question: str, slug: str = "") -> str:
     text = f" {str(question or '').lower()} {str(slug or '').lower().replace('-', ' ')} "
     if _WEATHER_RE.search(text):
         return "weather"
+    if _TWEETS_RE.search(text):
+        return "tweets"
     if _CRYPTO_RE.search(text):
         return "crypto"
     if _ECON_RE.search(text):

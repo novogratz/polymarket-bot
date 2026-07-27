@@ -38,6 +38,7 @@ from .models import (
     as_float,
     is_excluded_market,
     is_hard_excluded_market,
+    is_tweet_market,
     is_weather_market,
     parse_dt,
     parse_json_list,
@@ -47,6 +48,7 @@ from .news_strategy import _asset_key, _event_slug, _quote_for_outcome
 from .portfolio import Portfolio
 from .pricing import _fetch_clob_quotes, ensure_open_positions_in_pool
 from .trading import build_client, execute_live_sell, execute_live_trade, live_best_bid
+from .tweet_model import parse_tweet_question, tweet_outcome_probability
 from .weather_forecast import forecast_outcome_probability, parse_weather_question
 
 
@@ -250,13 +252,20 @@ def _build_eligible_candidates(
     # Weather-only lane (user 2026-06-23): restrict entry to ONLY weather /
     # temperature markets. Bypasses the ban list (weather is banned there).
     weather_only = bool(getattr(settings, "race_weather_only", False))
+    # Tweet-count lane (proposed bot-2 replacement, 2026-07-27): restrict
+    # entry to ONLY xtracker-backed tweet/post-count bracket markets. Bypasses
+    # the ban list AND the hard tweet ban. Composable with weather_only: with
+    # both on, the union of the two market sets is kept.
+    tweet_only = bool(getattr(settings, "race_tweet_only", False))
     disabled = set(disabled_categories or set())
-    # While the weather-only lane is on, the data-driven auto-disable must
-    # never drop "weather" — the lane trades nothing else, so disabling it
+    # While a single-category lane is on, the data-driven auto-disable must
+    # never drop that category — the lane trades nothing else, so disabling it
     # would starve the bot entirely. The user's explicit lane choice wins
     # over the governance (2026-07-10).
     if weather_only:
         disabled.discard("weather")
+    if tweet_only:
+        disabled.discard("tweets")
     # v4 forecasting EV/quality gates (user 2026-06-21) — opt-in, both 0 = off.
     min_edge = float(getattr(settings, "race_min_edge", 0.0) or 0.0)
     min_quality = float(getattr(settings, "race_min_quality_score", 0.0) or 0.0)
@@ -267,23 +276,25 @@ def _build_eligible_candidates(
     min_clarity = float(getattr(settings, "race_min_resolution_clarity", 0.0) or 0.0)
     out: list[tuple[Candidate, float]] = []
     for market in markets:
-        if weather_only:
-            # Keep ONLY weather markets; this lane bypasses the ban list
-            # (weather is itself banned there).
-            if not is_weather_market(market):
+        if weather_only or tweet_only:
+            # Keep ONLY the lane's markets; these lanes bypass the ban list
+            # (weather and tweet counts are themselves banned there).
+            in_weather = weather_only and is_weather_market(market)
+            in_tweet = tweet_only and is_tweet_market(market)
+            if not (in_weather or in_tweet):
                 continue
             # Per-city weather bans (user 2026-07-23: "ban Helsinki from your
             # future bets"). Matched against the question + de-slugged slug as
             # word-bounded substrings; a banned city's markets never enter and
             # its held lines drop out of the top-up/redistribution pool too
             # (any existing position still rides to resolution — never sold).
-            if _is_banned_weather_city(market):
+            if in_weather and _is_banned_weather_city(market):
                 continue
         elif not unban_all and is_excluded_market(market):
             continue
-        # Hard bans that survive unban_all_markets (esports, speech, weather).
-        # weather_ok=True lifts the weather clause for the weather-only bot.
-        if is_hard_excluded_market(market, weather_ok=weather_only):
+        # Hard bans that survive unban_all_markets (esports, speech, weather,
+        # tweet counts). weather_ok/tweet_ok lift only the matching lane's clause.
+        if is_hard_excluded_market(market, weather_ok=weather_only, tweet_ok=tweet_only):
             continue
         # v4 data-driven governance: drop auto-disabled categories.
         if disabled and classify_market(market) in disabled:
@@ -430,6 +441,25 @@ def _build_eligible_candidates(
                         if model_prob is None:
                             continue  # margin guard or API failure → skip
                         if weather_min_edge > 0 and model_prob < best_ask + weather_min_edge:
+                            continue
+                except Exception:
+                    pass  # fail open
+            # Tweet count-model edge gate (OPT-IN, 0 = off): compare the
+            # xtracker-fitted model probability for this outcome against the
+            # market ask; skip when the model doesn't support the trade.
+            # Same split semantics as the weather gate: an unparseable
+            # question passes (fail-open), a parsed-but-unpriceable market
+            # (no tracker window match / short history / fetch failure)
+            # SKIPS — never bet a bracket the model can't price.
+            tweet_min_edge = float(getattr(settings, "race_tweet_min_edge", 0.0) or 0.0)
+            if tweet_only and tweet_min_edge > 0 and is_tweet_market(market):
+                try:
+                    parsed_t = parse_tweet_question(question)
+                    if parsed_t is not None:
+                        model_prob = tweet_outcome_probability(parsed_t, outcome)
+                        if model_prob is None:
+                            continue  # unpriceable → skip
+                        if model_prob < best_ask + tweet_min_edge:
                             continue
                 except Exception:
                     pass  # fail open
@@ -2680,6 +2710,7 @@ def _redistribute_leftover_cash(
                 race_max_price=float(getattr(settings, "race_max_price_hard_cap", 0.0) or 0.96),
                 race_weather_forecast_min_edge=0.0,
                 race_weather_min_bracket_margin_c=0.0,
+                race_tweet_min_edge=0.0,
                 race_min_edge=0.0,
                 race_min_quality_score=0.0,
             )
@@ -2905,6 +2936,8 @@ def _run_race_tick(
             # consistent; the entry-filter guard stays as belt-and-suspenders.
             if getattr(settings, "race_weather_only", False):
                 disabled_cats.discard("weather")
+            if getattr(settings, "race_tweet_only", False):
+                disabled_cats.discard("tweets")
             if disabled_cats:
                 _step(settings, f"   category auto-disable: {sorted(disabled_cats)}")
         except Exception:

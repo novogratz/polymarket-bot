@@ -3602,6 +3602,108 @@ class WeatherOnlyLaneTests(unittest.TestCase):
         self.assertEqual(ids, {"w"})
 
 
+class TweetOnlyLaneTests(unittest.TestCase):
+    """Proposed bot-2 replacement (2026-07-27): bet ONLY on xtracker-backed
+    tweet/post-count bracket markets — non-tweet is dropped at entry, and the
+    lane bypasses both the soft ban list and the hard tweet ban."""
+
+    @staticmethod
+    def _market(mid, question, slug):
+        return {
+            "id": mid, "question": question, "slug": slug,
+            "acceptingOrders": True, "liquidity": 1500, "volume24hr": 2000,
+            "bestBid": 0.90, "bestAsk": 0.91, "orderPriceMinTickSize": 0.01,
+            "outcomes": '["Yes", "No"]', "outcomePrices": '["0.91", "0.09"]',
+            "clobTokenIds": f'["tok-{mid}-y", "tok-{mid}-n"]',
+            "endDate": (utc_now() + timedelta(hours=2)).isoformat(),
+        }
+
+    def _tweet_market(self, mid="t"):
+        return self._market(
+            mid, "Will Elon Musk post 240-259 tweets from July 21 to July 28, 2026?",
+            "elon-musk-of-tweets-july-21-july-28")
+
+    def test_is_tweet_market_detection(self):
+        from polymarket_bot.models import is_tweet_market
+
+        self.assertTrue(is_tweet_market(self._tweet_market()))
+        # Zelenskyy "posts" phrasing is caught via the of-tweets slug.
+        self.assertTrue(is_tweet_market(
+            {"question": "Will Zelenskyy make 120-139 posts from July 24 to July 31?",
+             "slug": "zelenskyy-of-tweets-july-24-july-31"}))
+        self.assertFalse(is_tweet_market(
+            {"question": "Will Team A win on 2026-07-27?", "slug": "team-a-win"}))
+
+    def test_tweet_only_keeps_only_tweet_and_bypasses_ban(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0,
+                            race_tweet_only=True)
+        tweet = self._tweet_market()
+        sports = self._market("s", "Will Team S win on 2026-07-27?", "team-s-win")
+        ids = {c.market_id for c, _ in _build_eligible_candidates([tweet, sports], settings)}
+        self.assertEqual(ids, {"t"})  # only tweets; they pass despite the hard ban
+
+    def test_tweet_markets_stay_banned_when_lane_off(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        # Lane off: the hard ban must keep blocking tweet markets, even
+        # under unban_all (pinned also by V4ConfigTests).
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0,
+                            unban_all_markets=True)
+        self.assertEqual(_build_eligible_candidates([self._tweet_market()], settings), [])
+
+    def test_weather_and_tweet_lanes_compose_as_a_union(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0,
+                            race_weather_only=True, race_tweet_only=True)
+        weather = self._market("w", "Highest temperature in NYC on 2026-07-27?", "nyc-high-temp")
+        tweet = self._tweet_market()
+        sports = self._market("s", "Will Team S win on 2026-07-27?", "team-s-win")
+        ids = {c.market_id for c, _ in _build_eligible_candidates(
+            [weather, tweet, sports], settings)}
+        self.assertEqual(ids, {"w", "t"})
+
+    def test_auto_disable_can_never_starve_the_tweet_lane(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0,
+                            race_tweet_only=True)
+        ids = {c.market_id for c, _ in _build_eligible_candidates(
+            [self._tweet_market()], settings, disabled_categories={"tweets"})}
+        self.assertEqual(ids, {"t"})
+
+    def test_tweet_edge_gate(self):
+        # Model prob must beat ask + min_edge; an unpriceable market (None)
+        # is SKIPPED, an unparseable question passes (fail-open).
+        from unittest.mock import patch
+
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=4.0,
+                            race_tweet_only=True, race_tweet_min_edge=0.08)
+        market = [self._tweet_market()]
+
+        with patch("polymarket_bot.race_strategies.tweet_outcome_probability", return_value=0.999):
+            self.assertEqual(
+                {c.market_id for c, _ in _build_eligible_candidates(market, settings)}, {"t"})
+        with patch("polymarket_bot.race_strategies.tweet_outcome_probability", return_value=0.93):
+            # ask 0.91 + 0.08 = 0.99 > 0.93 → dropped
+            self.assertEqual(_build_eligible_candidates(market, settings), [])
+        with patch("polymarket_bot.race_strategies.tweet_outcome_probability", return_value=None):
+            self.assertEqual(_build_eligible_candidates(market, settings), [])
+        with patch("polymarket_bot.race_strategies.parse_tweet_question", return_value=None):
+            # unparseable question → gate passes (fail-open)
+            self.assertEqual(
+                {c.market_id for c, _ in _build_eligible_candidates(market, settings)}, {"t"})
+
+
 class DynamicEntryWindowTests(unittest.TestCase):
     """User rule 2026-06-11: prefer bets ≤4h from resolution; if nothing is
     actionable, widen the window 4 → 6 → 8 → 10 and stop at 12h max."""

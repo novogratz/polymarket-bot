@@ -451,6 +451,20 @@ class Settings:
     # for "No" bets. Qingdao lesson (2026-06-28): ECMWF at 28.1°C vs 29°C
     # bracket (0.9°C margin) resolved as a loss. Set to 2.0 on bot 2.
     race_weather_min_bracket_margin_c: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_WEATHER_MIN_BRACKET_MARGIN_C", 0.0))
+    # ── tweet-count lane (proposed bot-2 replacement, 2026-07-27) ─────────
+    # When true, entry selection keeps ONLY tweet/post-count bracket markets
+    # (is_tweet_market) and bypasses their ban (both the soft ban list and the
+    # hard ban). Candidates are then gated by the xtracker-backed count model
+    # (tweet_model.py) below. Mutually composable with race_weather_only: with
+    # both on, the union of the two market sets is kept.
+    race_tweet_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_TWEET_ONLY", False))
+    # xtracker count-model edge gate (OPT-IN, 0 = off): only enter a tweet
+    # market when the model probability for the chosen outcome exceeds the
+    # market ask by at least this margin. Needs no trade history — the model
+    # fits the live post feed that RESOLVES the market. A market whose window
+    # can't be matched to an xtracker tracking is SKIPPED (fail-closed), unlike
+    # an unparseable question (fail-open) — mirroring the weather gate.
+    race_tweet_min_edge: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_TWEET_MIN_EDGE", 0.0))
     # ── v4: data-driven category auto-disable ────────────────────────────
     # The governance that replaces manual bans (user 2026-06-21): after at
     # least ``min_samples`` realized trades in a category, that category is

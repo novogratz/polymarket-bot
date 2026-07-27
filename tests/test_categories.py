@@ -33,6 +33,12 @@ class ClassifyCategoryTests(unittest.TestCase):
             ("Highest temperature in NYC on July 9?", "highest-temperature-nyc-july-9", "weather"),
             ("Will it reach 100°F in Phoenix today?", "phoenix-100f", "weather"),
             ("Total rainfall in London this week above 20mm?", "london-rainfall", "weather"),
+            # Tweets is its own category since 2026-07-27 (tweet-only lane
+            # must report under its own bucket, not entertainment).
+            ("Will Elon Musk post 240-259 tweets from July 21 to July 28, 2026?",
+             "elon-musk-of-tweets-july-21-july-28", "tweets"),
+            ("Will Zelenskyy make 120-139 posts from July 24 to July 31?",
+             "zelenskyy-of-tweets-july-24-july-31", "tweets"),
         ]
         for question, slug, expected in cases:
             self.assertEqual(classify_category(question, slug), expected, question)
@@ -43,6 +49,15 @@ class ClassifyCategoryTests(unittest.TestCase):
         self.assertEqual(
             classify_category("Higher temperature: Miami vs Dallas?", "temp-miami-dallas"),
             "weather",
+        )
+
+    def test_tweets_beats_politics(self):
+        # "Will Trump post 50-74 tweets…" must classify tweets, not politics —
+        # tweets is checked right after weather, before the politics names.
+        self.assertEqual(
+            classify_category("Will Trump post 50-74 tweets from July 24 to July 31?",
+                              "trump-of-tweets-july-24-july-31"),
+            "tweets",
         )
 
     def test_classification_order_crypto_beats_sports_vs(self):
