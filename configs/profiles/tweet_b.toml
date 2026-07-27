@@ -38,21 +38,24 @@ min_volume_usd = 300.0
 enabled = false
 
 [race]
-# Entry window 8 DAYS — tweet-count windows run 2-31 days and the model's
-# edge is LARGEST days before resolution (the crowd prices a static guess;
-# the model re-prices from the live count every tick). The weekly events
-# (7 days) plus a buffer need 192h; the monthly brackets only enter once
-# they close within this window (their final week — where the count is
-# already informative). No laddering (max_hours_cap = 0 -> single window).
-max_hours = 192.0
+# Entry window 24h — SAME-DAY MODE (user 2026-07-27: "i want things that are
+# expiring the same day... as many bets as possible to use 100% of the
+# account"). Every entry resolves within a day: weather settles each evening
+# and tweet windows are only bought in their final 24h. A literal 4h window
+# was measured EMPTY (weather batch settles ~16:00 UTC, and tweet brackets
+# price out of the 0.85-0.94 band before their last hours — winners > 0.96
+# hard cap), so 24h is the shortest window with real inventory. The 8-day
+# mid-window tweet edges (+10-17 pts, capital parked for days) are given up
+# by design. No laddering (max_hours_cap = 0 -> single window).
+max_hours = 24.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
 scan_limit = 750
 
-# Tweet-count books are DEEP ($2k-70k per bracket, $100k-750k per event) —
-# no need for the weather lane's lowered floors.
-min_liquidity_usd = 250.0
-min_volume_24h_usd = 1000.0
+# Weather-grade liquidity floors (weather books are thinner; tweet brackets
+# clear these easily).
+min_liquidity_usd = 50.0
+min_volume_24h_usd = 200.0
 
 # v4 entry band unchanged: buy heavy favorites 0.85-0.94, hard cap 0.96.
 min_price = 0.85
@@ -70,10 +73,12 @@ full_deploy_redistribute_min_lines = 10
 fixed_stake_usd = 0.0
 unban_all_markets = true
 
-# WEATHER LANE OFF — this profile trades the tweet lane instead.
-weather_only = false
-weather_forecast_min_edge = 0.0
-weather_min_bracket_margin_c = 0.0
+# WEATHER LANE ON alongside tweets (user 2026-07-27, same-day mode): the two
+# lane flags COMPOSE — the candidate set is the UNION of weather and tweet
+# markets, nothing else. Weather keeps grinder_b's proven Open-Meteo gates.
+weather_only = true
+weather_forecast_min_edge = 0.10
+weather_min_bracket_margin_c = 2.0
 
 # TWEET-COUNT lane ON: keep ONLY tweet/post-count bracket markets
 # (is_tweet_market in models.py — the exact inverse of their hard ban) and
