@@ -510,6 +510,15 @@ def is_weather_market(market: dict[str, Any]) -> bool:
     return any(p in q or p in slug for p in _WEATHER_SUBSTRINGS)
 
 
+def is_boxoffice_market(market: dict[str, Any]) -> bool:
+    """True for '<film> Nth Weekend Box Office' bracket markets — the inverse
+    of their entertainment soft ban, used by the ``boxoffice_only`` lane.
+    Resolution source is public (The Numbers daily/weekend actuals)."""
+    q = str(market.get("question") or "").lower()
+    slug = str(market.get("slug") or "").lower().replace("-", " ")
+    return "weekend box office" in q or "weekend box office" in slug
+
+
 def is_tweet_market(market: dict[str, Any]) -> bool:
     """True for tweet/post-count bracket markets — the inverse of the tweet ban.
 

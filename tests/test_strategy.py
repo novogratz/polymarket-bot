@@ -3704,6 +3704,236 @@ class TweetOnlyLaneTests(unittest.TestCase):
                 {c.market_id for c, _ in _build_eligible_candidates(market, settings)}, {"t"})
 
 
+class TweetWindowOverrideTests(unittest.TestCase):
+    """tweet_max_hours (2026-07-27): tweet markets may enter days out while
+    the rest of the pool keeps the tight same-day window."""
+
+    @staticmethod
+    def _market(mid, question, slug, end_h):
+        return {
+            "id": mid, "question": question, "slug": slug,
+            "acceptingOrders": True, "liquidity": 1500, "volume24hr": 2000,
+            "bestBid": 0.90, "bestAsk": 0.91, "orderPriceMinTickSize": 0.01,
+            "outcomes": '["Yes", "No"]', "outcomePrices": '["0.91", "0.09"]',
+            "clobTokenIds": f'["tok-{mid}-y", "tok-{mid}-n"]',
+            "endDate": (utc_now() + timedelta(hours=end_h)).isoformat(),
+        }
+
+    def test_tweet_horizon_extends_only_tweet_markets(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=24.0,
+                            race_weather_only=True, race_tweet_only=True,
+                            race_tweet_max_hours=192.0)
+        far_tweet = self._market(
+            "t", "Will Elon Musk post 240-259 tweets from July 21 to July 28, 2026?",
+            "elon-musk-of-tweets-july-21-july-28", end_h=100.0)
+        far_weather = self._market(
+            "w", "Highest temperature in NYC on 2026-07-31?", "nyc-high-temp", end_h=100.0)
+        near_weather = self._market(
+            "w2", "Highest temperature in Oslo on 2026-07-27?", "oslo-high-temp", end_h=10.0)
+        ids = {c.market_id for c, _ in _build_eligible_candidates(
+            [far_tweet, far_weather, near_weather], settings)}
+        self.assertEqual(ids, {"t", "w2"})  # far tweet in, far weather out
+
+    def test_no_override_keeps_tweets_inside_the_global_window(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=24.0,
+                            race_tweet_only=True)
+        far_tweet = self._market(
+            "t", "Will Elon Musk post 240-259 tweets from July 21 to July 28, 2026?",
+            "elon-musk-of-tweets-july-21-july-28", end_h=100.0)
+        self.assertEqual(_build_eligible_candidates([far_tweet], settings), [])
+
+
+class BoxOfficeLaneTests(unittest.TestCase):
+    """Box-office lane (2026-07-27): weekend bracket markets priced from The
+    Numbers actuals; composes with the weather/tweet lanes as a union."""
+
+    @staticmethod
+    def _market(mid, question, slug):
+        return {
+            "id": mid, "question": question, "slug": slug,
+            "acceptingOrders": True, "liquidity": 1500, "volume24hr": 2000,
+            "bestBid": 0.90, "bestAsk": 0.91, "orderPriceMinTickSize": 0.01,
+            "outcomes": '["Yes", "No"]', "outcomePrices": '["0.91", "0.09"]',
+            "clobTokenIds": f'["tok-{mid}-y", "tok-{mid}-n"]',
+            "endDate": (utc_now() + timedelta(hours=2)).isoformat(),
+        }
+
+    def _box_market(self, mid="b"):
+        return self._market(
+            mid, 'Will "The Odyssey" 2nd Weekend Box Office be between 86m and 92m?',
+            "the-odyssey-2nd-weekend-box-office-20260720175402816")
+
+    def test_is_boxoffice_market_detection(self):
+        from polymarket_bot.models import is_boxoffice_market
+
+        self.assertTrue(is_boxoffice_market(self._box_market()))
+        self.assertFalse(is_boxoffice_market(
+            {"question": "Will Team A win on 2026-07-27?", "slug": "team-a-win"}))
+
+    def test_lane_union_keeps_box_office_and_drops_the_rest(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=24.0,
+                            race_tweet_only=True, race_boxoffice_only=True)
+        box = self._box_market()
+        sports = self._market("s", "Will Team S win on 2026-07-27?", "team-s-win")
+        ids = {c.market_id for c, _ in _build_eligible_candidates([box, sports], settings)}
+        self.assertEqual(ids, {"b"})
+
+    def test_box_office_banned_when_lane_off(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        # entertainment soft ban applies (default settings, no unban).
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=24.0)
+        self.assertEqual(_build_eligible_candidates([self._box_market()], settings), [])
+
+    def test_box_edge_gate(self):
+        from unittest.mock import patch
+
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(race_min_price=0.85, race_max_price=0.97,
+                            race_max_spread=0.04, race_max_hours=24.0,
+                            race_boxoffice_only=True, race_boxoffice_min_edge=0.08)
+        market = [self._box_market()]
+        with patch("polymarket_bot.race_strategies.boxoffice_outcome_probability", return_value=0.999):
+            self.assertEqual(
+                {c.market_id for c, _ in _build_eligible_candidates(market, settings)}, {"b"})
+        with patch("polymarket_bot.race_strategies.boxoffice_outcome_probability", return_value=0.93):
+            self.assertEqual(_build_eligible_candidates(market, settings), [])
+        with patch("polymarket_bot.race_strategies.boxoffice_outcome_probability", return_value=None):
+            # opening weekend / unknown film → unpriceable → skip
+            self.assertEqual(_build_eligible_candidates(market, settings), [])
+
+
+class SoonestExpiryRankingTests(unittest.TestCase):
+    """User 2026-07-27: 'prioritize the ones expiring the soonest' — the
+    grinder selector ranks strictly by time-to-close, bid as tie-break."""
+
+    @staticmethod
+    def _cand(mid, hours, bid):
+        return Candidate(
+            market_id=mid, question=f"Q {mid}?", slug=mid,
+            end_date=utc_now() + timedelta(hours=hours), hours_to_close=hours,
+            liquidity=1000, volume=1000, outcome="Yes", price=bid + 0.01,
+            token_id=f"tok-{mid}", score=0.0, url="https://polymarket.com",
+            best_bid=bid, best_ask=bid + 0.01, tick_size=0.01, accepts_orders=True,
+        )
+
+    def test_soonest_expiry_wins_regardless_of_bid(self):
+        from polymarket_bot.race_strategies import select_grinder
+
+        eligible = [
+            (self._cand("far-highbid", 100.0, 0.93), 0.93),
+            (self._cand("near-lowbid", 2.0, 0.86), 0.86),
+            (self._cand("mid", 24.0, 0.90), 0.90),
+        ]
+        picks = select_grinder(eligible, 3)
+        self.assertEqual([c.market_id for c in picks], ["near-lowbid", "mid", "far-highbid"])
+
+    def test_bid_breaks_ties_at_equal_expiry(self):
+        from polymarket_bot.race_strategies import select_grinder
+
+        eligible = [
+            (self._cand("low", 5.0, 0.86), 0.86),
+            (self._cand("high", 5.0, 0.92), 0.92),
+        ]
+        picks = select_grinder(eligible, 2)
+        self.assertEqual([c.market_id for c in picks], ["high", "low"])
+
+
+class MakerEntryTests(unittest.TestCase):
+    """Maker entries (2026-07-27): GTC at bid+tick inside the spread instead
+    of FOK-taking at ask+tick; tight spreads keep the taker path."""
+
+    @staticmethod
+    def _candidate(bid, ask, tick=0.01):
+        return Candidate(
+            market_id="mkr", question="Will the maker test fill?", slug="maker-test",
+            end_date=utc_now() + timedelta(hours=6), hours_to_close=6,
+            liquidity=1300, volume=2000, outcome="No", price=ask,
+            token_id="tok-mkr", score=1, url="https://polymarket.com/event/mkr",
+            best_bid=bid, best_ask=ask, tick_size=tick, accepts_orders=True,
+        )
+
+    class _FakeClient:
+        def __init__(self, response):
+            self.response = response
+            self.live_calls = []
+            self.market_calls = []
+
+        def live_available_balance(self):
+            return 900.0
+
+        def get_order_book(self, token_id):
+            return {"asks": [{"price": "0.94", "size": "5000"}],
+                    "bids": [{"price": "0.90", "size": "5000"}]}
+
+        def place_live_order(self, *, candidate, price, size, side="BUY"):
+            self.live_calls.append({"price": price, "size": size, "side": side})
+            return {"price": price, "size": size, "side": side}, dict(self.response)
+
+        def place_market_order(self, *, candidate, amount, side="BUY", price=0.0):
+            self.market_calls.append({"amount": amount, "price": price})
+            return {"amount": amount}, {
+                "success": True, "status": "matched", "orderID": "fok-1",
+                "makingAmount": str(amount), "takingAmount": str(round(amount / price, 4)),
+            }
+
+    def _settings(self, maker=True):
+        return Settings(trade_fraction=0.95, min_order_shares=5.0,
+                        race_maker_entries=maker)
+
+    def test_maker_posts_gtc_at_bid_plus_tick_and_records_pending(self):
+        client = self._FakeClient({"success": True, "status": "live", "orderID": "gtc-1"})
+        portfolio = Portfolio(cash=900.0, positions=[])
+        execute_live_trade(client, self._settings(), self._candidate(0.90, 0.94),
+                           portfolio, min_trade_usd=1.0, max_trade_usd=50.0)
+        self.assertEqual(len(client.live_calls), 1)
+        self.assertEqual(client.live_calls[0]["price"], 0.91)  # bid + tick
+        self.assertEqual(client.market_calls, [])
+        self.assertTrue(portfolio.has_pending_token("tok-mkr"))  # blocks re-buys
+        self.assertEqual(portfolio.positions, [])  # not booked until it fills
+
+    def test_tight_spread_falls_back_to_fok(self):
+        client = self._FakeClient({"success": True, "status": "live"})
+        portfolio = Portfolio(cash=900.0, positions=[])
+        execute_live_trade(client, self._settings(), self._candidate(0.93, 0.94),
+                           portfolio, min_trade_usd=1.0, max_trade_usd=50.0)
+        self.assertEqual(client.live_calls, [])
+        self.assertEqual(len(client.market_calls), 1)
+        self.assertEqual(len(portfolio.positions), 1)
+
+    def test_flag_off_keeps_taker_path(self):
+        client = self._FakeClient({"success": True, "status": "live"})
+        portfolio = Portfolio(cash=900.0, positions=[])
+        execute_live_trade(client, self._settings(maker=False), self._candidate(0.90, 0.94),
+                           portfolio, min_trade_usd=1.0, max_trade_usd=50.0)
+        self.assertEqual(client.live_calls, [])
+        self.assertEqual(len(client.market_calls), 1)
+
+    def test_maker_crossing_fill_books_the_position(self):
+        # A GTC that crosses immediately returns matched with real fill
+        # amounts — the position books at the true fill price.
+        client = self._FakeClient({
+            "success": True, "status": "matched", "orderID": "gtc-2",
+            "makingAmount": "9.10", "takingAmount": "10.0",
+        })
+        portfolio = Portfolio(cash=900.0, positions=[])
+        execute_live_trade(client, self._settings(), self._candidate(0.90, 0.94),
+                           portfolio, min_trade_usd=1.0, max_trade_usd=50.0)
+        self.assertEqual(len(portfolio.positions), 1)
+        self.assertAlmostEqual(portfolio.positions[0]["entry_price"], 0.91, places=3)
+
+
 class DynamicEntryWindowTests(unittest.TestCase):
     """User rule 2026-06-11: prefer bets ≤4h from resolution; if nothing is
     actionable, widen the window 4 → 6 → 8 → 10 and stop at 12h max."""

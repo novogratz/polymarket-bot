@@ -24,6 +24,7 @@ import random
 import re
 from dataclasses import replace
 from datetime import timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -32,10 +33,16 @@ from .categories import classify_market, disabled_categories
 from .config import Settings
 from .forecast import build_context, evaluate_market, resolution_clarity
 from .gamma import GammaClient
+from .boxoffice_model import (
+    boxoffice_outcome_probability,
+    find_boxoffice_event_slugs,
+    parse_boxoffice_question,
+)
 from .models import (
     SOCCER_MONEYLINE_MIN_ASK,
     Candidate,
     as_float,
+    is_boxoffice_market,
     is_excluded_market,
     is_hard_excluded_market,
     is_tweet_market,
@@ -55,6 +62,21 @@ from .weather_forecast import forecast_outcome_probability, parse_weather_questi
 def _step(settings: Settings, msg: str) -> None:
     if not settings.quiet:
         print(msg, flush=True)
+
+
+@lru_cache(maxsize=8)
+def _boxoffice_event_slugs_cached(bucket: int) -> tuple:
+    """Open box-office event slugs, re-discovered every 15 min (they change
+    weekly, not per tick — no need to rescan 500 events every 30 s)."""
+    import json as _json
+    import urllib.request as _rq
+
+    def _get_json(url: str):
+        req = _rq.Request(url, headers={"User-Agent": "polymarket-bot/boxoffice"})
+        with _rq.urlopen(req, timeout=20) as resp:
+            return _json.loads(resp.read().decode("utf-8"))
+
+    return find_boxoffice_event_slugs(_get_json)
 
 
 def _load_short_expiry_markets(settings: Settings, max_hours: float | None = None) -> list[dict[str, Any]]:
@@ -99,6 +121,18 @@ def _load_short_expiry_markets(settings: Settings, max_hours: float | None = Non
                     continue
         except Exception as exc:
             print(f"⚠️  race: tweet event fetch failed (fail-open): {type(exc).__name__}: {exc}")
+    # Box-office lane (2026-07-27): same targeted-fetch reasoning — weekend
+    # bracket events are found by title over the top-volume open events and
+    # fetched directly. Fail-open on any error.
+    if bool(getattr(settings, "race_boxoffice_only", False)):
+        try:
+            for event_slug in _boxoffice_event_slugs_cached(int(now.timestamp() // 900)):
+                try:
+                    batches.append(client.get_event_markets_by_slug(event_slug))
+                except Exception:
+                    continue
+        except Exception as exc:
+            print(f"⚠️  race: box-office event fetch failed (fail-open): {type(exc).__name__}: {exc}")
     merged: dict[str, dict[str, Any]] = {}
     for batch in batches:
         for market in batch:
@@ -274,6 +308,15 @@ def _build_eligible_candidates(
     # the ban list AND the hard tweet ban. Composable with weather_only: with
     # both on, the union of the two market sets is kept.
     tweet_only = bool(getattr(settings, "race_tweet_only", False))
+    # Per-lane window override: tweet markets may enter further out than the
+    # global window (mid-window model edges, user 2026-07-27). 0 = no override.
+    tweet_hours = float(getattr(settings, "race_tweet_max_hours", 0.0) or 0.0)
+    tweet_horizon = max(horizon, now + timedelta(hours=tweet_hours)) if (tweet_only and tweet_hours > 0) else horizon
+    # Box-office lane (user 2026-07-27): weekend bracket markets priced from
+    # The Numbers actuals. Same union semantics as the other lanes.
+    box_only = bool(getattr(settings, "race_boxoffice_only", False))
+    box_hours = float(getattr(settings, "race_boxoffice_max_hours", 0.0) or 0.0)
+    box_horizon = max(horizon, now + timedelta(hours=box_hours)) if (box_only and box_hours > 0) else horizon
     disabled = set(disabled_categories or set())
     # While a single-category lane is on, the data-driven auto-disable must
     # never drop that category — the lane trades nothing else, so disabling it
@@ -283,6 +326,8 @@ def _build_eligible_candidates(
         disabled.discard("weather")
     if tweet_only:
         disabled.discard("tweets")
+    if box_only:
+        disabled.discard("entertainment")
     # v4 forecasting EV/quality gates (user 2026-06-21) — opt-in, both 0 = off.
     min_edge = float(getattr(settings, "race_min_edge", 0.0) or 0.0)
     min_quality = float(getattr(settings, "race_min_quality_score", 0.0) or 0.0)
@@ -292,13 +337,15 @@ def _build_eligible_candidates(
     # under unban_all. 0 disables it.
     min_clarity = float(getattr(settings, "race_min_resolution_clarity", 0.0) or 0.0)
     out: list[tuple[Candidate, float]] = []
+    _MODEL_EDGE_BY_TOKEN.clear()
     for market in markets:
-        if weather_only or tweet_only:
-            # Keep ONLY the lane's markets; these lanes bypass the ban list
-            # (weather and tweet counts are themselves banned there).
+        if weather_only or tweet_only or box_only:
+            # Keep ONLY the lanes' markets; these lanes bypass the ban list
+            # (weather, tweet counts, and box office are themselves banned there).
             in_weather = weather_only and is_weather_market(market)
             in_tweet = tweet_only and is_tweet_market(market)
-            if not (in_weather or in_tweet):
+            in_box = box_only and is_boxoffice_market(market)
+            if not (in_weather or in_tweet or in_box):
                 continue
             # Per-city weather bans (user 2026-07-23: "ban Helsinki from your
             # future bets"). Matched against the question + de-slugged slug as
@@ -327,8 +374,14 @@ def _build_eligible_candidates(
         # ``max_hours``. A game in progress that doesn't close inside the
         # window is dropped — only fast-resolving bets qualify.
         game_start = parse_dt(market.get("gameStartTime"))
-        closes_soon = earliest <= end_date <= horizon
-        starts_soon = game_start is not None and now <= game_start <= horizon
+        if tweet_only and is_tweet_market(market):
+            market_horizon = tweet_horizon
+        elif box_only and is_boxoffice_market(market):
+            market_horizon = box_horizon
+        else:
+            market_horizon = horizon
+        closes_soon = earliest <= end_date <= market_horizon
+        starts_soon = game_start is not None and now <= game_start <= market_horizon
         if not (closes_soon or starts_soon):
             continue
         if not bool(market.get("acceptingOrders")):
@@ -457,6 +510,8 @@ def _build_eligible_candidates(
                         )
                         if model_prob is None:
                             continue  # margin guard or API failure → skip
+                        if index < len(token_ids) and token_ids[index]:
+                            _MODEL_EDGE_BY_TOKEN[str(token_ids[index])] = model_prob - best_ask
                         if weather_min_edge > 0 and model_prob < best_ask + weather_min_edge:
                             continue
                 except Exception:
@@ -476,7 +531,27 @@ def _build_eligible_candidates(
                         model_prob = tweet_outcome_probability(parsed_t, outcome)
                         if model_prob is None:
                             continue  # unpriceable → skip
+                        if index < len(token_ids) and token_ids[index]:
+                            _MODEL_EDGE_BY_TOKEN[str(token_ids[index])] = model_prob - best_ask
                         if model_prob < best_ask + tweet_min_edge:
+                            continue
+                except Exception:
+                    pass  # fail open
+            # Box-office model edge gate (OPT-IN, 0 = off): same semantics —
+            # unparseable question passes; a parsed-but-unpriceable market
+            # (opening weekend, film not on The Numbers, fetch failure)
+            # SKIPS — never bet a bracket the model can't price.
+            box_min_edge = float(getattr(settings, "race_boxoffice_min_edge", 0.0) or 0.0)
+            if box_only and box_min_edge > 0 and is_boxoffice_market(market):
+                try:
+                    parsed_b = parse_boxoffice_question(question)
+                    if parsed_b is not None:
+                        model_prob = boxoffice_outcome_probability(parsed_b, outcome)
+                        if model_prob is None:
+                            continue  # unpriceable → skip
+                        if index < len(token_ids) and token_ids[index]:
+                            _MODEL_EDGE_BY_TOKEN[str(token_ids[index])] = model_prob - best_ask
+                        if model_prob < best_ask + box_min_edge:
                             continue
                 except Exception:
                     pass  # fail open
@@ -1987,18 +2062,31 @@ def select_grinder(eligible: list[tuple[Candidate, float]], n: int) -> list[Cand
     `_build_eligible_candidates` via the TOML's race_* filters. This
     selector just ranks the survivors by confidence × time-to-resolution.
     """
-    qualified: list[tuple[Candidate, float]] = []
+    qualified: list[Candidate] = []
     for candidate, _ in eligible:
         bid = candidate.best_bid or 0.0
         ask = candidate.best_ask or 1.0
-        hours = candidate.hours_to_close or 99.0
         if bid <= 0.0 or ask <= 0.0:
             continue
-        # Score = confidence per remaining hour. Closer to resolution and
-        # closer to 1.0 → higher rank.
-        score = bid / max(hours, 1.0 / 60.0)
-        qualified.append((candidate, score))
-    return _dedupe_top_n(qualified, n)
+        qualified.append(candidate)
+    # SOONEST-EXPIRY FIRST (user 2026-07-27, "prioritize the ones expiring
+    # the soonest"): rank strictly by time-to-close ascending — capital
+    # recycles fastest and the nearest resolutions carry the least
+    # uncertainty — with best bid as the tie-break. (Replaces the softer
+    # bid/hours confidence-per-hour score, which a far-out high bid could
+    # still outrank.)
+    qualified.sort(key=lambda c: ((c.hours_to_close if c.hours_to_close is not None else 99.0),
+                                  -(c.best_bid or 0.0)))
+    seen: set[str] = set()
+    picks: list[Candidate] = []
+    for c in qualified:
+        if c.market_id in seen:
+            continue
+        seen.add(c.market_id)
+        picks.append(c)
+        if len(picks) >= n:
+            break
+    return picks
 
 
 # ---------------------------------------------------------------------------
@@ -2372,12 +2460,19 @@ def _entry_cap_usd(settings: Settings, equity: float) -> float:
     return min(hard, max(0.0, equity * initial))
 
 
+# Model edge per token, recorded by the gate evaluations in
+# _build_eligible_candidates (weather + tweet lanes) for the CURRENT pool.
+# Consumed by edge-weighted sizing (OFF by default). Cleared on every rebuild.
+_MODEL_EDGE_BY_TOKEN: dict[str, float] = {}
+
+
 def _dynamic_stake_target(
     settings: Settings,
     equity: float,
     cash_above_floor: float,
     n_opportunities: int,
     hours_to_close: float | None,
+    model_edge: float | None = None,
 ) -> float:
     """Per-bet sizing target (user 2026-06-10): spread the available cash
     across the actionable opportunities, hard-capped per bet.
@@ -2412,6 +2507,18 @@ def _dynamic_stake_target(
             # Held lines top up TOWARD this same target (never past it), so
             # distribution stays equal by construction.
             equal_share = equity / max(1, n_opportunities)
+            # Edge-weighted sizing (user 2026-07-27, OFF by default — enable
+            # only after live calibration confirms the model, n≥200): scale
+            # the equal share by the model's edge, bounded ×1–2 (8 pts → 1×,
+            # 16+ pts → 2×). The absolute per-line caps still bound the
+            # result, so an over-confident model can never concentrate risk
+            # past the 5%/10% caps.
+            if (
+                getattr(settings, "race_edge_weighted_sizing", False)
+                and model_edge is not None
+                and model_edge > 0
+            ):
+                equal_share *= min(2.0, max(1.0, model_edge / 0.08))
             return max(0.0, min(cap, max(5.0, equal_share)))
         return max(0.0, min(cash_above_floor / max(1, n_opportunities), cap))
     # v4 fixed-dollar sizing (user 2026-06-21): every bet is EXACTLY the
@@ -2728,6 +2835,7 @@ def _redistribute_leftover_cash(
                 race_weather_forecast_min_edge=0.0,
                 race_weather_min_bracket_margin_c=0.0,
                 race_tweet_min_edge=0.0,
+                race_boxoffice_min_edge=0.0,
                 race_min_edge=0.0,
                 race_min_quality_score=0.0,
             )
@@ -2955,6 +3063,8 @@ def _run_race_tick(
                 disabled_cats.discard("weather")
             if getattr(settings, "race_tweet_only", False):
                 disabled_cats.discard("tweets")
+            if getattr(settings, "race_boxoffice_only", False):
+                disabled_cats.discard("entertainment")
             if disabled_cats:
                 _step(settings, f"   category auto-disable: {sorted(disabled_cats)}")
         except Exception:
@@ -3189,7 +3299,8 @@ def _run_race_tick(
             break
         equity = float(portfolio.summary().get("equity", portfolio.cash))
         target = _dynamic_stake_target(
-            settings, equity, cash_above_floor, n_opportunities, candidate.hours_to_close
+            settings, equity, cash_above_floor, n_opportunities, candidate.hours_to_close,
+            model_edge=_MODEL_EDGE_BY_TOKEN.get(str(candidate.token_id or "")),
         )
         stake = min(target, cash_above_floor)
         if topup_pos is not None:

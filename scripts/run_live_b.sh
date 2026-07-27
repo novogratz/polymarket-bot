@@ -43,6 +43,11 @@ export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-
 # 10s tick — 3× faster than 30s, catches more fleeting band entries.
 export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}
 
+# Maker entries (2026-07-27): let a resting GTC work the spread for 4 minutes
+# (8 ticks at 30s) before the stale-pending sweep cancels it on the CLOB.
+# The default 45s barely outlives one tick — too short for a maker order.
+export POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS=${POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS:-240}
+
 # Daily drawdown halt DISABLED (2026-06-07 per user) — 0 = no entry pause.
 export POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=${POLYMARKET_RACE_DAILY_DRAWDOWN_PCT:-0}
 
@@ -140,6 +145,14 @@ DAILY_SELF_IMPROVE="${DAILY_SELF_IMPROVE:-1}" \
 # Toggle with TWEET_REGIME_SIDECAR=0. Part of the process group.
 if [ "${TWEET_REGIME_SIDECAR:-1}" = "1" ]; then
     uv run python scripts/tweet_regime_sidecar.py 2>&1 | sed -u 's/^/[tweet-regime] /' | tee -a "$RUN_LOG" &
+fi
+
+# ─── Cross-window consistency logger (read-only, deterministic, no AI) ──
+# Every 30 min: snapshots model-vs-market probability for every bracket of
+# every active counting window -> data/tweet_consistency.jsonl. Pure data
+# collection for the future relative-value lane; never trades.
+if [ "${TWEET_CONSISTENCY_LOG:-1}" = "1" ]; then
+    uv run python scripts/tweet_consistency_log.py 2>&1 | sed -u 's/^/[consistency] /' | tee -a "$RUN_LOG" &
 fi
 
 uv run pmbot auto-loop --live --profile tweet_b --yes \

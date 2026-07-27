@@ -734,6 +734,27 @@ def execute_live_trade(
 
     entry_price = round(min(candidate.best_ask + candidate.tick_size, 0.99), 3)
 
+    # ── MAKER ENTRIES (user 2026-07-27) ────────────────────────────────────
+    # Instead of paying the spread with a FOK at ask+tick, post a GTC limit
+    # at bid+tick INSIDE the spread and let the market come to us — on 1-4¢
+    # spreads at ~0.90 that recovers roughly 1-2% per trade, a large slice of
+    # the model's edge. Only when there is room to improve (spread ≥ 2
+    # ticks); tight books fall through to the FOK taker path. A resting GTC
+    # reuses the existing pending-order machinery end-to-end: "live" response
+    # → record_pending_order (blocks re-buys), _sync_live_positions books the
+    # fill when it settles, _cancel_stale_pending_orders cancels on the CLOB
+    # after the TTL. Off by default (race_maker_entries).
+    maker_mode = (
+        not settings.dry_run
+        and bool(getattr(settings, "race_maker_entries", False))
+        and candidate.best_bid is not None
+        and float(candidate.best_bid) > 0
+        and (float(candidate.best_ask) - float(candidate.best_bid))
+        >= 2 * float(candidate.tick_size) - 1e-9
+    )
+    if maker_mode:
+        entry_price = round(min(float(candidate.best_bid) + candidate.tick_size, 0.99), 3)
+
     # ANTI-PUMP PROTECTION: Don't follow if price moved too far from smart money entry.
     if signal and "avg_copy_price" in signal:
         avg_copy = float(signal["avg_copy_price"])
@@ -804,7 +825,7 @@ def execute_live_trade(
     # while smaller bots filled instantly). Cap the stake to the executable
     # depth so the order can actually fill; the race loop may later top up
     # the position toward its per-position cap once the book refills.
-    if not settings.dry_run and candidate.token_id:
+    if not settings.dry_run and not maker_mode and candidate.token_id:
         depth_usd = _executable_ask_depth_usd(client, str(candidate.token_id), entry_price)
         if depth_usd is not None and stake > depth_usd * _BOOK_DEPTH_SAFETY:
             capped = round(depth_usd * _BOOK_DEPTH_SAFETY, 2)
@@ -865,6 +886,15 @@ def execute_live_trade(
             "takingAmount": str(size),
             "dry_run": True,
         }
+    elif maker_mode:
+        if not settings.quiet:
+            print(f"   Posting GTC maker order inside the spread @ {entry_price} "
+                  f"(bid {candidate.best_bid} / ask {candidate.best_ask})...")
+        order, response = client.place_live_order(candidate=candidate, price=entry_price, size=size, side="BUY")
+        if not isinstance(response, dict):
+            response = {"success": True, "status": "live", "orderID": None, "raw": str(response)}
+        response.setdefault("success", True)
+        response.setdefault("status", "live")
     else:
         if not settings.quiet:
             print("   Sending FOK market order...")

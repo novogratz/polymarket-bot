@@ -84,6 +84,29 @@ weather_min_bracket_margin_c = 2.0
 # (is_tweet_market in models.py — the exact inverse of their hard ban) and
 # gate every entry on the xtracker count model.
 tweet_only = true
+# Mid-window tweet entries (user 2026-07-27 "do all of them"): tweet markets
+# may enter out to 8 days while weather/everything else keeps the 24h window.
+# The model's biggest measured edges (+10-17 pts) sit 2-4 days out; those
+# lines park until their window resolves. Revert to same-day-only tweets:
+# tweet_max_hours = 0.
+tweet_max_hours = 192.0
+# Edge-weighted sizing: OFF until live calibration confirms the model
+# (≥200 realized model-gated trades). When on: equal share ×1 at 8 pts of
+# model edge, ×2 at 16+, absolute per-line caps unchanged.
+edge_weighted_sizing = false
+# BOX-OFFICE lane ON (user 2026-07-27 "do all of them"): '<film> Nth Weekend
+# Box Office' brackets, priced from The Numbers daily/weekend actuals — the
+# market's own resolution source (polymarket_bot/boxoffice_model.py).
+# Opening weekends are never traded (no model → skip). 96h window admits
+# them from Thursday.
+boxoffice_only = true
+boxoffice_min_edge = 0.08
+boxoffice_max_hours = 96.0
+# MAKER ENTRIES ON (user 2026-07-27): post GTC at bid+tick inside spreads
+# ≥ 2 ticks instead of FOK-taking at ask+tick (~1-2%/trade recovered).
+# Resting orders block re-buys, fills book via live sync, stale orders are
+# cancelled on-CLOB after POLYMARKET_SMART_PENDING_ORDER_TTL_SECONDS.
+maker_entries = true
 # Model-vs-ask edge gate: the model probability for the chosen outcome must
 # beat the ask by ≥ 8 pts. Prototype calibration (2026-07-27, 9 months of
 # elonmusk history, 192 rolling weekly windows) showed realized win rates

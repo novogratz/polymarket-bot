@@ -465,6 +465,34 @@ class Settings:
     # can't be matched to an xtracker tracking is SKIPPED (fail-closed), unlike
     # an unparseable question (fail-open) — mirroring the weather gate.
     race_tweet_min_edge: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_TWEET_MIN_EDGE", 0.0))
+    # Per-lane entry-window override (user 2026-07-27 "do all of them"): tweet
+    # markets may enter out to THIS many hours while everything else keeps
+    # race_max_hours. The model's biggest measured edges (+10-17 pts) sit 2-4
+    # days before a window resolves — mid-window entries capture them at the
+    # cost of parking that line until resolution. 0 = no override.
+    race_tweet_max_hours: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_TWEET_MAX_HOURS", 0.0))
+    # Edge-weighted sizing (user 2026-07-27, DEFAULT OFF): scale the full-
+    # deploy equal share by the model's edge (×1 at 8 pts → ×2 at 16+ pts),
+    # still bounded by the absolute per-line caps. Enable only after live
+    # calibration confirms the model (≥200 realized model-gated trades).
+    race_edge_weighted_sizing: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_EDGE_WEIGHTED_SIZING", False))
+    # ── box-office lane (user 2026-07-27 "do all of them") ────────────────
+    # Keeps '<film> Nth Weekend Box Office' bracket markets (public
+    # resolution source: The Numbers actuals), gated by boxoffice_model.py.
+    # Opening weekends are never traded (no model). Composable with the
+    # weather/tweet lanes (union of the kept sets).
+    race_boxoffice_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_BOXOFFICE_ONLY", False))
+    race_boxoffice_min_edge: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_BOXOFFICE_MIN_EDGE", 0.0))
+    # Per-lane entry-window override (0 = race_max_hours): weekend markets
+    # close Sunday night; 96h admits them from Thursday, when the previous
+    # weekend's drop structure already prices the brackets.
+    race_boxoffice_max_hours: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_BOXOFFICE_MAX_HOURS", 0.0))
+    # ── maker entries (user 2026-07-27) ───────────────────────────────────
+    # Post GTC limit buys at bid+tick INSIDE the spread (spread ≥ 2 ticks)
+    # instead of FOK taking at ask+tick — recovers ~1-2% per trade. Resting
+    # orders ride the existing pending-order machinery (block re-buys, sync
+    # books fills, stale orders cancelled on-CLOB after the TTL).
+    race_maker_entries: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_MAKER_ENTRIES", False))
     # ── v4: data-driven category auto-disable ────────────────────────────
     # The governance that replaces manual bans (user 2026-06-21): after at
     # least ``min_samples`` realized trades in a category, that category is
