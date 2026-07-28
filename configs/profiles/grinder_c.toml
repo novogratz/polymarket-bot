@@ -67,9 +67,11 @@ min_volume_24h_usd = 200.0
 # v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
 # 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
 # is the ABSOLUTE ceiling — 0.97/0.98/0.99 are never tradeable.
-# Price floor 0.85 -> 0.80 (user 2026-07-25, "bot not betting on enough
-# positions"): widen the entry band to admit more weather favorites.
-min_price = 0.80
+# Price floor RESTORED to 0.85 (user 2026-07-28, "make money as we used to"):
+# realized history shows the 0.80–0.85 bucket is a slow bleed (−8.1% ROI in the
+# grinder_b analysis). The whole strategy is only +EV when win-rate q > entry
+# price p; buying cheaper favorites lowers q faster than p, so 0.85 is the floor.
+min_price = 0.85
 max_price = 0.94
 max_price_hard_cap = 0.96
 
@@ -139,13 +141,21 @@ unban_all_markets = true
 # (is_weather_market in models.py). Entries are additionally cross-checked
 # against an Open-Meteo multi-model forecast before entry (below).
 weather_only = true
-# FORECAST GATE OFF (user 2026-07-25, "why bot is not betting on more
-# positions"): the Open-Meteo edge gate (min_edge 0.10 + 2.0°C bracket margin)
-# was passing only ~2 of 122 weather markets. Bot 3 now trades weather markets
-# on price/liquidity heuristics alone (like bot 1) → ~20 eligible lines. Bots
-# 2 & 3 (grinder_b.toml) KEEP the gate. Re-enable = restore 0.10 / 2.0.
-weather_forecast_min_edge = 0.0
-weather_min_bracket_margin_c = 0.0
+# FORECAST GATE RESTORED (user 2026-07-28, "do everything you think makes sense
+# to make money as we used to"). WHY: with the gate OFF, 132 realized trades
+# ran 89% win / avg entry 0.90 → edge (q−p) = −1.6 pts = structurally LOSING
+# (−$14.45). The math is a steamroller trade: a win at 0.90 makes ~$1, a loss
+# wipes ~$10, so you need q > 90% just to break even and volume-maxing only
+# loses faster. The Open-Meteo edge gate is the only lever that makes q > p:
+#   • min_edge 0.05 — only enter when the multi-model consensus beats the ask
+#     by ≥5 pts (proven value; lighter than the old 0.10 so ~10 lines survive,
+#     vs 6 at 0.10 — enough volume, still +EV).
+#   • bracket margin 2.0°C — skip 'No' bets within 2°C of the threshold, the
+#     ones a sudden temp shift flips to 50% (the −$10 tail wipeouts). Qingdao
+#     fix (ECMWF 28.1°C vs 29°C bracket).
+# ~10 eligible lines and each is +EV. Re-widen for volume = lower these / 0.0.
+weather_forecast_min_edge = 0.05
+weather_min_bracket_margin_c = 2.0
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh
