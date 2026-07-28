@@ -201,7 +201,7 @@ cash_floor_pct = 0.0
 #                           resolution pays 1.00 — selling at 0.98 gives up
 #                           real cents on bets that are about to settle.
 #   max_hold 4.5h         → backstop so nothing lingers after expiry.
-tp_pct = 1.0
+tp_pct = 0.95
 sl_pct = 0.30            # -30% confirmed SL, sport moneylines (user 2026-06-16)
 sl_confirm_ticks = 3
 sl_min_age_minutes = 5
