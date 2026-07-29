@@ -61,8 +61,8 @@ daily_expiry_fallback = false
 scan_limit = 750
 
 # Weather-grade liquidity floors (lower — weather markets are thinner).
-min_liquidity_usd = 250.0
-min_volume_24h_usd = 1000.0
+min_liquidity_usd = 50.0
+min_volume_24h_usd = 200.0
 
 # v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
 # 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
@@ -71,7 +71,7 @@ min_volume_24h_usd = 1000.0
 # realized history shows the 0.80–0.85 bucket is a slow bleed (−8.1% ROI in the
 # grinder_b analysis). The whole strategy is only +EV when win-rate q > entry
 # price p; buying cheaper favorites lowers q faster than p, so 0.85 is the floor.
-min_price = 0.80
+min_price = 0.85
 max_price = 0.94
 max_price_hard_cap = 0.96
 
@@ -143,7 +143,7 @@ unban_all_markets = true
 weather_only = true
 # Same-day-only (user 2026-07-29: "only bet on bets expiring the same day
 # we are in") — never bet tomorrow's brackets (a full extra day of swing risk).
-weather_same_day_only = true
+weather_same_day_only = false   # OFF (agent 2026-07-29): favored weather markets are next-day; same-day-only starves the lane. Volume over swing-avoidance.
 # FORECAST GATE RESTORED (user 2026-07-28, "do everything you think makes sense
 # to make money as we used to"). WHY: with the gate OFF, 132 realized trades
 # ran 89% win / avg entry 0.90 → edge (q−p) = −1.6 pts = structurally LOSING
@@ -157,8 +157,8 @@ weather_same_day_only = true
 #     ones a sudden temp shift flips to 50% (the −$10 tail wipeouts). Qingdao
 #     fix (ECMWF 28.1°C vs 29°C bracket).
 # ~10 eligible lines and each is +EV. Re-widen for volume = lower these / 0.0.
-weather_forecast_min_edge = 0.0   # GATE OFF — early-July bot 1 setup (user 2026-07-29 "do exactly early july bot 1")
-weather_min_bracket_margin_c = 0.0
+weather_forecast_min_edge = 0.05   # +EV gate (agent 2026-07-29): only enter when the multi-model consensus beats the ask by >=5pts — the ONLY lever that makes win-rate q > price p
+weather_min_bracket_margin_c = 2.0   # skip near-threshold No bets (the -$10 tail wipeouts)
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh

@@ -58,13 +58,13 @@ daily_expiry_fallback = false
 scan_limit = 750
 
 # Weather-grade liquidity floors (lower — weather markets are thinner).
-min_liquidity_usd = 250.0
-min_volume_24h_usd = 1000.0
+min_liquidity_usd = 50.0
+min_volume_24h_usd = 200.0
 
 # v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
 # 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
 # is the ABSOLUTE ceiling — 0.97/0.98/0.99 are never tradeable.
-min_price = 0.80
+min_price = 0.85
 max_price = 0.94
 max_price_hard_cap = 0.96
 
@@ -136,12 +136,12 @@ unban_all_markets = true
 weather_only = true
 # Same-day-only (user 2026-07-29: "only bet on bets expiring the same day
 # we are in") — never bet tomorrow's brackets (a full extra day of swing risk).
-weather_same_day_only = true
-weather_forecast_min_edge = 0.0   # GATE OFF — early-July bot 1 setup (user 2026-07-29 "do exactly early july bot 1")
+weather_same_day_only = false   # OFF (agent 2026-07-29): favored weather markets are next-day; same-day-only starves the lane. Volume over swing-avoidance.
+weather_forecast_min_edge = 0.05   # +EV gate (agent 2026-07-29): only enter when the multi-model consensus beats the ask by >=5pts — the ONLY lever that makes win-rate q > price p
 # Bracket margin guard (2026-06-28): skip "No" bet if any model is within
 # this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
 # bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.
-weather_min_bracket_margin_c = 0.0
+weather_min_bracket_margin_c = 2.0   # skip near-threshold No bets (the -$10 tail wipeouts)
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh
