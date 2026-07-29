@@ -137,11 +137,11 @@ weather_only = true
 # Same-day-only (user 2026-07-29: "only bet on bets expiring the same day
 # we are in") — never bet tomorrow's brackets (a full extra day of swing risk).
 weather_same_day_only = false   # OFF (agent 2026-07-29): favored weather markets are next-day; same-day-only starves the lane. Volume over swing-avoidance.
-weather_forecast_min_edge = 0.05   # +EV gate (agent 2026-07-29): only enter when the multi-model consensus beats the ask by >=5pts — the ONLY lever that makes win-rate q > price p
+weather_forecast_min_edge = 0.0   # GATE OFF (user 2026-07-29 "not enough positions"): max volume. Flat $5 caps the per-bet loss so -EV bleeds slowly instead of blowing up.
 # Bracket margin guard (2026-06-28): skip "No" bet if any model is within
 # this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
 # bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.
-weather_min_bracket_margin_c = 2.0   # skip near-threshold No bets (the -$10 tail wipeouts)
+weather_min_bracket_margin_c = 0.0
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh
