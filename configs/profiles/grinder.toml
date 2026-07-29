@@ -64,7 +64,7 @@ min_volume_24h_usd = 200.0
 # v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
 # 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
 # is the ABSOLUTE ceiling — 0.97/0.98/0.99 are never tradeable.
-min_price = 0.85
+min_price = 0.80
 max_price = 0.94
 max_price_hard_cap = 0.96
 
@@ -105,7 +105,7 @@ stake_usd = 1.0
 # construction. Supersedes the 2026-07-11 no-reinforcement rule.
 # full_deploy OVERRIDES fixed_stake_usd; rollback to fixed-$5 =
 # full_deploy = false, fixed_stake_usd = 5.0.
-full_deploy = true
+full_deploy = false
 # SOFT default cap = 5% (user 2026-07-23: "prioritize more positions over 10%
 # per position — only do the 10% if there are not enough positions — put 5%
 # as default"). Every fresh entry / top-up / the chain guard uses this, so the
@@ -124,7 +124,7 @@ full_deploy_redistribute_max_position_pct = 0.10
 # lines are skipped and the cash spreads over the rest; what the cap can't
 # place waits for new lines. 0 = never redistribute.
 full_deploy_redistribute_min_lines = 10
-fixed_stake_usd = 0.0
+fixed_stake_usd = 5.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
@@ -134,11 +134,11 @@ unban_all_markets = true
 # (is_weather_market in models.py). Entries are additionally cross-checked
 # against an Open-Meteo multi-model forecast before entry (below).
 weather_only = true
-weather_forecast_min_edge = 0.10   # raised 0.05→0.10: multi-model σ is tighter now
+weather_forecast_min_edge = 0.0   # GATE OFF — early-July bot 1 setup (user 2026-07-29 "do exactly early july bot 1")
 # Bracket margin guard (2026-06-28): skip "No" bet if any model is within
 # this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
 # bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.
-weather_min_bracket_margin_c = 2.0
+weather_min_bracket_margin_c = 0.0
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh

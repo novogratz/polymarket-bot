@@ -71,7 +71,7 @@ min_volume_24h_usd = 200.0
 # realized history shows the 0.80–0.85 bucket is a slow bleed (−8.1% ROI in the
 # grinder_b analysis). The whole strategy is only +EV when win-rate q > entry
 # price p; buying cheaper favorites lowers q faster than p, so 0.85 is the floor.
-min_price = 0.85
+min_price = 0.80
 max_price = 0.94
 max_price_hard_cap = 0.96
 
@@ -112,7 +112,7 @@ stake_usd = 1.0
 # construction. Supersedes the 2026-07-11 no-reinforcement rule.
 # full_deploy OVERRIDES fixed_stake_usd; rollback to fixed-$5 =
 # full_deploy = false, fixed_stake_usd = 5.0.
-full_deploy = true
+full_deploy = false
 # SOFT default cap = 5% (user 2026-07-23: "prioritize more positions over 10%
 # per position — only do the 10% if there are not enough positions — put 5%
 # as default"). Every fresh entry / top-up / the chain guard uses this, so the
@@ -131,7 +131,7 @@ full_deploy_redistribute_max_position_pct = 0.10
 # lines are skipped and the cash spreads over the rest; what the cap can't
 # place waits for new lines. 0 = never redistribute.
 full_deploy_redistribute_min_lines = 10
-fixed_stake_usd = 0.0
+fixed_stake_usd = 5.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
@@ -154,8 +154,8 @@ weather_only = true
 #     ones a sudden temp shift flips to 50% (the −$10 tail wipeouts). Qingdao
 #     fix (ECMWF 28.1°C vs 29°C bracket).
 # ~10 eligible lines and each is +EV. Re-widen for volume = lower these / 0.0.
-weather_forecast_min_edge = 0.05
-weather_min_bracket_margin_c = 2.0
+weather_forecast_min_edge = 0.0   # GATE OFF — early-July bot 1 setup (user 2026-07-29 "do exactly early july bot 1")
+weather_min_bracket_margin_c = 0.0
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh
