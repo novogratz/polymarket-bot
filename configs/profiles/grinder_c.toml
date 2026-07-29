@@ -61,8 +61,8 @@ daily_expiry_fallback = false
 scan_limit = 750
 
 # Weather-grade liquidity floors (lower — weather markets are thinner).
-min_liquidity_usd = 50.0
-min_volume_24h_usd = 200.0
+min_liquidity_usd = 250.0
+min_volume_24h_usd = 1000.0
 
 # v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
 # 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
@@ -162,7 +162,7 @@ weather_min_bracket_margin_c = 0.0
 # bot disables nothing; "other" is never disabled. NOTE: while weather_only
 # is on, race_strategies.py never lets the auto-disable drop "weather" itself
 # (starvation guard, 2026-07-10) regardless of this sample size.
-category_min_samples = 20
+category_min_samples = 100
 category_disable_roi = -0.05
 # v4 forecasting EV / quality gates (user 2026-06-21) — OPT-IN, 0 = off.
 # The forecaster (forecast.py) calibrates a favorite's win probability per
@@ -199,7 +199,7 @@ double_down_min_price = 0.60
 # cap bounds risk regardless of count.
 max_orders_per_tick = 12
 # Full-deploy (user 2026-07-09): no cash reserve — 100% invested.
-cash_floor_pct = 0.0
+cash_floor_pct = 0.01
 
 # Exit rules:
 #   tp_pct = 1.0          → TP disabled; ride to resolution.
