@@ -1089,7 +1089,11 @@ def execute_live_sell(
     # The controlled multi-tick stop-loss is a DELIBERATE loss sale — it has
     # already been confirmed over several ticks, so it is exempt from the hard
     # loss floor. Every other path still rides losers to resolution.
-    CONFIRMED_LOSS_REASONS = {"race_stop_loss_confirmed"}
+    # race_weather_flip_exit (2026-07-29) is the same kind of deliberate,
+    # confirmed loss-cut: the weather forecast has flipped against a held "No"
+    # (the bracket is now likely to hit), so we sell before it decays to $0
+    # instead of riding it down — also exempt.
+    CONFIRMED_LOSS_REASONS = {"race_stop_loss_confirmed", "race_weather_flip_exit"}
     if (
         entry_price > 0
         and sell_price < entry_price

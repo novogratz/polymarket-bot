@@ -1391,6 +1391,51 @@ def _is_soccer_moneyline_position(position: dict[str, Any]) -> bool:
     )
 
 
+def _weather_flip_exit_plan(
+    position: dict[str, Any], settings: Settings
+) -> dict[str, Any] | None:
+    """Sell a held weather position when the forecast has FLIPPED against it.
+
+    User 2026-07-29. Re-runs the Open-Meteo consensus on the position's market;
+    when the model probability for OUR outcome falls below
+    ``race_weather_flip_exit_prob`` for ``race_weather_flip_confirm_ticks``
+    consecutive ticks, returns a ``race_weather_flip_exit`` plan (a deliberate,
+    floor-exempt loss-cut). 0 = off. Non-weather markets (parse returns None)
+    and any API failure are ignored (fail-open, streak reset).
+    """
+    threshold = float(getattr(settings, "race_weather_flip_exit_prob", 0.0) or 0.0)
+    if threshold <= 0:
+        return None
+    shares = float(position.get("shares", 0.0) or 0.0)
+    if shares <= 0:
+        return None
+    try:
+        parsed = parse_weather_question(str(position.get("question") or ""))
+        if parsed is None:
+            return None
+        prob = forecast_outcome_probability(parsed, str(position.get("outcome") or ""))
+    except Exception:
+        position["flip_confirm_count"] = 0
+        return None
+    if prob is None:  # forecast unavailable → fail open, don't act
+        position["flip_confirm_count"] = 0
+        return None
+    if prob >= threshold:  # model still supports our side → reset streak
+        if position.get("flip_confirm_count"):
+            position["flip_confirm_count"] = 0
+        return None
+    count = int(position.get("flip_confirm_count", 0) or 0) + 1
+    position["flip_confirm_count"] = count
+    confirm = max(1, int(getattr(settings, "race_weather_flip_confirm_ticks", 2) or 2))
+    if count >= confirm:
+        return {
+            "reason": "race_weather_flip_exit",
+            "shares": shares,
+            "model_prob": round(prob, 3),
+        }
+    return None
+
+
 def _simple_exit_plan(
     position: dict[str, Any],
     current_pnl_pct: float,
@@ -1411,6 +1456,19 @@ def _simple_exit_plan(
         return None
     if current_pnl_pct >= settings.race_tp_pct:
         return {"reason": "race_take_profit", "shares": shares}
+
+    # ── FORECAST-FLIP EXIT — WEATHER ONLY (2026-07-29) ───────────────────────
+    # The forecast model gates ENTRY, but weather updates through the day: a
+    # "No" bought when the model favored it can flip when the afternoon forecast
+    # climbs toward the bracket. Without this it rode to $0 — the -$10 tail
+    # losses that dominate the P&L. Re-check the live Open-Meteo consensus on the
+    # held position; if the model now gives OUR outcome < race_weather_flip_exit_prob
+    # (confirmed over race_weather_flip_confirm_ticks, to filter forecast noise),
+    # sell at the live bid before it decays. Weather-scoped via
+    # parse_weather_question (None for non-weather). Fail-open on any API error.
+    flip = _weather_flip_exit_plan(position, settings)
+    if flip is not None:
+        return flip
 
     # ── CONTROLLED multi-tick stop-loss — SOCCER MONEYLINE ONLY (2026-06-07) ──
     # The blanket SL was removed 2026-05-31 because a ONE-tick thin-book phantom

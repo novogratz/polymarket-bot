@@ -4065,6 +4065,64 @@ class DynamicStakeTargetTests(unittest.TestCase):
         self.assertAlmostEqual(capped, 200.0)  # (800/3)×1.5=400 → cap
 
 
+class WeatherFlipExitTests(unittest.TestCase):
+    """Forecast-flip exit (user 2026-07-29): sell a held weather 'No' when the
+    live Open-Meteo consensus turns against it, confirmed over N ticks — cutting
+    the -$10 tail losses before they decay to $0."""
+
+    @staticmethod
+    def _pos():
+        return {"status": "open", "live": True, "outcome": "No", "shares": 10.0,
+                "entry_price": 0.85,
+                "question": "Will the highest temperature in NYC be 30°C on July 30?"}
+
+    def _patch(self, parse, prob):
+        from polymarket_bot import race_strategies as R
+        self._orig = (R.parse_weather_question, R.forecast_outcome_probability)
+        R.parse_weather_question = parse
+        R.forecast_outcome_probability = prob
+        return R
+
+    def tearDown(self):
+        if hasattr(self, "_orig"):
+            from polymarket_bot import race_strategies as R
+            R.parse_weather_question, R.forecast_outcome_probability = self._orig
+
+    def test_fires_after_confirm_when_model_turns_against_us(self):
+        R = self._patch(lambda q: {"target_date": "x"}, lambda p, o, **k: 0.20)
+        s = Settings(race_weather_flip_exit_prob=0.45, race_weather_flip_confirm_ticks=2)
+        pos = self._pos()
+        self.assertIsNone(R._weather_flip_exit_plan(pos, s))        # tick 1: streak=1
+        self.assertEqual(pos["flip_confirm_count"], 1)
+        plan = R._weather_flip_exit_plan(pos, s)                    # tick 2: fire
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan["reason"], "race_weather_flip_exit")
+        self.assertEqual(plan["shares"], 10.0)
+
+    def test_no_exit_and_streak_reset_when_model_still_supports_us(self):
+        R = self._patch(lambda q: {"target_date": "x"}, lambda p, o, **k: 0.90)
+        s = Settings(race_weather_flip_exit_prob=0.45, race_weather_flip_confirm_ticks=2)
+        pos = self._pos(); pos["flip_confirm_count"] = 1
+        self.assertIsNone(R._weather_flip_exit_plan(pos, s))
+        self.assertEqual(pos["flip_confirm_count"], 0)
+
+    def test_off_by_default(self):
+        from polymarket_bot import race_strategies as R
+        self.assertIsNone(R._weather_flip_exit_plan(self._pos(), Settings()))
+
+    def test_non_weather_ignored(self):
+        R = self._patch(lambda q: None, lambda p, o, **k: 0.10)
+        s = Settings(race_weather_flip_exit_prob=0.45)
+        self.assertIsNone(R._weather_flip_exit_plan(self._pos(), s))
+
+    def test_fail_open_on_api_error(self):
+        def boom(p, o, **k):
+            raise RuntimeError("open-meteo down")
+        R = self._patch(lambda q: {"target_date": "x"}, boom)
+        s = Settings(race_weather_flip_exit_prob=0.45)
+        self.assertIsNone(R._weather_flip_exit_plan(self._pos(), s))
+
+
 class FullDeploySizingTests(unittest.TestCase):
     """FULL-DEPLOY sizing (user 2026-07-09, "100% of the account is always
     invested") + DIVERSIFICATION CAP (user 2026-07-10, "positions at $90 when

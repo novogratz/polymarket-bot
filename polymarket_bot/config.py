@@ -446,6 +446,12 @@ class Settings:
     # resolve TODAY (US/Eastern) — never tomorrow's brackets, which carry a full
     # extra day of forecast-swing risk. Weather-only lane; default off.
     race_weather_same_day_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_WEATHER_SAME_DAY_ONLY", False))
+    # Forecast-flip exit (user 2026-07-29): sell a held weather position when the
+    # live Open-Meteo consensus gives OUR outcome < this probability (the forecast
+    # has turned against the bet) — cutting the -$10 tail losses before they hit
+    # $0 instead of riding to resolution. Confirmed over N ticks. 0 = off.
+    race_weather_flip_exit_prob: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_WEATHER_FLIP_EXIT_PROB", 0.0))
+    race_weather_flip_confirm_ticks: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_WEATHER_FLIP_CONFIRM_TICKS", 2))
     # Open-Meteo forecast edge gate (OPT-IN, 0 = off): only enter a weather
     # market when the model probability for the chosen outcome exceeds the
     # market ask by at least this margin.  Needs no history — the model uses
