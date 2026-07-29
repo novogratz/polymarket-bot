@@ -141,6 +141,9 @@ unban_all_markets = true
 # (is_weather_market in models.py). Entries are additionally cross-checked
 # against an Open-Meteo multi-model forecast before entry (below).
 weather_only = true
+# Same-day-only (user 2026-07-29: "only bet on bets expiring the same day
+# we are in") — never bet tomorrow's brackets (a full extra day of swing risk).
+weather_same_day_only = true
 # FORECAST GATE RESTORED (user 2026-07-28, "do everything you think makes sense
 # to make money as we used to"). WHY: with the gate OFF, 132 realized trades
 # ran 89% win / avg entry 0.90 → edge (q−p) = −1.6 pts = structurally LOSING

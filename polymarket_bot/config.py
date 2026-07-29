@@ -442,6 +442,10 @@ class Settings:
     # (is_weather_market) and bypasses the normal ban list (weather is banned
     # there).
     race_weather_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_WEATHER_ONLY", False))
+    # Same-day-only weather (user 2026-07-29): only enter weather markets that
+    # resolve TODAY (US/Eastern) — never tomorrow's brackets, which carry a full
+    # extra day of forecast-swing risk. Weather-only lane; default off.
+    race_weather_same_day_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_WEATHER_SAME_DAY_ONLY", False))
     # Open-Meteo forecast edge gate (OPT-IN, 0 = off): only enter a weather
     # market when the model probability for the chosen outcome exceeds the
     # market ask by at least this margin.  Needs no history — the model uses

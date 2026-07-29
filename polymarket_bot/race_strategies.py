@@ -225,6 +225,29 @@ def _is_banned_weather_city(market: dict[str, Any]) -> bool:
     return any(re.search(rf"\b{re.escape(city)}\b", text) for city in _BANNED_WEATHER_CITIES)
 
 
+_MONTHS = {m: i for i, m in enumerate(
+    ["january", "february", "march", "april", "may", "june", "july",
+     "august", "september", "october", "november", "december"], start=1)}
+# "... on July 30?" / "... on July 30." — the resolution day of a weather market.
+_WEATHER_DATE_RE = re.compile(r"\bon\s+([A-Za-z]{3,9})\s+(\d{1,2})\b", re.I)
+
+
+def _weather_market_md(market: dict[str, Any]) -> tuple[int, int] | None:
+    """(month, day) a weather market resolves on, parsed from its question
+    (e.g. 'on July 30' -> (7, 30)). None when no date can be parsed."""
+    m = _WEATHER_DATE_RE.search(str(market.get("question") or ""))
+    if not m:
+        return None
+    mon = _MONTHS.get(m.group(1).lower())
+    if not mon:
+        return None
+    try:
+        day = int(m.group(2))
+    except ValueError:
+        return None
+    return (mon, day) if 1 <= day <= 31 else None
+
+
 def _build_eligible_candidates(
     markets: list[dict[str, Any]],
     settings: Settings,
@@ -250,6 +273,22 @@ def _build_eligible_candidates(
     # Weather-only lane (user 2026-06-23): restrict entry to ONLY weather /
     # temperature markets. Bypasses the ban list (weather is banned there).
     weather_only = bool(getattr(settings, "race_weather_only", False))
+    # Same-day-only weather (user 2026-07-29: "only bet on bets that are
+    # expiring the same day we are in"). Betting tomorrow's brackets (e.g. a
+    # July 30 market while it's July 29) exposes the position to a full extra
+    # day of forecast swings. Keep ONLY weather markets whose resolution date ==
+    # today in US/Eastern (the report tz). Dates are parsed from the question;
+    # unparseable dates are KEPT (fail-open) so a wording change can't silently
+    # starve the lane.
+    same_day_only = weather_only and bool(getattr(settings, "race_weather_same_day_only", False))
+    today_md: tuple[int, int] | None = None
+    if same_day_only:
+        try:
+            from zoneinfo import ZoneInfo
+            et = now.astimezone(ZoneInfo("America/New_York"))
+            today_md = (et.month, et.day)
+        except Exception:
+            today_md = (now.month, now.day)
     disabled = set(disabled_categories or set())
     # While the weather-only lane is on, the data-driven auto-disable must
     # never drop "weather" — the lane trades nothing else, so disabling it
@@ -279,6 +318,12 @@ def _build_eligible_candidates(
             # (any existing position still rides to resolution — never sold).
             if _is_banned_weather_city(market):
                 continue
+            # Same-day-only: drop markets resolving on a different day than
+            # today (tomorrow's July-30 brackets while it's July 29).
+            if today_md is not None:
+                md = _weather_market_md(market)
+                if md is not None and md != today_md:
+                    continue
         elif not unban_all and is_excluded_market(market):
             continue
         # Hard bans that survive unban_all_markets (esports, speech, weather).

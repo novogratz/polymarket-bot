@@ -134,6 +134,9 @@ unban_all_markets = true
 # (is_weather_market in models.py). Entries are additionally cross-checked
 # against an Open-Meteo multi-model forecast before entry (below).
 weather_only = true
+# Same-day-only (user 2026-07-29: "only bet on bets expiring the same day
+# we are in") — never bet tomorrow's brackets (a full extra day of swing risk).
+weather_same_day_only = true
 weather_forecast_min_edge = 0.0   # GATE OFF — early-July bot 1 setup (user 2026-07-29 "do exactly early july bot 1")
 # Bracket margin guard (2026-06-28): skip "No" bet if any model is within
 # this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C

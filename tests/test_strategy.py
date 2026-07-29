@@ -3563,6 +3563,37 @@ class WeatherOnlyLaneTests(unittest.TestCase):
         weather = self._market("w", "Highest temperature in NYC on 2026-06-23?", "nyc-high-temp")
         self.assertEqual(_build_eligible_candidates([weather], settings), [])
 
+    def test_same_day_only_drops_next_day_weather(self):
+        # User 2026-07-29: "only bet on bets that are expiring the same day we
+        # are in." A market resolving TODAY (US/Eastern) is kept; tomorrow's is
+        # dropped when weather_same_day_only is on.
+        from zoneinfo import ZoneInfo
+        from polymarket_bot.race_strategies import (
+            _build_eligible_candidates, _weather_market_md,
+        )
+        from polymarket_bot.models import utc_now
+        MONTHS = ["January", "February", "March", "April", "May", "June",
+                  "July", "August", "September", "October", "November", "December"]
+        et = utc_now().astimezone(ZoneInfo("America/New_York"))
+        tmr = et + timedelta(days=1)
+        today_str = f"{MONTHS[et.month - 1]} {et.day}"
+        tmr_str = f"{MONTHS[tmr.month - 1]} {tmr.day}"
+        m_today = self._market("today", f"Will the highest temperature in NYC be 30°C on {today_str}?", "nyc-today")
+        m_tmr = self._market("tmr", f"Will the highest temperature in NYC be 30°C on {tmr_str}?", "nyc-tmr")
+        base = dict(race_min_price=0.80, race_max_price=0.94, race_max_spread=0.04,
+                    race_max_hours=24.0, race_weather_only=True,
+                    race_min_liquidity_usd=50.0, race_min_volume_24h_usd=200.0)
+        # helper parses the resolution date from the question
+        self.assertEqual(_weather_market_md({"question": "high on July 30?"}), (7, 30))
+        # gate ON → only today survives
+        on = {c.market_id for c, _ in _build_eligible_candidates(
+            [m_today, m_tmr], Settings(race_weather_same_day_only=True, **base))}
+        self.assertEqual(on, {"today"})
+        # gate OFF → both survive
+        off = {c.market_id for c, _ in _build_eligible_candidates(
+            [m_today, m_tmr], Settings(race_weather_same_day_only=False, **base))}
+        self.assertEqual(off, {"today", "tmr"})
+
     def test_helsinki_is_banned_from_the_weather_lane(self):
         # User 2026-07-23: "ban Helsinki from your future bets". A Helsinki
         # weather market is dropped at entry selection even though it IS a
