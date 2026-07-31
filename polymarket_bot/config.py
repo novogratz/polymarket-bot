@@ -446,6 +446,16 @@ class Settings:
     # resolve TODAY (US/Eastern) — never tomorrow's brackets, which carry a full
     # extra day of forecast-swing risk. Weather-only lane; default off.
     race_weather_same_day_only: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_WEATHER_SAME_DAY_ONLY", False))
+    # Daily weather cadence: same-calendar-day markets are always eligible;
+    # otherwise the close must be at least N hours away (and still under the
+    # normal max-hours ceiling). 0 disables the lower bound.
+    race_weather_min_hours_unless_same_day: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_WEATHER_MIN_HOURS_UNLESS_SAME_DAY", 0.0))
+    # The realized range-bracket sample was deeply negative; optionally keep
+    # only exact/tail temperature markets in the weather lane.
+    race_weather_exclude_ranges: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_WEATHER_EXCLUDE_RANGES", False))
+    # Maximum fresh positions sharing a broad weather region and target date.
+    # 0 disables the correlated-weather exposure cap.
+    race_weather_region_date_cap: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_WEATHER_REGION_DATE_CAP", 0))
     # Forecast-flip exit (user 2026-07-29): sell a held weather position when the
     # live Open-Meteo consensus gives OUR outcome < this probability (the forecast
     # has turned against the bet) — cutting the -$10 tail losses before they hit

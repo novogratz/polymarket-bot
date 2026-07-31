@@ -531,6 +531,13 @@ class Candidate:
     # by the favorite-dip lane to spot a favorite that just dropped.
     one_day_change: float = 0.0
     one_hour_change: float = 0.0
+    # Weather-only entry evidence. Persisted through the signal payload so
+    # realized trades can be calibrated against the model that admitted them.
+    forecast_probability: float | None = None
+    forecast_edge: float | None = None
+    weather_city: str = ""
+    weather_target_date: str = ""
+    weather_region: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -552,4 +559,9 @@ class Candidate:
             "neg_risk": self.neg_risk,
             "accepts_orders": self.accepts_orders,
             "event_slug": self.event_slug,
+            "forecast_probability": self.forecast_probability,
+            "forecast_edge": self.forecast_edge,
+            "weather_city": self.weather_city,
+            "weather_target_date": self.weather_target_date,
+            "weather_region": self.weather_region,
         }

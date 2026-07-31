@@ -154,6 +154,45 @@ class LiveAnalystStatsTests(unittest.TestCase):
         # Sorted by PnL desc — the big win leads the list
         self.assertAlmostEqual(rows[0]["pnl"], 39.34)
 
+    def test_todays_trades_weather_lane_rejects_non_weather_fixture_rows(self):
+        today = live_analyst._today_et()
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            data_dir.mkdir()
+            live_analyst.DATA_DIR = data_dir
+            (data_dir / "trade_journal.jsonl").write_text(
+                "\n".join([
+                    json.dumps({
+                        "closed_at": f"{today}T12:00:00-04:00",
+                        "token_id": "fixture",
+                        "question": "Counter-Strike: Marsborne vs F5 Esports (BO3)",
+                        "realized_pnl": 0.41,
+                    }),
+                    json.dumps({
+                        "closed_at": f"{today}T13:00:00-04:00",
+                        "token_id": "weather",
+                        "question": "Will the highest temperature in Toronto be 30°C today?",
+                        "realized_pnl": 0.25,
+                    }),
+                ]),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {"LIVE_ANALYST_WEATHER_ONLY": "1"}):
+                rows = live_analyst.load_todays_trades()
+
+        self.assertEqual([row["question"] for row in rows], [
+            "Will the highest temperature in Toronto be 30°C today?"
+        ])
+
+    def test_eastern_day_boundary_matches_report_date(self):
+        # 02:30 UTC is still the prior calendar day in New York.
+        self.assertTrue(live_analyst._closed_on_et_date(
+            "2026-07-31T02:30:00+00:00", "2026-07-30"
+        ))
+        self.assertFalse(live_analyst._closed_on_et_date(
+            "2026-07-31T02:30:00+00:00", "2026-07-31"
+        ))
+
     def test_top_closed_trades_reads_cache_when_journal_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "data"

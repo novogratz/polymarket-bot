@@ -2199,6 +2199,15 @@ def _starting_equity_for_stats(settings: Settings) -> float:
 
 def _append_realized_cache(settings: Settings, record: dict[str, object]) -> None:
     path = settings.realized_cache_path
+    # A custom journal path is used heavily by tests, dry runs, and per-profile
+    # ledgers.  Leaving the cache at its dataclass default in that situation
+    # must not write the close into the production data/ cache.  Keep an
+    # explicitly configured cache path, otherwise colocate it with the journal.
+    if (
+        path == Path("data/realized_trade_cache.jsonl")
+        and settings.trade_journal_path != Path("data/trade_journal.jsonl")
+    ):
+        path = settings.trade_journal_path.parent / "realized_trade_cache.jsonl"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         existing = {_realized_record_key(r) for r in _read_realized_records(path)}
@@ -2265,6 +2274,11 @@ def _append_trade_journal(settings: Settings, position: dict[str, object], reaso
         "fresh_wallets": metrics.get("fresh_wallets"),
         "largest_wallet_share": metrics.get("largest_wallet_share"),
         "flow_balance_score": metrics.get("flow_balance_score"),
+        "forecast_probability": metrics.get("forecast_probability"),
+        "forecast_edge": metrics.get("forecast_edge"),
+        "weather_city": metrics.get("weather_city"),
+        "weather_target_date": metrics.get("weather_target_date"),
+        "weather_region": metrics.get("weather_region"),
         "score": signal.get("score") if isinstance(signal, dict) else None,
         "wallets": signal.get("wallets") if isinstance(signal, dict) else None,
         "persistence_score": float(position.get("persistence_score") or 0.0),

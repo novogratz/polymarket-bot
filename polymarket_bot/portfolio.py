@@ -396,6 +396,11 @@ class Portfolio:
             "initial_shares": shares,
             "unrealized_pnl": 0.0,
             "end_date": candidate.end_date.isoformat() if candidate.end_date else None,
+            "forecast_probability": candidate.forecast_probability,
+            "forecast_edge": candidate.forecast_edge,
+            "weather_city": candidate.weather_city,
+            "weather_target_date": candidate.weather_target_date,
+            "weather_region": candidate.weather_region,
         }
 
     def mark_to_market(self, candidates: list[Candidate]) -> None:

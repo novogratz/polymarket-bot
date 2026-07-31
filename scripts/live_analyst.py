@@ -433,7 +433,7 @@ def load_live_snapshot() -> LiveSnapshot | None:
     journal = DATA_DIR / "trade_journal.jsonl"
     for entry in _read_realized_records(journal):
         # Skip ghost/test trades: no question means pre-strategy init artifacts.
-        if not entry.get("question"):
+        if not entry.get("question") or not _reportable_live_trade(entry):
             continue
         pnl = _record_pnl(entry)
         closed += 1
@@ -848,6 +848,43 @@ def _today_utc() -> str:
     return time.strftime("%Y-%m-%d", time.gmtime())
 
 
+def _today_et() -> str:
+    """Calendar date shown by the report (US Eastern), including DST."""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    except Exception:
+        return _today_utc()
+
+
+def _closed_on_et_date(closed_at: str, day: str) -> bool:
+    """True when an ISO close timestamp falls on *day* in US Eastern."""
+    try:
+        from zoneinfo import ZoneInfo
+        dt = datetime.fromisoformat(closed_at.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d") == day
+    except Exception:
+        return closed_at.startswith(day)
+
+
+def _reportable_live_trade(record: dict) -> bool:
+    """Reject records that cannot belong to the configured live lane."""
+    if os.environ.get("LIVE_ANALYST_WEATHER_ONLY", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+        return True
+    try:
+        from polymarket_bot.models import is_weather_market
+        return is_weather_market({
+            "question": str(record.get("question") or record.get("market_title") or ""),
+            "slug": str(record.get("event_slug") or record.get("slug") or ""),
+        })
+    except Exception:
+        # Reporting is read-only; if classification itself breaks, avoid hiding
+        # legitimate activity and retain the existing fail-open behavior.
+        return True
+
+
 def _et_stamp() -> str:
     """Current time as 'HH:MM ET' in US Eastern (DST-aware). UTC fallback only
     if zoneinfo is unavailable. All Telegram timestamps use this — never UTC."""
@@ -860,15 +897,17 @@ def _et_stamp() -> str:
 
 
 def load_todays_trades() -> list[dict]:
-    """Closed trades with closed_at on today's UTC date, deduplicated."""
-    today = _today_utc()
+    """Live-lane closes on today's Eastern date, deduplicated."""
+    today = _today_et()
     start_ts = _tracking_start_ts()
     journal = DATA_DIR / "trade_journal.jsonl"
     seen: set[str] = set()
     rows = []
     for e in _read_realized_records(journal):
         closed_at = str(e.get("closed_at") or "")
-        if not closed_at.startswith(today):
+        if not _closed_on_et_date(closed_at, today):
+            continue
+        if not _reportable_live_trade(e):
             continue
         if start_ts:
             try:
@@ -1249,7 +1288,7 @@ def _v4_performance_lines(
 
         records = [
             r for r in _read_realized_records(DATA_DIR / "trade_journal.jsonl")
-            if r.get("question")
+            if r.get("question") and _reportable_live_trade(r)
         ]
         if len(records) < 10:
             return []

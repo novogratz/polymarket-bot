@@ -105,7 +105,7 @@ stake_usd = 1.0
 # construction. Supersedes the 2026-07-11 no-reinforcement rule.
 # full_deploy OVERRIDES fixed_stake_usd; rollback to fixed-$5 =
 # full_deploy = false, fixed_stake_usd = 5.0.
-full_deploy = false
+full_deploy = true
 # SOFT default cap = 5% (user 2026-07-23: "prioritize more positions over 10%
 # per position — only do the 10% if there are not enough positions — put 5%
 # as default"). Every fresh entry / top-up / the chain guard uses this, so the
@@ -123,8 +123,8 @@ full_deploy_redistribute_max_position_pct = 0.10
 # clamped to (cap − stake); the cap is ABSOLUTE. Finished/crashed/at-cap
 # lines are skipped and the cash spreads over the rest; what the cap can't
 # place waits for new lines. 0 = never redistribute.
-full_deploy_redistribute_min_lines = 10
-fixed_stake_usd = 5.0
+full_deploy_redistribute_min_lines = 1
+fixed_stake_usd = 0.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
@@ -137,11 +137,14 @@ weather_only = true
 # Same-day-only (user 2026-07-29: "only bet on bets expiring the same day
 # we are in") — never bet tomorrow's brackets (a full extra day of swing risk).
 weather_same_day_only = false   # OFF (agent 2026-07-29): favored weather markets are next-day; same-day-only starves the lane. Volume over swing-avoidance.
-weather_forecast_min_edge = 0.0   # GATE OFF (user 2026-07-29 "not enough positions"): max volume. Flat $5 caps the per-bet loss so -EV bleeds slowly instead of blowing up.
+weather_min_hours_unless_same_day = 12.0
+weather_exclude_ranges = true
+weather_region_date_cap = 2
+weather_forecast_min_edge = 0.05  # light +EV gate: more volume than 0.10 without accepting the ungated negative-edge pool
 # Bracket margin guard (2026-06-28): skip "No" bet if any model is within
 # this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
 # bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.
-weather_min_bracket_margin_c = 0.0
+weather_min_bracket_margin_c = 2.0
 # Forecast-flip exit (user 2026-07-29): sell a held "No" when the live
 # Open-Meteo consensus gives our outcome < 45% (forecast turned against us),
 # confirmed over 2 ticks — cuts the -$10 tail losses before they hit $0.
@@ -190,7 +193,7 @@ double_down_min_price = 0.60
 # cap bounds risk regardless of count.
 max_orders_per_tick = 12
 # Full-deploy (user 2026-07-09): no cash reserve — 100% invested.
-cash_floor_pct = 0.01
+cash_floor_pct = 0.0
 
 # Exit rules:
 #   tp_pct = 1.0          → TP disabled; ride to resolution.

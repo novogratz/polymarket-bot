@@ -122,7 +122,7 @@ full_deploy_redistribute_max_position_pct = 0.10
 # clamped to (cap − stake); the cap is ABSOLUTE. Finished/crashed/at-cap
 # lines are skipped and the cash spreads over the rest; what the cap can't
 # place waits for new lines. 0 = never redistribute.
-full_deploy_redistribute_min_lines = 10
+full_deploy_redistribute_min_lines = 1
 fixed_stake_usd = 0.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
@@ -133,7 +133,10 @@ unban_all_markets = true
 # (is_weather_market in models.py). Entries are additionally cross-checked
 # against an Open-Meteo multi-model forecast before entry (below).
 weather_only = true
-weather_forecast_min_edge = 0.10   # raised 0.05→0.10: multi-model σ is tighter now
+weather_min_hours_unless_same_day = 12.0
+weather_exclude_ranges = true
+weather_region_date_cap = 2
+weather_forecast_min_edge = 0.05
 # Bracket margin guard (2026-06-28): skip "No" bet if any model is within
 # this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
 # bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.

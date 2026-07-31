@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- Test close events can no longer leak into the production realized-trade cache
+  when a temporary journal uses the default cache setting. Weather-only live
+  reports also reject non-weather records and use the US/Eastern trading day.
+- Restored equal-weight full deployment in `grinder` and `grinder_c`; a stale
+  fixed-$5 override had left most bankroll cash idle.
+- Restored the lighter weather forecast gate (5-point minimum edge and 2°C
+  bracket margin) in `grinder` and `grinder_c` so fuller deployment does not
+  scale the documented negative-edge ungated pool.
+- Weather entries now exclude narrow `between X–Y°` brackets (−22.1% realized
+  ROI), require same-day or 12–24h resolution, fail closed when forecast
+  validation is unavailable, rank by forecast edge, and cap fresh correlated
+  exposure at two positions per broad region/date. Forecast probability, edge,
+  city, region, and target date are persisted with every admitted trade.
+- Full-deploy redistribution now starts with one eligible held line and uses a
+  zero cash floor, deploying every dollar possible without crossing the 10%
+  absolute per-line cap.
+
 ### Changed
 
 - **Entry window reverted 48 h → 24 h** (user 2026-07-19, same day: "it took a lot of bets for 21 of july its way too far away bro... go back to 24h"). The 48 h experiment (#131) filled the book with day+2 brackets — forecast confidence aside, the user doesn't want capital parked that far from resolution. Back to `max_hours = 24` in both profiles; everything else from #131 unchanged (no other gate was touched).

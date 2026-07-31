@@ -248,6 +248,23 @@ def _weather_market_md(market: dict[str, Any]) -> tuple[int, int] | None:
     return (mon, day) if 1 <= day <= 31 else None
 
 
+def _weather_region(parsed: dict[str, Any] | None) -> str:
+    """Broad deterministic region for correlated same-date exposure caps."""
+    if not parsed:
+        return ""
+    lat = float(parsed.get("lat") or 0.0)
+    lon = float(parsed.get("lon") or 0.0)
+    if lon < -30:
+        return "americas"
+    if lon > 110 and lat < -10:
+        return "oceania"
+    if lon >= 60:
+        return "asia"
+    if lat >= 35:
+        return "europe"
+    return "africa_middle_east"
+
+
 def _build_eligible_candidates(
     markets: list[dict[str, Any]],
     settings: Settings,
@@ -273,6 +290,12 @@ def _build_eligible_candidates(
     # Weather-only lane (user 2026-06-23): restrict entry to ONLY weather /
     # temperature markets. Bypasses the ban list (weather is banned there).
     weather_only = bool(getattr(settings, "race_weather_only", False))
+    exclude_weather_ranges = weather_only and bool(
+        getattr(settings, "race_weather_exclude_ranges", False)
+    )
+    weather_min_hours = max(0.0, float(
+        getattr(settings, "race_weather_min_hours_unless_same_day", 0.0) or 0.0
+    ))
     # Same-day-only weather (user 2026-07-29: "only bet on bets that are
     # expiring the same day we are in"). Betting tomorrow's brackets (e.g. a
     # July 30 market while it's July 29) exposes the position to a full extra
@@ -317,6 +340,8 @@ def _build_eligible_candidates(
             # its held lines drop out of the top-up/redistribution pool too
             # (any existing position still rides to resolution — never sold).
             if _is_banned_weather_city(market):
+                continue
+            if exclude_weather_ranges and "between" in str(market.get("question") or "").lower():
                 continue
             # Same-day-only: drop markets resolving on a different day than
             # today (tomorrow's July-30 brackets while it's July 29).
@@ -385,6 +410,18 @@ def _build_eligible_candidates(
             else "https://polymarket.com"
         )
         hours_to_close = max((end_date - now).total_seconds() / 3600.0, 0.0)
+        if weather_only and weather_min_hours > 0:
+            md = _weather_market_md(market)
+            try:
+                from zoneinfo import ZoneInfo
+                local_now = now.astimezone(ZoneInfo("America/New_York"))
+                current_md = (local_now.month, local_now.day)
+            except Exception:
+                current_md = (now.month, now.day)
+            # Same-calendar-day opportunities may be inside 12 hours; all
+            # others must sit in the configured 12–24h daily window.
+            if md != current_md and hours_to_close < weather_min_hours:
+                continue
         # NOTE (2026-06-10): no price-movement gates. The day-change gate
         # (>10% moved today) and the day-momentum floor (falling >5% today)
         # were removed along with the short-lived 1h gates — recently-moving
@@ -465,19 +502,22 @@ def _build_eligible_candidates(
             weather_min_margin_c = float(
                 getattr(settings, "race_weather_min_bracket_margin_c", 0.0) or 0.0
             )
+            model_prob: float | None = None
+            parsed_w: dict[str, Any] | None = None
             if weather_only and (weather_min_edge > 0 or weather_min_margin_c > 0):
                 try:
                     parsed_w = parse_weather_question(question)
-                    if parsed_w is not None:
-                        model_prob = forecast_outcome_probability(
-                            parsed_w, outcome, min_bracket_margin_c=weather_min_margin_c
-                        )
-                        if model_prob is None:
-                            continue  # margin guard or API failure → skip
-                        if weather_min_edge > 0 and model_prob < best_ask + weather_min_edge:
-                            continue
+                    if parsed_w is None:
+                        continue
+                    model_prob = forecast_outcome_probability(
+                        parsed_w, outcome, min_bracket_margin_c=weather_min_margin_c
+                    )
+                    if model_prob is None:
+                        continue  # margin guard, model disagreement, or API failure
+                    if weather_min_edge > 0 and model_prob < best_ask + weather_min_edge:
+                        continue
                 except Exception:
-                    pass  # fail open
+                    continue  # configured safety gate is deliberately fail-closed
 
             outcome_momentum = one_day_change if index == 0 else -one_day_change
             candidate = Candidate(
@@ -499,6 +539,11 @@ def _build_eligible_candidates(
                 neg_risk=neg_risk,
                 accepts_orders=True,
                 event_slug=event_slug,
+                forecast_probability=model_prob,
+                forecast_edge=(model_prob - best_ask) if model_prob is not None else None,
+                weather_city=str((parsed_w or {}).get("city") or ""),
+                weather_target_date=str((parsed_w or {}).get("target_date") or ""),
+                weather_region=_weather_region(parsed_w),
             )
             out.append((candidate, outcome_momentum))
     return out
@@ -2050,11 +2095,62 @@ def select_grinder(eligible: list[tuple[Candidate, float]], n: int) -> list[Cand
         hours = candidate.hours_to_close or 99.0
         if bid <= 0.0 or ask <= 0.0:
             continue
-        # Score = confidence per remaining hour. Closer to resolution and
-        # closer to 1.0 → higher rank.
-        score = bid / max(hours, 1.0 / 60.0)
+        # Model edge is the primary ranking signal; confidence / time breaks
+        # ties. This deploys capital into the strongest forecast-backed lines
+        # first instead of merely buying whichever resolves soonest.
+        edge = candidate.forecast_edge if candidate.forecast_edge is not None else -1.0
+        score = edge * 1000.0 + bid / max(hours, 1.0 / 60.0)
         qualified.append((candidate, score))
     return _dedupe_top_n(qualified, n)
+
+
+def _cap_weather_region_date_candidates(
+    eligible: list[tuple[Candidate, float]],
+    portfolio: Portfolio,
+    cap: int,
+) -> list[tuple[Candidate, float]]:
+    """Keep the best forecast edges under each region/date exposure cap."""
+    if cap <= 0:
+        return eligible
+    counts: dict[tuple[str, str], int] = {}
+    for position in portfolio.positions:
+        if position.get("status") != "open":
+            continue
+        region = str(position.get("weather_region") or "")
+        target = str(position.get("weather_target_date") or "")
+        if not region or not target:
+            try:
+                parsed = parse_weather_question(str(position.get("question") or ""))
+                region = _weather_region(parsed)
+                target = str((parsed or {}).get("target_date") or "")
+            except Exception:
+                continue
+        if region and target:
+            counts[(region, target)] = counts.get((region, target), 0) + 1
+
+    ranked = sorted(
+        eligible,
+        key=lambda item: (
+            item[0].forecast_edge if item[0].forecast_edge is not None else -1.0,
+            item[0].best_bid or 0.0,
+        ),
+        reverse=True,
+    )
+    kept: list[tuple[Candidate, float]] = []
+    for item in ranked:
+        candidate = item[0]
+        # Existing lines remain actionable for bounded top-ups.
+        if portfolio.open_position_for_token(candidate.token_id) is not None:
+            kept.append(item)
+            continue
+        key = (candidate.weather_region, candidate.weather_target_date)
+        if not all(key):
+            continue  # forecast-backed weather metadata is required
+        if counts.get(key, 0) >= cap:
+            continue
+        counts[key] = counts.get(key, 0) + 1
+        kept.append(item)
+    return kept
 
 
 # ---------------------------------------------------------------------------
@@ -3143,6 +3239,13 @@ def _run_race_tick(
             f"   actionable: {len(actionable)}/{len(eligible)} (already-held/duplicate-event markets excluded from pick slots)",
         )
 
+    if getattr(settings, "race_weather_only", False):
+        actionable = _cap_weather_region_date_candidates(
+            actionable,
+            portfolio,
+            int(getattr(settings, "race_weather_region_date_cap", 0) or 0),
+        )
+
     # Opportunity count drives per-bet sizing. Under full-deploy the count
     # is ALL lines — open positions + new actionable markets — so the
     # equal-weight target equals equity / total lines (user 2026-07-19).
@@ -3273,6 +3376,11 @@ def _run_race_tick(
                 "current_bid": candidate.best_bid,
                 "hours_to_close": round(candidate.hours_to_close or 0.0, 3),
                 "liquidity": candidate.liquidity,
+                "forecast_probability": candidate.forecast_probability,
+                "forecast_edge": candidate.forecast_edge,
+                "weather_city": candidate.weather_city,
+                "weather_target_date": candidate.weather_target_date,
+                "weather_region": candidate.weather_region,
             },
             "tag": strategy_name,
         }

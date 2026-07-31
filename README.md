@@ -29,7 +29,7 @@ pip install -e ".[dev]"
 bash scripts/run_live_70.sh
 ```
 
-Starts the live grinder (**10 s tick**) alongside a dry paper twin and a read-only **live analyst** sidecar that posts a Telegram **LIVE REPORT** — on startup, then on a fixed cadence (`LIVE_ANALYST_CYCLE_SECONDS`), plus a daily 10:00 ET fire. The report shows **equity, P&L since start, total trades + win rate, and open positions** — nothing else (no per-trade lists, no heartbeat, no BUY/SELL spam). The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path**.
+Starts the live grinder (**10 s tick**) alongside a dry paper twin and a read-only **live analyst** sidecar that posts a Telegram **LIVE REPORT** — on startup, then on a fixed cadence (`LIVE_ANALYST_CYCLE_SECONDS`), plus a daily 10:00 ET fire. The report shows **equity, P&L since start, total trades + win rate, today's top/bottom closes, and open positions**. Weather-only launchers exclude non-weather rows from live statistics, and “today” follows the US/Eastern report date. The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path**.
 
 All live bots (`run_live_70.sh` = bot 1, `run_live_b.sh` = bots 2 & 3, `run_live_c.sh` = the grinder_c bot on this Mac added 2026-07-19, plus `run_live_win.sh` on `kzer_windows`) run independently, each with its own wallet and ledger, and all run **weather mode** as of 2026-07-06. Each keeps a per-machine baseline (`data/starting_cash.txt`); reset any bot with `scripts/fresh_start.py` (wipes closed-trade history, keeps open trades).
 
@@ -109,7 +109,8 @@ Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) a
 
 ### 5. Sizing (equal-weight full deployment — user 2026-07-19)
 
-- **Cash ≈ $0 at all times, equally distributed.** Every line targets an equal share of the account: `equity ÷ N` over ALL lines (open positions + new eligible markets), bounded by the **10% per-line cap** (`full_deploy_max_position_pct = 0.10`, doubled from 5%) and the $5 Polymarket floor. Sum of targets = equity, so cash deploys fully whenever ≥10 distinct lines exist.
+- **Cash is deployed across the strongest eligible lines.** Fresh entries rank by Open-Meteo forecast edge and target `equity ÷ N`, bounded by a **5% soft entry/top-up cap**, a **10% redistribution-only hard cap**, and the $5 Polymarket floor. Redistribution has a zero cash floor and starts with one held line, so every deployable dollar is used; the hard line cap may still leave cash idle when fewer than ten safe lines exist.
+- **Daily weather cadence and correlation control.** Narrow `between X–Y°` brackets are excluded. A market must resolve today or be 12–24 hours away, never beyond 24 hours. Forecast validation is fail-closed, and no more than two fresh positions may share a broad region and target date.
 - **Held lines top up toward the shared target — never past it.** Below-cap lines stay in the pick slots and each buy is clamped to `target − current stake`; an **on-chain line-cap guard** in the order executor refuses any buy once the wallet's holding is worth ≥ the cap at the current ask (works even if the local ledger is missing the position).
 - Example: $150 invested + $150 cash across 10 lines → each line targets $30 and the cash deploys.
 - **No cash reserve** (`cash_floor_pct = 0`). Worst-case loss per line ≈ 10% of equity.

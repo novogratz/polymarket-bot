@@ -36,6 +36,11 @@ class TestJournalPersistenceScore(unittest.TestCase):
             entry = json.loads(lines[0])
             self.assertIn("persistence_score", entry)
             self.assertAlmostEqual(entry["persistence_score"], 0.83)
+            # A custom journal must also own its realized cache. Test fixtures
+            # must never spill into data/realized_trade_cache.jsonl.
+            cache = journal.parent / "realized_trade_cache.jsonl"
+            self.assertTrue(cache.is_file())
+            self.assertEqual(len(cache.read_text().splitlines()), 1)
 
     def test_journal_entry_persistence_score_defaults_zero(self) -> None:
         """Si la position n'a pas persistence_score (ex: pré-filtre désactivé), default 0.0."""
@@ -82,6 +87,26 @@ class JournalExitPriceTests(unittest.TestCase):
             _append_trade_journal(settings, position, reason="race_big_win_resolved")
             entry = json.loads(journal.read_text().splitlines()[0])
             self.assertAlmostEqual(entry["exit_price"], 0.99)
+
+    def test_weather_forecast_evidence_is_persisted(self) -> None:
+        with TemporaryDirectory() as tmp:
+            journal = Path(tmp) / "journal.jsonl"
+            settings = Settings(trade_journal_path=journal, quiet=True)
+            position = {
+                "market_id": "weather", "question": "Highest temperature in Paris",
+                "outcome": "No", "entry_price": 0.90, "current_price": 0.99,
+                "realized_pnl": 0.50, "initial_shares": 5.0,
+                "signal": {"selection_metrics": {
+                    "forecast_probability": 0.97, "forecast_edge": 0.07,
+                    "weather_city": "paris", "weather_target_date": "2026-07-31",
+                    "weather_region": "europe",
+                }},
+            }
+            _append_trade_journal(settings, position, reason="race_big_win_resolved")
+            entry = json.loads(journal.read_text().splitlines()[0])
+            self.assertEqual(entry["forecast_probability"], 0.97)
+            self.assertEqual(entry["forecast_edge"], 0.07)
+            self.assertEqual(entry["weather_region"], "europe")
 
 if __name__ == "__main__":
     unittest.main()

@@ -3594,6 +3594,51 @@ class WeatherOnlyLaneTests(unittest.TestCase):
             [m_today, m_tmr], Settings(race_weather_same_day_only=False, **base))}
         self.assertEqual(off, {"today", "tmr"})
 
+    def test_range_brackets_are_excluded_when_quality_gate_is_on(self):
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        settings = Settings(
+            race_min_price=0.85, race_max_price=0.97, race_max_spread=0.04,
+            race_max_hours=24.0, race_weather_only=True,
+            race_weather_exclude_ranges=True,
+        )
+        exact = self._market("exact", "Will the highest temperature in NYC be 90°F on July 31?", "nyc-exact")
+        ranged = self._market("range", "Will the highest temperature in NYC be between 90-91°F on July 31?", "nyc-range")
+        ids = {c.market_id for c, _ in _build_eligible_candidates([exact, ranged], settings)}
+        self.assertEqual(ids, {"exact"})
+
+    def test_non_same_day_market_must_be_at_least_12_hours_away(self):
+        from zoneinfo import ZoneInfo
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        et = utc_now().astimezone(ZoneInfo("America/New_York"))
+        tomorrow = et + timedelta(days=1)
+        qdate = tomorrow.strftime("%B %-d")
+        near = self._market("near", f"Will the highest temperature in NYC be 90°F on {qdate}?", "nyc-near")
+        far = self._market("far", f"Will the highest temperature in Paris be 30°C on {qdate}?", "paris-far")
+        near["endDate"] = (utc_now() + timedelta(hours=6)).isoformat()
+        far["endDate"] = (utc_now() + timedelta(hours=18)).isoformat()
+        settings = Settings(
+            race_min_price=0.85, race_max_price=0.97, race_max_spread=0.04,
+            race_max_hours=24.0, race_weather_only=True,
+            race_weather_min_hours_unless_same_day=12.0,
+        )
+        ids = {c.market_id for c, _ in _build_eligible_candidates([near, far], settings)}
+        self.assertEqual(ids, {"far"})
+
+    def test_configured_forecast_gate_is_fail_closed_on_parse_failure(self):
+        from unittest.mock import patch
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        market = self._market("w", "Highest temperature in NYC on July 31?", "nyc-high-temp")
+        settings = Settings(
+            race_min_price=0.85, race_max_price=0.97, race_max_spread=0.04,
+            race_max_hours=24.0, race_weather_only=True,
+            race_weather_forecast_min_edge=0.05,
+        )
+        with patch("polymarket_bot.race_strategies.parse_weather_question", return_value=None):
+            self.assertEqual(_build_eligible_candidates([market], settings), [])
+
     def test_helsinki_is_banned_from_the_weather_lane(self):
         # User 2026-07-23: "ban Helsinki from your future bets". A Helsinki
         # weather market is dropped at entry selection even though it IS a
@@ -4121,6 +4166,32 @@ class WeatherFlipExitTests(unittest.TestCase):
         R = self._patch(lambda q: {"target_date": "x"}, boom)
         s = Settings(race_weather_flip_exit_prob=0.45)
         self.assertIsNone(R._weather_flip_exit_plan(self._pos(), s))
+
+
+class WeatherRegionExposureTests(unittest.TestCase):
+    def test_keeps_strongest_two_edges_per_region_and_date(self):
+        from polymarket_bot.race_strategies import _cap_weather_region_date_candidates
+
+        def candidate(mid, edge, region="americas"):
+            return Candidate(
+                market_id=mid, question=f"Highest temperature {mid}", slug=mid,
+                end_date=utc_now() + timedelta(hours=18), hours_to_close=18,
+                liquidity=1000, volume=2000, outcome="No", price=0.9,
+                token_id=f"tok-{mid}", score=0, url="https://example.test",
+                best_bid=0.89, best_ask=0.90, accepts_orders=True,
+                forecast_probability=0.90 + edge, forecast_edge=edge,
+                weather_city=mid, weather_target_date="2026-07-31",
+                weather_region=region,
+            )
+
+        low, high, mid = candidate("low", 0.06), candidate("high", 0.14), candidate("mid", 0.10)
+        europe = candidate("paris", 0.07, "europe")
+        kept = _cap_weather_region_date_candidates(
+            [(low, 0), (high, 0), (mid, 0), (europe, 0)],
+            Portfolio(cash=100, positions=[]),
+            2,
+        )
+        self.assertEqual([c.market_id for c, _ in kept], ["high", "mid", "paris"])
 
 
 class FullDeploySizingTests(unittest.TestCase):
