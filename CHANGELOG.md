@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- All three live grinders' weather universes no longer starve at the top of their entry bands:
+  asks through 0.97 are admitted by both the normal and hard price caps, and
+  its forecast requirement is now a feasible +1 point (a 0.97 ask still
+  requires 0.98 model probability). Each bot also doubles its discovery batch
+  to 1,500 markets, admits weather lines down to $50 daily volume, and removes
+  the broad region/date count ceiling without re-enabling the loss-heavy
+  narrow-range markets or weakening spread/liquidity protection.
+
 - Test close events can no longer leak into the production realized-trade cache
   when a temporary journal uses the default cache setting. Weather-only live
   reports also reject non-weather records and use the US/Eastern trading day.

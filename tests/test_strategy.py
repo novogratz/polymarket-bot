@@ -3639,6 +3639,31 @@ class WeatherOnlyLaneTests(unittest.TestCase):
         with patch("polymarket_bot.race_strategies.parse_weather_question", return_value=None):
             self.assertEqual(_build_eligible_candidates([market], settings), [])
 
+    def test_one_point_forecast_edge_admits_a_supported_097_favorite(self):
+        """Bot 3's wider band must not be made inert by an impossible edge."""
+        from unittest.mock import patch
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        market = self._market(
+            "w97", "Will the highest temperature in NYC be 90°F on July 31?", "nyc-90f"
+        )
+        market.update(bestBid=0.96, bestAsk=0.97,
+                      outcomePrices='["0.97", "0.03"]')
+        settings = Settings(
+            race_min_price=0.85, race_max_price=0.97,
+            race_max_price_hard_cap=0.97, race_max_spread=0.04,
+            race_max_hours=24.0, race_weather_only=True,
+            race_weather_forecast_min_edge=0.01,
+        )
+        parsed = {"city": "New York", "target_date": "2026-07-31", "lat": 40.7, "lon": -74.0}
+        with (
+            patch("polymarket_bot.race_strategies.parse_weather_question", return_value=parsed),
+            patch("polymarket_bot.race_strategies.forecast_outcome_probability", return_value=0.98),
+        ):
+            out = _build_eligible_candidates([market], settings)
+        self.assertEqual([(c.market_id, c.outcome, c.best_ask) for c, _ in out],
+                         [("w97", "Yes", 0.97)])
+
     def test_helsinki_is_banned_from_the_weather_lane(self):
         # User 2026-07-23: "ban Helsinki from your future bets". A Helsinki
         # weather market is dropped at entry selection even though it IS a

@@ -71,6 +71,18 @@ class LoadProfileTests(unittest.TestCase):
         self.assertEqual(profile.values["POLYMARKET_SMART_ENTRY_COOLDOWN_AFTER_LOSS_MINUTES"], "180")
         self.assertEqual(profile.values["POLYMARKET_SMART_DEEP_FALLBACK_MIN_CONSENSUS"], "2")
 
+    def test_all_live_grinders_share_wider_weather_universe(self):
+        profiles_dir = Path(__file__).resolve().parent.parent / "configs" / "profiles"
+        for name in ("grinder.toml", "grinder_b.toml", "grinder_c.toml"):
+            with self.subTest(profile=name):
+                profile = load_profile(profiles_dir / name)
+                self.assertEqual(profile.values["POLYMARKET_RACE_MAX_PRICE"], "0.97")
+                self.assertEqual(profile.values["POLYMARKET_RACE_MAX_PRICE_HARD_CAP"], "0.97")
+                self.assertEqual(profile.values["POLYMARKET_RACE_SCAN_LIMIT"], "1500")
+                self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_FORECAST_MIN_EDGE"], "0.01")
+                self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_REGION_DATE_CAP"], "0")
+                self.assertEqual(profile.values["POLYMARKET_RACE_MIN_VOLUME_24H_USD"], "50.0")
+
     def test_rejects_unknown_section(self):
         path = self._write_profile(
             """

@@ -58,22 +58,24 @@ enabled = false
 max_hours = 24.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
-scan_limit = 750
+# Pull deeper soonest-closing and highest-volume batches. The two scans are
+# deduplicated by market id, so this expands discovery without duplicate bets.
+scan_limit = 1500
 
 # Weather-grade liquidity floors (lower — weather markets are thinner).
 min_liquidity_usd = 50.0
-min_volume_24h_usd = 200.0
+min_volume_24h_usd = 50.0
 
-# v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
-# 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
-# is the ABSOLUTE ceiling — 0.97/0.98/0.99 are never tradeable.
+# Bot 3 wider favorite band (user 2026-07-31): admit asks through 0.97.
+# The configured max and absolute hard cap intentionally match so a stale
+# hard-cap clamp cannot silently keep the effective ceiling at 0.96.
 # Price floor RESTORED to 0.85 (user 2026-07-28, "make money as we used to"):
 # realized history shows the 0.80–0.85 bucket is a slow bleed (−8.1% ROI in the
 # grinder_b analysis). The whole strategy is only +EV when win-rate q > entry
 # price p; buying cheaper favorites lowers q faster than p, so 0.85 is the floor.
 min_price = 0.85
-max_price = 0.94
-max_price_hard_cap = 0.96
+max_price = 0.97
+max_price_hard_cap = 0.97
 
 # Crypto-only entry floor (bot 2 ONLY, user 2026-06-24: "put back crypto on
 # bot 2"). Crypto is already un-banned here via unban_all_markets, but the
@@ -146,7 +148,10 @@ weather_only = true
 weather_same_day_only = false   # OFF (agent 2026-07-29): favored weather markets are next-day; same-day-only starves the lane. Volume over swing-avoidance.
 weather_min_hours_unless_same_day = 12.0
 weather_exclude_ranges = true
-weather_region_date_cap = 2
+# 0 removes the broad region/date count ceiling. Equal-weight sizing and the
+# per-line 5%/10% caps still bound each position; forecast ranking decides
+# which lines enter first when more than max_orders_per_tick are available.
+weather_region_date_cap = 0
 # FORECAST GATE RESTORED (user 2026-07-28, "do everything you think makes sense
 # to make money as we used to"). WHY: with the gate OFF, 132 realized trades
 # ran 89% win / avg entry 0.90 → edge (q−p) = −1.6 pts = structurally LOSING
@@ -160,7 +165,10 @@ weather_region_date_cap = 2
 #     ones a sudden temp shift flips to 50% (the −$10 tail wipeouts). Qingdao
 #     fix (ECMWF 28.1°C vs 29°C bracket).
 # ~10 eligible lines and each is +EV. Re-widen for volume = lower these / 0.0.
-weather_forecast_min_edge = 0.05  # light +EV gate: more volume than 0.10 without accepting the ungated negative-edge pool
+# Keep a positive edge while increasing throughput: a 0.97 entry still needs
+# at least 0.98 model probability. Setting this to zero would admit the
+# historically negative-edge ungated pool and scale losses with bet count.
+weather_forecast_min_edge = 0.01
 weather_min_bracket_margin_c = 2.0
 # Forecast-flip exit (user 2026-07-29): sell a held "No" when the live
 # Open-Meteo consensus gives our outcome < 45% (forecast turned against us),

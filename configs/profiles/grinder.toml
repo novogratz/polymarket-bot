@@ -55,18 +55,17 @@ enabled = false
 max_hours = 24.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
-scan_limit = 750
+scan_limit = 1500
 
 # Weather-grade liquidity floors (lower — weather markets are thinner).
 min_liquidity_usd = 50.0
-min_volume_24h_usd = 200.0
+min_volume_24h_usd = 50.0
 
-# v4 entry band (user 2026-06-21): primary 0.80–0.94. The experimental
-# 0.94–0.96 band is tracked separately (Phase 2). max_price_hard_cap = 0.96
-# is the ABSOLUTE ceiling — 0.97/0.98/0.99 are never tradeable.
+# Wider favorite band (user 2026-07-31): both the normal and absolute ceiling
+# admit asks through 0.97; the forecast gate still requires positive edge.
 min_price = 0.85
-max_price = 0.94
-max_price_hard_cap = 0.96
+max_price = 0.97
+max_price_hard_cap = 0.97
 
 # Crypto-only entry floor (bot 2 ONLY, user 2026-06-24: "put back crypto on
 # bot 2"). Crypto is already un-banned here via unban_all_markets, but the
@@ -139,8 +138,8 @@ weather_only = true
 weather_same_day_only = false   # OFF (agent 2026-07-29): favored weather markets are next-day; same-day-only starves the lane. Volume over swing-avoidance.
 weather_min_hours_unless_same_day = 12.0
 weather_exclude_ranges = true
-weather_region_date_cap = 2
-weather_forecast_min_edge = 0.05  # light +EV gate: more volume than 0.10 without accepting the ungated negative-edge pool
+weather_region_date_cap = 0
+weather_forecast_min_edge = 0.01
 # Bracket margin guard (2026-06-28): skip "No" bet if any model is within
 # this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
 # bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.
