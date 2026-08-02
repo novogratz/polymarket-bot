@@ -1,5 +1,11 @@
 # Changelog
 
+- **Bot 2 mapped back to bot 3's production weather strategy** (2026-08-01):
+  `run_live_b.sh` now launches `grinder_b` again, with the same strategy values
+  as bot 3's `grinder_c` profile (0.80 entry floor; forecast gates disabled).
+  Bot 2 keeps its own bankroll baseline, wallet environment, ledger, and report
+  identity. A production-mapping test prevents the profiles from drifting.
+
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
