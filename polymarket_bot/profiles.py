@@ -287,6 +287,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "max_price_hard_cap": ("POLYMARKET_RACE_MAX_PRICE_HARD_CAP", "float"),
         "crypto_min_price": ("POLYMARKET_RACE_CRYPTO_MIN_PRICE", "float"),
         "unban_all_markets": ("POLYMARKET_UNBAN_ALL_MARKETS", "bool"),
+        "late_multi_category": ("POLYMARKET_RACE_LATE_MULTI_CATEGORY", "bool"),
         "weather_only": ("POLYMARKET_RACE_WEATHER_ONLY", "bool"),
         "weather_same_day_only": ("POLYMARKET_RACE_WEATHER_SAME_DAY_ONLY", "bool"),
         "weather_min_hours_unless_same_day": ("POLYMARKET_RACE_WEATHER_MIN_HOURS_UNLESS_SAME_DAY", "float"),

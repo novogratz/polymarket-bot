@@ -92,7 +92,10 @@ def _load_short_expiry_markets(settings: Settings, max_hours: float | None = Non
                 # city contracts disappear from the paginated slice.
                 "tag_id": 84,
             },)
-            if bool(getattr(settings, "race_weather_only", False))
+            if (
+                bool(getattr(settings, "race_weather_only", False))
+                or bool(getattr(settings, "race_late_multi_category", False))
+            )
             else ()
         ),
     ):
@@ -295,6 +298,40 @@ def _weather_region(parsed: dict[str, Any] | None) -> str:
     return "africa_middle_east"
 
 
+_LATE_SPORT_CATEGORIES = frozenset({"sports", "soccer", "ufc", "golf"})
+_WINDOWED_CRYPTO_RE = re.compile(r"\b(?:bitcoin|btc|solana|sol|xrp)\b.*\bup or down\b.*(?:-|\b(?:am|pm)\s+et\b)", re.I)
+_OBJECTIVE_ECON_RE = re.compile(
+    r"\b(?:cpi|ppi|gdp|inflation|unemployment|jobs report|nonfarm|payrolls|"
+    r"interest rate|rate (?:cut|hike|decision)|fomc|fed|ecb|basis points)\b",
+    re.I,
+)
+
+
+def _late_multi_category_allowed(
+    market: dict[str, Any], now: dt.datetime, horizon: dt.datetime
+) -> bool:
+    """Deterministic category-specific admission for the expanded live lane."""
+    if is_weather_market(market):
+        return True
+    category = classify_market(market)
+    end_date = parse_dt(market.get("endDate"))
+    if end_date is None or not (now <= end_date <= horizon):
+        return False
+    if category in _LATE_SPORT_CATEGORIES:
+        game_start = parse_dt(market.get("gameStartTime"))
+        return (
+            game_start is not None
+            and now - timedelta(hours=6) <= game_start <= now - timedelta(minutes=30)
+        )
+    if category == "crypto":
+        text = str(market.get("question") or "")
+        return end_date <= now + timedelta(hours=1) and bool(_WINDOWED_CRYPTO_RE.search(text))
+    if category == "economics":
+        text = f"{market.get('question') or ''} {market.get('slug') or ''}"
+        return end_date <= now + timedelta(hours=2) and bool(_OBJECTIVE_ECON_RE.search(text))
+    return False
+
+
 def _build_eligible_candidates(
     markets: list[dict[str, Any]],
     settings: Settings,
@@ -320,6 +357,7 @@ def _build_eligible_candidates(
     # Weather-only lane (user 2026-06-23): restrict entry to ONLY weather /
     # temperature markets. Bypasses the ban list (weather is banned there).
     weather_only = bool(getattr(settings, "race_weather_only", False))
+    multi_category = bool(getattr(settings, "race_late_multi_category", False))
     exclude_weather_ranges = weather_only and bool(
         getattr(settings, "race_weather_exclude_ranges", False)
     )
@@ -359,6 +397,7 @@ def _build_eligible_candidates(
     min_clarity = float(getattr(settings, "race_min_resolution_clarity", 0.0) or 0.0)
     out: list[tuple[Candidate, float]] = []
     for market in markets:
+        market_is_weather = is_weather_market(market)
         if weather_only:
             # Keep ONLY weather markets; this lane bypasses the ban list
             # (weather is itself banned there).
@@ -379,11 +418,15 @@ def _build_eligible_candidates(
                 md = _weather_market_md(market)
                 if md is not None and md != today_md:
                     continue
+        elif multi_category and not _late_multi_category_allowed(market, now, horizon):
+            continue
         elif not unban_all and is_excluded_market(market):
             continue
         # Hard bans that survive unban_all_markets (esports, speech, weather).
         # weather_ok=True lifts the weather clause for the weather-only bot.
-        if is_hard_excluded_market(market, weather_ok=weather_only):
+        if is_hard_excluded_market(
+            market, weather_ok=weather_only or (multi_category and market_is_weather)
+        ):
             continue
         # v4 data-driven governance: drop auto-disabled categories.
         if disabled and classify_market(market) in disabled:
@@ -404,7 +447,7 @@ def _build_eligible_candidates(
         # on its target day; acceptingOrders, price, forecast and solar-hour
         # gates below remain authoritative.
         stale_same_day_weather = (
-            weather_only
+            (weather_only or (multi_category and market_is_weather))
             and end_date < earliest
             and _weather_target_is_local_today(market, now)
         )
@@ -449,7 +492,7 @@ def _build_eligible_candidates(
             else "https://polymarket.com"
         )
         hours_to_close = max((end_date - now).total_seconds() / 3600.0, 0.0)
-        if weather_only and weather_min_hours > 0:
+        if (weather_only or (multi_category and market_is_weather)) and weather_min_hours > 0:
             md = _weather_market_md(market)
             try:
                 from zoneinfo import ZoneInfo
@@ -543,7 +586,12 @@ def _build_eligible_candidates(
             )
             model_prob: float | None = None
             parsed_w: dict[str, Any] | None = None
-            if weather_only and (weather_min_edge > 0 or weather_min_margin_c > 0):
+            weather_entry = weather_only or (multi_category and market_is_weather)
+            if weather_entry and (
+                weather_min_edge > 0
+                or weather_min_margin_c > 0
+                or float(getattr(settings, "race_weather_min_solar_hour", 0.0) or 0.0) > 0
+            ):
                 try:
                     parsed_w = parse_weather_question(question)
                     if parsed_w is None:
@@ -553,13 +601,14 @@ def _build_eligible_candidates(
                     )
                     if not late_entry_ready(parsed_w, min_solar_hour):
                         continue
-                    model_prob = forecast_outcome_probability(
-                        parsed_w, outcome, min_bracket_margin_c=weather_min_margin_c
-                    )
-                    if model_prob is None:
-                        continue  # margin guard, model disagreement, or API failure
-                    if weather_min_edge > 0 and model_prob < best_ask + weather_min_edge:
-                        continue
+                    if weather_min_edge > 0 or weather_min_margin_c > 0:
+                        model_prob = forecast_outcome_probability(
+                            parsed_w, outcome, min_bracket_margin_c=weather_min_margin_c
+                        )
+                        if model_prob is None:
+                            continue  # margin guard, model disagreement, or API failure
+                        if weather_min_edge > 0 and model_prob < best_ask + weather_min_edge:
+                            continue
                 except Exception:
                     continue  # configured safety gate is deliberately fail-closed
 

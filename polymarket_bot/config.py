@@ -437,6 +437,10 @@ class Settings:
     # auto-disable (user 2026-06-21). Per-trade risk is capped by the fixed
     # stake above. False keeps the manual ban list.
     unban_all_markets: bool = field(default_factory=lambda: _bool_env("POLYMARKET_UNBAN_ALL_MARKETS", False))
+    # Category-aware late-resolution whitelist (weather, in-play sports,
+    # short windowed crypto, objective economics). Independent from the legacy
+    # unban-all switch so other profiles retain their existing semantics.
+    race_late_multi_category: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_LATE_MULTI_CATEGORY", False))
     # ── weather-only lane (user 2026-06-23; ALL bots as of 2026-07-06) ────
     # When true, entry selection keeps ONLY weather / temperature markets
     # (is_weather_market) and bypasses the normal ban list (weather is banned

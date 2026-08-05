@@ -12,13 +12,13 @@ MIT licensed. Tests run in CI — see `.github/workflows/test.yml`.
 - Preserve `data/paper_state.json`, `data/trade_journal.jsonl`, `data/realized_trade_cache.jsonl` unless explicitly asked to reset.
 - The bot must not gain the capability to write or push source code on its own.
 
-## Current state (2026-07-06 — weather-only)
+## Current state (2026-08-04 — category-aware late resolution)
 
-This is a general-purpose engine (`polymarket_bot/race_strategies.py`) that can run several strategies off a TOML profile. **Live strategy: `grinder` — WEATHER-ONLY. All 3 bots.** Forecast edge, bracket-margin, calibration, and region/date entry gates are disabled on every live profile; late solar timing and market-quality execution filters remain.
+This is a general-purpose engine (`polymarket_bot/race_strategies.py`) that can run several strategies off a TOML profile. **All 3 live grinders use a deterministic category-aware late-resolution lane:** weather, already-started sports, sub-hour windowed BTC/SOL/XRP crypto, and objective economics releases within two hours. Subjective and historically unsafe categories remain excluded.
 
 **Config:** `configs/profiles/grinder.toml` (bot 1) / `grinder_b.toml` (bots 2 & 3).  
 **Launcher:** `bash scripts/run_live_70.sh` / `run_live_b.sh`. Do **not** use `run_all.sh` for live.  
-**Universe:** `weather_only = true` — ONLY weather / temperature markets (`is_weather_market`); everything else dropped at selection. "weather" is a first-class category (2026-07-10), never auto-disabled while the lane is on.  
+**Universe:** `weather_only = false`, `unban_all_markets = true`, narrowed in code to the deterministic late-resolution whitelist.
 **Entry:** all three live profiles admit asks through 0.97 with a matching hard cap and require at least +1 point of Open-Meteo edge. Markets must close within 6h, target the city's current local date, and enter after solar 15:00. Narrow ranges are excluded; Open-Meteo validation fails closed, region/date exposure is capped at two lines, and realized Brier score pauses entries when calibration deteriorates.
 **Sizing:** **EQUAL-WEIGHT FULL DEPLOYMENT** (`full_deploy = true`, `full_deploy_max_position_pct = 0.10`, 2026-07-19) — cash ≈ $0 at all times: every line targets equity/N over all lines (10% cap, $5 floor); held lines top up toward the shared target, never past it (on-chain line-cap guard). Rollback: `full_deploy=false, fixed_stake_usd=5.0`.
 **Exits:** resolved_exit at bid ≥**0.99** (else settle 1.0), plus an absolute weather stop at executable bid ≤**0.55**. The stop is an explicit exemption from the normal never-sell-below-entry guard.

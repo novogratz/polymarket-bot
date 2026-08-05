@@ -51,6 +51,53 @@ class StrategyTests(unittest.TestCase):
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_REGION_DATE_CAP"], "0")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_CALIBRATION_MIN_SAMPLES"], "0")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_CALIBRATION_MAX_BRIER"], "0.0")
+                self.assertEqual(values["POLYMARKET_RACE_WEATHER_ONLY"], "0")
+                self.assertEqual(values["POLYMARKET_RACE_LATE_MULTI_CATEGORY"], "1")
+
+    def test_multi_category_late_lane_is_category_aware(self):
+        from polymarket_bot.race_strategies import _late_multi_category_allowed
+
+        now = utc_now()
+        horizon = now + timedelta(hours=6)
+
+        def market(question, *, end_hours=1, start_hours=None, slug="market"):
+            item = {
+                "question": question,
+                "slug": slug,
+                "endDate": (now + timedelta(hours=end_hours)).isoformat(),
+            }
+            if start_hours is not None:
+                item["gameStartTime"] = (now + timedelta(hours=start_hours)).isoformat()
+            return item
+
+        self.assertTrue(_late_multi_category_allowed(
+            market("NBA: Knicks vs. Celtics", start_hours=-1), now, horizon
+        ))
+        self.assertFalse(_late_multi_category_allowed(
+            market("NBA: Knicks vs. Celtics", start_hours=1), now, horizon
+        ))
+        self.assertFalse(_late_multi_category_allowed(
+            market("NBA: Knicks vs. Celtics", start_hours=-0.1), now, horizon
+        ))
+        self.assertTrue(_late_multi_category_allowed(
+            market("Bitcoin Up or Down - August 4, 9PM ET", end_hours=0.5), now, horizon
+        ))
+        self.assertFalse(_late_multi_category_allowed(
+            market("Bitcoin Up or Down on August 4", end_hours=0.5), now, horizon
+        ))
+        self.assertTrue(_late_multi_category_allowed(
+            market("Will CPI inflation exceed 3%?", end_hours=1.5), now, horizon
+        ))
+        self.assertFalse(_late_multi_category_allowed(
+            market("Will there be a recession?", end_hours=1.5), now, horizon
+        ))
+        self.assertFalse(_late_multi_category_allowed(
+            market("Will the president win the election?", end_hours=1), now, horizon
+        ))
+        self.assertTrue(_late_multi_category_allowed(
+            market("Will the highest temperature in Denver be 80°F on August 4?", end_hours=-12),
+            now, horizon,
+        ))
 
     def test_baseline_tight_profile_is_capital_guarded(self):
         profile = load_profile(

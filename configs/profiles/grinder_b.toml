@@ -126,12 +126,13 @@ fixed_stake_usd = 0.0
 # v4: unban every category — governance shifts to the data-driven category
 # auto-disable below. Per-trade risk is bounded by the $5 fixed stake.
 unban_all_markets = true
+late_multi_category = true
 # WEATHER-ONLY lane (user 2026-06-26, extended to all bots 2026-07-06): bet
 # ONLY on weather / temperature markets — every non-weather market is dropped
 # at entry selection, and this lane bypasses the normal weather ban
 # (is_weather_market in models.py). Entries are additionally cross-checked
 # against an Open-Meteo multi-model forecast before entry (below).
-weather_only = true
+weather_only = false
 weather_min_hours_unless_same_day = 12.0
 weather_exclude_ranges = false
 weather_region_date_cap = 0

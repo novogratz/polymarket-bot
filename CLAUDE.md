@@ -6,7 +6,7 @@ The project is MIT licensed (see `LICENSE`). Tests run in CI (GitHub Actions, se
 
 The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path.** The only sanctioned LLM use is the *offline* `auto_improve` self-tuner (see Safety), which never touches the live loop.
 
-**Positioning.** This is a general-purpose prediction-market trading engine (`polymarket_bot/race_strategies.py`) that can run several strategies off a TOML profile — the same scan/filter/rank/size/execute/exit pipeline, pointed at a different candidate set and edge model per profile. **All 3 bots run the weather strategy live** (`weather_only = true` in both `grinder.toml` and `grinder_b.toml`, since 2026-07-06 — see "Multi-bot layout" below for the full mechanics). The engine's general-purpose configuration (`weather_only = false`, any market category) and a smart-money copy-trading lane (`polymarket_bot/smart_money.py`) also exist in the codebase but are not currently run live.
+**Positioning.** This is a general-purpose prediction-market trading engine (`polymarket_bot/race_strategies.py`) that can run several strategies off a TOML profile. **All 3 bots run the category-aware late-resolution grinder live:** weather, already-started sports, sub-hour windowed BTC/SOL/XRP crypto, and objective scheduled economics. Subjective and historically unsafe categories remain excluded.
 
 ## New machine / fresh account setup
 

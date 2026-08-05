@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-04 — Category-aware late-resolution lane
+
+- Expanded all three live grinders beyond weather. The deterministic whitelist
+  admits weather, already-started sports, sub-hour windowed BTC/SOL/XRP crypto,
+  and objective economics releases within two hours. Politics, entertainment,
+  esports, speech, equities, ambiguous markets, daily crypto, and ETH direction
+  contracts remain excluded.
+- All categories retain the 0.85–0.97 entry band, spread/liquidity/depth checks,
+  equal-weight position caps, exact-token dedup, and existing exit rules.
+
 ## 2026-08-04 — Allow distinct weather brackets per event
 
 - Weather event dedup now operates at the exact market/token level. Holding

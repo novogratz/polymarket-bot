@@ -58,7 +58,7 @@ export TELEGRAM_ALERT_DAILY_SUMMARY=0
 # Profile label exported BEFORE the live_analyst spawns, so the
 # sidecar inherits it (else it logs "(unknown)" in reports).
 export POLYMARKET_PROFILE_LABEL=grinder
-export LIVE_ANALYST_WEATHER_ONLY=1
+export LIVE_ANALYST_WEATHER_ONLY=0
 
 # Name shown in the LIVE REPORT header/footer.
 export POLYMARKET_BOT_NAME="Grinder Bot 1"
