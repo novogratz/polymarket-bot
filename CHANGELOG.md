@@ -1,10 +1,15 @@
 # Changelog
 
+## 2026-08-04 — Restore 0.97 entry ceiling
+
+- Restored the strict 0.97 maximum ask and hard cap on bots 1, 2, and 3; the
+  other late-weather model and concentration safeguards remain disabled.
+
 ## 2026-08-04 — Unguarded late weather entry
 
 - Bots 1, 2, and 3 no longer require forecast edge, bracket margin, calibration,
-  or region/date capacity for late weather entries. The entry ceiling is now
-  0.99. Weather-only selection, late solar timing, liquidity/spread checks, and
+  or region/date capacity for late weather entries. Weather-only selection,
+  late solar timing, liquidity/spread checks, and
   the 0.55 weather stop remain enabled.
 
 ## 2026-08-04 — Tradable weather markets after Gamma deadline

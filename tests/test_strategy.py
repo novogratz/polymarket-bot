@@ -44,8 +44,8 @@ class StrategyTests(unittest.TestCase):
         for name in ("grinder.toml", "grinder_b.toml", "grinder_c.toml"):
             values = load_profile(root / name).values
             with self.subTest(profile=name):
-                self.assertEqual(values["POLYMARKET_RACE_MAX_PRICE"], "0.99")
-                self.assertEqual(values["POLYMARKET_RACE_MAX_PRICE_HARD_CAP"], "0.99")
+                self.assertEqual(values["POLYMARKET_RACE_MAX_PRICE"], "0.97")
+                self.assertEqual(values["POLYMARKET_RACE_MAX_PRICE_HARD_CAP"], "0.97")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_FORECAST_MIN_EDGE"], "0.0")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_MIN_BRACKET_MARGIN_C"], "0.0")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_REGION_DATE_CAP"], "0")

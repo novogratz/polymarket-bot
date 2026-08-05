@@ -64,8 +64,8 @@ min_volume_24h_usd = 50.0
 # Wider favorite band (user 2026-07-31): both the normal and absolute ceiling
 # admit asks through 0.97; the forecast gate still requires positive edge.
 min_price = 0.85
-max_price = 0.99
-max_price_hard_cap = 0.99
+max_price = 0.97
+max_price_hard_cap = 0.97
 
 # Crypto-only entry floor (bot 2 ONLY, user 2026-06-24: "put back crypto on
 # bot 2"). Crypto is already un-banned here via unban_all_markets, but the

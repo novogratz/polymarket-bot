@@ -74,8 +74,8 @@ min_volume_24h_usd = 50.0
 # grinder_b analysis). The whole strategy is only +EV when win-rate q > entry
 # price p; buying cheaper favorites lowers q faster than p, so 0.85 is the floor.
 min_price = 0.85
-max_price = 0.99
-max_price_hard_cap = 0.99
+max_price = 0.97
+max_price_hard_cap = 0.97
 
 # Crypto-only entry floor (bot 2 ONLY, user 2026-06-24: "put back crypto on
 # bot 2"). Crypto is already un-banned here via unban_all_markets, but the
