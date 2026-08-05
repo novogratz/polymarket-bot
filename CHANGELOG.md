@@ -11,6 +11,9 @@
 - The stale-deadline exception validates the city's local target date directly;
   it works whether or not the profile's broader `weather_same_day_only` option
   is enabled.
+- The expired-weather recovery query is constrained to Gamma's Weather tag so
+  global pagination cannot crowd Denver, Seattle, San Francisco, or other city
+  contracts out of the scan.
 
 ## 2026-08-04
 

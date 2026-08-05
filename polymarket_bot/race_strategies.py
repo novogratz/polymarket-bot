@@ -87,6 +87,10 @@ def _load_short_expiry_markets(settings: Settings, max_hours: float | None = Non
                 "end_date_max": now,
                 "order": "endDate",
                 "ascending": False,
+                # Polymarket's stable Weather tag. Without this constraint the
+                # global past-deadline inventory exceeds scan_limit and daily
+                # city contracts disappear from the paginated slice.
+                "tag_id": 84,
             },)
             if bool(getattr(settings, "race_weather_only", False))
             else ()

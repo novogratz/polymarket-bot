@@ -37,6 +37,7 @@ class GammaClient:
         end_date_min: datetime | None = None,
         end_date_max: datetime | None = None,
         question_contains: str | None = None,
+        tag_id: str | int | None = None,
     ) -> list[dict[str, Any]]:
         """Fetch up to ``limit`` markets, paginating past the server's 100-row cap.
 
@@ -59,6 +60,8 @@ class GammaClient:
             query["end_date_max"] = end_date_max.isoformat()
         if question_contains:
             query["question_contains"] = question_contains
+        if tag_id is not None:
+            query["tag_id"] = str(tag_id)
 
         results: list[dict[str, Any]] = []
         seen_ids: set[str] = set()

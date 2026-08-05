@@ -150,3 +150,4 @@ class GammaSortKeyTests(unittest.TestCase):
         self.assertEqual(len(calls), 3)
         self.assertLess(calls[2]["end_date_min"], calls[2]["end_date_max"])
         self.assertFalse(calls[2]["ascending"])
+        self.assertEqual(calls[2]["tag_id"], 84)
