@@ -39,7 +39,7 @@ All live bots (`run_live_70.sh` = bot 1, `run_live_b.sh` = bots 2 & 3, `run_live
 
 ## Strategy
 
-The engine supports more than one strategy off the same pipeline; each live bot is a TOML profile pointing the engine at a candidate set and edge model. **All 3 bots now run a deterministic category-aware late-resolution lane:** weather, sports underway for at least 30 minutes, sub-hour windowed BTC/SOL/XRP crypto, BTC/SOL/XRP threshold contracts in their final three hours, and objective scheduled economics within two hours. Politics, entertainment, esports, speech, equities, broad daily direction and ETH markets remain excluded.
+The engine supports more than one strategy off the same pipeline; each live bot is a TOML profile pointing the engine at a candidate set and edge model. **All 3 bots run a deterministic category-aware late-resolution lane:** weather, sports underway for at least 30 minutes, and objective scheduled economics within two hours. All crypto is blocked. Politics, entertainment, esports, speech, equities, and ambiguous markets remain excluded.
 
 ### Weather mode
 

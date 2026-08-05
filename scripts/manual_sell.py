@@ -53,6 +53,10 @@ def main() -> None:
     )
     parser.add_argument("--dry-run", action="store_true", help="simulate against the dry ledger")
     parser.add_argument("--yes", action="store_true", help="actually place live SELL orders")
+    parser.add_argument(
+        "--category", choices=("crypto", "weather"), default=None,
+        help="sell only positions in this category (default: every open position)",
+    )
     args = parser.parse_args()
     execute = args.yes or args.dry_run
 
@@ -69,6 +73,14 @@ def main() -> None:
         p for p in portfolio.positions
         if p.get("status") == "open" and str(p.get("token_id") or "")
     ]
+    if args.category:
+        from polymarket_bot.categories import classify_category
+        targets = [
+            p for p in targets
+            if classify_category(
+                str(p.get("question") or ""), str(p.get("slug") or "")
+            ) == args.category
+        ]
     if not targets:
         print("No matching open positions found.")
         return

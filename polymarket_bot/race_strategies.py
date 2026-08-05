@@ -299,11 +299,6 @@ def _weather_region(parsed: dict[str, Any] | None) -> str:
 
 
 _LATE_SPORT_CATEGORIES = frozenset({"sports", "soccer", "ufc", "golf"})
-_WINDOWED_CRYPTO_RE = re.compile(r"\b(?:bitcoin|btc|solana|sol|xrp)\b.*\bup or down\b.*(?:-|\b(?:am|pm)\s+et\b)", re.I)
-_CRYPTO_THRESHOLD_RE = re.compile(
-    r"\b(?:bitcoin|btc|solana|sol|xrp)\b.*\b(?:dip|hit|reach|touch|above|below)\b.*\$?[\d,]+",
-    re.I,
-)
 _OBJECTIVE_ECON_RE = re.compile(
     r"\b(?:cpi|ppi|gdp|inflation|unemployment|jobs report|nonfarm|payrolls|"
     r"interest rate|rate (?:cut|hike|decision)|fomc|fed|ecb|basis points)\b",
@@ -328,14 +323,7 @@ def _late_multi_category_allowed(
             and now - timedelta(hours=6) <= game_start <= now - timedelta(minutes=30)
         )
     if category == "crypto":
-        text = str(market.get("question") or "")
-        windowed = end_date <= now + timedelta(hours=1) and bool(
-            _WINDOWED_CRYPTO_RE.search(text)
-        )
-        threshold = end_date <= now + timedelta(hours=3) and bool(
-            _CRYPTO_THRESHOLD_RE.search(text)
-        )
-        return windowed or threshold
+        return False
     if category == "economics":
         text = f"{market.get('question') or ''} {market.get('slug') or ''}"
         return end_date <= now + timedelta(hours=2) and bool(_OBJECTIVE_ECON_RE.search(text))

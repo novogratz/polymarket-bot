@@ -79,13 +79,13 @@ class StrategyTests(unittest.TestCase):
         self.assertFalse(_late_multi_category_allowed(
             market("NBA: Knicks vs. Celtics", start_hours=-0.1), now, horizon
         ))
-        self.assertTrue(_late_multi_category_allowed(
+        self.assertFalse(_late_multi_category_allowed(
             market("Bitcoin Up or Down - August 4, 9PM ET", end_hours=0.5), now, horizon
         ))
         self.assertFalse(_late_multi_category_allowed(
             market("Bitcoin Up or Down on August 4", end_hours=0.5), now, horizon
         ))
-        self.assertTrue(_late_multi_category_allowed(
+        self.assertFalse(_late_multi_category_allowed(
             market("Will Bitcoin dip to $63,000 on August 4?", end_hours=2.5), now, horizon
         ))
         self.assertFalse(_late_multi_category_allowed(

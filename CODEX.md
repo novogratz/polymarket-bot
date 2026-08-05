@@ -14,7 +14,7 @@ MIT licensed. Tests run in CI — see `.github/workflows/test.yml`.
 
 ## Current state (2026-08-04 — category-aware late resolution)
 
-This is a general-purpose engine (`polymarket_bot/race_strategies.py`) that can run several strategies off a TOML profile. **All 3 live grinders use a deterministic category-aware late-resolution lane:** weather, already-started sports, sub-hour windowed BTC/SOL/XRP crypto, and objective economics releases within two hours. Subjective and historically unsafe categories remain excluded.
+This is a general-purpose engine (`polymarket_bot/race_strategies.py`) that can run several strategies off a TOML profile. **All 3 live grinders use a deterministic category-aware late-resolution lane:** weather, already-started sports, and objective economics releases within two hours. All crypto is blocked. Subjective and historically unsafe categories remain excluded.
 
 **Config:** `configs/profiles/grinder.toml` (bot 1) / `grinder_b.toml` (bots 2 & 3).  
 **Launcher:** `bash scripts/run_live_70.sh` / `run_live_b.sh`. Do **not** use `run_all.sh` for live.  

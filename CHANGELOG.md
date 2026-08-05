@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-05 — Block crypto trading
+
+- Removed all crypto contracts from the category-aware live whitelist on bots
+  1, 2, and 3. Existing crypto positions can be flattened with
+  `scripts/manual_sell.py --category crypto --yes` without touching weather.
+
 ## 2026-08-04 — Late crypto threshold contracts
 
 - The multi-category lane now admits objective BTC/SOL/XRP hit, dip, touch,
