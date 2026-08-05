@@ -151,7 +151,7 @@ weather_exclude_ranges = true
 # 0 removes the broad region/date count ceiling. Equal-weight sizing and the
 # per-line 5%/10% caps still bound each position; forecast ranking decides
 # which lines enter first when more than max_orders_per_tick are available.
-weather_region_date_cap = 0
+weather_region_date_cap = 2
 # FORECAST GATE RESTORED (user 2026-07-28, "do everything you think makes sense
 # to make money as we used to"). WHY: with the gate OFF, 132 realized trades
 # ran 89% win / avg entry 0.90 → edge (q−p) = −1.6 pts = structurally LOSING
@@ -176,6 +176,9 @@ weather_min_bracket_margin_c = 2.0
 weather_flip_exit_prob = 0.45
 weather_flip_confirm_ticks = 2
 weather_stop_price = 0.55
+weather_min_solar_hour = 15.0
+weather_calibration_min_samples = 30
+weather_calibration_max_brier = 0.12
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh

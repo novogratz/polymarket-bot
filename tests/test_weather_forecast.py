@@ -11,6 +11,7 @@ from polymarket_bot.weather_forecast import (
     _normal_cdf,
     _solar_hour,
     forecast_outcome_probability,
+    late_entry_ready,
     parse_weather_question,
 )
 
@@ -24,6 +25,24 @@ class TestNormalCdf(unittest.TestCase):
 
     def test_negative_tail(self):
         self.assertAlmostEqual(_normal_cdf(-1.96), 0.025, places=2)
+
+
+class TestLateEntryReady(unittest.TestCase):
+    def test_requires_target_city_date_and_afternoon(self):
+        parsed = {"lon": 30.0, "target_date": date(2026, 8, 4)}
+        self.assertFalse(late_entry_ready(
+            parsed, 15.0, datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)
+        ))  # solar 14:00
+        self.assertTrue(late_entry_ready(
+            parsed, 15.0, datetime(2026, 8, 4, 13, 0, tzinfo=timezone.utc)
+        ))  # solar 15:00
+        parsed["target_date"] = date(2026, 8, 5)
+        self.assertFalse(late_entry_ready(
+            parsed, 15.0, datetime(2026, 8, 4, 13, 0, tzinfo=timezone.utc)
+        ))
+
+    def test_zero_disables_gate(self):
+        self.assertTrue(late_entry_ready({}, 0.0))
 
 
 class TestBracketYesProb(unittest.TestCase):

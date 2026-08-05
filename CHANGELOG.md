@@ -3,6 +3,7 @@
 ## 2026-08-04
 
 - All three live weather profiles now enter only within 6 hours of close, remain percentage-sized with equal-weight full deployment (`fixed_stake_usd = 0`), and sell weather positions at an executable bid of $0.55 or lower. All three reporting/fallback baselines are $85.
+- Added a city-local late-entry gate (target date must be local today and solar time ≥15:00), a two-position region/date correlation cap, and a forecast-calibration circuit breaker (pause after 30 samples when Brier score >0.12). Any live exit authentication failure now halts new buys/top-ups for that tick; this contains the upstream POLY_1271 Python SDK defect instead of adding exposure while SELL is unavailable.
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 

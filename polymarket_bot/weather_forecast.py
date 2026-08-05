@@ -31,7 +31,7 @@ import json
 import math
 import re
 import urllib.request
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Optional
 
@@ -409,6 +409,20 @@ def _solar_hour(lon: float) -> float:
     """Approximate local solar hour from UTC time + longitude (±15 min accuracy)."""
     now = datetime.now(timezone.utc)
     return (now.hour + now.minute / 60.0 + lon / 15.0) % 24.0
+
+
+def late_entry_ready(parsed: dict, min_solar_hour: float, now: datetime | None = None) -> bool:
+    """Require the target city's own date and a late local solar hour."""
+    if min_solar_hour <= 0:
+        return True
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    lon = float(parsed.get("lon") or 0.0)
+    local = current.astimezone(timezone.utc) + timedelta(hours=lon / 15.0)
+    if parsed.get("target_date") != local.date():
+        return False
+    return local.hour + local.minute / 60.0 >= min_solar_hour
 
 
 def forecast_outcome_probability(

@@ -79,13 +79,17 @@ class LoadProfileTests(unittest.TestCase):
                 self.assertEqual(profile.starting_cash, 85.0)
                 self.assertEqual(profile.values["POLYMARKET_RACE_MAX_HOURS"], "6.0")
                 self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_STOP_PRICE"], "0.55")
+                self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_MIN_SOLAR_HOUR"], "15.0")
+                self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_CALIBRATION_MIN_SAMPLES"], "30")
+                self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_CALIBRATION_MAX_BRIER"], "0.12")
+                self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_REGION_DATE_CAP"], "2")
                 self.assertEqual(profile.values["POLYMARKET_RACE_FULL_DEPLOY"], "1")
                 self.assertEqual(profile.values["POLYMARKET_RACE_FIXED_STAKE_USD"], "0.0")
                 self.assertEqual(profile.values["POLYMARKET_RACE_MAX_PRICE"], "0.97")
                 self.assertEqual(profile.values["POLYMARKET_RACE_MAX_PRICE_HARD_CAP"], "0.97")
                 self.assertEqual(profile.values["POLYMARKET_RACE_SCAN_LIMIT"], "1500")
                 self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_FORECAST_MIN_EDGE"], "0.01")
-                self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_REGION_DATE_CAP"], "0")
+                self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_REGION_DATE_CAP"], "2")
                 self.assertEqual(profile.values["POLYMARKET_RACE_MIN_VOLUME_24H_USD"], "50.0")
 
     def test_rejects_unknown_section(self):

@@ -4242,6 +4242,25 @@ class WeatherRegionExposureTests(unittest.TestCase):
         self.assertEqual([c.market_id for c, _ in kept], ["high", "mid", "paris"])
 
 
+class WeatherCalibrationTests(unittest.TestCase):
+    def test_brier_score_uses_realized_binary_outcome(self):
+        from polymarket_bot.race_strategies import _weather_calibration_stats
+        stats = _weather_calibration_stats([
+            {"forecast_probability": 0.9, "exit_price": 1.0},
+            {"forecast_probability": 0.8, "exit_price": 0.0},
+            {"forecast_probability": None, "exit_price": 1.0},
+        ])
+        self.assertEqual(stats["samples"], 2.0)
+        self.assertAlmostEqual(stats["brier"], (0.1 ** 2 + 0.8 ** 2) / 2)
+        self.assertEqual(stats["hit_rate"], 0.5)
+
+    def test_empty_history_is_neutral(self):
+        from polymarket_bot.race_strategies import _weather_calibration_stats
+        self.assertEqual(_weather_calibration_stats([]), {
+            "samples": 0.0, "brier": 0.0, "hit_rate": 0.0,
+        })
+
+
 class FullDeploySizingTests(unittest.TestCase):
     """FULL-DEPLOY sizing (user 2026-07-09, "100% of the account is always
     invested") + DIVERSIFICATION CAP (user 2026-07-10, "positions at $90 when

@@ -17,7 +17,8 @@ codebase but aren't run live.
 ## Weather mode — current live strategy (all 3 bots)
 
 Same engine as grinder, with percentage-based equal-weight full deployment, a
-6-hour entry window, a 0.99 winner floor, and a $0.55 weather stop. Candidates are restricted to **temperature /
+6-hour entry window plus solar-15:00 city-local gate, two-line region/date cap,
+30-sample Brier circuit breaker, a 0.99 winner floor, and a $0.55 weather stop. Candidates are restricted to **temperature /
 degree-bracket markets** (`weather_only = true`, `race_weather_only` in
 `polymarket_bot/config.py`, both profiles). **Only bots 2 & 3** (`configs/profiles/grinder_b.toml`)
 additionally gate entry on a forecast edge model — bot 1 (`grinder.toml`) trades

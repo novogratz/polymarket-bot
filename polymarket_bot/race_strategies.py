@@ -47,7 +47,7 @@ from .news_strategy import _asset_key, _event_slug, _quote_for_outcome
 from .portfolio import Portfolio
 from .pricing import _fetch_clob_quotes, ensure_open_positions_in_pool
 from .trading import build_client, execute_live_sell, execute_live_trade, live_best_bid
-from .weather_forecast import forecast_outcome_probability, parse_weather_question
+from .weather_forecast import forecast_outcome_probability, late_entry_ready, parse_weather_question
 
 
 def _step(settings: Settings, msg: str) -> None:
@@ -508,6 +508,11 @@ def _build_eligible_candidates(
                 try:
                     parsed_w = parse_weather_question(question)
                     if parsed_w is None:
+                        continue
+                    min_solar_hour = float(
+                        getattr(settings, "race_weather_min_solar_hour", 0.0) or 0.0
+                    )
+                    if not late_entry_ready(parsed_w, min_solar_hour):
                         continue
                     model_prob = forecast_outcome_probability(
                         parsed_w, outcome, min_bracket_margin_c=weather_min_margin_c
@@ -1997,6 +2002,12 @@ def _execute_race_exits(
                     f"bootstrap-creds` to refresh credentials if this persists.",
                     flush=True,
                 )
+                out.append({
+                    "market_id": position.get("market_id"),
+                    "question": position.get("question"),
+                    "action": "exit_auth_block",
+                    "reason": type(exc).__name__,
+                })
                 continue
 
             if "below minimum" in exc_msg:
@@ -2161,6 +2172,26 @@ def _cap_weather_region_date_candidates(
         counts[key] = counts.get(key, 0) + 1
         kept.append(item)
     return kept
+
+
+def _weather_calibration_stats(records: list[dict[str, Any]]) -> dict[str, float]:
+    """Return realized Brier score for forecast-backed weather trades."""
+    pairs: list[tuple[float, float]] = []
+    for record in records:
+        try:
+            probability = float(record.get("forecast_probability"))
+            exit_price = float(record.get("exit_price"))
+        except (TypeError, ValueError):
+            continue
+        if 0.0 <= probability <= 1.0 and 0.0 <= exit_price <= 1.0:
+            pairs.append((probability, 1.0 if exit_price >= 0.5 else 0.0))
+    if not pairs:
+        return {"samples": 0.0, "brier": 0.0, "hit_rate": 0.0}
+    return {
+        "samples": float(len(pairs)),
+        "brier": sum((probability - outcome) ** 2 for probability, outcome in pairs) / len(pairs),
+        "hit_rate": sum(outcome for _, outcome in pairs) / len(pairs),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -3144,6 +3175,31 @@ def _run_race_tick(
         disabled_categories=disabled_cats,
         forecast_ctx=forecast_ctx,
     )
+    calibration_min = int(
+        getattr(settings, "race_weather_calibration_min_samples", 0) or 0
+    )
+    calibration_max = float(
+        getattr(settings, "race_weather_calibration_max_brier", 0.0) or 0.0
+    )
+    if getattr(settings, "race_weather_only", False) and calibration_min > 0 and calibration_max > 0:
+        try:
+            from .main import _read_realized_records
+
+            calibration = _weather_calibration_stats(
+                _read_realized_records(settings.trade_journal_path)
+            )
+            if calibration["samples"] >= calibration_min:
+                _step(
+                    settings,
+                    f"   weather calibration: n={int(calibration['samples'])} "
+                    f"brier={calibration['brier']:.4f}",
+                )
+                if calibration["brier"] > calibration_max:
+                    eligible = []
+                    _step(settings, "🛑 weather calibration gate: entries paused")
+        except Exception as exc:
+            eligible = []
+            _step(settings, f"🛑 weather calibration unavailable: {type(exc).__name__}")
     _step(settings, f"   eligible: {len(eligible)}")
     obs = _log_forward_observations(markets, settings)
     if obs:
@@ -3172,6 +3228,25 @@ def _run_race_tick(
             print(f"   stale-pending cleanup failed: {type(exc).__name__}: {exc}")
 
     exits = _execute_race_exits(client, settings, portfolio, pool, strategy_name)
+
+    # A bot that cannot sign an exit must never add risk. This is especially
+    # important for POLY_1271 deposit wallets while the upstream SDK/auth path
+    # is rejecting SELL signatures. Existing positions remain tracked and the
+    # next tick retries exits, but buys, top-ups, and redistribution halt.
+    if any(item.get("action") == "exit_auth_block" for item in exits):
+        portfolio.save(settings.state_path)
+        return {
+            "trade": None,
+            "strategy": strategy_name,
+            "trades": [],
+            "orders_placed": 0,
+            "exits": exits,
+            "double_downs": [],
+            "rejected_signals": [],
+            "scan_counts": {"raw_markets": len(markets), "eligible": len(eligible), "picks": 0},
+            "summary": portfolio.summary(),
+            "status": "exit_auth_halt",
+        }
 
     if not settings.dry_run:
         try:

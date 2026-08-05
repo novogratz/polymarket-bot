@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets, built on a deterministic engine (`polymarket_bot/race_strategies.py`, scan → filter → rank → size → execute → exits, **no LLM in trade selection**). All three live bots are weather-only, enter only within 6 hours of close, use percentage-based equal-weight full deployment (`fixed_stake_usd = 0`), take winners at a real 0.99 bid, and stop weather positions when the executable bid reaches $0.55.
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets, built on a deterministic engine (`polymarket_bot/race_strategies.py`, scan → filter → rank → size → execute → exits, **no LLM in trade selection**). All three live bots are weather-only, enter only within 6 hours of close and after 15:00 in the target city's solar day, use percentage-based equal-weight full deployment (`fixed_stake_usd = 0`), cap correlated region/date exposure at two lines, take winners at 0.99, and stop weather positions at $0.55. Forecast calibration pauses entries after 30 samples if Brier score exceeds 0.12; an exit-auth failure also halts new risk.
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 

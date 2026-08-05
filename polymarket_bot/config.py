@@ -464,6 +464,9 @@ class Settings:
     race_weather_flip_confirm_ticks: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_WEATHER_FLIP_CONFIRM_TICKS", 2))
     # Absolute weather stop: sell at or below this executable bid. 0 disables.
     race_weather_stop_price: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_WEATHER_STOP_PRICE", 0.0))
+    race_weather_min_solar_hour: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_WEATHER_MIN_SOLAR_HOUR", 0.0))
+    race_weather_calibration_min_samples: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_WEATHER_CALIBRATION_MIN_SAMPLES", 0))
+    race_weather_calibration_max_brier: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_WEATHER_CALIBRATION_MAX_BRIER", 0.0))
     # Open-Meteo forecast edge gate (OPT-IN, 0 = off): only enter a weather
     # market when the model probability for the chosen outcome exceeds the
     # market ask by at least this margin.  Needs no history — the model uses

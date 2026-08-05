@@ -134,9 +134,12 @@ unban_all_markets = true
 weather_only = true
 weather_min_hours_unless_same_day = 12.0
 weather_exclude_ranges = true
-weather_region_date_cap = 0
+weather_region_date_cap = 2
 weather_forecast_min_edge = 0.01
 weather_stop_price = 0.55
+weather_min_solar_hour = 15.0
+weather_calibration_min_samples = 30
+weather_calibration_max_brier = 0.12
 # Bracket margin guard (2026-06-28): skip "No" bet if any model is within
 # this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
 # bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.
