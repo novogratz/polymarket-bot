@@ -176,7 +176,7 @@ weather_min_bracket_margin_c = 0.0
 # confirmed over 2 ticks — cuts the -$10 tail losses before they hit $0.
 weather_flip_exit_prob = 0.0
 weather_flip_confirm_ticks = 2
-weather_stop_price = 0.55
+weather_stop_price = 0.0
 weather_min_solar_hour = 15.0
 weather_calibration_min_samples = 0
 weather_calibration_max_brier = 0.0
@@ -227,7 +227,7 @@ cash_floor_pct = 0.0
 
 # Exit rules:
 #   tp_pct = 1.0          → TP disabled; ride to resolution.
-#   sl_pct = 0.30         → CONTROLLED SL at -30%, SPORT MONEYLINES ONLY
+#   sl_pct = 1.0          → disabled
 #                           ("Will <X> win on <date>?" Yes/No bets, any soccer
 #                           club regardless of league). Politics/awards EXCLUDED;
 #                           all other markets NEVER stop out (user rule 2026-06-16,
@@ -243,7 +243,7 @@ cash_floor_pct = 0.0
 #                           real cents on bets that are about to settle.
 #   max_hold 4.5h         → backstop so nothing lingers after expiry.
 tp_pct = 1.0
-sl_pct = 0.30            # -30% confirmed SL, sport moneylines (user 2026-06-16)
+sl_pct = 1.0             # disabled — hold losers to resolution
 sl_confirm_ticks = 3
 sl_min_age_minutes = 5
 # Anti-gap floor (user 2026-06-17): the SL only fires while the live bid is

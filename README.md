@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets, built on a deterministic engine (`polymarket_bot/race_strategies.py`, scan → filter → rank → size → execute → exits, **no LLM in trade selection**). All three live bots are weather-only, enter only within 6 hours of close and after 15:00 in the target city's solar day, use percentage-based equal-weight full deployment (`fixed_stake_usd = 0`), cap correlated region/date exposure at two lines, take winners at 0.99, and stop weather positions at $0.55. Forecast calibration pauses entries after 30 samples if Brier score exceeds 0.12; an exit-auth failure also halts new risk.
+Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets, built on a deterministic engine (`polymarket_bot/race_strategies.py`, scan → filter → rank → size → execute → exits, **no LLM in trade selection**). All three live bots use percentage-based equal-weight deployment, cap entries at 0.97, take winners at 0.99, and otherwise hold to settlement. Stop losses and forecast-flip exits are disabled.
 
 > **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
 
@@ -50,7 +50,7 @@ Weather mode is the same deterministic engine as grinder (same scan/rank/size/ex
 - **Bracket-margin guard (`race_weather_min_bracket_margin_c`).** Added after a real loss (Qingdao, 2026-06-28: ECMWF forecast 28.1 °C vs a 29 °C bracket threshold — a 0.9 °C margin — resolved as a loss). "No" bets are skipped outright when the model consensus sits within this many °C of the bracket's threshold, i.e. too close to call. Bot 2 sets `weather_min_bracket_margin_c = 2.0`; default `0.0` (off).
 - **Intraday kill-switch.** For same-day, daily-max markets, once it's past solar 3 PM at the market's location the function checks the *already-observed* current temperature against the bracket: if the daily max physically can't reach the bracket (or has already blown past it), it returns a near-certain probability immediately instead of waiting for the day's max to be recorded.
 - **Fail-open throughout.** Any API failure, parse failure, or missing history returns `None` and the normal price/liquidity filters apply — a forecast outage never blocks trading outright, it just removes the extra edge gate for that tick.
-- Sizing uses percentage-based equal-weight full deployment, with no fixed-dollar strategy stake. The entry window is 6 h (`max_hours = 6.0`); winners exit at 0.99 and weather positions stop at an executable bid of 0.55.
+- Sizing uses percentage-based equal-weight full deployment, with no fixed-dollar strategy stake. The entry window is 6 h (`max_hours = 6.0`); winners exit at 0.99 and all other positions hold to settlement.
 
 ### Grinder mode — general-purpose (not currently live)
 
@@ -132,7 +132,7 @@ Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) a
 | Down ≥ 25 % from entry, confirmed 3 consecutive ticks, **soccer moneylines only** ("Will <Team> win on <date>?") | `race_stop_loss_confirmed` — the one path allowed to sell below entry |
 | Genuinely-resolved loser ~8 h past expiry | written off locally (no order; settles on-chain) |
 
-**Never sell below entry** is a hard floor in `execute_live_sell` — the *only* exception is the **controlled stop-loss**, which fires at −30 % only after the loss persists for 3 consecutive ticks (so a one-tick thin-book phantom bid can't dump a winner) and only on sport moneylines ("Will <X> win on YYYY-MM-DD?" Yes/No, any soccer club regardless of league, politics/awards excluded); O/U totals, elections, and everything else ride to on-chain resolution. There is no take-profit ladder, no EOD flatten, and no loss-sweep. The expiry path never force-closes a market that is still accepting orders (it uses a live lookup + `gameStartTime`, since Gamma `endDate` is often set before kickoff). The **daily drawdown halt is disabled** — the per-trade confirmed SL is the risk control.
+**Never sell below entry** is a hard floor in `execute_live_sell`. All stop-loss paths are disabled in every grinder profile: the weather absolute stop and forecast-flip exit are set to 0, and the sports-moneyline stop is disabled with `sl_pct = 1.0`. Losing positions ride to on-chain resolution. There is no take-profit ladder, EOD flatten, or loss-sweep. The expiry path never force-closes a market that is still accepting orders (it uses a live lookup + `gameStartTime`, since Gamma `endDate` is often set before kickoff). The daily drawdown halt is also disabled.
 
 ### Self-improvement
 

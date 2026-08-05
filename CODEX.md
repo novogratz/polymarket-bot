@@ -21,7 +21,7 @@ This is a general-purpose engine (`polymarket_bot/race_strategies.py`) that can 
 **Universe:** `weather_only = false`, `unban_all_markets = true`, narrowed in code to the deterministic late-resolution whitelist.
 **Entry:** all three live profiles admit asks through 0.97 with a matching hard cap and require at least +1 point of Open-Meteo edge. Markets must close within 6h, target the city's current local date, and enter after solar 15:00. Narrow ranges are excluded; Open-Meteo validation fails closed, region/date exposure is capped at two lines, and realized Brier score pauses entries when calibration deteriorates.
 **Sizing:** **EQUAL-WEIGHT FULL DEPLOYMENT** (`full_deploy = true`, `full_deploy_max_position_pct = 0.10`, 2026-07-19) — cash ≈ $0 at all times: every line targets equity/N over all lines (10% cap, $5 floor); held lines top up toward the shared target, never past it (on-chain line-cap guard). Rollback: `full_deploy=false, fixed_stake_usd=5.0`.
-**Exits:** resolved_exit at bid ≥**0.99** (else settle 1.0), plus an absolute weather stop at executable bid ≤**0.55**. The stop is an explicit exemption from the normal never-sell-below-entry guard.
+**Exits:** no stop losses. Positions hold for a resolved-exit bid ≥**0.99** or settlement; forecast-flip exits are also disabled.
 
 ## Project map
 
@@ -47,4 +47,4 @@ bash scripts/run_live_70.sh
 
 ## Thesis
 
-A binary market at ask 0.80–0.94 within 24 hours of close (weather resolves end-of-day) is pricing near-certainty. The bot pays the spread and holds until bid ≥ 0.99 (else settles at 1.0). The risk controls are the **5% fixed-fraction per-position cap** (worst single-line loss ≈ 5% of equity, no re-bet on a held market), the data-driven category auto-disable, and — for non-weather grinder candidates only — a confirmed −30% stop-loss on soccer moneylines. Optimizes for capital preservation and steady grind, not win-rate or volume.
+A binary market at ask 0.80–0.94 within 24 hours of close (weather resolves end-of-day) is pricing near-certainty. The bot pays the spread and holds until bid ≥ 0.99 (else settles at 1.0). All stop-loss paths are disabled; position sizing, deterministic entry filters, and the data-driven category auto-disable are the remaining risk controls. Optimizes for capital preservation and steady grind, not win-rate or volume.

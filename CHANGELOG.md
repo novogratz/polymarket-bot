@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-05 — Remove all grinder stop losses
+
+- Disabled the absolute weather stop and confirmed sports-moneyline stop on
+  bots 1, 2, and 3. Positions now hold for a 0.99 winner exit or settlement;
+  forecast-flip exits remain disabled.
+
 ## 2026-08-05 — Block crypto trading
 
 - Removed all crypto contracts from the category-aware live whitelist on bots
