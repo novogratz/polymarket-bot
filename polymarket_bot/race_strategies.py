@@ -264,6 +264,16 @@ def _weather_market_md(market: dict[str, Any]) -> tuple[int, int] | None:
     return (mon, day) if 1 <= day <= 31 else None
 
 
+def _weather_target_is_local_today(market: dict[str, Any], now: dt.datetime) -> bool:
+    """True only when the question targets the weather city's current day."""
+    parsed = parse_weather_question(str(market.get("question") or ""))
+    if not parsed or not parsed.get("target_date"):
+        return False
+    lon = float(parsed.get("lon") or 0.0)
+    local_now = now.astimezone(dt.timezone.utc) + timedelta(hours=lon / 15.0)
+    return parsed["target_date"] == local_now.date()
+
+
 def _weather_region(parsed: dict[str, Any] | None) -> str:
     """Broad deterministic region for correlated same-date exposure caps."""
     if not parsed:
@@ -389,9 +399,11 @@ def _build_eligible_candidates(
         # many hours.  An API-expired weather contract remains eligible only
         # on its target day; acceptingOrders, price, forecast and solar-hour
         # gates below remain authoritative.
-        stale_same_day_weather = False
-        if weather_only and end_date < earliest and today_md is not None:
-            stale_same_day_weather = _weather_market_md(market) == today_md
+        stale_same_day_weather = (
+            weather_only
+            and end_date < earliest
+            and _weather_target_is_local_today(market, now)
+        )
         closes_soon = earliest <= end_date <= horizon or stale_same_day_weather
         starts_soon = game_start is not None and now <= game_start <= horizon
         if not (closes_soon or starts_soon):

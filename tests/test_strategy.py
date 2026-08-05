@@ -3611,13 +3611,22 @@ class WeatherOnlyLaneTests(unittest.TestCase):
             race_min_price=0.80, race_max_price=0.97,
             race_max_price_hard_cap=0.97, race_max_spread=0.04,
             race_max_hours=6.0, race_weather_only=True,
-            race_weather_same_day_only=True,
+            # Bot C deliberately has this disabled. The stale-deadline fix
+            # must not depend on the broader tomorrow-market preference.
+            race_weather_same_day_only=False,
             race_weather_exclude_ranges=False,
             race_min_liquidity_usd=50.0, race_min_volume_24h_usd=50.0,
         )
 
         ids = {c.market_id for c, _ in _build_eligible_candidates([market], settings)}
         self.assertEqual(ids, {"denver"})
+
+        yesterday = dict(market)
+        yesterday["question"] = (
+            "Will the highest temperature in Denver be between 74-75°F "
+            f"on {(et - timedelta(days=1)).strftime('%B %-d')}?"
+        )
+        self.assertEqual(_build_eligible_candidates([yesterday], settings), [])
 
     def test_range_brackets_are_excluded_when_quality_gate_is_on(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates

@@ -8,6 +8,9 @@
   accepting orders and pass all price, liquidity, forecast and late-entry gates.
 - Re-enabled temperature range brackets on bots 1, 2 and 3; forecast-gated bots
   retain their bracket-margin protection.
+- The stale-deadline exception validates the city's local target date directly;
+  it works whether or not the profile's broader `weather_same_day_only` option
+  is enabled.
 
 ## 2026-08-04
 
