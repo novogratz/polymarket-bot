@@ -64,8 +64,8 @@ min_volume_24h_usd = 50.0
 # Wider favorite band (user 2026-07-31): both the normal and absolute ceiling
 # admit asks through 0.97; the forecast gate still requires positive edge.
 min_price = 0.85
-max_price = 0.97
-max_price_hard_cap = 0.97
+max_price = 0.99
+max_price_hard_cap = 0.99
 
 # Crypto-only entry floor (bot 2 ONLY, user 2026-06-24: "put back crypto on
 # bot 2"). Crypto is already un-banned here via unban_all_markets, but the
@@ -138,12 +138,12 @@ weather_only = true
 weather_same_day_only = false   # OFF (agent 2026-07-29): favored weather markets are next-day; same-day-only starves the lane. Volume over swing-avoidance.
 weather_min_hours_unless_same_day = 12.0
 weather_exclude_ranges = false
-weather_region_date_cap = 2
-weather_forecast_min_edge = 0.01
+weather_region_date_cap = 0
+weather_forecast_min_edge = 0.0
 # Bracket margin guard (2026-06-28): skip "No" bet if any model is within
 # this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
 # bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.
-weather_min_bracket_margin_c = 2.0
+weather_min_bracket_margin_c = 0.0
 # Forecast-flip exit (user 2026-07-29): sell a held "No" when the live
 # Open-Meteo consensus gives our outcome < 45% (forecast turned against us),
 # confirmed over 2 ticks — cuts the -$10 tail losses before they hit $0.
@@ -151,8 +151,8 @@ weather_flip_exit_prob = 0.45
 weather_flip_confirm_ticks = 2
 weather_stop_price = 0.55
 weather_min_solar_hour = 15.0
-weather_calibration_min_samples = 30
-weather_calibration_max_brier = 0.12
+weather_calibration_min_samples = 0
+weather_calibration_max_brier = 0.0
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh

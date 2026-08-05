@@ -38,6 +38,20 @@ from polymarket_bot.profiles import load_profile
 
 
 class StrategyTests(unittest.TestCase):
+    def test_live_weather_profiles_have_unguarded_late_entries(self):
+        """User 2026-08-04: all three bots admit late weather without model gates."""
+        root = Path(__file__).resolve().parent.parent / "configs" / "profiles"
+        for name in ("grinder.toml", "grinder_b.toml", "grinder_c.toml"):
+            values = load_profile(root / name).values
+            with self.subTest(profile=name):
+                self.assertEqual(values["POLYMARKET_RACE_MAX_PRICE"], "0.99")
+                self.assertEqual(values["POLYMARKET_RACE_MAX_PRICE_HARD_CAP"], "0.99")
+                self.assertEqual(values["POLYMARKET_RACE_WEATHER_FORECAST_MIN_EDGE"], "0.0")
+                self.assertEqual(values["POLYMARKET_RACE_WEATHER_MIN_BRACKET_MARGIN_C"], "0.0")
+                self.assertEqual(values["POLYMARKET_RACE_WEATHER_REGION_DATE_CAP"], "0")
+                self.assertEqual(values["POLYMARKET_RACE_WEATHER_CALIBRATION_MIN_SAMPLES"], "0")
+                self.assertEqual(values["POLYMARKET_RACE_WEATHER_CALIBRATION_MAX_BRIER"], "0.0")
+
     def test_baseline_tight_profile_is_capital_guarded(self):
         profile = load_profile(
             Path(__file__).resolve().parent.parent

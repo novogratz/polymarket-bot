@@ -14,7 +14,7 @@ MIT licensed. Tests run in CI — see `.github/workflows/test.yml`.
 
 ## Current state (2026-07-06 — weather-only)
 
-This is a general-purpose engine (`polymarket_bot/race_strategies.py`) that can run several strategies off a TOML profile. **Live strategy: `grinder` — WEATHER-ONLY. All 3 bots.** Only bot 2 (and bot 3, sharing `grinder_b.toml`) additionally cross-checks entries against a multi-model Open-Meteo forecast (`polymarket_bot/weather_forecast.py`, `weather_forecast_min_edge=0.10`, `weather_min_bracket_margin_c=2.0`) — bot 1's `grinder.toml` has `weather_only=true` but neither forecast gate set, so it trades weather markets on price/liquidity heuristics alone.
+This is a general-purpose engine (`polymarket_bot/race_strategies.py`) that can run several strategies off a TOML profile. **Live strategy: `grinder` — WEATHER-ONLY. All 3 bots.** Forecast edge, bracket-margin, calibration, and region/date entry gates are disabled on every live profile; late solar timing and market-quality execution filters remain.
 
 **Config:** `configs/profiles/grinder.toml` (bot 1) / `grinder_b.toml` (bots 2 & 3).  
 **Launcher:** `bash scripts/run_live_70.sh` / `run_live_b.sh`. Do **not** use `run_all.sh` for live.  
