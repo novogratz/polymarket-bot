@@ -2753,6 +2753,11 @@ def _game_keys(question: str, event_slug: str) -> set[str]:
 
 
 def _candidate_game_keys(candidate: Candidate) -> set[str]:
+    # A weather event groups multiple distinct temperature brackets. They are
+    # not duplicate bets, so the sports/game event dedup must not collapse
+    # them to a single candidate.
+    if is_weather_market({"question": candidate.question, "slug": candidate.slug}):
+        return set()
     return _game_keys(candidate.question or "", candidate.event_slug or "")
 
 
@@ -3453,7 +3458,15 @@ def _run_race_tick(
                 rejected.append({"question": candidate.question, "reason": "topup_cap_reached"})
                 continue
         ev_slug = str(candidate.event_slug or "")
-        if topup_pos is None and ev_slug and event_exposure.get(ev_slug, 0) >= EVENT_EXPOSURE_CAP:
+        is_weather_candidate = is_weather_market(
+            {"question": candidate.question, "slug": candidate.slug}
+        )
+        if (
+            topup_pos is None
+            and not is_weather_candidate
+            and ev_slug
+            and event_exposure.get(ev_slug, 0) >= EVENT_EXPOSURE_CAP
+        ):
             rejected.append({"question": candidate.question, "reason": f"event_exposure_cap:{ev_slug}"})
             continue
         # In-loop one-bet-per-game backstop (2026-06-11): a pick executed

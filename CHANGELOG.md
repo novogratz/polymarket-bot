@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-04 — Allow distinct weather brackets per event
+
+- Weather event dedup now operates at the exact market/token level. Holding
+  one Seattle temperature bracket no longer blocks a different Seattle bracket
+  from the same date; sports/game event dedup remains unchanged.
+
 ## 2026-08-04 — Restore 0.97 entry ceiling
 
 - Restored the strict 0.97 maximum ask and hard cap on bots 1, 2, and 3; the

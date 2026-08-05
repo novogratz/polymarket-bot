@@ -2825,7 +2825,7 @@ class PortfolioDedupTests(unittest.TestCase):
             event_slug=event_slug,
         )
 
-    def test_event_dedupe_blocks_no_when_yes_open_on_non_sports_market(self):
+    def test_event_dedupe_allows_distinct_weather_market_in_same_event(self):
         portfolio = Portfolio(cash=50.0, positions=[])
         yes_candidate = self._make_candidate(
             market_id="seoul-yes",
@@ -2840,7 +2840,10 @@ class PortfolioDedupTests(unittest.TestCase):
             token_id="tok-no",
             event_slug="seoul-temp-may-9",
         )
-        self.assertTrue(portfolio.has_open_event_position(no_candidate))
+        self.assertFalse(portfolio.has_open_event_position(no_candidate))
+        self.assertIsNotNone(
+            portfolio.record_live_position(no_candidate, 5.0, entry_price=0.30, order_id="o2")
+        )
 
     def test_event_dedupe_does_not_block_unrelated_event(self):
         portfolio = Portfolio(cash=50.0, positions=[])
@@ -3339,7 +3342,7 @@ class ActionableCandidatesTests(unittest.TestCase):
     Already-held markets must be dropped BEFORE the selector truncates."""
 
     @staticmethod
-    def _candidate(market_id, question, slug, event_slug, token_id, hours, bid):
+    def _candidate(market_id, question, slug, event_slug, token_id, hours, bid, outcome="Under"):
         return Candidate(
             market_id=market_id,
             question=question,
@@ -3348,7 +3351,7 @@ class ActionableCandidatesTests(unittest.TestCase):
             hours_to_close=hours,
             liquidity=1500,
             volume=2000,
-            outcome="Under",
+            outcome=outcome,
             price=bid,
             token_id=token_id,
             score=1,
@@ -3903,6 +3906,31 @@ class SameEventDedupTests(unittest.TestCase):
             [(a, 0.0), (b, 0.0), (other, 0.0)], empty, Settings()
         )
         self.assertEqual(sorted(c.market_id for c, _ in actionable), ["2", "3"])
+
+    def test_distinct_weather_brackets_in_same_event_are_both_actionable(self):
+        """Seattle 80–81 Yes is not a duplicate of Seattle 82–83 No."""
+        from polymarket_bot.race_strategies import _actionable_candidates
+
+        yes_8081 = ActionableCandidatesTests._candidate(
+            "sea-80", "Will the highest temperature in Seattle be between 80-81°F on August 4?",
+            "seattle-80-81", "highest-temperature-in-seattle-on-august-4-2026",
+            "tok-sea-80-yes", hours=0.0, bid=0.95, outcome="Yes",
+        )
+        no_8283 = ActionableCandidatesTests._candidate(
+            "sea-82", "Will the highest temperature in Seattle be between 82-83°F on August 4?",
+            "seattle-82-83", "highest-temperature-in-seattle-on-august-4-2026",
+            "tok-sea-82-no", hours=0.0, bid=0.96, outcome="No",
+        )
+        portfolio = Portfolio(cash=100.0, positions=[])
+
+        actionable = _actionable_candidates(
+            [(yes_8081, 0.0), (no_8283, 0.0)], portfolio, Settings()
+        )
+        self.assertEqual(
+            sorted(c.market_id for c, _ in actionable), ["sea-80", "sea-82"]
+        )
+        self.assertIsNotNone(portfolio.record_live_position(no_8283, 5.0, entry_price=0.97))
+        self.assertIsNotNone(portfolio.record_live_position(yes_8081, 5.0, entry_price=0.96))
 
     def test_event_exposure_cap_is_one(self):
         from polymarket_bot import race_strategies

@@ -19,7 +19,7 @@ from typing import Any
 from . import notifications
 from ._atomic_io import atomic_write_text
 from .config import Settings
-from .models import Candidate, parse_dt, utc_now
+from .models import Candidate, is_weather_market, parse_dt, utc_now
 
 
 @dataclass
@@ -101,6 +101,11 @@ class Portfolio:
         )
 
     def has_open_event_position(self, candidate: Candidate) -> bool:
+        # Daily-temperature events contain many distinct binary bracket
+        # markets. Holding Seattle 82–83°F No must not block Seattle 80–81°F
+        # Yes; exact market/outcome dedup is enforced separately.
+        if is_weather_market({"question": candidate.question, "slug": candidate.slug}):
+            return False
         event_key = _event_key(candidate)
         if not event_key:
             return False
