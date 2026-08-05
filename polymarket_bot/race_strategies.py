@@ -1502,6 +1502,16 @@ def _simple_exit_plan(
     if current_pnl_pct >= settings.race_tp_pct:
         return {"reason": "race_take_profit", "shares": shares}
 
+    # ── ABSOLUTE WEATHER STOP (user 2026-08-04) ──────────────────────────
+    # A late-entry weather bet whose executable bid reaches this threshold
+    # exits instead of riding a broken thesis to zero. Parsing scopes the
+    # rule strictly to weather positions. The minimum-hold guard above still
+    # applies, and 0 disables the rule.
+    weather_stop = float(getattr(settings, "race_weather_stop_price", 0.0) or 0.0)
+    if 0.0 < weather_stop < 1.0 and 0.0 < decision_bid <= weather_stop:
+        if is_weather_market(position):
+            return {"reason": "race_weather_stop_price", "shares": shares}
+
     # ── FORECAST-FLIP EXIT — WEATHER ONLY (2026-07-29) ───────────────────────
     # The forecast model gates ENTRY, but weather updates through the day: a
     # "No" bought when the model favored it can flip when the afternoon forecast

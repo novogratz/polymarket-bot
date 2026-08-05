@@ -8,13 +8,13 @@ Le moteur (`polymarket_bot/race_strategies.py`) est **générique** : même pipe
 
 **Thèse (grinder) :** un favori binaire à ask ∈ [0.80, 0.94] avec ≤4h à la fermeture price la near-certainty ; on paye le spread et on **ride jusqu'à la résolution** (1.0). L'edge est le gap entre le prix d'entrée et l'outcome qui se résout à 1.0.
 
-**Thèse (weather) :** un favori binaire météo à ask ∈ [0.80, 0.94] avec ≤24h à la fermeture (la météo se résout en fin de journée) price la near-certainty ; on paye le spread et on **ride jusqu'à la résolution** (1.0).
+**Thèse (weather) :** un favori binaire météo proche de la résolution price la near-certainty. Le live entre uniquement à ≤6h de la fermeture, déploie le capital en pourcentages sur plusieurs lignes, prend les winners à 0.99 et stoppe une ligne météo si le bid exécutable tombe à 0.55.
 
 **Config source de vérité :** `configs/profiles/grinder.toml` (bot 1) et `grinder_b.toml` (bots 2 & 3).
 
 **Paramètres clés (weather-only 2026-07-06, full-deploy 2026-07-09) :**
 - **Univers : MÉTÉO UNIQUEMENT** (`weather_only = true`) — température, °C/°F, weather, rainfall, snowfall, high/low temp (`is_weather_market`). Tout le reste (sport, élections, crypto, …) est écarté à la sélection ; le ban météo normal est bypassé. « weather » est une catégorie v4 à part entière (2026-07-10) et **ne peut jamais être auto-disabled tant que la lane est active** (garde anti-famine).
-- **Entry :** ask ∈ [0.85, 0.94], **hard cap 0.96**, résolution aujourd'hui ou dans 12–24h (jamais >24h), spread ≤4¢. Les fourchettes étroites `between X–Y°` sont exclues; Open-Meteo échoue fermé, les candidats sont classés par edge météo, et chaque région/date est limitée à deux nouvelles positions.
+- **Entry :** ask ∈ [0.85, 0.97], fermeture dans ≤6h, spread ≤4¢. Les fourchettes étroites `between X–Y°` sont exclues et Open-Meteo échoue fermé.
 - **Sizing : DÉPLOIEMENT TOTAL ÉQUIPONDÉRÉ (user 2026-07-19)** (`full_deploy = true`, `full_deploy_max_position_pct = 0.10`, doublé de 5%) — « cash close to 0$ all the time, equally distributed ». Chaque ligne vise une part ÉGALE du compte : equity / N sur TOUTES les lignes (positions ouvertes + nouveaux marchés éligibles), bornée par le cap 10% et le plancher $5. Somme des cibles = equity → le cash converge vers ~0 dès qu'il existe ≥10 lignes distinctes. Les lignes détenues se complètent VERS cette cible partagée — jamais au-delà (garde on-chain `line_cap_blocked` dans `execute_live_trade`). Remplace la règle « sans renforcement » du 2026-07-11. Rollback : `full_deploy = false`, `fixed_stake_usd = 5.0`.
 - **Unban total** (`unban_all_markets = true`) : sans effet pratique sous weather-only ; gouvernance data-driven (`categories.py` : ≥100 trades & ROI < −5% → retirée, sauf `weather` tant que la lane est ON).
 - **Modèle de forecasting** (`forecast.py`, opt-in) : `predicted_probability` calibré par (catégorie, bucket de prix), `edge = predicted − ask`, `quality_score` ; gates `min_edge`/`min_quality_score` OFF par défaut (besoin d'historique).

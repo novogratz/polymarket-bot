@@ -294,6 +294,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "weather_region_date_cap": ("POLYMARKET_RACE_WEATHER_REGION_DATE_CAP", "int"),
         "weather_flip_exit_prob": ("POLYMARKET_RACE_WEATHER_FLIP_EXIT_PROB", "float"),
         "weather_flip_confirm_ticks": ("POLYMARKET_RACE_WEATHER_FLIP_CONFIRM_TICKS", "int"),
+        "weather_stop_price": ("POLYMARKET_RACE_WEATHER_STOP_PRICE", "float"),
         "weather_forecast_min_edge": ("POLYMARKET_RACE_WEATHER_FORECAST_MIN_EDGE", "float"),
         "weather_min_bracket_margin_c": ("POLYMARKET_RACE_WEATHER_MIN_BRACKET_MARGIN_C", "float"),
         "category_min_samples": ("POLYMARKET_RACE_CATEGORY_MIN_SAMPLES", "int"),

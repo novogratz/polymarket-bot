@@ -18,10 +18,10 @@
 # are often converging toward resolution and stay tradeable.
 
 [run]
-# Bot 3 baseline (reset 2026-07-29): $100 fresh start (early-July strategy), trades WIPED.
+# Bot 3 reporting baseline: $15 (user 2026-08-03); history preserved.
 # Override on the machine with fresh_start.py --equity if the real funded
 # amount differs.
-starting_cash = 100.0
+starting_cash = 85.0
 mode = "grinder"
 
 [sizing]
@@ -55,7 +55,7 @@ enabled = false
 # experiment lasted hours — day+2 brackets fill the book with far-out bets
 # the user doesn't want. Hard cap (max_hours_cap=0 -> single 24h window,
 # no laddering).
-max_hours = 24.0
+max_hours = 6.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
 # Pull deeper soonest-closing and highest-volume batches. The two scans are
@@ -175,6 +175,7 @@ weather_min_bracket_margin_c = 2.0
 # confirmed over 2 ticks — cuts the -$10 tail losses before they hit $0.
 weather_flip_exit_prob = 0.45
 weather_flip_confirm_ticks = 2
+weather_stop_price = 0.55
 # Data-driven category auto-disable: after ≥ min_samples realized trades in a
 # category, drop it if ROI < −5%. Lowered 100→20 (agent 2026-06-24): soccer
 # at 21 trades, −26.7% ROI is now auto-disabled. Forward-looking — a fresh

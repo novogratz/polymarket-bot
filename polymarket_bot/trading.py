@@ -1093,7 +1093,11 @@ def execute_live_sell(
     # confirmed loss-cut: the weather forecast has flipped against a held "No"
     # (the bracket is now likely to hit), so we sell before it decays to $0
     # instead of riding it down — also exempt.
-    CONFIRMED_LOSS_REASONS = {"race_stop_loss_confirmed", "race_weather_flip_exit"}
+    CONFIRMED_LOSS_REASONS = {
+        "race_stop_loss_confirmed",
+        "race_weather_flip_exit",
+        "race_weather_stop_price",
+    }
     if (
         entry_price > 0
         and sell_price < entry_price

@@ -4193,6 +4193,29 @@ class WeatherFlipExitTests(unittest.TestCase):
         self.assertIsNone(R._weather_flip_exit_plan(self._pos(), s))
 
 
+class WeatherAbsoluteStopTests(unittest.TestCase):
+    def _position(self, question="Will the highest temperature in NYC be 30°C on August 4?"):
+        return {
+            "status": "open", "live": True, "outcome": "No", "shares": 10.0,
+            "entry_price": 0.90, "question": question,
+            "opened_at": (utc_now() - timedelta(minutes=10)).isoformat(),
+        }
+
+    def test_weather_position_exits_at_absolute_bid(self):
+        from polymarket_bot.race_strategies import _simple_exit_plan
+        settings = Settings(race_weather_stop_price=0.55, race_sl_min_age_minutes=5)
+        plan = _simple_exit_plan(self._position(), -0.39, settings, decision_bid=0.55)
+        self.assertEqual(plan, {"reason": "race_weather_stop_price", "shares": 10.0})
+
+    def test_above_stop_and_non_weather_do_not_exit(self):
+        from polymarket_bot.race_strategies import _simple_exit_plan
+        settings = Settings(race_weather_stop_price=0.55, race_sl_min_age_minutes=5,
+                            race_weather_flip_exit_prob=0.0)
+        self.assertIsNone(_simple_exit_plan(self._position(), -0.38, settings, decision_bid=0.56))
+        non_weather = self._position("Will Example FC win on 2026-08-04?")
+        self.assertIsNone(_simple_exit_plan(non_weather, -0.50, settings, decision_bid=0.50))
+
+
 class WeatherRegionExposureTests(unittest.TestCase):
     def test_keeps_strongest_two_edges_per_region_and_date(self):
         from polymarket_bot.race_strategies import _cap_weather_region_date_candidates

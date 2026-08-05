@@ -17,7 +17,7 @@
 [run]
 # Baseline reset 2026-06-27: re-based to current live equity after weather-mode
 # pivot losses. Total P&L tracks from here.
-starting_cash = 27.0
+starting_cash = 85.0
 mode = "grinder"
 
 [sizing]
@@ -51,7 +51,7 @@ enabled = false
 # experiment lasted hours — day+2 brackets fill the book with far-out bets
 # the user doesn't want. Hard cap (max_hours_cap=0 -> single 24h window,
 # no laddering).
-max_hours = 24.0
+max_hours = 6.0
 max_hours_cap = 0.0
 daily_expiry_fallback = false
 scan_limit = 1500
@@ -136,6 +136,7 @@ weather_min_hours_unless_same_day = 12.0
 weather_exclude_ranges = true
 weather_region_date_cap = 0
 weather_forecast_min_edge = 0.01
+weather_stop_price = 0.55
 # Bracket margin guard (2026-06-28): skip "No" bet if any model is within
 # this many °C of the bracket threshold. Qingdao loss: ECMWF 28.1°C vs 29°C
 # bracket (0.9°C margin) resolved as a loss when afternoon peak exceeded it.

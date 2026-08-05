@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-08-04
+
+- All three live weather profiles now enter only within 6 hours of close, remain percentage-sized with equal-weight full deployment (`fixed_stake_usd = 0`), and sell weather positions at an executable bid of $0.55 or lower. All three reporting/fallback baselines are $85.
+
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]

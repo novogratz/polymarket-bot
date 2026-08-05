@@ -76,6 +76,11 @@ class LoadProfileTests(unittest.TestCase):
         for name in ("grinder.toml", "grinder_b.toml", "grinder_c.toml"):
             with self.subTest(profile=name):
                 profile = load_profile(profiles_dir / name)
+                self.assertEqual(profile.starting_cash, 85.0)
+                self.assertEqual(profile.values["POLYMARKET_RACE_MAX_HOURS"], "6.0")
+                self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_STOP_PRICE"], "0.55")
+                self.assertEqual(profile.values["POLYMARKET_RACE_FULL_DEPLOY"], "1")
+                self.assertEqual(profile.values["POLYMARKET_RACE_FIXED_STAKE_USD"], "0.0")
                 self.assertEqual(profile.values["POLYMARKET_RACE_MAX_PRICE"], "0.97")
                 self.assertEqual(profile.values["POLYMARKET_RACE_MAX_PRICE_HARD_CAP"], "0.97")
                 self.assertEqual(profile.values["POLYMARKET_RACE_SCAN_LIMIT"], "1500")

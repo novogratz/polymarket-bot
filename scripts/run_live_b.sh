@@ -25,8 +25,8 @@ export POLYMARKET_SYNC_LIVE_POSITIONS=1
 # The bot reads the real USDC balance from CLOB each tick; these only kick in
 # if that read fails. MUST match grinder_b.toml starting_cash and
 # data/starting_cash.txt — a mismatched fallback skews "depuis le début" %.
-export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-27.0}
-export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-27.0}
+export POLYMARKET_PAPER_BALANCE_USD=${POLYMARKET_PAPER_BALANCE_USD:-85.0}
+export POLYMARKET_ASSUME_LIVE_BALANCE_USD=${POLYMARKET_ASSUME_LIVE_BALANCE_USD:-85.0}
 
 # 10s tick — 3× faster than 30s, catches more fleeting band entries.
 export POLYMARKET_AUTO_INTERVAL_SECONDS=${POLYMARKET_AUTO_INTERVAL_SECONDS:-10}

@@ -16,8 +16,8 @@ codebase but aren't run live.
 
 ## Weather mode — current live strategy (all 3 bots)
 
-Same engine as grinder (same 5% fixed-fraction stake, same 0.99 winner floor, same
-never-sell-below-entry rule) but candidates are restricted to **temperature /
+Same engine as grinder, with percentage-based equal-weight full deployment, a
+6-hour entry window, a 0.99 winner floor, and a $0.55 weather stop. Candidates are restricted to **temperature /
 degree-bracket markets** (`weather_only = true`, `race_weather_only` in
 `polymarket_bot/config.py`, both profiles). **Only bots 2 & 3** (`configs/profiles/grinder_b.toml`)
 additionally gate entry on a forecast edge model — bot 1 (`grinder.toml`) trades
@@ -44,8 +44,7 @@ Forecast implementation: `polymarket_bot/weather_forecast.py`.
   it (or already exceeded it), returns a near-certain probability immediately.
 - **Fail-open:** any API/parse failure returns `None`; normal price/liquidity
   filters still apply.
-- Bot 2's profile also widens the entry window to 24h (`max_hours = 24.0` —
-  weather markets resolve within a day) and lowers liquidity floors
+- All live profiles use a 6h entry window (`max_hours = 6.0`) and weather-grade liquidity floors
   (`min_liquidity_usd = 50`, `min_volume_24h_usd = 200`) vs. grinder's sports-grade floors.
 
 ## Shared engine mechanics (entry/exit/sizing — currently applied under weather-only)
