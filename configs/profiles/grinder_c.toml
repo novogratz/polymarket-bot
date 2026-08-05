@@ -147,7 +147,7 @@ weather_only = true
 # we are in") — never bet tomorrow's brackets (a full extra day of swing risk).
 weather_same_day_only = false   # OFF (agent 2026-07-29): favored weather markets are next-day; same-day-only starves the lane. Volume over swing-avoidance.
 weather_min_hours_unless_same_day = 12.0
-weather_exclude_ranges = true
+weather_exclude_ranges = false
 # 0 removes the broad region/date count ceiling. Equal-weight sizing and the
 # per-line 5%/10% caps still bound each position; forecast ranking decides
 # which lines enter first when more than max_orders_per_tick are available.

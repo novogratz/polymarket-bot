@@ -3594,6 +3594,31 @@ class WeatherOnlyLaneTests(unittest.TestCase):
             [m_today, m_tmr], Settings(race_weather_same_day_only=False, **base))}
         self.assertEqual(off, {"today", "tmr"})
 
+    def test_same_day_weather_stays_eligible_after_gamma_end_date(self):
+        """Gamma noon deadlines must not hide still-tradable weather lines."""
+        from zoneinfo import ZoneInfo
+        from polymarket_bot.race_strategies import _build_eligible_candidates
+
+        et = utc_now().astimezone(ZoneInfo("America/New_York"))
+        qdate = et.strftime("%B %-d")
+        market = self._market(
+            "denver",
+            f"Will the highest temperature in Denver be between 74-75°F on {qdate}?",
+            "denver-temperature",
+        )
+        market["endDate"] = (utc_now() - timedelta(hours=12)).isoformat()
+        settings = Settings(
+            race_min_price=0.80, race_max_price=0.97,
+            race_max_price_hard_cap=0.97, race_max_spread=0.04,
+            race_max_hours=6.0, race_weather_only=True,
+            race_weather_same_day_only=True,
+            race_weather_exclude_ranges=False,
+            race_min_liquidity_usd=50.0, race_min_volume_24h_usd=50.0,
+        )
+
+        ids = {c.market_id for c, _ in _build_eligible_candidates([market], settings)}
+        self.assertEqual(ids, {"denver"})
+
     def test_range_brackets_are_excluded_when_quality_gate_is_on(self):
         from polymarket_bot.race_strategies import _build_eligible_candidates
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-04 — Tradable weather markets after Gamma deadline
+
+- Weather scans now include the prior 24 hours of Gamma deadlines because
+  daily temperature contracts can remain open after their advertised noon-UTC
+  `endDate`. They remain limited to the current target day and must still be
+  accepting orders and pass all price, liquidity, forecast and late-entry gates.
+- Re-enabled temperature range brackets on bots 1, 2 and 3; forecast-gated bots
+  retain their bracket-margin protection.
+
 ## 2026-08-04
 
 - All three live weather profiles now enter only within 6 hours of close, remain percentage-sized with equal-weight full deployment (`fixed_stake_usd = 0`), and sell weather positions at an executable bid of $0.55 or lower. All three reporting/fallback baselines are $85.

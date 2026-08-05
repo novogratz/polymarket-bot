@@ -75,6 +75,22 @@ def _load_short_expiry_markets(settings: Settings, max_hours: float | None = Non
             "order": "volume",
             "ascending": False,
         },
+        # Gamma's weather ``endDate`` is often noon UTC on the target day,
+        # while the individual contracts continue accepting orders until the
+        # final station observation is available.  Include yesterday's API-
+        # expired slice for the weather lane; candidate selection below keeps
+        # only the target local day and still requires acceptingOrders.
+        *(
+            ({
+                "limit": settings.race_scan_limit,
+                "end_date_min": now - timedelta(hours=24),
+                "end_date_max": now,
+                "order": "endDate",
+                "ascending": False,
+            },)
+            if bool(getattr(settings, "race_weather_only", False))
+            else ()
+        ),
     ):
         try:
             batches.append(client.get_markets(**kwargs))
@@ -369,7 +385,14 @@ def _build_eligible_candidates(
         # ``max_hours``. A game in progress that doesn't close inside the
         # window is dropped — only fast-resolving bets qualify.
         game_start = parse_dt(market.get("gameStartTime"))
-        closes_soon = earliest <= end_date <= horizon
+        # Weather Gamma deadlines can precede the actual tradable close by
+        # many hours.  An API-expired weather contract remains eligible only
+        # on its target day; acceptingOrders, price, forecast and solar-hour
+        # gates below remain authoritative.
+        stale_same_day_weather = False
+        if weather_only and end_date < earliest and today_md is not None:
+            stale_same_day_weather = _weather_market_md(market) == today_md
+        closes_soon = earliest <= end_date <= horizon or stale_same_day_weather
         starts_soon = game_start is not None and now <= game_start <= horizon
         if not (closes_soon or starts_soon):
             continue

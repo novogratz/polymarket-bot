@@ -137,7 +137,7 @@ weather_only = true
 # we are in") — never bet tomorrow's brackets (a full extra day of swing risk).
 weather_same_day_only = false   # OFF (agent 2026-07-29): favored weather markets are next-day; same-day-only starves the lane. Volume over swing-avoidance.
 weather_min_hours_unless_same_day = 12.0
-weather_exclude_ranges = true
+weather_exclude_ranges = false
 weather_region_date_cap = 2
 weather_forecast_min_edge = 0.01
 # Bracket margin guard (2026-06-28): skip "No" bet if any model is within

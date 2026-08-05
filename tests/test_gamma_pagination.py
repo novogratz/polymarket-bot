@@ -126,3 +126,27 @@ class GammaSortKeyTests(unittest.TestCase):
         self.assertTrue(any("order=endDate" in p for p in orders), orders)
         self.assertTrue(any("order=volume" in p for p in orders), orders)
         self.assertFalse(any("order=end_date&" in p or p.endswith("order=end_date") for p in orders), orders)
+
+    def test_weather_race_scan_includes_recent_api_expired_markets(self):
+        from unittest import mock
+        from polymarket_bot.config import Settings
+        from polymarket_bot import race_strategies
+
+        calls = []
+
+        class _Capture:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def get_markets(self, **kwargs):
+                calls.append(kwargs)
+                return []
+
+        with mock.patch.object(race_strategies, "GammaClient", _Capture):
+            race_strategies._load_short_expiry_markets(
+                Settings(race_scan_limit=10, race_weather_only=True)
+            )
+
+        self.assertEqual(len(calls), 3)
+        self.assertLess(calls[2]["end_date_min"], calls[2]["end_date_max"])
+        self.assertFalse(calls[2]["ascending"])
