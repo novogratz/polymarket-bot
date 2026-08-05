@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-04 — Disable weather forecast-flip exits
+
+- Disabled `weather_flip_exit_prob` on bots 1, 2, and 3. Weather positions now
+  sell below entry only at the explicit executable-bid stop of 0.55; otherwise
+  they hold for the 0.99 winner exit or settlement.
+
 ## 2026-08-04 — Category-aware late-resolution lane
 
 - Expanded all three live grinders beyond weather. The deterministic whitelist

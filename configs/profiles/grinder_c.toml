@@ -174,7 +174,7 @@ weather_min_bracket_margin_c = 0.0
 # Forecast-flip exit (user 2026-07-29): sell a held "No" when the live
 # Open-Meteo consensus gives our outcome < 45% (forecast turned against us),
 # confirmed over 2 ticks — cuts the -$10 tail losses before they hit $0.
-weather_flip_exit_prob = 0.45
+weather_flip_exit_prob = 0.0
 weather_flip_confirm_ticks = 2
 weather_stop_price = 0.55
 weather_min_solar_hour = 15.0
