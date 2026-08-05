@@ -86,6 +86,15 @@ class StrategyTests(unittest.TestCase):
             market("Bitcoin Up or Down on August 4", end_hours=0.5), now, horizon
         ))
         self.assertTrue(_late_multi_category_allowed(
+            market("Will Bitcoin dip to $63,000 on August 4?", end_hours=2.5), now, horizon
+        ))
+        self.assertFalse(_late_multi_category_allowed(
+            market("Will Bitcoin dip to $63,000 on August 4?", end_hours=3.5), now, horizon
+        ))
+        self.assertFalse(_late_multi_category_allowed(
+            market("Will Ethereum dip to $2,000 on August 4?", end_hours=2), now, horizon
+        ))
+        self.assertTrue(_late_multi_category_allowed(
             market("Will CPI inflation exceed 3%?", end_hours=1.5), now, horizon
         ))
         self.assertFalse(_late_multi_category_allowed(

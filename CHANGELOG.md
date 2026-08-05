@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-04 — Late crypto threshold contracts
+
+- The multi-category lane now admits objective BTC/SOL/XRP hit, dip, touch,
+  above, and below threshold contracts during their final three hours. The
+  universal 0.85–0.97 entry band and book-quality checks still apply; ETH stays
+  excluded.
+
 ## 2026-08-04 — Disable weather forecast-flip exits
 
 - Disabled `weather_flip_exit_prob` on bots 1, 2, and 3. Weather positions now
