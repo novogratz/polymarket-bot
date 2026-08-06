@@ -73,7 +73,7 @@ min_volume_24h_usd = 50.0
 # realized history shows the 0.80–0.85 bucket is a slow bleed (−8.1% ROI in the
 # grinder_b analysis). The whole strategy is only +EV when win-rate q > entry
 # price p; buying cheaper favorites lowers q faster than p, so 0.85 is the floor.
-min_price = 0.85
+min_price = 0.90
 max_price = 0.97
 max_price_hard_cap = 0.97
 
@@ -143,7 +143,7 @@ late_multi_category = true
 # at entry selection, and this lane bypasses the normal weather ban
 # (is_weather_market in models.py). Entries are additionally cross-checked
 # against an Open-Meteo multi-model forecast before entry (below).
-weather_only = false
+weather_only = true
 # Same-day-only (user 2026-07-29: "only bet on bets expiring the same day
 # we are in") — never bet tomorrow's brackets (a full extra day of swing risk).
 weather_same_day_only = false   # OFF (agent 2026-07-29): favored weather markets are next-day; same-day-only starves the lane. Volume over swing-avoidance.
@@ -153,6 +153,7 @@ weather_exclude_ranges = false
 # per-line 5%/10% caps still bound each position; forecast ranking decides
 # which lines enter first when more than max_orders_per_tick are available.
 weather_region_date_cap = 0
+weather_city_date_cap = 2
 # FORECAST GATE RESTORED (user 2026-07-28, "do everything you think makes sense
 # to make money as we used to"). WHY: with the gate OFF, 132 realized trades
 # ran 89% win / avg entry 0.90 → edge (q−p) = −1.6 pts = structurally LOSING
@@ -169,7 +170,7 @@ weather_region_date_cap = 0
 # Keep a positive edge while increasing throughput: a 0.97 entry still needs
 # at least 0.98 model probability. Setting this to zero would admit the
 # historically negative-edge ungated pool and scale losses with bet count.
-weather_forecast_min_edge = 0.0
+weather_forecast_min_edge = 0.02
 weather_min_bracket_margin_c = 0.0
 # Forecast-flip exit (user 2026-07-29): sell a held "No" when the live
 # Open-Meteo consensus gives our outcome < 45% (forecast turned against us),

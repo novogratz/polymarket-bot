@@ -38,20 +38,22 @@ from polymarket_bot.profiles import load_profile
 
 
 class StrategyTests(unittest.TestCase):
-    def test_live_weather_profiles_have_unguarded_late_entries(self):
-        """User 2026-08-04: all three bots admit late weather without model gates."""
+    def test_live_weather_profiles_are_forecast_gated_and_diversified(self):
+        """All live bots use the same guarded weather-only entry policy."""
         root = Path(__file__).resolve().parent.parent / "configs" / "profiles"
         for name in ("grinder.toml", "grinder_b.toml", "grinder_c.toml"):
             values = load_profile(root / name).values
             with self.subTest(profile=name):
                 self.assertEqual(values["POLYMARKET_RACE_MAX_PRICE"], "0.97")
                 self.assertEqual(values["POLYMARKET_RACE_MAX_PRICE_HARD_CAP"], "0.97")
-                self.assertEqual(values["POLYMARKET_RACE_WEATHER_FORECAST_MIN_EDGE"], "0.0")
+                self.assertEqual(values["POLYMARKET_RACE_MIN_PRICE"], "0.9")
+                self.assertEqual(values["POLYMARKET_RACE_WEATHER_FORECAST_MIN_EDGE"], "0.02")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_MIN_BRACKET_MARGIN_C"], "0.0")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_REGION_DATE_CAP"], "0")
+                self.assertEqual(values["POLYMARKET_RACE_WEATHER_CITY_DATE_CAP"], "2")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_CALIBRATION_MIN_SAMPLES"], "0")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_CALIBRATION_MAX_BRIER"], "0.0")
-                self.assertEqual(values["POLYMARKET_RACE_WEATHER_ONLY"], "0")
+                self.assertEqual(values["POLYMARKET_RACE_WEATHER_ONLY"], "1")
                 self.assertEqual(values["POLYMARKET_RACE_LATE_MULTI_CATEGORY"], "1")
 
     def test_multi_category_late_lane_is_category_aware(self):
@@ -3988,6 +3990,26 @@ class SameEventDedupTests(unittest.TestCase):
         self.assertIsNotNone(portfolio.record_live_position(no_8283, 5.0, entry_price=0.97))
         self.assertIsNotNone(portfolio.record_live_position(yes_8081, 5.0, entry_price=0.96))
 
+    def test_opposite_outcome_on_same_weather_contract_is_blocked(self):
+        from polymarket_bot.race_strategies import _actionable_candidates
+
+        held_yes = ActionableCandidatesTests._candidate(
+            "jeddah-38", "Will the highest temperature in Jeddah be 38°C on August 5?",
+            "jeddah-38", "highest-temperature-in-jeddah-on-august-5-2026",
+            "tok-jeddah-yes", hours=0.0, bid=0.94, outcome="Yes",
+        )
+        opposite_no = ActionableCandidatesTests._candidate(
+            "jeddah-38", held_yes.question, held_yes.slug, held_yes.event_slug,
+            "tok-jeddah-no", hours=0.0, bid=0.95, outcome="No",
+        )
+        portfolio = Portfolio(cash=95.0, positions=[])
+        self.assertIsNotNone(portfolio.record_live_position(held_yes, 5.0, entry_price=0.95))
+
+        actionable = _actionable_candidates(
+            [(opposite_no, 0.0)], portfolio, Settings(race_full_deploy=True)
+        )
+        self.assertEqual(actionable, [])
+
     def test_event_exposure_cap_is_one(self):
         from polymarket_bot import race_strategies
 
@@ -4372,6 +4394,32 @@ class WeatherRegionExposureTests(unittest.TestCase):
             2,
         )
         self.assertEqual([c.market_id for c, _ in kept], ["high", "mid", "paris"])
+
+    def test_city_date_cap_keeps_two_strongest_lines(self):
+        from polymarket_bot.race_strategies import _cap_weather_city_date_candidates
+
+        def candidate(mid, edge, city="Jeddah"):
+            return Candidate(
+                market_id=mid, question=f"Highest temperature in {city} {mid}", slug=mid,
+                end_date=utc_now() + timedelta(hours=2), hours_to_close=2,
+                liquidity=1000, volume=2000, outcome="No", price=0.93,
+                token_id=f"tok-{mid}", score=0, url="https://example.test",
+                best_bid=0.92, best_ask=0.93, accepts_orders=True,
+                forecast_probability=0.93 + edge, forecast_edge=edge,
+                weather_city=city, weather_target_date="2026-08-05",
+                weather_region="middle-east",
+            )
+
+        low = candidate("37", 0.02)
+        high = candidate("38", 0.05)
+        mid = candidate("39", 0.03)
+        paris = candidate("paris", 0.025, "Paris")
+        kept = _cap_weather_city_date_candidates(
+            [(low, 0), (high, 0), (mid, 0), (paris, 0)],
+            Portfolio(cash=100, positions=[]),
+            2,
+        )
+        self.assertEqual([c.market_id for c, _ in kept], ["38", "39", "paris"])
 
 
 class WeatherCalibrationTests(unittest.TestCase):

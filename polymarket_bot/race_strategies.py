@@ -2260,6 +2260,57 @@ def _cap_weather_region_date_candidates(
     return kept
 
 
+def _cap_weather_city_date_candidates(
+    eligible: list[tuple[Candidate, float]],
+    portfolio: Portfolio,
+    cap: int,
+) -> list[tuple[Candidate, float]]:
+    """Keep strongest forecast-backed lines under each city/date cap."""
+    if cap <= 0:
+        return eligible
+    counts: dict[tuple[str, str], int] = {}
+    for position in portfolio.positions:
+        if position.get("status") != "open":
+            continue
+        city = str(position.get("weather_city") or "").strip().casefold()
+        target = str(position.get("weather_target_date") or "")
+        if not city or not target:
+            try:
+                parsed = parse_weather_question(str(position.get("question") or ""))
+                city = str((parsed or {}).get("city") or "").strip().casefold()
+                target = str((parsed or {}).get("target_date") or "")
+            except Exception:
+                continue
+        if city and target:
+            counts[(city, target)] = counts.get((city, target), 0) + 1
+
+    ranked = sorted(
+        eligible,
+        key=lambda item: (
+            item[0].forecast_edge if item[0].forecast_edge is not None else -1.0,
+            item[0].best_bid or 0.0,
+        ),
+        reverse=True,
+    )
+    kept: list[tuple[Candidate, float]] = []
+    for item in ranked:
+        candidate = item[0]
+        if portfolio.open_position_for_token(candidate.token_id) is not None:
+            kept.append(item)
+            continue
+        key = (
+            str(candidate.weather_city or "").strip().casefold(),
+            str(candidate.weather_target_date or ""),
+        )
+        if not all(key):
+            continue
+        if counts.get(key, 0) >= cap:
+            continue
+        counts[key] = counts.get(key, 0) + 1
+        kept.append(item)
+    return kept
+
+
 def _weather_calibration_stats(records: list[dict[str, Any]]) -> dict[str, float]:
     """Return realized Brier score for forecast-backed weather trades."""
     pairs: list[tuple[float, float]] = []
@@ -2929,6 +2980,10 @@ def _actionable_candidates(
             # Treat stake≤0 on an open position as "position is held, no room".
             if existing_stake <= 0 or cap - existing_stake < _TOPUP_MIN_USD:
                 continue
+        elif portfolio.has_open_position(c.market_id):
+            # The other token on this exact binary contract is already held.
+            # Never reverse direction while that position remains open.
+            continue
         elif portfolio.has_open_event_position(c):
             continue
         elif _candidate_game_keys(c) & open_keys:
@@ -3416,6 +3471,11 @@ def _run_race_tick(
         )
 
     if getattr(settings, "race_weather_only", False):
+        actionable = _cap_weather_city_date_candidates(
+            actionable,
+            portfolio,
+            int(getattr(settings, "race_weather_city_date_cap", 0) or 0),
+        )
         actionable = _cap_weather_region_date_candidates(
             actionable,
             portfolio,
@@ -3452,6 +3512,7 @@ def _run_race_tick(
     open_assets = _open_asset_keys(portfolio)
     executed: list[dict[str, Any]] = []
     executed_game_keys: set[str] = set()
+    executed_market_ids: set[str] = set()
     rejected: list[dict[str, Any]] = []
     cash_floor = portfolio.summary().get("equity", 0) * settings.race_cash_floor_pct
 
@@ -3472,6 +3533,9 @@ def _run_race_tick(
         if portfolio.has_pending_token(candidate.token_id):
             rejected.append({"question": candidate.question, "reason": "pending_order"})
             continue
+        if candidate.market_id in executed_market_ids:
+            rejected.append({"question": candidate.question, "reason": "same_market_already_bet"})
+            continue
         # Top-up lane (2026-06-10): a token already held may be bought again
         # to complete a depth-capped entry, but only while the position's
         # total cost basis sits below the per-position cap
@@ -3490,6 +3554,12 @@ def _run_race_tick(
                  and p.get("outcome") == candidate.outcome),
                 None,
             )
+        if topup_pos is None and portfolio.has_open_position(candidate.market_id):
+            rejected.append({
+                "question": candidate.question,
+                "reason": "opposite_outcome_already_held",
+            })
+            continue
         topup_room = 0.0
         if topup_pos is not None:
             equity_now = float(portfolio.summary().get("equity", portfolio.cash))
@@ -3581,6 +3651,7 @@ def _run_race_tick(
             )
             executed.append({"strategy": strategy_name, "order": result.order, "response": result.response, "signal": signal_payload})
             executed_game_keys |= cand_keys
+            executed_market_ids.add(candidate.market_id)
             if asset_key:
                 open_assets.add(asset_key)
             if ev_slug and topup_pos is None:

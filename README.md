@@ -31,7 +31,7 @@ bash scripts/run_live_70.sh
 
 Starts the live grinder (**10 s tick**) alongside a dry paper twin and a read-only **live analyst** sidecar that posts a Telegram **LIVE REPORT** — on startup, then on a fixed cadence (`LIVE_ANALYST_CYCLE_SECONDS`), plus a daily 10:00 ET fire. The report shows **equity, P&L since start, total trades + win rate, today's top/bottom closes, and open positions**. Weather-only launchers exclude non-weather rows from live statistics, and “today” follows the US/Eastern report date. The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path**.
 
-All live bots (`run_live_70.sh` = bot 1, `run_live_b.sh` = bots 2 & 3, `run_live_c.sh` = the grinder_c bot on this Mac added 2026-07-19, plus `run_live_win.sh` on `kzer_windows`) run independently, each with its own wallet and ledger, and all run **weather mode** as of 2026-07-06. Each keeps a per-machine baseline (`data/starting_cash.txt`); reset any bot with `scripts/fresh_start.py` (wipes closed-trade history, keeps open trades).
+All live bots (`run_live_70.sh` = bot 1, `run_live_b.sh` = bots 2 & 3, `run_live_c.sh` = the grinder_c bot on this Mac added 2026-07-19, plus `run_live_win.sh` on `kzer_windows`) run independently, each with its own wallet and ledger, and all run **weather mode**. Entries require an ask from 0.90–0.97 and Open-Meteo probability at least two points above the ask; exposure is capped at two positions per city/date and opposite outcomes on one contract cannot be held together. Each keeps a per-machine baseline (`data/starting_cash.txt`); reset any bot with `scripts/fresh_start.py` (wipes closed-trade history, keeps open trades).
 
 > **Do not use `run_all.sh` for live trading.** It resets the ledger on startup and launches a retired 95-profile dry race.
 
@@ -39,7 +39,7 @@ All live bots (`run_live_70.sh` = bot 1, `run_live_b.sh` = bots 2 & 3, `run_live
 
 ## Strategy
 
-The engine supports more than one strategy off the same pipeline; each live bot is a TOML profile pointing the engine at a candidate set and edge model. **All 3 bots run a deterministic category-aware late-resolution lane:** weather, sports underway for at least 30 minutes, and objective scheduled economics within two hours. All crypto is blocked. Politics, entertainment, esports, speech, equities, and ambiguous markets remain excluded.
+The engine supports more than one strategy off the same pipeline; each live bot is a TOML profile pointing the engine at a candidate set and edge model. **All 3 live bots run the deterministic forecast-gated weather-only lane.** Every non-weather market is excluded.
 
 ### Weather mode
 

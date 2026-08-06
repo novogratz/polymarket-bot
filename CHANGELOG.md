@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-05 — Forecast-gated diversified weather entries
+
+- Restored weather-only entry on all three grinders, raised the minimum ask
+  to 0.90, and require at least 2 percentage points of Open-Meteo forecast
+  edge. Forecast failures now reject the trade.
+- Added a two-line city/date exposure cap and blocked buying the opposite
+  outcome while the same binary contract is already held.
+- Stop losses remain disabled; admitted positions hold for 0.99 or settlement.
+
 ## 2026-08-05 — Remove all grinder stop losses
 
 - Disabled the absolute weather stop and confirmed sports-moneyline stop on

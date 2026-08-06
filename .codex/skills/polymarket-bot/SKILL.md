@@ -10,12 +10,12 @@ run the same strategy (weather-only) — see below.
 
 ## Current state (WEATHER-ONLY + FULL-DEPLOY — 2026-07-10)
 
-- **Live strategy:** `grinder` — category-aware late-resolution mode on all 3 bots. It admits weather, already-started sports, and objective economics releases within two hours. All crypto is blocked (user 2026-08-05). Politics, entertainment, esports, speech, equities, and ambiguous contracts stay excluded.
+- **Live strategy:** weather-only `grinder` on all 3 bots. Every non-weather market, including crypto, is excluded.
 - **Config:** `configs/profiles/grinder.toml` (bot 1) / `grinder_b.toml` (bots 2 & 3).
 - **Launcher:** `bash scripts/run_live_70.sh` / `run_live_b.sh` — preserve ledger/journal. Do NOT use `run_all.sh` for live (it resets the ledger).
 - **Sizing:** **EQUAL-WEIGHT FULL DEPLOYMENT** (`full_deploy = true`, 5% soft entry/top-up cap, 10% redistribution-only hard cap) — every line targets equity/N over all lines ($5 floor); held lines top up toward the shared target, never past the on-chain line-cap guard. Cash approaches $0 when enough eligible distinct lines exist; caps may leave cash idle when the safe universe is small. Rollback: `full_deploy=false, fixed_stake_usd=5.0`.
-- **Entry:** every lane uses asks ∈ [0.85, 0.97] and the 6h outer window. Weather targets the city's current local date after solar 15:00 and recovers still-open Gamma deadlines from the prior 24h. Sports must have started within six hours; economics must close within two hours. Crypto is blocked. Range weather brackets are enabled and distinct brackets may each be held.
-- **Universe:** deterministic multi-category whitelist; no random/unfiltered fallback.
+- **Entry:** asks ∈ [0.90, 0.97], 6h outer window, and mandatory Open-Meteo probability at least ask + 0.02 (fail-closed). Weather targets the city's current local date after solar 15:00. At most two lines may share a city/date, and the opposite outcome of an already-held binary contract is blocked.
+- **Universe:** deterministic weather-only whitelist; no random/unfiltered fallback.
 - **Exits:** no stop losses. Positions hold for a resolved-exit bid ≥**0.99** or settlement. Weather forecast-flip exits and the sports-moneyline stop are disabled on all profiles. Any exit authentication failure halts new buys/top-ups for the tick.
 - **W/L record:** `data/realized_trade_cache.jsonl` (survives journal rotation).
 - **Live report integrity (2026-07-31):** weather-only launchers set `LIVE_ANALYST_WEATHER_ONLY=1`, so Telegram statistics reject records outside the active lane and group “today” by US/Eastern. A custom journal automatically colocates its realized cache unless a cache path was explicitly configured, preventing test/dry-run closes from contaminating production history.

@@ -460,6 +460,9 @@ class Settings:
     # Maximum fresh positions sharing a broad weather region and target date.
     # 0 disables the correlated-weather exposure cap.
     race_weather_region_date_cap: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_WEATHER_REGION_DATE_CAP", 0))
+    # Maximum fresh positions sharing the same weather city and target date.
+    # Bounds correlated exposure across adjacent temperature brackets. 0 = off.
+    race_weather_city_date_cap: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_WEATHER_CITY_DATE_CAP", 0))
     # Forecast-flip exit (user 2026-07-29): sell a held weather position when the
     # live Open-Meteo consensus gives OUR outcome < this probability (the forecast
     # has turned against the bet) — cutting the -$10 tail losses before they hit

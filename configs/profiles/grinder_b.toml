@@ -62,7 +62,7 @@ min_volume_24h_usd = 50.0
 
 # Wider favorite band (user 2026-07-31): both the normal and absolute ceiling
 # admit asks through 0.97; the forecast gate still requires positive edge.
-min_price = 0.85
+min_price = 0.90
 max_price = 0.97
 max_price_hard_cap = 0.97
 
@@ -132,11 +132,12 @@ late_multi_category = true
 # at entry selection, and this lane bypasses the normal weather ban
 # (is_weather_market in models.py). Entries are additionally cross-checked
 # against an Open-Meteo multi-model forecast before entry (below).
-weather_only = false
+weather_only = true
 weather_min_hours_unless_same_day = 12.0
 weather_exclude_ranges = false
 weather_region_date_cap = 0
-weather_forecast_min_edge = 0.0
+weather_city_date_cap = 2
+weather_forecast_min_edge = 0.02
 weather_stop_price = 0.0
 weather_min_solar_hour = 15.0
 weather_calibration_min_samples = 0

@@ -293,6 +293,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, str]]] = {
         "weather_min_hours_unless_same_day": ("POLYMARKET_RACE_WEATHER_MIN_HOURS_UNLESS_SAME_DAY", "float"),
         "weather_exclude_ranges": ("POLYMARKET_RACE_WEATHER_EXCLUDE_RANGES", "bool"),
         "weather_region_date_cap": ("POLYMARKET_RACE_WEATHER_REGION_DATE_CAP", "int"),
+        "weather_city_date_cap": ("POLYMARKET_RACE_WEATHER_CITY_DATE_CAP", "int"),
         "weather_flip_exit_prob": ("POLYMARKET_RACE_WEATHER_FLIP_EXIT_PROB", "float"),
         "weather_flip_confirm_ticks": ("POLYMARKET_RACE_WEATHER_FLIP_CONFIRM_TICKS", "int"),
         "weather_stop_price": ("POLYMARKET_RACE_WEATHER_STOP_PRICE", "float"),
