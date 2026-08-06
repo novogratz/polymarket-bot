@@ -219,6 +219,12 @@ class OpenPositionExpiryTests(unittest.TestCase):
     """User request 2026-06-11: POSITIONS OUVERTES sorted by expiry, each
     line showing when the game finishes / the market expires."""
 
+    def test_report_includes_every_open_position(self):
+        positions = [{"question": f"position-{i}", "unr": i - 6} for i in range(12)]
+        shown, hidden = live_analyst._positions_for_report(positions)
+        self.assertEqual(shown, positions)
+        self.assertEqual(hidden, 0)
+
     def test_positions_sorted_by_soonest_expiry_missing_dates_last(self):
         import tempfile
 

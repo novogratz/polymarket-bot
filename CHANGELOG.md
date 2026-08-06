@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-05 — Show every open position in Telegram
+
+- The live report no longer truncates open-position details to the top/worst
+  subset. Every open line is included; long reports use the existing safe
+  multi-message Telegram chunking.
+
 ## 2026-08-05 — Forecast-gated diversified weather entries
 
 - Restored weather-only entry on all three grinders, raised the minimum ask

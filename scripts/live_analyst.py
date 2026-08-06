@@ -122,12 +122,9 @@ _load_dotenv()
 
 CYCLE_SECONDS = int(os.environ.get("LIVE_ANALYST_CYCLE_SECONDS", "1800"))   # 30 minutes
 
-# The report is a SUMMARY, not a dump (user 2026-06-22: "I want something clear
-# as a summary", "top 5 winning and top 5 where we lost"). Both detail lists —
-# closed trades-of-the-day AND open positions — show only the top-N winners and
-# the N worst losers; the rest folds into a "+X autres" line, and the summary
-# header above each list still reflects ALL trades/positions (counts, totals,
-# latent P&L). Set LIVE_REPORT_TOP_N=0 to hide the detail entirely.
+# Closed trades remain summarized as top/worst. Open positions are always
+# rendered in full (user 2026-08-05), with telegram_post splitting long reports
+# safely across multiple Telegram messages.
 _REPORT_TOP_N = int(os.environ.get("LIVE_REPORT_TOP_N", "5"))
 
 
@@ -141,6 +138,11 @@ def _winners_losers(items: list[dict], pnl_key, n: int = _REPORT_TOP_N):
     losers = sorted((x for x in items if pnl_key(x) < 0), key=pnl_key)[:n]
     hidden = len(items) - len(winners) - len(losers)
     return winners, losers, max(hidden, 0)
+
+
+def _positions_for_report(open_positions: list[dict]) -> tuple[list[dict], int]:
+    """Return every open position; Telegram chunking handles long reports."""
+    return list(open_positions), 0
 
 
 @dataclass
@@ -1377,17 +1379,13 @@ def cycle_once() -> None:
     net_pct = (net / starting * 100) if starting > 0 else 0.0
     unrealized = sum(float(p.get("unr", 0) or 0) for p in open_pos)
 
-    # Cap the two detail lists (top-N winners + N worst losers each). The
-    # summary header above each list still reflects the full set; only the
-    # line-by-line detail is trimmed so the Telegram message stays short.
+    # Closed trades stay summarized. Every open position is shown; Telegram
+    # delivery splits the report into safe line-boundary chunks when needed.
     trade_winners, trade_losers, trades_hidden = _winners_losers(
         today_trades, lambda t: float(t.get("pnl") or 0.0)
     )
     shown_trades = trade_winners + trade_losers
-    pos_winners, pos_losers, pos_hidden = _winners_losers(
-        open_pos, lambda p: float(p.get("unr", 0) or 0)
-    )
-    shown_pos = pos_winners + pos_losers
+    shown_pos, pos_hidden = _positions_for_report(open_pos)
 
     # Track end-of-day equity so "Gains du jour" can show today's % progress
     # against yesterday's closing balance (not just the all-time start).
