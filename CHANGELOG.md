@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-06 — Remove weather spread and solar-hour gates
+
+- Disabled the live weather spread ceiling (`max_spread = 1.0`) and the
+  per-city 15:00 entry gate (`weather_min_solar_hour = 0`) on all three bots.
+  Price, forecast-edge, liquidity, city/date, and opposite-outcome controls
+  remain active.
+
 ## 2026-08-05 — Show every open position in Telegram
 
 - The live report no longer truncates open-position details to the top/worst

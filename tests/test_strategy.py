@@ -50,12 +50,14 @@ class StrategyTests(unittest.TestCase):
                 self.assertEqual(values["POLYMARKET_RACE_MAX_PRICE_HARD_CAP"], "0.97")
                 self.assertEqual(values["POLYMARKET_RACE_MIN_PRICE"], "0.9")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_FORECAST_MIN_EDGE"], "0.02")
+                self.assertEqual(values["POLYMARKET_RACE_MAX_SPREAD"], "1.0")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_MIN_BRACKET_MARGIN_C"], "0.0")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_REGION_DATE_CAP"], "0")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_CITY_DATE_CAP"], "2")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_CALIBRATION_MIN_SAMPLES"], "0")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_CALIBRATION_MAX_BRIER"], "0.0")
                 self.assertEqual(values["POLYMARKET_RACE_WEATHER_ONLY"], "1")
+                self.assertEqual(values["POLYMARKET_RACE_WEATHER_MIN_SOLAR_HOUR"], "0.0")
                 self.assertEqual(values["POLYMARKET_RACE_LATE_MULTI_CATEGORY"], "1")
 
     def test_multi_category_late_lane_is_category_aware(self):

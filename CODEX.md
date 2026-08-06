@@ -20,7 +20,7 @@ This is a general-purpose engine (`polymarket_bot/race_strategies.py`) that can 
 **Launcher:** `bash scripts/run_live_70.sh` / `run_live_b.sh`. Do **not** use `run_all.sh` for live.  
 **Universe:** `weather_only = true`; every non-weather market is rejected.
 **Sizing:** **EQUAL-WEIGHT FULL DEPLOYMENT** (`full_deploy = true`, `full_deploy_max_position_pct = 0.10`, 2026-07-19) — cash ≈ $0 at all times: every line targets equity/N over all lines (10% cap, $5 floor); held lines top up toward the shared target, never past it (on-chain line-cap guard). Rollback: `full_deploy=false, fixed_stake_usd=5.0`.
-**Entry:** weather only, ask 0.90–0.97, forecast probability ≥ ask + 0.02, at most two positions per city/date, and never hold opposite outcomes on one binary contract.
+**Entry:** weather only, ask 0.90–0.97, forecast probability ≥ ask + 0.02, at most two positions per city/date, and never hold opposite outcomes on one binary contract. Spread and local-solar-hour gates are disabled.
 
 **Exits:** no stop losses. Positions hold for a resolved-exit bid ≥**0.99** or settlement; forecast-flip exits are also disabled.
 
