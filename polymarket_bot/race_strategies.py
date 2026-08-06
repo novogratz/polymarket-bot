@@ -134,6 +134,66 @@ def _forward_log_enabled() -> bool:
     return os.getenv("POLYMARKET_FORWARD_LOG_ENABLED", "1").lower() in ("1", "true", "yes")
 
 
+def _decision_log_path() -> Path:
+    return Path(os.getenv("POLYMARKET_DECISION_LOG_PATH", "data/decision_journal.jsonl"))
+
+
+def _decision_log_enabled() -> bool:
+    return os.getenv("POLYMARKET_DECISION_LOG_ENABLED", "1").lower() in ("1", "true", "yes")
+
+
+def _append_decision_rows(rows: list[dict[str, Any]]) -> int:
+    """Append one tick's weather decisions as durable JSONL records."""
+    if not rows or not _decision_log_enabled():
+        return 0
+    path = _decision_log_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("a", encoding="utf-8") as handle:
+            for row in rows:
+                handle.write(json.dumps(row, sort_keys=True) + "\n")
+    except OSError:
+        return 0
+    return len(rows)
+
+
+def _finalize_weather_decisions(
+    audit: dict[str, dict[str, Any]],
+    eligible: list[tuple[Candidate, float]],
+    actionable: list[tuple[Candidate, float]],
+    picks: list[Candidate],
+    executed: list[dict[str, Any]],
+    rejected: list[dict[str, Any]],
+) -> int:
+    """Persist candidate decisions with the deepest status reached this tick."""
+    eligible_tokens = {str(c.token_id) for c, _ in eligible if c.token_id}
+    actionable_tokens = {str(c.token_id) for c, _ in actionable if c.token_id}
+    picked_tokens = {str(c.token_id) for c in picks if c.token_id}
+    executed_tokens = {
+        str((trade.get("order") or {}).get("tokenId") or "") for trade in executed
+    }
+    rejected_by_question = {
+        str(item.get("question") or ""): str(item.get("reason") or "rejected")
+        for item in rejected
+    }
+    rows: list[dict[str, Any]] = []
+    for token, base in audit.items():
+        row = dict(base)
+        question = str(row.get("question") or "")
+        if token in executed_tokens:
+            row.update(decision="executed", rejection_reason=None)
+        elif question in rejected_by_question:
+            row.update(decision="rejected", rejection_reason=rejected_by_question[question])
+        elif token in picked_tokens:
+            row.update(decision="picked_not_executed", rejection_reason="execution_not_completed")
+        elif token in actionable_tokens:
+            row.update(decision="actionable_not_selected", rejection_reason="ranking_or_tick_limit")
+        elif token in eligible_tokens:
+            row.update(decision="eligible_not_actionable", rejection_reason="portfolio_or_exposure_guard")
+        rows.append(row)
+    return _append_decision_rows(rows)
+
+
 def _load_logged_tokens(path: Path) -> set[str]:
     seen: set[str] = set()
     if not path.is_file():
@@ -336,6 +396,7 @@ def _build_eligible_candidates(
     max_hours: float | None = None,
     disabled_categories: set[str] | None = None,
     forecast_ctx: dict[str, Any] | None = None,
+    decision_audit: dict[str, dict[str, Any]] | None = None,
 ) -> list[tuple[Candidate, float]]:
     """Per-outcome candidate with a momentum signal attached for ranking.
 
@@ -543,17 +604,45 @@ def _build_eligible_candidates(
         if hard_cap > 0:
             lane_max_price = min(lane_max_price, hard_cap)
 
+        weather_entry = weather_only or (multi_category and market_is_weather)
         for index, outcome in enumerate(outcomes):
             price = prices[index]
+            token_id = token_ids[index] if index < len(token_ids) else ""
+            audit_row: dict[str, Any] | None = None
+            if decision_audit is not None and weather_entry and token_id:
+                audit_row = {
+                    "ts": now.isoformat(),
+                    "token_id": token_id,
+                    "market_id": market_id,
+                    "question": question,
+                    "outcome": outcome,
+                    "event_slug": event_slug,
+                    "hours_to_close": round(hours_to_close, 3),
+                    "liquidity": liquidity,
+                    "volume_24h": volume_24h,
+                    "decision": "rejected",
+                    "rejection_reason": "unknown_filter",
+                }
+                decision_audit[token_id] = audit_row
             if price <= 0.0 or price >= 1.0:
+                if audit_row is not None:
+                    audit_row["rejection_reason"] = "invalid_outcome_price"
                 continue
             best_bid, best_ask = _quote_for_outcome(index, 2, market_best_bid, market_best_ask)
             if best_bid is None or best_ask is None:
+                if audit_row is not None:
+                    audit_row["rejection_reason"] = "missing_quote"
                 continue
+            if audit_row is not None:
+                audit_row.update(best_bid=best_bid, best_ask=best_ask, spread=round(best_ask - best_bid, 4))
             if best_ask < lane_min_price or best_ask > lane_max_price:
+                if audit_row is not None:
+                    audit_row["rejection_reason"] = "outside_entry_price_band"
                 continue
             spread = best_ask - best_bid
             if spread < 0 or spread > settings.race_max_spread:
+                if audit_row is not None:
+                    audit_row["rejection_reason"] = "spread_too_wide"
                 continue
             # v4 EV / quality gates (opt-in): only trade positive-EV, high-
             # quality opportunities. The forecaster's edge =
@@ -584,7 +673,6 @@ def _build_eligible_candidates(
             )
             model_prob: float | None = None
             parsed_w: dict[str, Any] | None = None
-            weather_entry = weather_only or (multi_category and market_is_weather)
             if weather_entry and (
                 weather_min_edge > 0
                 or weather_min_margin_c > 0
@@ -593,21 +681,35 @@ def _build_eligible_candidates(
                 try:
                     parsed_w = parse_weather_question(question)
                     if parsed_w is None:
+                        if audit_row is not None:
+                            audit_row["rejection_reason"] = "weather_parse_failed"
                         continue
                     min_solar_hour = float(
                         getattr(settings, "race_weather_min_solar_hour", 0.0) or 0.0
                     )
                     if not late_entry_ready(parsed_w, min_solar_hour):
+                        if audit_row is not None:
+                            audit_row["rejection_reason"] = "before_local_solar_entry_hour"
                         continue
                     if weather_min_edge > 0 or weather_min_margin_c > 0:
                         model_prob = forecast_outcome_probability(
                             parsed_w, outcome, min_bracket_margin_c=weather_min_margin_c
                         )
                         if model_prob is None:
+                            if audit_row is not None:
+                                audit_row["rejection_reason"] = "forecast_unavailable_or_margin_failed"
                             continue  # margin guard, model disagreement, or API failure
                         if weather_min_edge > 0 and model_prob < best_ask + weather_min_edge:
+                            if audit_row is not None:
+                                audit_row.update(
+                                    forecast_probability=model_prob,
+                                    forecast_edge=model_prob - best_ask,
+                                    rejection_reason="forecast_edge_below_minimum",
+                                )
                             continue
                 except Exception:
+                    if audit_row is not None:
+                        audit_row["rejection_reason"] = "forecast_gate_error"
                     continue  # configured safety gate is deliberately fail-closed
 
             outcome_momentum = one_day_change if index == 0 else -one_day_change
@@ -621,7 +723,7 @@ def _build_eligible_candidates(
                 volume=as_float(market.get("volume") or market.get("volumeNum")),
                 outcome=outcome,
                 price=price,
-                token_id=token_ids[index] if index < len(token_ids) else None,
+                token_id=token_id or None,
                 score=0.0,
                 url=url,
                 best_bid=best_bid,
@@ -636,6 +738,16 @@ def _build_eligible_candidates(
                 weather_target_date=str((parsed_w or {}).get("target_date") or ""),
                 weather_region=_weather_region(parsed_w),
             )
+            if audit_row is not None:
+                audit_row.update(
+                    decision="eligible",
+                    rejection_reason=None,
+                    forecast_probability=model_prob,
+                    forecast_edge=(model_prob - best_ask) if model_prob is not None else None,
+                    weather_city=candidate.weather_city,
+                    weather_target_date=candidate.weather_target_date,
+                    weather_region=candidate.weather_region,
+                )
             out.append((candidate, outcome_momentum))
     return out
 
@@ -3314,12 +3426,14 @@ def _run_race_tick(
             )
         except Exception:
             forecast_ctx = None
+    decision_audit: dict[str, dict[str, Any]] = {}
     eligible = _build_eligible_candidates(
         markets,
         settings,
         max_hours=ladder[-1],
         disabled_categories=disabled_cats,
         forecast_ctx=forecast_ctx,
+        decision_audit=decision_audit if getattr(settings, "race_weather_only", False) else None,
     )
     calibration_min = int(
         getattr(settings, "race_weather_calibration_min_samples", 0) or 0
@@ -3704,6 +3818,11 @@ def _run_race_tick(
         executed.extend(btc_trades)
 
     portfolio.save(settings.state_path)
+    decisions_logged = _finalize_weather_decisions(
+        decision_audit, eligible, actionable, picks, executed, rejected
+    )
+    if decisions_logged:
+        _step(settings, f"   decision-journal: +{decisions_logged} weather outcomes")
     return {
         "trade": executed[-1] if executed else None,
         "strategy": strategy_name,

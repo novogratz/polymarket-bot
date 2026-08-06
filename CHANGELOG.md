@@ -8,6 +8,9 @@
 - Added a two-line city/date exposure cap and blocked buying the opposite
   outcome while the same binary contract is already held.
 - Stop losses remain disabled; admitted positions hold for 0.99 or settlement.
+- Added `data/decision_journal.jsonl`: every weather outcome that reaches
+  outcome-level evaluation records its quote, forecast, decision, and exact
+  filter/execution reason for next-day missed-opportunity analysis.
 
 ## 2026-08-05 — Remove all grinder stop losses
 

@@ -222,6 +222,7 @@ configs/profiles/grinder_c.toml     grinder_c bot (this Mac) — forecast-weathe
 data/paper_state.json               live ledger (positions, cash)
 data/realized_trade_cache.jsonl     durable W/L record (survives resets)
 data/trade_journal.jsonl            per-trade metadata + exit reasons
+data/decision_journal.jsonl         considered weather outcomes + rejection reasons
 polymarket_bot/
   main.py              CLI, tick orchestration, sizing, journal writer
   race_strategies.py   engine: entry/exit pipeline shared by every strategy + arb scanner

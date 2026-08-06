@@ -10,6 +10,8 @@ for _k in [k for k in os.environ if k.startswith("POLYMARKET_") and k != "POLYMA
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import json
+import tempfile
 import unittest
 
 from polymarket_bot.auto_tuner import compute_overrides
@@ -3745,8 +3747,45 @@ class WeatherOnlyLaneTests(unittest.TestCase):
             race_max_hours=24.0, race_weather_only=True,
             race_weather_forecast_min_edge=0.05,
         )
+        audit = {}
         with patch("polymarket_bot.race_strategies.parse_weather_question", return_value=None):
-            self.assertEqual(_build_eligible_candidates([market], settings), [])
+            self.assertEqual(
+                _build_eligible_candidates([market], settings, decision_audit=audit), []
+            )
+        self.assertEqual(len(audit), 2)
+        yes = next(row for row in audit.values() if row["outcome"] == "Yes")
+        self.assertEqual(yes["rejection_reason"], "weather_parse_failed")
+
+    def test_decision_journal_persists_execution_status(self):
+        from polymarket_bot.race_strategies import _finalize_weather_decisions
+
+        candidate = Candidate(
+            market_id="m", question="Will the high in Paris be 30°C?", slug="paris",
+            end_date=utc_now() + timedelta(hours=1), hours_to_close=1,
+            liquidity=100, volume=100, outcome="No", price=0.93,
+            token_id="tok", score=0, url="https://example.test",
+            best_bid=0.92, best_ask=0.93, accepts_orders=True,
+        )
+        audit = {"tok": {"ts": utc_now().isoformat(), "token_id": "tok",
+                           "question": candidate.question, "decision": "eligible"}}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "decisions.jsonl"
+            old = os.environ.get("POLYMARKET_DECISION_LOG_PATH")
+            os.environ["POLYMARKET_DECISION_LOG_PATH"] = str(path)
+            try:
+                count = _finalize_weather_decisions(
+                    audit, [(candidate, 0.0)], [(candidate, 0.0)], [candidate],
+                    [{"order": {"tokenId": "tok"}}], [],
+                )
+            finally:
+                if old is None:
+                    os.environ.pop("POLYMARKET_DECISION_LOG_PATH", None)
+                else:
+                    os.environ["POLYMARKET_DECISION_LOG_PATH"] = old
+            self.assertEqual(count, 1)
+            row = json.loads(path.read_text().strip())
+            self.assertEqual(row["decision"], "executed")
+            self.assertIsNone(row["rejection_reason"])
 
     def test_one_point_forecast_edge_admits_a_supported_097_favorite(self):
         """Bot 3's wider band must not be made inert by an impossible edge."""

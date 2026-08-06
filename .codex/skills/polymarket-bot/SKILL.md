@@ -18,6 +18,7 @@ run the same strategy (weather-only) — see below.
 - **Universe:** deterministic weather-only whitelist; no random/unfiltered fallback.
 - **Exits:** no stop losses. Positions hold for a resolved-exit bid ≥**0.99** or settlement. Weather forecast-flip exits and the sports-moneyline stop are disabled on all profiles. Any exit authentication failure halts new buys/top-ups for the tick.
 - **W/L record:** `data/realized_trade_cache.jsonl` (survives journal rotation).
+- **Decision audit:** `data/decision_journal.jsonl` records considered weather outcomes per tick with quote, forecast probability/edge, final decision, and rejection reason. It contains market data only—never credentials.
 - **Live report integrity (2026-07-31):** weather-only launchers set `LIVE_ANALYST_WEATHER_ONLY=1`, so Telegram statistics reject records outside the active lane and group “today” by US/Eastern. A custom journal automatically colocates its realized cache unless a cache path was explicitly configured, preventing test/dry-run closes from contaminating production history.
 - **Forecast audit trail (2026-07-31):** admitted trades persist model probability, calculated edge, city, broad region, and target date in the position and realized journal.
 - **Analysts:** deterministic. The forecasting model (`forecast.py`) is deterministic arithmetic over the ledger — not an LLM.
