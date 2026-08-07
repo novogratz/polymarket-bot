@@ -91,7 +91,7 @@ class LoadProfileTests(unittest.TestCase):
                 self.assertEqual(profile.values["POLYMARKET_RACE_FIXED_STAKE_USD"], "0.0")
                 self.assertEqual(profile.values["POLYMARKET_RACE_MAX_PRICE"], "0.97")
                 self.assertEqual(profile.values["POLYMARKET_RACE_MAX_PRICE_HARD_CAP"], "0.97")
-                self.assertEqual(profile.values["POLYMARKET_RACE_SCAN_LIMIT"], "1500")
+                self.assertEqual(profile.values["POLYMARKET_RACE_SCAN_LIMIT"], "0")
                 self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_FORECAST_MIN_EDGE"], "0.02")
                 self.assertEqual(profile.values["POLYMARKET_RACE_WEATHER_ONLY"], "1")
                 self.assertEqual(profile.values["POLYMARKET_RACE_MIN_PRICE"], "0.9")

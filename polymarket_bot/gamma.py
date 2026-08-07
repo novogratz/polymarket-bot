@@ -31,7 +31,7 @@ class GammaClient:
         *,
         active: bool = True,
         closed: bool = False,
-        limit: int = 200,
+        limit: int | None = 200,
         order: str = "endDate",  # Gamma dropped snake_case sort keys (422 since 2026-07-19)
         ascending: bool = True,
         end_date_min: datetime | None = None,
@@ -39,11 +39,13 @@ class GammaClient:
         question_contains: str | None = None,
         tag_id: str | int | None = None,
     ) -> list[dict[str, Any]]:
-        """Fetch up to ``limit`` markets, paginating past the server's 100-row cap.
+        """Fetch markets, paginating past the server's 100-row page cap.
 
-        ``limit`` is enforced client-side: pages of 100 are requested with an
-        increasing ``offset`` until ``limit`` markets are collected or a short
-        page signals the end of the inventory (the API returns no total).
+        A positive ``limit`` is enforced client-side. ``None`` or a non-positive
+        value means no client-side result ceiling: pages of 100 are requested
+        until an empty/short page signals the end of the inventory (the API
+        returns no total). Pagination also stops if a full page contributes no
+        new market IDs, protecting against a server that ignores ``offset``.
         Results are deduplicated by market id, since the inventory can shift
         between page requests. A page failure after the first returns the
         markets collected so far instead of discarding them.
@@ -66,8 +68,9 @@ class GammaClient:
         results: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
         offset = 0
-        while len(results) < limit:
-            page_limit = min(_GAMMA_PAGE_SIZE, limit - len(results))
+        ceiling = int(limit) if limit is not None and int(limit) > 0 else None
+        while ceiling is None or len(results) < ceiling:
+            page_limit = _GAMMA_PAGE_SIZE if ceiling is None else min(_GAMMA_PAGE_SIZE, ceiling - len(results))
             page_query = dict(query, limit=str(page_limit), offset=str(offset))
             try:
                 payload = self._get_json(f"/markets?{urllib.parse.urlencode(page_query)}")
@@ -77,6 +80,7 @@ class GammaClient:
                 break
             if not isinstance(payload, list) or not payload:
                 break
+            before = len(results)
             for market in payload:
                 if not isinstance(market, dict):
                     continue
@@ -86,9 +90,11 @@ class GammaClient:
                 if key:
                     seen_ids.add(key)
                 results.append(market)
-                if len(results) >= limit:
+                if ceiling is not None and len(results) >= ceiling:
                     break
             if len(payload) < page_limit:
+                break
+            if len(results) == before:
                 break
             offset += len(payload)
         return results

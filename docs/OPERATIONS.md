@@ -5,7 +5,7 @@ This guide covers routine production operation. Complete a dry-run evaluation an
 ## Preflight
 
 ```bash
-uv sync --dev
+uv sync --extra dev
 uv run python -B -m unittest discover -s tests
 uv run pmbot status
 uv run pmbot positions
@@ -47,6 +47,8 @@ A normal scan reports:
 
 Zero orders are normal when no market passes the weather, time, price, forecast, exposure, or executable-depth requirements. The decision journal should explain the result; do not remove controls merely to force activity.
 
+The raw count is produced from three fully paginated Gamma batches and then deduplicated. There is no configured 1,500-market ceiling. A later-page API failure returns the partial inventory collected so far and is visible in the process log.
+
 ## Monitoring
 
 Review the following throughout a live session:
@@ -73,7 +75,7 @@ Some markets remain open during resolution. Weather positions are held instead o
 
 ### External API failure
 
-The strategy should fail closed when required data is unavailable. Repeated errors warrant stopping the stack and diagnosing connectivity, rate limits, or credentials.
+Fresh forecast-gated entries fail closed when required forecast data is unavailable. Gamma discovery batches fail independently, and a failure after the first page returns the partial batch already collected. Repeated errors warrant stopping the stack and diagnosing connectivity, rate limits, or credentials.
 
 ## Recovery and maintenance
 

@@ -15,10 +15,13 @@ This repository implements a deterministic, weather-only Polymarket trading engi
 ## Current live policy
 
 - Weather and temperature markets only.
-- Entry ask from 0.90 through 0.97 and at most six hours to configured close.
-- Multi-model Open-Meteo probability must be at least `ask + 0.02`; missing forecast data fails closed.
+- Fresh-entry candidate ask from 0.90 through 0.97; the FOK price guard is candidate ask plus one tick, capped at 0.99.
+- Close or game start within six hours, with a same-target-day exception for stale Gamma weather deadlines that remain open.
+- For fresh entries, multi-model Open-Meteo probability must be at least `candidate ask + 0.02`; missing forecast data fails closed.
+- Held-line leftover-cash redistribution may top up without the forecast-edge or bracket-margin gates; it cannot create a new position.
+- Reported liquidity and 24-hour volume must each be at least $50.
 - At most two positions for one city and target date; opposite outcomes on the same binary are blocked.
-- Equal-weight full-deployment sizing: approximately 5% target, 10% hard line cap, and venue minimum order constraints.
+- Equal-weight full-deployment sizing: 5% soft line cap and 10% held-line redistribution cap, each subject to a $5 floor and venue share minimum.
 - Weather positions have no stop loss and are held until an executable 0.99 bid or settlement.
 - Spread and local solar-hour gates are disabled.
 

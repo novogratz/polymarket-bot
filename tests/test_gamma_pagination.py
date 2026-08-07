@@ -4,7 +4,10 @@ the requested limit as a client-side ceiling."""
 
 import unittest
 import urllib.parse
+from unittest import mock
 
+from polymarket_bot import race_strategies
+from polymarket_bot.config import Settings
 from polymarket_bot.gamma import GammaClient
 
 
@@ -34,6 +37,27 @@ class _FakeGamma(GammaClient):
 
 
 class GammaPaginationTests(unittest.TestCase):
+    def test_zero_limit_fetches_complete_inventory(self):
+        client = _FakeGamma(inventory_size=250)
+        markets = client.get_markets(limit=0)
+        self.assertEqual(len(markets), 250)
+        self.assertEqual(
+            [int(q.get("offset", "0")) for q in client.requests],
+            [0, 100, 200],
+        )
+
+    def test_unlimited_scan_stops_if_server_ignores_offset(self):
+        class _IgnoresOffset(_FakeGamma):
+            def _get_json(self, path):
+                query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(path).query))
+                self.requests.append(query)
+                return _page(0, 100)
+
+        client = _IgnoresOffset(inventory_size=100)
+        markets = client.get_markets(limit=0)
+        self.assertEqual(len(markets), 100)
+        self.assertEqual(len(client.requests), 2)
+
     def test_paginates_past_the_100_row_server_cap(self):
         client = _FakeGamma(inventory_size=1900)
         markets = client.get_markets(limit=500)
@@ -106,10 +130,6 @@ class GammaSortKeyTests(unittest.TestCase):
         self.assertNotIn("order=end_date", captured[0])
 
     def test_race_scan_orderings_are_endDate_and_volume(self):
-        from unittest import mock
-        from polymarket_bot.config import Settings
-        from polymarket_bot import race_strategies
-
         captured = []
 
         class _Capture(GammaClient):
@@ -128,10 +148,6 @@ class GammaSortKeyTests(unittest.TestCase):
         self.assertFalse(any("order=end_date&" in p or p.endswith("order=end_date") for p in orders), orders)
 
     def test_weather_race_scan_includes_recent_api_expired_markets(self):
-        from unittest import mock
-        from polymarket_bot.config import Settings
-        from polymarket_bot import race_strategies
-
         calls = []
 
         class _Capture:
@@ -151,3 +167,22 @@ class GammaSortKeyTests(unittest.TestCase):
         self.assertLess(calls[2]["end_date_min"], calls[2]["end_date_max"])
         self.assertFalse(calls[2]["ascending"])
         self.assertEqual(calls[2]["tag_id"], 84)
+
+    def test_production_unlimited_scan_passes_zero_to_every_batch(self):
+        calls = []
+
+        class _Capture:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def get_markets(self, **kwargs):
+                calls.append(kwargs)
+                return []
+
+        with mock.patch.object(race_strategies, "GammaClient", _Capture):
+            race_strategies._load_short_expiry_markets(
+                Settings(race_scan_limit=0, race_weather_only=True)
+            )
+
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(all(call["limit"] == 0 for call in calls))

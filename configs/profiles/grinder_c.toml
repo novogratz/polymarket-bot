@@ -60,7 +60,7 @@ max_hours_cap = 0.0
 daily_expiry_fallback = false
 # Pull deeper soonest-closing and highest-volume batches. The two scans are
 # deduplicated by market id, so this expands discovery without duplicate bets.
-scan_limit = 1500
+scan_limit = 0  # no client-side result cap; paginate until Gamma is exhausted
 
 # Weather-grade liquidity floors (lower — weather markets are thinner).
 min_liquidity_usd = 50.0

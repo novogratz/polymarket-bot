@@ -12,13 +12,15 @@ Use this skill for any customer-visible or behavioral change to the trading engi
 - Profiles: `configs/profiles/grinder.toml`, `grinder_b.toml`, and `grinder_c.toml`.
 - Launchers: `scripts/run_live_70.sh`, `run_live_b.sh`, and `run_live_c.sh`.
 - Universe: supported weather and temperature markets only; cryptocurrency and all other categories are excluded.
-- Entry: executable ask from 0.90 through 0.97, no more than six hours to configured close, and Open-Meteo probability at least `ask + 0.02`. Missing forecast data fails closed.
+- Fresh entry: candidate ask from 0.90 through 0.97; close or game start within six hours, with a same-target-day stale-deadline exception; and Open-Meteo probability at least `candidate ask + 0.02`. Missing forecast data fails closed.
+- Execution: the FOK price guard is candidate ask plus one tick, capped at 0.99; reported liquidity and 24-hour volume must each be at least $50.
 - Exposure: no more than two lines for one city/date and no opposite outcomes on the same binary.
-- Sizing: equal-weight full deployment with a 5% target, 10% hard line cap, and approximately $5 venue minimum.
+- Sizing: equal-weight full deployment with a 5% soft line cap and 10% held-line redistribution cap, each floored at $5 for small accounts and subject to the venue share minimum.
+- Redistribution: when no fresh market is actionable, existing eligible lines may be topped up through a relaxed pool that disables forecast-edge and bracket-margin checks. It cannot open a fresh position.
 - Exit: no weather stop loss; hold for an executable 0.99 bid or settlement, and never intentionally sell below entry.
 - Spread and local solar-hour gates are disabled.
 - Decision audit: `data/decision_journal.jsonl`.
-- Realized outcomes: `data/realized_trade_cache.json` or the configured colocated cache.
+- Realized outcomes: `data/realized_trade_cache.jsonl` or the configured colocated cache.
 
 Full deployment can leave cash idle when the eligible universe is too small or not executable. Do not relax deterministic eligibility merely to create activity.
 

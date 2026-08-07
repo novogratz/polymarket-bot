@@ -366,7 +366,8 @@ class Settings:
     # <date>?", stamped midnight UTC like the Trump-approval one) stay
     # reachable. Off by default.
     race_daily_expiry_fallback: bool = field(default_factory=lambda: _bool_env("POLYMARKET_RACE_DAILY_EXPIRY_FALLBACK", False))
-    race_scan_limit: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_SCAN_LIMIT", 500))
+    # 0 means paginate the complete matching Gamma inventory.
+    race_scan_limit: int = field(default_factory=lambda: _int_env("POLYMARKET_RACE_SCAN_LIMIT", 0))
     race_min_liquidity_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_LIQUIDITY_USD", 500.0))
     race_min_volume_24h_usd: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_VOLUME_24H_USD", 200.0))
     race_min_price: float = field(default_factory=lambda: _float_env("POLYMARKET_RACE_MIN_PRICE", 0.05))
