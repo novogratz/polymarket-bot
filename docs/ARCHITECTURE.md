@@ -33,7 +33,7 @@ Gamma/CLOB market data      Open-Meteo models
 
 ## State boundaries
 
-Source-controlled files define code and policy. Local state is stored under `data/` and credentials in `.env`; both are excluded from version control. Each bot must use an isolated ledger and identity to avoid cross-process accounting conflicts.
+Source-controlled files define code and profile defaults. Local state is stored under `data/` and credentials in `.env`; both are excluded from version control. The maintained launchers do not assign unique live state paths and therefore default to the same `data/paper_state.json` and `data/trade_journal.jsonl`. Multiple bots must run from separate deployments or receive explicit unique state, journal, realized-cache, decision-log, and tick-state paths.
 
 The live ledger is an operational cache, not the ultimate source of truth. Portfolio reporting reconciles it with venue balances and positions. A mismatch is surfaced in the heartbeat and must be investigated before relying on local equity totals.
 
@@ -41,7 +41,7 @@ The live ledger is an operational cache, not the ultimate source of truth. Portf
 
 - Live orders require `pmbot auto-loop --live`.
 - Maintained automation passes `--yes` only after the launcher has selected an explicit production profile.
-- Missing forecasts fail closed.
+- Missing forecasts fail closed for fresh forecast-gated entries. Held-line leftover-cash redistribution deliberately disables the forecast-edge and bracket-margin gates for top-ups only.
 - Every strategy behavior change requires a unit test.
 - LLM-assisted analysis, when enabled, is offline and fenced from live selection.
 

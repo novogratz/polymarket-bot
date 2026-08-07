@@ -6,21 +6,22 @@ All notable changes are documented here. This project follows [Keep a Changelog]
 
 ### Changed
 
-- No unreleased changes.
+- Removed the production scanner's 1,500-market client-side ceiling. A zero scan limit now paginates each matching Gamma query until its inventory is exhausted, with stalled-pagination protection.
+- Corrected customer and agent documentation to distinguish fresh-entry forecast gates from relaxed held-line redistribution, document the actual FOK price guard, state-file defaults, market-activity gates, and decision-journal semantics.
 
 ## [6.0.0] - 2026-08-06
 
 ### Added
 
 - Customer-facing architecture, operations, strategy, profile, security, and release documentation.
-- Persistent decision journaling for selected, rejected, missed, and resolved weather opportunities.
+- Persistent per-scan decision journaling for selected, rejected, and unexecuted weather opportunities.
 - Equal-weight full-deployment sizing with portfolio-aware line caps.
 - Multi-model Open-Meteo forecast metadata in live decisions and reports.
 
 ### Changed
 
 - Standardized all three live profiles on a deterministic, weather-only strategy.
-- Require a forecast probability at least two percentage points above the executable ask.
+- Require a forecast probability at least two percentage points above the candidate ask for fresh entries.
 - Limit entries to asks from 0.90 through 0.97 and markets within six hours of close.
 - Hold weather positions to an executable 0.99 bid or settlement; weather stop losses remain disabled.
 - Removed spread and local solar-hour gates from weather selection.

@@ -10,7 +10,9 @@ Strategy profiles are TOML files in `configs/profiles/`. They provide reproducib
 | `grinder_b.toml` | `scripts/run_live_b.sh` | Bot 2 weather-only production lane |
 | `grinder_c.toml` | `scripts/run_live_c.sh` | Bot 3 weather-only production lane |
 
-All maintained live profiles use the policy in [STRATEGIES.md](STRATEGIES.md): weather only, forecast gated, short dated, portfolio-percentage sizing, and no weather stop loss.
+All maintained live profiles use the core policy in [STRATEGIES.md](STRATEGIES.md): weather-only fresh entries, a 0.02 forecast-edge gate, short-dated selection, percentage sizing, and disabled weather loss exits. They intentionally differ in legacy `stake_pct`, category sample thresholds, and profile-level assumed balances; those fields do not change full-deployment fresh sizing, and the launchers override the assumed live balance to 85 unless the environment already supplies a value.
+
+All three production profiles set `race.scan_limit = 0`. In `GammaClient`, zero means paginate the complete matching inventory rather than stop after a fixed number of markets.
 
 ## Research profiles
 
@@ -25,14 +27,16 @@ Do not assume a profile is approved for production because it exists in the repo
 
 ## Configuration precedence
 
-At runtime, configuration is resolved in this order:
+For `pmbot auto-loop`, configuration is resolved in this order:
 
-1. Explicit command-line options.
-2. Environment variables.
-3. Selected TOML profile.
-4. Application defaults.
+1. Command-line options select the mode, profile, and dry-run name.
+2. Existing non-empty environment variables override matching TOML values.
+3. The selected TOML profile fills missing environment values.
+4. `Settings` supplies defaults for values absent from both.
 
-Launch scripts intentionally set a small number of environment values for isolated ledgers, bot labels, notification channels, and safe automation. Review both the selected profile and launcher before deployment.
+For a named dry run, the CLI then injects isolated paths under `data/dry_runs/<run>/` before constructing `Settings`.
+
+Launch scripts set the 85-unit balance fallback, 10-second live interval, disabled daily drawdown gate, 30-minute analyst interval, bot label, alert policy, and profile selection. They do not set isolated live ledgers. Review the selected profile, launcher, existing environment, and generated `data/live_config_snapshot.toml` before deployment.
 
 ## Change control
 

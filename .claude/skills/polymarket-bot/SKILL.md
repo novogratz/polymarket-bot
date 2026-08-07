@@ -8,10 +8,13 @@ description: Claude skill for changes to the Polymarket bot's strategy, filters,
 Read `AGENTS.md` first. The maintained production behavior is:
 
 - Weather and temperature markets only; cryptocurrency and unrelated categories are excluded.
-- Executable ask from 0.90 through 0.97 and at most six hours to configured close.
-- Open-Meteo probability at least `ask + 0.02`; missing forecast data fails closed.
+- Fresh-entry candidate ask from 0.90 through 0.97; the order guard adds one tick and caps at 0.99.
+- Close or game start within six hours, with a same-target-day stale weather-deadline exception.
+- Open-Meteo probability at least `candidate ask + 0.02` for fresh entries; missing forecast data fails closed.
+- Reported liquidity and 24-hour volume of at least $50 each.
 - At most two positions for one city/date and no opposite outcomes on one binary.
-- Equal-weight full deployment with a 5% target, 10% hard line cap, and venue minimum.
+- Equal-weight full deployment with a 5% soft line cap and 10% held-line redistribution cap, both floored at $5 for small accounts.
+- Held-line redistribution can disable forecast-edge and bracket-margin gates for top-ups only; it cannot create a fresh position.
 - No weather stop loss; hold for an executable 0.99 bid or settlement and never intentionally sell below entry.
 - Spread and local solar-hour gates disabled.
 
