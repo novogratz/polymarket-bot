@@ -1,272 +1,145 @@
-# polymarket-bot 🌤️ — the weather bot
+# Polymarket Weather Bot
 
-[![tests](https://github.com/novogratz/polymarket-bot/actions/workflows/test.yml/badge.svg)](https://github.com/novogratz/polymarket-bot/actions/workflows/test.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+A deterministic Python trading engine for short-dated Polymarket temperature markets. It combines market data, multi-model Open-Meteo forecasts, portfolio controls, live order execution, persistent decision records, and read-only operational reporting.
 
-Automated trading bot for [Polymarket](https://polymarket.com) binary prediction markets, built on a deterministic engine (`polymarket_bot/race_strategies.py`, scan → filter → rank → size → execute → exits, **no LLM in trade selection**). All three live bots use percentage-based equal-weight deployment, cap entries at 0.97, take winners at 0.99, and otherwise hold to settlement. Stop losses and forecast-flip exits are disabled.
+> [!WARNING]
+> Prediction-market trading can result in a complete loss of capital. Forecasts and historical results do not guarantee future performance. Review the strategy, test in dry-run mode, and comply with all laws and platform terms that apply to you.
 
-> **Financial disclaimer.** This software places real-money trades. It is not financial advice. Losses are possible. You are solely responsible for all trading decisions. Use only capital you can afford to lose entirely. See the [full disclaimer](#disclaimer).
+## Highlights
 
----
+- Weather-only live universe; cryptocurrency and unrelated markets are excluded.
+- Deterministic selection path with no LLM calls during scanning or execution.
+- Forecast edge required for every live entry.
+- Equal-weight deployment with per-position concentration limits.
+- Persistent trade and decision journals for post-trade analysis.
+- Three isolated bot profiles, dry-run support, Telegram reporting, and a local dashboard.
+- Unit-tested strategy filters, sizing, exits, and reconciliation behavior.
 
-## Install
+## Strategy at a glance
 
-```bash
-pip install -e .       # or: uv sync
-cp .env.example .env   # add wallet + CLOB credentials
+The live profiles currently apply the same core policy:
+
+| Control | Live policy |
+| --- | --- |
+| Universe | Temperature and weather markets only |
+| Entry ask | 0.90–0.97; absolute cap 0.97 |
+| Time window | At most 6 hours before the configured close |
+| Forecast gate | Model probability must exceed the ask by at least 2 percentage points |
+| Diversification | At most two positions per city and target date |
+| Sizing | Equal-weight full deployment, 5% target and 10% hard line cap, subject to a $5 venue minimum |
+| Exit | Hold until an executable bid of 0.99 or market settlement |
+| Stop loss | Disabled for weather positions; the engine never intentionally sells them below entry |
+
+The market can remain open after a nominal end timestamp while an event is resolving. In that state the bot holds the position instead of forcing a loss. Full deployment is a target, not a promise: cash can remain idle when no eligible or executable market exists.
+
+See [Strategy](docs/STRATEGIES.md) and [Profiles](docs/PROFILES.md) for the complete policy.
+
+## Architecture
+
+```text
+Polymarket APIs + Open-Meteo
+            │
+            ▼
+  deterministic scanner
+            │
+            ▼
+ forecast and policy gates
+            │
+            ▼
+ sizing → execution → journal
+            │
+            ├── Telegram reports
+            └── local dashboard
 ```
 
-Dev tools (linter):
+The scanner and order path are deterministic. The optional daily improvement process runs outside the live path and is constrained by tests and configuration fences. See [Architecture](docs/ARCHITECTURE.md).
+
+## Requirements
+
+- Python 3.11 or newer
+- [`uv`](https://docs.astral.sh/uv/)
+- A Polymarket account and API credentials for live execution
+- USDC and the required venue approvals for live trading
+
+## Installation
 
 ```bash
-pip install -e ".[dev]"
+git clone git@github.com:novogratz/polymarket-bot.git
+cd polymarket-bot
+cp .env.example .env
+uv sync --extra dev
+uv run pmbot --help
 ```
 
-## Run
+Populate `.env` locally. Never commit it or paste credentials into logs, issues, or support messages.
+
+## Safe first run
+
+Inspect the account and run the strategy without submitting orders:
+
+```bash
+uv run pmbot status
+uv run pmbot positions
+uv run pmbot auto-loop --dry-run --profile grinder --run customer-evaluation
+```
+
+Run the test suite before enabling live execution:
+
+```bash
+uv run python -B -m unittest discover -s tests
+```
+
+## Live operation
+
+Live execution requires the explicit `--live` flag. The maintained launcher for bot 1 is:
 
 ```bash
 bash scripts/run_live_70.sh
 ```
 
-Starts the live grinder (**10 s tick**) alongside a dry paper twin and a read-only **live analyst** sidecar that posts a Telegram **LIVE REPORT** — on startup, then on a fixed cadence (`LIVE_ANALYST_CYCLE_SECONDS`), plus a daily 10:00 ET fire. The report shows **equity, P&L since start, total trades + win rate, today's top/bottom closes, and open positions**. Weather-only launchers exclude non-weather rows from live statistics, and “today” follows the US/Eastern report date. The live trade loop is **fully deterministic — no LLM in the scanning or trade-selection path**.
+Bots 2 and 3 use `scripts/run_live_b.sh` and `scripts/run_live_c.sh`. Each launcher selects its own profile, ledger, label, and reporting process. Stop a foreground stack with `Ctrl+C` and confirm that all child processes exit.
 
-All live bots (`run_live_70.sh` = bot 1, `run_live_b.sh` = bots 2 & 3, `run_live_c.sh` = the grinder_c bot on this Mac added 2026-07-19, plus `run_live_win.sh` on `kzer_windows`) run independently, each with its own wallet and ledger, and all run **weather mode**. Entries require an ask from 0.90–0.97 and Open-Meteo probability at least two points above the ask; exposure is capped at two positions per city/date and opposite outcomes on one contract cannot be held together. Each keeps a per-machine baseline (`data/starting_cash.txt`); reset any bot with `scripts/fresh_start.py` (wipes closed-trade history, keeps open trades).
+Before every production start:
 
-> **Do not use `run_all.sh` for live trading.** It resets the ledger on startup and launches a retired 95-profile dry race.
+1. Confirm the intended profile and wallet.
+2. Run tests and inspect `pmbot status` and `pmbot positions`.
+3. Verify available cash, allowance, and existing positions.
+4. Start one stack only for each configured wallet/profile pair.
+5. Watch the first complete scan and reconcile its portfolio heartbeat.
 
----
+The `--yes` option only suppresses the interactive confirmation for maintained automation scripts. It does not enable live trading by itself.
 
-## Strategy
+## Data and observability
 
-The engine supports more than one strategy off the same pipeline; each live bot is a TOML profile pointing the engine at a candidate set and edge model. **All 3 live bots run the deterministic forecast-gated weather-only lane.** Every non-weather market is excluded.
+Runtime state is local and excluded from source control:
 
-### Weather mode
+- `data/paper_state.json` — live ledger and open-position metadata
+- `data/decision_journal.jsonl` — selected, rejected, missed, and later-resolved decisions
+- `data/realized_trade_cache.json` — reconciled closed-trade outcomes
+- `data/logs/` — dated process logs
+- `data/dry_runs/` — isolated simulation ledgers
 
-Weather mode is the same deterministic engine as grinder (same scan/rank/size/execute machinery, same 0.99 winner floor and never-sell-below-entry rule) but with the candidate set restricted to **temperature / degree-bracket markets** ("Will the high in `<city>` be `X`–`Y`°C/°F on `<date>`?") and an extra forecast-based edge model gating entry, implemented in `polymarket_bot/weather_forecast.py` and switched on per-profile via `race_weather_only` (`weather_only = true` in both `grinder.toml` and `grinder_b.toml`).
-
-- **Forecast consensus.** For each candidate market, the bot fetches same-day/next-day forecasts from multiple free Open-Meteo models (GFS, ECMWF IFS, best-match/UK Met Office) in parallel. σ (uncertainty) is derived from the actual spread between the models rather than a fixed formula; models that disagree with each other by more than `MAX_SPREAD_C` (3.0 °C) are silently dropped, and the whole lookup is skipped (fail-open — normal price filters still apply) if fewer than `MIN_MODELS` (2) respond.
-- **Edge gate (`race_weather_forecast_min_edge`).** The consensus forecast + σ are turned into a bracket-probability via a normal-CDF model, `model_P(outcome) − market_ask`. A trade is only taken when that edge is ≥ the configured minimum — bot 2 sets `weather_forecast_min_edge = 0.10`. Default is `0.0` (off) so a fresh bot doesn't starve on missing history — this gate needs no trade history, only live forecast data.
-- **Bracket-margin guard (`race_weather_min_bracket_margin_c`).** Added after a real loss (Qingdao, 2026-06-28: ECMWF forecast 28.1 °C vs a 29 °C bracket threshold — a 0.9 °C margin — resolved as a loss). "No" bets are skipped outright when the model consensus sits within this many °C of the bracket's threshold, i.e. too close to call. Bot 2 sets `weather_min_bracket_margin_c = 2.0`; default `0.0` (off).
-- **Intraday kill-switch.** For same-day, daily-max markets, once it's past solar 3 PM at the market's location the function checks the *already-observed* current temperature against the bracket: if the daily max physically can't reach the bracket (or has already blown past it), it returns a near-certain probability immediately instead of waiting for the day's max to be recorded.
-- **Fail-open throughout.** Any API failure, parse failure, or missing history returns `None` and the normal price/liquidity filters apply — a forecast outage never blocks trading outright, it just removes the extra edge gate for that tick.
-- Sizing uses percentage-based equal-weight full deployment, with no fixed-dollar strategy stake. The entry window is 6 h (`max_hours = 6.0`); winners exit at 0.99 and all other positions hold to settlement.
-
-### Grinder mode — general-purpose (not currently live)
-
-**Thesis.** A binary market at ask 0.80–0.94 within a few hours of close is pricing near-certainty. The bot pays the spread and holds until the market resolves, capturing the final leg of the implied-probability move to 1.0. This is the engine's general-purpose configuration — with `unban_all_markets` and `weather_only = false` it trades any category, not just weather. It shares the exact same pipeline, sizing, and exit mechanics documented in sections 1–7 below (those sections describe the shared engine, currently running with the weather-only candidate restriction on all 3 bots); grinder mode differs only in its candidate universe (any category vs. weather-only) and its exclusion table. Kept in the codebase for reference, but not what any bot runs live right now.
-
-Every tick (10 s) the engine runs the same deterministic pipeline: **scan → exclude → filter → rank → size → execute → manage exits**. No LLM is ever in this path.
-
-### 1. Scan
-
-Every Gamma market closing within the 24 h window (hard max — widened from 4 h for the weather-only lane; a 48 h experiment on 2026-07-19 was reverted the same day as too far out), fetched with two orderings (soonest-closing + highest-volume) and **full pagination past the API's silent 100-row cap** — ~1,000–2,000+ raw markets per tick depending on time of day.
-
-> **Weather-only lane (user 2026-07-06, ALL bots):** `weather_only = true` restricts entry selection to ONLY weather / temperature markets (`is_weather_market` in `models.py`: temperature, °C/°F, weather, rainfall, snowfall, high/low temp) and bypasses the normal weather ban below. Every non-weather market — sports, elections, crypto, everything — is dropped at entry selection. The exclusion table below documents the ban list that applies when the lane (and `unban_all_markets`) are off.
-
-### 2. Excluded market types
-
-Blocked globally (`models.is_excluded_market`) because no exit can protect against their gap moves:
-
-| Pattern | Reason |
-|---|---|
-| `exact score` | Soccer exact-score collapses instantly on a goal |
-| `o/u 0.5 / 1.5 / 2.5 / 3.5` | Low-line totals — any goal flips them |
-| `o/u 5.5 / 6.5 / 7.5` | High-line soccer, catastrophic if 6+ goals scored |
-| `spread:` (Asian handicap) | Same gap risk as exact-score |
-| draw markets (`end in a draw`, `win or draw`) | Coin-flip-like, no real favorite edge |
-| halftime leading / score | Resolves mid-game, gap risk |
-| `temperature`, `°c`, `°f` | Specific-degree weather, near-zero win rate in band |
-| **All crypto** — `bitcoin`/`btc`/`ethereum`/`solana`/`dogecoin`/`xrp`/… + Up/Down | Banned: volatile, no edge for this strategy |
-| **Esports** — `counter-strike`/`valorant`/`league of legends`/`LoL:`/`mobile legends`/`dota`/… + `(bo1)`/`(bo3)`/`(bo5)` | **Banned outright** (2026-06-19): every title incl. League of Legends excluded regardless of live status or ask — the prior LoL-only-while-live carve-out is removed |
-| **All O/U goal totals** — `o/u 0.5`…`o/u 7.5` incl. **`o/u 4.5`** | Banned outright; 4.5 added 2026-06-14 (loss audit: O/U 4.5 Unders = 80% of all losses, 3 worst trades ever) |
-| **All stock market / equities** — S&P/`SPY`/Nasdaq/`QQQ`/Dow/DJIA + big-cap tickers & companies (word-bounded) + `closes above/below $X` + generic `(TICKER) … $` | **Banned outright** (re-banned 2026-06-12 after a one-day in-session experiment) |
-| **Tweet-count markets** — `tweet` + `-tweets`/`of-tweets` slugs | Banned outright (2026-06-12): week-long counts, no convergence signal |
-| **YouTube views + entertainment ("Divertissement")** — `youtube`/`mrbeast`/`views` + awards/box-office/charts/streaming/social-metrics | Banned outright (2026-06-14): no convergence edge, jumps on hype |
-| **League of Ireland soccer** — `irl1-` slug prefix | Banned outright (2026-06-12) |
-| **"What will be said" markets** — word-bounded `say`/`says`/`said`/`mention(s/ed)`/`utter(s/ed)` | Banned outright (2026-06-18): 'Will the announcers say "Golden Boot"…?' — linguistic coin-flips, no convergence edge |
-
-**Deliberately tradeable** (test-pinned, do not ban): elections, primaries, and mayoral races — a profitable lane despite occasional postponements — and **fast-moving markets**: there are no `oneDayPriceChange` or `oneHourPriceChange` gates (recently-moving markets are often the ones converging toward resolution; both values are logged for offline analysis only).
-
-### 3. Entry filters
-
-| Parameter | Value (`grinder.toml [race]`) |
-|---|---|
-| Price band (ask) | 0.80 – 0.94, absolute hard cap **0.96** (v4 2026-06-21 — 0.97+ never tradeable) |
-| Entry window | **game starts OR market closes within ≤ 24 h** (weather resolves end-of-day; 48 h tried & reverted 2026-07-19); dynamic widening disabled (`max_hours_cap = 0`) |
-| Market type | **Weather / temperature ONLY** (`weather_only = true`, 2026-07-06) |
-| Max spread | ≤ 4¢ |
-| Min liquidity | $250 |
-| Min 24 h volume | $1000 |
-
-> Exact values live in `configs/profiles/grinder.toml` and are the single source of truth — the table reflects the current live config but may be tuned over time (see [Self-improvement](#self-improvement)).
-
-There are **no price-movement gates** (removed 2026-06-10): markets that moved today or in the last hour, and outcomes that are falling, all stay tradeable — fast movers are often exactly the ones converging toward resolution. `oneDayPriceChange`/`oneHourPriceChange` are logged in the forward-observation net for offline analysis only, and tests pin that neither value can ever exclude a market. The gap-risk protection comes from the category exclusions above, not from movement filters.
-
-### 4. Ranking & pick slots
-
-Survivors are ranked by `bid / hours_to_close` (confidence per remaining hour) and the top `max_orders_per_tick` (**12** in v4 — open as many $5 bets per tick as there are distinct eligible games) become this tick's picks. Markets that can never execute — token already held at its cap, order pending, or event already held — are removed **before** ranking, so they never burn pick slots. **One bet per game:** a game is identified by its date-truncated event slug and the team names in the question (one game spans several Polymarket events — moneyline, `-more-markets`, `-first-to-score`); same-game candidates collapse to a single pick before ranking, an open position on the game blocks all its other markets, and the execution loop backstops same-tick repeats. The single best (highest-bid) candidate per game is kept (the soccer under-4.5 priority was dropped 2026-06-14).
-
-### 5. Sizing (equal-weight full deployment — user 2026-07-19)
-
-- **Cash is deployed across the strongest eligible lines.** Fresh entries rank by Open-Meteo forecast edge and target `equity ÷ N`, bounded by a **5% soft entry/top-up cap**, a **10% redistribution-only hard cap**, and the $5 Polymarket floor. Redistribution has a zero cash floor and starts with one held line, so every deployable dollar is used; the hard line cap may still leave cash idle when fewer than ten safe lines exist.
-- **Daily weather cadence and correlation control.** Narrow `between X–Y°` brackets are excluded. A market must resolve today or be 12–24 hours away, never beyond 24 hours. Forecast validation is fail-closed, and no more than two fresh positions may share a broad region and target date.
-- **Held lines top up toward the shared target — never past it.** Below-cap lines stay in the pick slots and each buy is clamped to `target − current stake`; an **on-chain line-cap guard** in the order executor refuses any buy once the wallet's holding is worth ≥ the cap at the current ask (works even if the local ledger is missing the position).
-- Example: $150 invested + $150 cash across 10 lines → each line targets $30 and the cash deploys.
-- **No cash reserve** (`cash_floor_pct = 0`). Worst-case loss per line ≈ 10% of equity.
-- `full_deploy` **overrides** `fixed_stake_usd`; rollback to fixed-$5 = `full_deploy = false`, `fixed_stake_usd = 5.0`.
-
-### 6. Execution
-
-- FOK market BUY with a price guard of ask + 1 tick (≤ 0.99).
-- **Stake capped to 90 % of the executable ask-side depth** within the guard, so big stakes fill what the book offers instead of being killed (`FOK orders are fully filled or killed`).
-- The ledger books the **true fill** (`makingAmount`/`takingAmount`), not the request — entry price, share count, and cash are exact.
-- **Top-ups:** a depth-capped entry keeps its market actionable; later ticks may buy more of the same token (re-passing every entry filter and the depth cap) until the position's total cost reaches the 10 % cap. One position per event otherwise.
-
-### 7. Exits
-
-| Condition | Code |
-|---|---|
-| **Live book** bid ≥ **0.99** (`resolved_exit_threshold = 0.99`, v4 2026-06-21 "sell at 0.99 as well") | `race_big_win_resolved` — primary win exit. EVERY winner sells at a real 0.99 bid (fast-lane 0.98 downgrade removed); above 0.99 rides to settlement at 1.00. Probes the live CLOB bid each tick |
-| Cached price ≥ 0.99 after the market left the scan | `resolved_market_sweep_win` — winners-only sweep, same threshold (it can never fire earlier than the race exit) |
-| Down ≥ 25 % from entry, confirmed 3 consecutive ticks, **soccer moneylines only** ("Will <Team> win on <date>?") | `race_stop_loss_confirmed` — the one path allowed to sell below entry |
-| Genuinely-resolved loser ~8 h past expiry | written off locally (no order; settles on-chain) |
-
-**Never sell below entry** is a hard floor in `execute_live_sell`. All stop-loss paths are disabled in every grinder profile: the weather absolute stop and forecast-flip exit are set to 0, and the sports-moneyline stop is disabled with `sl_pct = 1.0`. Losing positions ride to on-chain resolution. There is no take-profit ladder, EOD flatten, or loss-sweep. The expiry path never force-closes a market that is still accepting orders (it uses a live lookup + `gameStartTime`, since Gamma `endDate` is often set before kickoff). The daily drawdown halt is also disabled.
-
-### Self-improvement
-
-An **opt-in** autonomous loop (`scripts/auto_improve.py` + `.github/workflows/auto-improve.yml`) lets the bot tune its own strategy and ship the changes as auto-merged pull requests, driven by the Claude Code CLI. It is fenced so it can never harm the win rate:
-
-- **Entry/bet-selection is frozen** — the agent can only change *exit/sizing* knobs (`tp_pct`, `stake_pct`, `max_orders_per_tick`, `max_hold_hours`), each hard-clamped; `resolved_exit_threshold` is pinned at 0.99 (winners sell at a real 0.99 bid or settle at 1.00). An audit aborts the run if any entry filter moves.
-- **A stop-loss can never be introduced.**
-- It edits only `grinder.toml`, never other profiles, `.env`, or source code.
-- A PR opens only after the unit-test suite passes, and auto-merges only when CI is green.
-
-Off by default (`AUTO_IMPROVE_ENABLED=0`). Full design, switches, and setup in [`docs/AUTONOMY.md`](docs/AUTONOMY.md).
-
----
-
-## CLI
+Useful commands:
 
 ```bash
-uv run pmbot status          # equity, open positions, journal count
-uv run pmbot positions        # open positions sorted by PnL
-uv run pmbot dashboard        # live dashboard at http://127.0.0.1:8765
-uv run pmbot journal-stats    # P&L breakdown by exit reason
-uv run pmbot doctor           # health check (env, auth, endpoints)
-uv run pmbot tune-strategy    # run auto-tuner manually
-uv run pmbot reset-ledger     # rebuild ledger from live CLOB state
+uv run pmbot status
+uv run pmbot positions
+uv run pmbot journal-stats
 ```
 
-`status` and `positions` are read-only — no network calls. Output is colorized on a TTY; disable with `NO_COLOR=1`.
+See [Operations](docs/OPERATIONS.md) for launch, monitoring, incident, and recovery guidance.
 
----
+## Documentation
 
-## Configuration
-
-`configs/profiles/grinder.toml` is the single source of truth. Environment variables override profile values at runtime — see `polymarket_bot/config.py` for the full list.
-
-**Required credentials (live trading only):**
-
-```bash
-POLYMARKET_PRIVATE_KEY=0x...
-POLYMARKET_FUNDER_ADDRESS=0x...
-POLYMARKET_API_KEY=...
-POLYMARKET_API_SECRET=...
-POLYMARKET_API_PASSPHRASE=...
-```
-
-**Key runtime vars:**
-
-```bash
-POLYMARKET_SYNC_LIVE_POSITIONS=1         # sync live CLOB positions each tick
-POLYMARKET_AUTO_INTERVAL_SECONDS=10      # tick interval (set by the launcher)
-POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0     # daily DD halt — 0 = disabled
-LIVE_ANALYST_CYCLE_SECONDS=1800          # LIVE REPORT cadence (fires on startup + this interval + daily 10:00 ET)
-```
-
-**Autonomous self-improvement (opt-in — see [`docs/AUTONOMY.md`](docs/AUTONOMY.md)):**
-
-```bash
-AUTO_IMPROVE_ENABLED=0     # master gate; nothing runs unless 1
-AUTO_IMPROVE_USE_LLM=1     # propose changes via the Claude Code CLI
-AUTO_IMPROVE_AUTOMERGE=1   # auto-merge the PR once CI is green
-```
-
----
-
-## Development
-
-```bash
-# Tests
-uv run python -B -m unittest discover -s tests
-
-# Lint
-ruff check polymarket_bot tests
-
-# Dry-run (no real orders, separate ledger under data/dry_runs/grinder/)
-uv run pmbot auto-loop --dry-run --profile grinder
-```
-
-CI runs tests + lint on Python 3.11 / 3.12 for every push.
-
----
-
-## Project structure
-
-```
-configs/profiles/grinder.toml       bot 1 — weather mode — source of truth
-configs/profiles/grinder_b.toml     bots 2 & 3 — weather mode
-configs/profiles/grinder_c.toml     grinder_c bot (this Mac) — forecast-weather clone of grinder_b
-data/paper_state.json               live ledger (positions, cash)
-data/realized_trade_cache.jsonl     durable W/L record (survives resets)
-data/trade_journal.jsonl            per-trade metadata + exit reasons
-data/decision_journal.jsonl         considered weather outcomes + rejection reasons
-polymarket_bot/
-  main.py              CLI, tick orchestration, sizing, journal writer
-  race_strategies.py   engine: entry/exit pipeline shared by every strategy + arb scanner
-  weather_forecast.py  Open-Meteo multi-model consensus + edge/bracket-margin gates (weather mode)
-  portfolio.py         local ledger and position accounting
-  trading.py           live CLOB order placement
-  gamma.py             Gamma market scan
-  models.py            shared dataclasses, exclusion filters
-  smart_money.py       leaderboard fetch and signal scoring (not currently run live)
-scripts/
-  run_live_70.sh       canonical live launcher (Bot 1, weather mode)
-  run_live_b.sh        Bots 2 & 3 launcher (grinder_b, weather mode)
-  run_live_c.sh        grinder_c bot launcher (this Mac, forecast-weather clone of grinder_b)
-  live_analyst.py      30 min Telegram LIVE REPORT sidecar (read-only)
-  dry_analyst.py       15 min deterministic report + loser-kill
-  auto_improve.py      opt-in self-improvement loop (auto-PR, off by default)
-docs/
-  PROFILES.md          TOML key reference
-  STRATEGIES.md        entry lanes and exit conditions
-  AUTONOMY.md          self-improvement engine design + switches
-```
-
----
-
-## Contributing and security
-
-- Contributions: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
-- Security disclosures: see [`SECURITY.md`](SECURITY.md).
-- Agent entry points: [`CLAUDE.md`](CLAUDE.md), [`CODEX.md`](CODEX.md), [`AGENTS.md`](AGENTS.md).
+- [Architecture](docs/ARCHITECTURE.md)
+- [Strategy](docs/STRATEGIES.md)
+- [Profiles](docs/PROFILES.md)
+- [Operations](docs/OPERATIONS.md)
+- [Offline improvement process](docs/AUTONOMY.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
+- [Changelog](CHANGELOG.md)
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
-
----
-
-## Disclaimer
-
-**This software places real-money trades when configured to do so.**
-
-- It is not financial advice.
-- There is no guarantee of profit. Losses are possible and likely over some time horizons.
-- You are solely responsible for all trading decisions and committed funds.
-- You are responsible for complying with applicable laws and Polymarket's terms of service in your jurisdiction.
-- The author and contributors disclaim all liability for losses or damages arising from use of this software.
-
-Exercise the bot in dry-run mode first. Limit the initial bankroll to an amount you can afford to lose entirely.
+Released under the [MIT License](LICENSE).

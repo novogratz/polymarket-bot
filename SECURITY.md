@@ -1,34 +1,31 @@
-# Security policy
+# Security Policy
 
 ## Reporting a vulnerability
 
-If you discover a security vulnerability — for example a flaw that could leak credentials, allow unauthorized order placement, or otherwise compromise users running this bot — please do **not** open a public issue.
+Do not open a public issue for a vulnerability involving credentials, order execution, wallet authorization, or financial loss. Use GitHub's private security-advisory workflow for this repository and include reproduction steps, affected versions, and impact. Do not include real private keys or API secrets.
 
-Instead, contact the maintainer privately by opening a GitHub Security Advisory at <https://github.com/novogratz/polymarket-bot/security/advisories/new>.
+## Supported versions
 
-When reporting, please include:
+Security fixes are applied to the latest release. Operators should upgrade promptly after reviewing release notes and running the test suite in their own environment.
 
-- A description of the vulnerability and its potential impact.
-- A minimal reproduction (commit hash, environment, command, observed behavior).
-- Any suggested mitigation if you have one.
+## Credential handling
 
-The maintainer will acknowledge the report within a reasonable time and coordinate on a fix and disclosure timeline.
+- Store secrets only in the ignored local `.env` file or an approved secrets manager.
+- Never commit private keys, API credentials, passphrases, cookies, or wallet exports.
+- Never paste secrets into logs, screenshots, issues, pull requests, or support messages.
+- Use a dedicated wallet with only the capital required for the deployment.
+- Rotate credentials immediately if exposure is suspected.
+- Review token approvals and revoke access that is no longer needed.
+
+## Operational security
+
+- Live trading requires the explicit `--live` flag.
+- Treat `--yes` as an automation control, not a safety check.
+- Run one writer per ledger and isolate each bot's credentials and state.
+- Restrict filesystem access to `.env` and `data/`.
+- Keep dependencies and the host operating system patched.
+- Verify venue, RPC, and forecast endpoints before changing network configuration.
 
 ## Scope
 
-This project handles real-money trading credentials. The following are considered in-scope security concerns:
-
-- Code paths that could leak `POLYMARKET_PRIVATE_KEY`, `POLYMARKET_API_SECRET`, `POLYMARKET_API_PASSPHRASE`, or any wallet seed.
-- Code paths that could place orders without the `--live` flag (or the equivalent `POLYMARKET_ENABLE_LIVE_TRADING=1` env var used internally by scripts).
-- Code paths that could place orders without going through the documented consensus / spread / dedupe filters.
-- Dependency vulnerabilities that affect the runtime trading path.
-
-## Out of scope
-
-- Strategy underperformance or financial losses from normal market behavior.
-- Issues that require a malicious local user with shell access to the host running the bot.
-- Issues in third-party services (Polymarket APIs, Coinbase) that this project consumes but does not control.
-
-## Handling secrets
-
-The repository never commits `.env`, private keys, API secrets, or passphrases. Contributors must verify their commits before pushing. If a secret is ever committed by mistake, rotate the credential immediately — `git revert` is not sufficient because the history retains the secret.
+Reports about ordinary market loss, forecast error, thin liquidity, or expected price movement are not security vulnerabilities unless they demonstrate a software defect that bypasses documented controls.

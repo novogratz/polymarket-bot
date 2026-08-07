@@ -1,58 +1,41 @@
 # Contributing
 
-## Ground rules
-
-- This is a multi-strategy engine (grinder, weather, smart-money share the same pipeline) — changes should keep strategy-specific logic behind profile/config toggles rather than hardcoding one strategy's assumptions into the shared path.
-- The trading scan path stays deterministic Python over Polymarket APIs. **No LLM call** in scanning or trade-selection code.
-- Live trading requires the `--live` flag on `pmbot auto-loop`. The `--yes` flag is for script automation only.
-- No random or unfiltered live trade entry. Any new strategy must define explicit entry criteria, spread filters, sizing caps, and duplicate-position guards.
-- Every change to strategy behavior must be covered by a unit test.
+Thank you for improving the project. Changes should preserve deterministic live behavior, customer-safe documentation, and an auditable release history.
 
 ## Development setup
 
 ```bash
-pip install -e ".[dev]"   # or: uv sync
+git clone git@github.com:novogratz/polymarket-bot.git
+cd polymarket-bot
+uv sync --extra dev
+cp .env.example .env
 ```
 
-Run tests:
+Live credentials are not required for unit tests. Never commit `.env`, runtime data, wallet material, or copied production logs.
+
+## Quality checks
+
+Run before opening a pull request:
 
 ```bash
+uv run ruff check .
 uv run python -B -m unittest discover -s tests
 ```
 
-Run lint:
+For strategy changes, add focused tests that demonstrate the new entry, sizing, or exit rule and its important boundary cases. Prefer standard-library solutions and add environment configuration through the `Settings` dataclass.
 
-```bash
-ruff check polymarket_bot tests
-```
+## Pull requests
 
-CI runs the same commands on Python 3.11 / 3.12 for every push.
+Keep pull requests focused and include:
 
-## Pull request checklist
+- The problem and intended behavior.
+- Operational or financial risk introduced by the change.
+- Tests performed and their results.
+- Documentation and changelog updates when behavior changes.
+- A rollback approach for production-sensitive changes.
 
-- [ ] Tests added or updated for any strategy change.
-- [ ] `uv run python -B -m unittest discover -s tests` passes locally.
-- [ ] `ruff check polymarket_bot tests` is clean.
-- [ ] User-visible changes have a `CHANGELOG.md` entry.
-- [ ] Live config changes update `README.md`, `CLAUDE.md`, `CODEX.md`, and the SKILL files.
-- [ ] No secrets, private keys, or `.env` content in commits or commit messages.
+Do not include generated reports containing wallet identifiers or customer data. Do not use real-money execution as a test.
 
-## Commit style
+## Commit and release discipline
 
-- Imperative mood: `Add X`, `Fix Y` — not `Added X`.
-- First line ≤ 72 characters.
-- Body explains *why*, not just *what*.
-
-## Versioning
-
-Follows [Semantic Versioning](https://semver.org/). User-visible changes require a `CHANGELOG.md` entry. Tag releases on `main`: `git tag -a vX.Y.Z -m "..."`.
-
-## Reporting issues
-
-Open an issue at <https://github.com/novogratz/polymarket-bot/issues> with:
-
-- Expected vs actual behavior.
-- CLI command and relevant environment variables (secrets redacted).
-- Relevant log output.
-
-For security-sensitive issues, see `SECURITY.md`.
+Use clear, imperative commit subjects. Releases follow semantic versioning and the procedure in [docs/RELEASES.md](docs/RELEASES.md). A release must be built from reviewed `main`, use an annotated tag, and have release notes consistent with the changelog.

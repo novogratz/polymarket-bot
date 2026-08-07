@@ -1,57 +1,41 @@
 ---
 name: polymarket-bot
-description: Codex skill for the Polymarket trading engine (grinder / weather / smart-money copy-trading). Use for any change to strategy, filters, sizing, exits, journal, or the auto-tuner. Current live strategy is weather-only on all 3 bots (bots 2 & 3 additionally forecast-gated).
+description: Codex skill for changes to the Polymarket bot's strategy, filters, forecasts, sizing, exits, journals, reporting, or offline tuner. The maintained live strategy is forecast-gated and weather-only on all three bots.
 ---
 
 # Polymarket Bot Skill
 
-General-purpose engine, several strategies share one pipeline. All 3 bots currently
-run the same strategy (weather-only) — see below.
+Use this skill for any customer-visible or behavioral change to the trading engine.
 
-## Current state (WEATHER-ONLY + FULL-DEPLOY — 2026-07-10)
+## Live source of truth
 
-- **Live strategy:** weather-only `grinder` on all 3 bots. Every non-weather market, including crypto, is excluded.
-- **Config:** `configs/profiles/grinder.toml` (bot 1) / `grinder_b.toml` (bots 2 & 3).
-- **Launcher:** `bash scripts/run_live_70.sh` / `run_live_b.sh` — preserve ledger/journal. Do NOT use `run_all.sh` for live (it resets the ledger).
-- **Sizing:** **EQUAL-WEIGHT FULL DEPLOYMENT** (`full_deploy = true`, 5% soft entry/top-up cap, 10% redistribution-only hard cap) — every line targets equity/N over all lines ($5 floor); held lines top up toward the shared target, never past the on-chain line-cap guard. Cash approaches $0 when enough eligible distinct lines exist; caps may leave cash idle when the safe universe is small. Rollback: `full_deploy=false, fixed_stake_usd=5.0`.
-- **Entry:** asks ∈ [0.90, 0.97], 6h outer window, and mandatory Open-Meteo probability at least ask + 0.02 (fail-closed). Spread and local-solar-hour gates are disabled. At most two lines may share a city/date, and the opposite outcome of an already-held binary contract is blocked.
-- **Universe:** deterministic weather-only whitelist; no random/unfiltered fallback.
-- **Exits:** no stop losses. Positions hold for a resolved-exit bid ≥**0.99** or settlement. Weather forecast-flip exits and the sports-moneyline stop are disabled on all profiles. Any exit authentication failure halts new buys/top-ups for the tick.
-- **W/L record:** `data/realized_trade_cache.jsonl` (survives journal rotation).
-- **Decision audit:** `data/decision_journal.jsonl` records considered weather outcomes per tick with quote, forecast probability/edge, final decision, and rejection reason. It contains market data only—never credentials.
-- **Live report integrity (2026-07-31):** weather-only launchers set `LIVE_ANALYST_WEATHER_ONLY=1`, so Telegram statistics reject records outside the active lane and group “today” by US/Eastern. A custom journal automatically colocates its realized cache unless a cache path was explicitly configured, preventing test/dry-run closes from contaminating production history.
-- **Forecast audit trail (2026-07-31):** admitted trades persist model probability, calculated edge, city, broad region, and target date in the position and realized journal.
-- **Analysts:** deterministic. The forecasting model (`forecast.py`) is deterministic arithmetic over the ledger — not an LLM.
+- Profiles: `configs/profiles/grinder.toml`, `grinder_b.toml`, and `grinder_c.toml`.
+- Launchers: `scripts/run_live_70.sh`, `run_live_b.sh`, and `run_live_c.sh`.
+- Universe: supported weather and temperature markets only; cryptocurrency and all other categories are excluded.
+- Entry: executable ask from 0.90 through 0.97, no more than six hours to configured close, and Open-Meteo probability at least `ask + 0.02`. Missing forecast data fails closed.
+- Exposure: no more than two lines for one city/date and no opposite outcomes on the same binary.
+- Sizing: equal-weight full deployment with a 5% target, 10% hard line cap, and approximately $5 venue minimum.
+- Exit: no weather stop loss; hold for an executable 0.99 bid or settlement, and never intentionally sell below entry.
+- Spread and local solar-hour gates are disabled.
+- Decision audit: `data/decision_journal.jsonl`.
+- Realized outcomes: `data/realized_trade_cache.json` or the configured colocated cache.
 
-## Guardrails
+Full deployment can leave cash idle when the eligible universe is too small or not executable. Do not relax deterministic eligibility merely to create activity.
 
-- No `.env` values, private keys, or passphrases in output or commits.
-- Live trading requires `--live` flag on `pmbot auto-loop`; `--yes` is for script automation only.
-- No LLM call in the scanning or trade-selection path.
-- No random trade entry beyond bounded `noise_fallback` (disabled on grinder).
-- Never delete `data/paper_state.json`, `data/trade_journal.jsonl`, or `data/realized_trade_cache.jsonl` unless the user explicitly asks for a reset.
-- The bot must not gain the capability to commit or push source code.
+## Required workflow
 
-## Commands
+1. Read `AGENTS.md`, the affected profile, implementation, and relevant tests.
+2. Preserve deterministic scanning and selection; do not introduce an LLM or random fallback.
+3. Add a focused unit test for every strategy behavior change.
+4. Keep all three production profiles aligned unless the request explicitly requires a documented difference.
+5. Persist decision metadata and exit outcomes for auditability.
+6. Run:
 
-```bash
-python3 -B -m unittest discover -s tests
-uv run pmbot status
-uv run pmbot positions
-uv run pmbot journal-stats
-bash scripts/run_live_70.sh
-```
+   ```bash
+   uv run ruff check .
+   uv run python -B -m unittest discover -s tests
+   ```
 
-## Key files
+7. Update `README.md`, `docs/STRATEGIES.md`, and `CHANGELOG.md` when live behavior changes.
 
-- `polymarket_bot/race_strategies.py` — grinder entry/exit engine (`select_grinder`, `_build_eligible_candidates`, `_check_race_exits`).
-- `polymarket_bot/main.py` — tick orchestration, sizing, journal.
-- `polymarket_bot/config.py` — all `Settings` fields and env-var names.
-- `scripts/run_live_70.sh` — canonical live launcher (update when config changes).
-
-## Editing workflow
-
-1. Read `race_strategies.py` + `main.py` for the grinder path.
-2. Strategy/filter changes go in `configs/profiles/grinder.toml`.
-3. Update tests if behavior changes (`tests/test_strategy.py`).
-4. Update `CHANGELOG.md`, `README.md`, `CODEX.md`, and this SKILL.md when user-visible.
+Never expose credentials, edit `.env`, run a live order as verification, or manipulate runtime history while a bot is active.

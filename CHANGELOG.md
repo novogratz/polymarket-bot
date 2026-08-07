@@ -1,606 +1,75 @@
 # Changelog
 
-## 2026-08-06 — Remove weather spread and solar-hour gates
-
-- Disabled the live weather spread ceiling (`max_spread = 1.0`) and the
-  per-city 15:00 entry gate (`weather_min_solar_hour = 0`) on all three bots.
-  Price, forecast-edge, liquidity, city/date, and opposite-outcome controls
-  remain active.
-
-## 2026-08-05 — Show every open position in Telegram
-
-- The live report no longer truncates open-position details to the top/worst
-  subset. Every open line is included; long reports use the existing safe
-  multi-message Telegram chunking.
-
-## 2026-08-05 — Forecast-gated diversified weather entries
-
-- Restored weather-only entry on all three grinders, raised the minimum ask
-  to 0.90, and require at least 2 percentage points of Open-Meteo forecast
-  edge. Forecast failures now reject the trade.
-- Added a two-line city/date exposure cap and blocked buying the opposite
-  outcome while the same binary contract is already held.
-- Stop losses remain disabled; admitted positions hold for 0.99 or settlement.
-- Added `data/decision_journal.jsonl`: every weather outcome that reaches
-  outcome-level evaluation records its quote, forecast, decision, and exact
-  filter/execution reason for next-day missed-opportunity analysis.
-
-## 2026-08-05 — Remove all grinder stop losses
-
-- Disabled the absolute weather stop and confirmed sports-moneyline stop on
-  bots 1, 2, and 3. Positions now hold for a 0.99 winner exit or settlement;
-  forecast-flip exits remain disabled.
-
-## 2026-08-05 — Block crypto trading
-
-- Removed all crypto contracts from the category-aware live whitelist on bots
-  1, 2, and 3. Existing crypto positions can be flattened with
-  `scripts/manual_sell.py --category crypto --yes` without touching weather.
-
-## 2026-08-04 — Late crypto threshold contracts
-
-- The multi-category lane now admits objective BTC/SOL/XRP hit, dip, touch,
-  above, and below threshold contracts during their final three hours. The
-  universal 0.85–0.97 entry band and book-quality checks still apply; ETH stays
-  excluded.
-
-## 2026-08-04 — Disable weather forecast-flip exits
-
-- Disabled `weather_flip_exit_prob` on bots 1, 2, and 3. Weather positions now
-  sell below entry only at the explicit executable-bid stop of 0.55; otherwise
-  they hold for the 0.99 winner exit or settlement.
-
-## 2026-08-04 — Category-aware late-resolution lane
-
-- Expanded all three live grinders beyond weather. The deterministic whitelist
-  admits weather, already-started sports, sub-hour windowed BTC/SOL/XRP crypto,
-  and objective economics releases within two hours. Politics, entertainment,
-  esports, speech, equities, ambiguous markets, daily crypto, and ETH direction
-  contracts remain excluded.
-- All categories retain the 0.85–0.97 entry band, spread/liquidity/depth checks,
-  equal-weight position caps, exact-token dedup, and existing exit rules.
-
-## 2026-08-04 — Allow distinct weather brackets per event
-
-- Weather event dedup now operates at the exact market/token level. Holding
-  one Seattle temperature bracket no longer blocks a different Seattle bracket
-  from the same date; sports/game event dedup remains unchanged.
-
-## 2026-08-04 — Restore 0.97 entry ceiling
-
-- Restored the strict 0.97 maximum ask and hard cap on bots 1, 2, and 3; the
-  other late-weather model and concentration safeguards remain disabled.
-
-## 2026-08-04 — Unguarded late weather entry
-
-- Bots 1, 2, and 3 no longer require forecast edge, bracket margin, calibration,
-  or region/date capacity for late weather entries. Weather-only selection,
-  late solar timing, liquidity/spread checks, and
-  the 0.55 weather stop remain enabled.
-
-## 2026-08-04 — Tradable weather markets after Gamma deadline
-
-- Weather scans now include the prior 24 hours of Gamma deadlines because
-  daily temperature contracts can remain open after their advertised noon-UTC
-  `endDate`. They remain limited to the current target day and must still be
-  accepting orders and pass all price, liquidity, forecast and late-entry gates.
-- Re-enabled temperature range brackets on bots 1, 2 and 3; forecast-gated bots
-  retain their bracket-margin protection.
-- The stale-deadline exception validates the city's local target date directly;
-  it works whether or not the profile's broader `weather_same_day_only` option
-  is enabled.
-- The expired-weather recovery query is constrained to Gamma's Weather tag so
-  global pagination cannot crowd Denver, Seattle, San Francisco, or other city
-  contracts out of the scan.
-
-## 2026-08-04
-
-- All three live weather profiles now enter only within 6 hours of close, remain percentage-sized with equal-weight full deployment (`fixed_stake_usd = 0`), and sell weather positions at an executable bid of $0.55 or lower. All three reporting/fallback baselines are $85.
-- Added a city-local late-entry gate (target date must be local today and solar time ≥15:00), a two-position region/date correlation cap, and a forecast-calibration circuit breaker (pause after 30 samples when Brier score >0.12). Any live exit authentication failure now halts new buys/top-ups for that tick; this contains the upstream POLY_1271 Python SDK defect instead of adding exposure while SELL is unavailable.
-
-All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/).
+All notable changes are documented here. This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses semantic versioning.
 
 ## [Unreleased]
 
-### Fixed
+### Changed
 
-- All three live grinders' weather universes no longer starve at the top of their entry bands:
-  asks through 0.97 are admitted by both the normal and hard price caps, and
-  its forecast requirement is now a feasible +1 point (a 0.97 ask still
-  requires 0.98 model probability). Each bot also doubles its discovery batch
-  to 1,500 markets, admits weather lines down to $50 daily volume, and removes
-  the broad region/date count ceiling without re-enabling the loss-heavy
-  narrow-range markets or weakening spread/liquidity protection.
+- No unreleased changes.
 
-- Test close events can no longer leak into the production realized-trade cache
-  when a temporary journal uses the default cache setting. Weather-only live
-  reports also reject non-weather records and use the US/Eastern trading day.
-- Restored equal-weight full deployment in `grinder` and `grinder_c`; a stale
-  fixed-$5 override had left most bankroll cash idle.
-- Restored the lighter weather forecast gate (5-point minimum edge and 2°C
-  bracket margin) in `grinder` and `grinder_c` so fuller deployment does not
-  scale the documented negative-edge ungated pool.
-- Weather entries now exclude narrow `between X–Y°` brackets (−22.1% realized
-  ROI), require same-day or 12–24h resolution, fail closed when forecast
-  validation is unavailable, rank by forecast edge, and cap fresh correlated
-  exposure at two positions per broad region/date. Forecast probability, edge,
-  city, region, and target date are persisted with every admitted trade.
-- Full-deploy redistribution now starts with one eligible held line and uses a
-  zero cash floor, deploying every dollar possible without crossing the 10%
-  absolute per-line cap.
+## [6.0.0] - 2026-08-06
+
+### Added
+
+- Customer-facing architecture, operations, strategy, profile, security, and release documentation.
+- Persistent decision journaling for selected, rejected, missed, and resolved weather opportunities.
+- Equal-weight full-deployment sizing with portfolio-aware line caps.
+- Multi-model Open-Meteo forecast metadata in live decisions and reports.
 
 ### Changed
 
-- **Entry window reverted 48 h → 24 h** (user 2026-07-19, same day: "it took a lot of bets for 21 of july its way too far away bro... go back to 24h"). The 48 h experiment (#131) filled the book with day+2 brackets — forecast confidence aside, the user doesn't want capital parked that far from resolution. Back to `max_hours = 24` in both profiles; everything else from #131 unchanged (no other gate was touched).
+- Standardized all three live profiles on a deterministic, weather-only strategy.
+- Require a forecast probability at least two percentage points above the executable ask.
+- Limit entries to asks from 0.90 through 0.97 and markets within six hours of close.
+- Hold weather positions to an executable 0.99 bid or settlement; weather stop losses remain disabled.
+- Removed spread and local solar-hour gates from weather selection.
+- Reworked Telegram reporting to include every open position.
+- Replaced fixed stake behavior with portfolio-percentage sizing.
 
-### Changed
+### Removed
 
-- **Entry window widened 24 h → 48 h** (user 2026-07-19, picking option 2 of the money-making review). Tomorrow's weather markets are already listed and the Open-Meteo multi-model forecast is still strong at day+1, so the 48 h window roughly **doubles the simultaneous lines** — smaller equal shares under the same 10% cap, better diversification, and less idle cash (directly serving "as many positions as possible" + "cash ≈ 0"). `max_hours = 48` in both profiles; single window, ladder still disabled; all other entry gates (0.85–0.94 band, forecast edge + bracket margin, liquidity, spread) unchanged.
-
-### Fixed
-
-- **Weather positions no longer mislabelled "Match terminé"** (user 2026-07-19, "a lot of positions are called 'Match termine' but they are not"). Weather markets carry a `gameStartTime` (start of the measurement day), so the report's sports heuristic (kickoff + ~2h45 → "⌛ Match terminé — résolution en cours") fired all afternoon on markets that stay live until the daily high/low settles. Weather questions now skip the sports branch and show `🌡 Se résout en fin de journée (…)` with the real end time/countdown when known; sports wording unchanged. Pinned by three `OpenPositionExpiryTests` cases.
-
-### Changed
-
-- **Redistribution reaches lines that drifted out of the entry band** (user 2026-07-19, "there is opportunity to increase those positions too"). A winning line's ask converges past `max_price` 0.94 — or the Open-Meteo gate can no longer certify `ask + 0.10` (impossible ≥ 0.95 by construction) — and the line silently dropped out of the redistribution's token map. Top-ups now match held lines against a second, RELAXED pool: `max_price` lifted to the 0.96 **hard cap** and forecast/EV gates off, with every other filter intact (0.85 floor, spread, liquidity, 24 h window, acceptingOrders). Fresh entries keep every strict gate; the 10% cap and equal split are unchanged. Fail-open if the relaxed pass errors.
+- Cryptocurrency markets from live eligibility and live history baselines.
+- Random fallback entry and unfiltered live selection.
+- Stale experimental documentation and bundled wallet-research reports.
 
 ## [5.1.0] - 2026-07-19
 
-Polymarket Bot **v5.1** — equal-weight full deployment: cash ≈ $0 at all times, every line targets an equal share of the account under an absolute 10% per-line cap, leftover cash redistributes equally across open lines with room once ≥10 positions exist, bot 1 synced to bot 2's forecast-gated weather strategy, and the Gamma scan 422 fixed.
+### Added
+
+- Full-deployment portfolio sizing and held-line top-ups.
 
 ### Changed
 
-- **Redistribution now respects the 10% cap — the cap is ABSOLUTE** (user 2026-07-19 refinement, "make sure we have as many positions available possible at the same time and that each position is max 10% of the overall account"). The leftover-cash redistribution (#128) no longer bypasses the per-line cap: cash splits equally across open lines **with room** under 10%, every add is clamped to `cap − stake`, at-cap lines get nothing, and cash the cap can't place waits for new lines (breadth first — fresh markets still take priority). The `line_cap_exempt` path is no longer used by any caller.
+- Returned the live weather horizon to 24 hours after evaluation of a longer window.
 
-- **Leftover-cash redistribution — 100% invested with ≥10 lines** (user 2026-07-19, "we still have too much cash being unused... redistribute it to all open positions when there is no new positions... with more than 10 positions i would expect 100% of my cash being used"). New `full_deploy_redistribute_min_lines` (env `POLYMARKET_RACE_FULL_DEPLOY_REDISTRIBUTE_MIN_LINES`, **10** in both profiles): when the account holds ≥10 open lines AND a tick finds NO fresh market, remaining cash is split **equally** across the open lines whose market still re-passes every entry filter — **exempt from the 10% line cap** (`line_cap_exempt` in `execute_live_trade`; breadth is already guaranteed by the line count). Finished games awaiting resolution and no-longer-eligible lines are skipped and the cash spreads over the healthy rest; fresh markets always take priority (any fresh actionable market suppresses the pass). `LeftoverRedistributionTests` pin the equal split, the fresh-market/min-lines/knob-off gates, and the skip-untradeable behavior.
-
-- **EQUAL-WEIGHT FULL DEPLOYMENT — cash ≈ $0 at all times** (user 2026-07-19, "double the positions allocations overall on the account when there is cash available, make sure that the positions are equally distributed... i would expect cash to be close to 0$ - and i would like this all the time"). Supersedes the 2026-07-11 no-reinforcement rule. Every line now targets an **equal share of the whole account** — `equity / N` over ALL lines (open positions + new actionable markets) — bounded by the per-line cap **doubled 5% → 10%** (`full_deploy_max_position_pct = 0.10`) and the $5 floor. Held lines **top up toward that shared target** (never past it), so the sum of targets = equity and cash converges to ~0 whenever ≥10 distinct lines exist, while distribution stays equal by construction. The on-chain guard becomes a **line-cap guard**: a live BUY is refused only when the wallet's existing holding is already worth ≥ the cap at the current ask (`line_cap_blocked`, replaces `rebet_blocked`). Example: $150 invested + $150 cash across 10 lines → each line targets $30 and the cash deploys. Tests updated (equal-weight targets, below-cap top-ups actionable/at-cap dropped, cap-guard refusal + under-cap allowance).
-
-- **Bot 1 strategy synced to bot 2** (user 2026-07-15, "bot 2 grinder 2 doing better than bot 1 - so make bot 1 the same strategy as bot 2"). `grinder.toml`'s `[race]` section is now byte-identical to `grinder_b.toml`; only the bankroll baseline keys stay bot 1's own. Bot 1 gains: the **Open-Meteo multi-model forecast gate** (`weather_forecast_min_edge = 0.10` + `weather_min_bracket_margin_c = 2.0` — the bracket-margin guard from the Qingdao loss), weather-grade liquidity floors (liq ≥ $50, vol ≥ $200), the 0.85 entry floor (the 0.80–0.85 bucket was −8.1% ROI), `category_min_samples` 100 → 20, and the 30 s tick (double-entry fix).
-
-### Fixed
-
-- **Gamma scan 422 — soonest-closing batch silently dead** (seen live 2026-07-19: `race: gamma batch failed: HTTPError: HTTP Error 422`). Gamma dropped snake_case sort keys: `order=end_date` now returns 422 while `order=volume` still works, so every tick silently lost the soonest-closing half of its scan (fail-open kept only the volume batch — near-resolution markets ranked low on volume could be missed entirely). Sort key switched to the camelCase **`endDate`** in `gamma.py` (default), the race scan, the edge scan, and `polymarket.py`. Verified live (both orderings return rows again); `GammaSortKeyTests` pin the default and the race-scan orderings so the rejected snake_case form can never come back.
-
-## [5.0.0] - 2026-07-13
-
-Polymarket Bot **v5** — weather-only on all 3 bots (temperature/degree-bracket markets exclusively), a multi-model Open-Meteo forecast edge gate with a bracket-margin safety guard (bots 2 & 3), 5%-fixed-fraction "no reinforcement" sizing replacing fixed-$5 (worst single-line loss ≈ 5% of equity, on-chain no-rebet guard), full-deploy diversification caps, weather as a first-class governance category, and the Telegram report's ROI line fixed to match the account-level P&L figure.
-
-### Fixed
-
-- **Telegram LIVE REPORT's `PERFORMANCE v4` ROI now matches the Capital line** (user 2026-07-13, "the ROI line... it must be the same as since beginning above... it doesn't make sense we show 4.5% when it's like almost 100%"). The block showed `forecast.roi()` — average per-trade return on staked capital (~5%) — directly under the `Capital` line's equity-vs-baseline growth (~96%), two very different numbers both implicitly read as "the" ROI. `_v4_performance_lines` now takes the same equity-vs-baseline percentage the Capital line already computes and displays that instead; Sharpe/PF/max-DD are unchanged (still per-trade metrics).
+## [5.0.0] - 2026-07-10
 
 ### Added
 
-- **Weather bracket-margin guard** (`race_weather_min_bracket_margin_c`, bot 2 set to **2.0°C**). Skips a weather "No" bet when the Open-Meteo model consensus sits within this many °C of the market's bracket threshold — added after real losses where a near-threshold forecast resolved against the bet (Qingdao 2026-06-28: ECMWF 28.1°C vs a 29°C bracket, 0.9°C margin; Munich 2026-06-29: one outlier model masked two others that landed inside the bucket). For exact-bracket "be X°C" markets the guard checks the model mean against the bracket; for "≥X°C" markets it checks the hottest model. Default `0.0` (off); fail-open throughout.
-- **Multi-model weather forecast consensus + intraday kill-switch** (`polymarket_bot/weather_forecast.py`). The weather-only lane's entry edge model now fetches same-day/next-day forecasts from multiple free Open-Meteo models (GFS, ECMWF IFS, best-match) in parallel, derives σ from the actual inter-model spread (dropping models that disagree by more than 3.0°C, skipping the lookup entirely below 2 responding models), and — for same-day daily-max markets — once it's past solar 3 PM at the market's location, checks the already-observed current temperature against the bracket so an already-decided outcome doesn't wait on end-of-day data. Gated by `race_weather_forecast_min_edge` (bot 2: `0.10`) — 0 = off, needs no trade history since it uses live forecast data.
+- Weather as a first-class strategy category.
+- Forecast-gated weather profiles and category-aware reporting.
 
 ### Changed
 
-- **ON-CHAIN no-rebet guard** (user 2026-07-11, "you cant rebet on an existing bet meaning each line will never surpass 5% of overall account"). Last line of defense inside `trading.execute_live_trade`: under `full_deploy`, a live BUY on a token the **wallet already holds ≥1 share of** is refused (`rebet_blocked`) — checked against the CHAIN, not the ledger, so it holds even when the local ledger is missing the position (sync lag, `sync_closed` mis-book, fresh restart). Combined with the 5% fixed-fraction stake, no line can ever exceed one 5% bet at cost. Fail-open on probe errors (ledger-level guards still apply); OFF in legacy (non-full-deploy) mode so legacy top-ups keep working. `NoRebetGuardTests` pin refusal, fail-open, and the legacy bypass. NOTE: the repeated Paris blow-ups came from a STALE bot process running pre-cap code on another machine — no merge changes a running process; kill it, `git pull`, relaunch.
+- Made weather markets the exclusive live universe.
 
-- **5% FIXED-FRACTION sizing, NO reinforcement — the final rule** (user 2026-07-11, "just go back on the rule of 5% of account max per position and do not reinforce a position... replace the rule of $5 with the 5%... you cant rebet on a position that is already existing"). The 3-tick equal redistribution (#121) is **REMOVED** — with a 10 s tick, "3 dry ticks" was only 30 seconds, so it fired almost immediately and pumped one line ($33 Paris on a ~$100 account): that was the bug. Now: every NEW position stakes **exactly 5% of equity** (`_dynamic_stake_target` returns the cap itself, not cash/N — 40 eligible markets still means 5% each), a **held market is NEVER bought again** (no top-up, no redistribution, no double-down, no re-bet — held tokens are dropped from pick slots), and cash that can't find a new market simply waits. `topup_dry_ticks` and `_maybe_redistribute_to_held` are deleted. `pct = 0` keeps the uncapped cash/N escape hatch. Tests updated (724 green).
+## [4.0.0] - 2026-07-06
 
-- **3-tick patience + uncapped equal redistribution** (user 2026-07-11, "bot should still try 3 ticks to get new positions before distributing equally to all existing positions... when redistributing to existing positions it doesnt need to be 5% it can be more as long as its equally distributed"). New `topup_dry_ticks` (env `POLYMARKET_RACE_TOPUP_DRY_TICKS`, **3** in both profiles) and `_maybe_redistribute_to_held`: fresh markets always get first claim on the cash and held lines no longer occupy pick slots; only after 3 consecutive ticks with NO new actionable market is leftover cash split **EQUALLY** (cash/N) across all existing positions whose market still re-passes every entry filter — and that equal split is **EXEMPT from the 5% line cap** (equality is the constraint). A tick with a new market resets the counter. Fresh entries stay capped at 5%. Replaces the passive 5%-capped top-up lane under full-deploy; supersedes the equal-spread-under-cap rule of PR #120. `EqualRedistributionTests` pin the patience, the reset, the equal split above the cap, and the off-switches.
+### Changed
 
-- **Equal-spread top-ups pinned — "5% max per position, spread the rest equally"** (user 2026-07-11, after a stale pre-cap bot process re-bought one line to $68: "just do 5% max per positions and if there are not enough positions spread the $ equally between all existing positions"). No code change needed — current main already behaves exactly this way and a new test now pins it (`test_topups_spread_equally_and_never_pierce_the_5pct_line`): with no new markets, leftover cash targets `cash/N` per held position, clamped to each line's remaining room up to the 5% cap; a line at its cap gets nothing. Live-sync refreshes every position's `stake` from the chain's true cost basis (`initialValue`) each tick, so the cap check works even for positions bought outside the ledger. **A bot process started before PR #117/#119 keeps its old uncapped code — pull + restart every machine running the bot.**
+- Migrated the three production bots to temperature-market trading.
+- Separated offline improvement from deterministic live selection.
 
-- **Diversification cap tightened 10% → 5% of equity — THE RULE** (user 2026-07-11, "each position must be maximum 5% of the overall account - thats the rule - so if we have like $200 equity, position is max $10"). `full_deploy_max_position_pct` 0.10 → **0.05** in both profiles and as the `Settings` default. At $200 equity the max position is $10 and the bankroll targets ≥20 distinct weather markets; the $5 Polymarket-minimum floor and `0 = uncapped` escape hatch are unchanged. Yesterday's $40 Milan position becomes impossible.
-
-- **Diversification cap on full-deploy sizing** (user 2026-07-10, "positions at $90 when bankroll total is $200 is not acceptable... take more positions if you still have more money, while diversifying between the different bets weather at different locations"). New `full_deploy_max_position_pct` (env `POLYMARKET_RACE_FULL_DEPLOY_MAX_POSITION_PCT`, **0.10** in both profiles): under full-deploy, no single position may exceed **10% of equity** (floored at $5 for Polymarket's minimum order; 0 = uncapped). The cash/N spread and the top-up lane both respect the cap (`_full_deploy_cap_usd`), so the bankroll spreads across ≥10 distinct weather markets when they exist, and cash the cap can't place waits for new markets instead of piling onto one — a $90 position on a $200 bankroll is now impossible. Diversification wins over strict 100% deployment.
-
-- **"weather" is now a first-class v4 category** (user 2026-07-10, "in telegram put best category as weather and show how much we did"). New `_WEATHER_RE` in `categories.py`, checked FIRST (mirrors `models._WEATHER_SUBSTRINGS`), so weather trades no longer fall into the catch-all `other` — which the Telegram report's 🥇 best/worst-category line skips. With the weather-only lane active, the `RAPPORT LIVE` now shows `🥇 Meilleure catégorie : weather +$X (ROI%, N trades)`, and `journal-stats` / the forecaster calibrate per-weather stats. **Starvation guard:** while `weather_only` is on, the data-driven category auto-disable can never drop `weather` (it is the ONLY category the lane trades — disabling it would silently halt the bot); the user's explicit lane choice wins over the governance. Pinned by `test_auto_disable_can_never_starve_the_weather_lane`.
-
-- **FULL-DEPLOY sizing — 100% of the account always invested** (user 2026-07-09, "make sure 100% of the account is always invested... Make sizing dynamics push it"). New `full_deploy` flag (`POLYMARKET_RACE_FULL_DEPLOY`), ON in both profiles, replacing the v4 fixed-$5 mode (`fixed_stake_usd` → 0, kept for one-line rollback). Each tick spreads ALL available cash across the actionable picks (cash / N each, no near-resolution boost); `_position_cap_usd` and `_entry_cap_usd` return full equity, so there is **no per-position ceiling** — leftover cash from depth-capped fills keeps flowing into already-held markets via the top-up lane (each top-up re-passes every entry filter) until the account is fully deployed. `cash_floor_pct` 0.01 → 0 (no reserve). **Worst-case loss on a single market is now the entire account** — explicit user mandate. `FullDeploySizingTests` pin spread, cap removal, fixed-stake override, and off-by-default.
-
-- **ALL bots on main switched to WEATHER-ONLY betting** (user 2026-07-06, "put bot 1 to the same strategy as bot 2 which is weather only bets"). The `weather_only` lane (flag `weather_only` / `POLYMARKET_RACE_WEATHER_ONLY` + `is_weather_market` detector, originally built for bot 3 on `kzer_windows`, 2026-06-23) is ported to `main` and **enabled in both `grinder.toml` (bot 1) and `grinder_b.toml` (bot 2)**. Entry selection keeps ONLY weather / temperature markets (temperature, °C/°F, weather, rainfall, snowfall, high/low temp) and bypasses the normal weather ban; every other market is dropped. The entry window widens **4 h → 24 h** (weather markets resolve end-of-day, ~22–46 h out — the 4 h window left zero weather candidates). Everything else is unchanged: 0.80–0.94 band (hard cap 0.96), fixed $5 stakes, 0.99 winner floor, category auto-disable. `WeatherOnlyLaneTests` pin detection, keep-only-weather, and ban-bypass behavior.
-
-- **Crypto trading restored** (user 2026-06-24, "bring back crypto trading"). Reverts the always-on crypto ban (#103) on bots 1 & 2: `_build_eligible_candidates` no longer drops crypto, so under `unban_all_markets = true` crypto markets are tradeable again (still governed by the data-driven category auto-disable). `models.is_crypto_market` removed; `is_excluded_market_light` restored to its inline crypto check. On `kzer_windows` (bot 3 + zaza) the `race_ban_crypto` flag is set back to `false`. Bets remain a flat **$5**.
+## [2.2.0] - 2026-05-08
 
 ### Added
 
-- **Best / worst category in the live report** (user 2026-06-23, "when you give p and q … give the top category where the bot made money and worst category"). The `PERFORMANCE v4` block now adds a `🥇 Meilleure catégorie … 🥶 Pire …` line right under the p/q/edge lines, ranking realized categories by **total $ P&L** (with ROI and trade count shown alongside). Skips the catch-all `other` bucket; collapses to a single entry when only one category has traded. `_v4_performance_lines` in `scripts/live_analyst.py`; appears once ≥10 closed trades exist.
-
-## [4.0.0] - 2026-06-23
-
-Polymarket Bot **v4** — fixed-$5 sizing, unban-all with data-driven category governance, the empirical forecasting model (EV / quality / Sharpe / promotion gates), a stack of new outright bans (esports, macro-rate, "what-will-be-said", stocks, O/U lines), the soccer-moneyline gap fix, the daily self-learning sidecar, and a summarized, timeout-resilient live report.
-
-### Changed
-
-- **Live Telegram report trimmed to a clear summary + top movers** (user 2026-06-22, "we open too many positions… simplify so it only shows a summary", "top 5 winning and top 5 where we lost"). With the bot now holding many positions the `RAPPORT LIVE` had grown to thousands of characters (every open position and every trade-of-the-day listed in full). Both detail lists — `TRADES DU JOUR` and `POSITIONS OUVERTES` — are now capped to the **top `LIVE_REPORT_TOP_N` winners + N worst losers** each (default **5**), with the remainder folded into a `… +X autres` line; the summary header above each list (counts, totals, latent P&L) still covers everything. Set `LIVE_REPORT_TOP_N=0` for summary-only. Only the shown titles are sent to the FR translator, and the per-position "Voir le match" link is dropped to keep each entry to two lines. New `_winners_losers` helper in `scripts/live_analyst.py`.
-
-### Fixed
-
-- **Live report no longer fabricates a phantom equity when the positions API times out** (user 2026-06-22, "telegram says we have $60 and we lost $100 — polymarket says $160"). `_fetch_live_equity` swallowed an intermittent `/positions` timeout (HTTP 408 / socket) and returned **cash-only** equity; when that fell below `assumed_live_balance_usd * 0.5` the old redemption-lag floor returned the **stale fixed `assumed_live_balance_usd` (e.g. $60 while the wallet held $160)**, so the report printed a ~$60 capital and a ~-$100 "loss". The positions read now **retries 3×** before giving up, and on persistent failure returns `None` so `load_live_snapshot` falls back to the local ledger (which the live bot keeps synced with the real positions every tick) instead of a fabricated number. The fixed-equity floor is removed from the report path.
-
-- **Cross-tick double-entry for crypto "Up or Down" hourly markets** (agent 2026-06-24). `_actionable_candidates` deduplicates open positions by `token_id` and by game-key, but for crypto hourly markets (`eventSlug` often empty, question doesn't match VS/win-on-date patterns) both checks can miss — causing a second tick to re-buy the same market as a fresh $5 position (booked as a top-up, doubling the stake). Fix: added a fallback check in `_actionable_candidates` that matches any open position with the same `(question, outcome)` pair when `open_position_for_token` returns None. Exact question+outcome is unambiguous across consecutive ticks; the fallback fires before the game-key check and correctly blocks re-entry when stake ≥ cap.
-
-- **Esports and speech markets now blocked even under `unban_all_markets=true`** (agent 2026-06-24). Both bans live inside `is_excluded_market` which is bypassed by `unban_all`. A Dota 2 market ("GamerLegion vs 4 Anchors") and a speech market ("Will Trump say 'Hottest'…") both slipped through and entered. Fix: new `is_hard_excluded_market(market)` in `models.py` applies the esports (`is_esports_text`) and speech (`_SPEECH_MARKET_RE`) checks unconditionally, called in `_build_eligible_candidates` just after the `unban_all` gate — same pattern as the always-on `min_resolution_clarity` filter. Existing open positions are held; new esports/speech entries are blocked. Test added: `test_esports_and_speech_blocked_even_with_unban_all`.
-
-### Added
-
-- **Crypto re-admitted on bot 2 via a crypto-only entry floor** (user 2026-06-24: "put back crypto on bot 2"). New `[race].crypto_min_price` (env `POLYMARKET_RACE_CRYPTO_MIN_PRICE`, default 0 = off): when > 0, CRYPTO markets (`classify_market == "crypto"`) may enter below the favorite band, down to that floor, while every other category keeps `min_price`. `grinder_b.toml` sets it to **0.50** so the grinder can buy crypto coinflips; `grinder.toml`/`grinder_zaza` leave it at 0. Only effective once crypto is un-banned (`unban_all_markets`). ⚠️ crypto coinflips can settle at \$0 — accepted on bot 2 by design. Applied per-market in `_build_eligible_candidates`; bot 1/3/zaza unaffected.
-- **p / q / edge in the live Telegram report** (user 2026-06-22). The 30-min LIVE REPORT's `PERFORMANCE v4` block now shows a `🎯` line **for all-time and for today**: `p` = average entry price paid, `q` = win rate (wins/(wins+losses), the realized proxy for the true win probability), and `edge(q−p)` in points. The bot is +EV only when `q > p`, so this surfaces the single number that decides whether the strategy has an advantage. Deterministic, fail-soft (`_pq_line` in `scripts/live_analyst.py`).
-
-### Changed (bot 2 only, 2026-06-24)
-
-- **Crypto coinflip floor disabled: `crypto_min_price` 0.50 → 0** (agent 2026-06-24, emergency rollback). The Gamma complement price for a neg_risk "Down" outcome (`1 − Up_bid`) is disconnected from the actual Down-token CLOB price. The grinder selected Down at Gamma-computed ask=0.61 (passes min_price=0.50 filter) but the FOK filled at the real CLOB ask=0.09–0.26, buying a 9–26% underdog instead of the intended 61% favorite. As Bitcoin rallied through the afternoon the cumulative Down losses were: −$4.28, −$4.91, −$4.25, −$3.40, −$4.61, −$7.82 (the last entry double-bought). `crypto_min_price` set to 0 (disabled) until the grinder verifies CLOB price ≈ Gamma complement before placing the FOK. (Later superseded by the 2026-07-06 all-bots weather-only switch above, which drops crypto entirely.)
-- **Tighter non-crypto entry floor: 0.80 → 0.85** (agent 2026-06-24). Analysis of 527 realized trades showed the 0.80–0.85 price bucket had −8.1% ROI while 0.90–0.94 ran +3.5%. `grinder_b.toml` `min_price` raised from 0.80 to 0.85, keeping bot 1/3 at 0.80. Crypto is unaffected: `crypto_min_price = 0.50` overrides `min_price` for any market classified as `crypto`, so BTC/ETH/SOL coinflips still enter at 0.50–0.94.
-- **Soccer auto-disable now active: `category_min_samples` 100 → 20** (agent 2026-06-24). Soccer had 21 trades at −26.7% ROI (dominated by pre-ban O/U 4.5 losses and goal-gap crashes) but the 100-sample gate would never trigger within a normal season. Lowered to 20 so soccer (21 ≥ 20, ROI −26.7% < −5%) is auto-disabled at every tick. Live bot confirms `category auto-disable: ['soccer']`. Any category with ≥ 20 trades and ROI < −5% is blocked at entry selection.
-
-### Fixed
-
-- **Resolved positions now close promptly at their TRUE value** (user 2026-06-21, "some bets don't seem to close when they should / redeemed up with 0 or with gains"). `_sync_live_positions` gained a resolution-reconcile pass over the Data API holdings: a position the chain marks **`redeemable`** is booked as a **resolved win** (closed at its full on-chain value), and a position whose value has collapsed below the dust floor **and whose endDate has passed** is booked as a **resolved loss at ~$0**. Previously a settled loser was dropped by the min-value filter and written off at its **stale ~0.50 mid-price** (overstating realized P&L / equity), and a redeemable winner could sit "open" until a +6h/8h expiry timer. The past-endDate guard means a mid-game gap (low value but still live) is **not** mis-booked as a loss. Diagnostic on the live wallet confirmed the "résolution en cours" 15-min crypto positions were genuinely *pending oracle settlement* (`redeemable=false`, curPrice≈0.50), not lost — the bot now books them the moment the chain settles them. New `ResolvedReconcileTests`.
-
-### Added
-
-- **Resolution-safety filter (always-on, survives unban)** (user 2026-06-21, "do everything"). New `race_min_resolution_clarity` (set to **60** in both profiles): `_build_eligible_candidates` skips any market whose `resolution_clarity` (in `forecast.py`) is below the threshold — subjective / ambiguous-settlement wording (judges' discretion, "deemed", "disputed", "considered", "to be determined", …). A clean objectively-resolvable market scores 100; one strong subjective marker drops it below 60. Unlike the EV/quality gates this needs **no history**, so it is the one structural protection that stays ON even under `unban_all_markets`. Tests: `ResolutionSafetyTests` in `tests/test_forecast.py`.
-- **v4 performance block in the Telegram LIVE REPORT** (`scripts/live_analyst.py`). After ≥10 closed trades the report adds `PERFORMANCE v4 :` — ROI / Sharpe / profit factor / max drawdown — and `🏷️ Catégories à risque :` listing the worst per-category ROIs (⛔ on any already auto-disabled), so the data-driven governance is visible at a glance without running `journal-stats`. Deterministic, fail-soft.
-
-### Changed
-
-- **Maximize bets within the 4h window** (user 2026-06-21, "as many bets as possible"). `race.max_orders_per_tick` 4 → **12** in both grinder profiles so a fresh bankroll deploys fast across many distinct eligible games each tick (each new bet is a flat $5 and still passes every entry filter; one bet per game/event keeps correlated markets out). The self-tuner bound for `race.max_orders_per_tick` was widened (1,5) → **(1,20)** so the daily loop can't drag it back down. The $5 cap bounds per-trade risk regardless of count.
-- **Docs refreshed to v4 across the board** — `CLAUDE.md`, `README.md`, `CODEX.md`, `AGENTS.md`, both skill files, `docs/STRATEGIES.md` (fixed-$5 sizing section replacing the Kelly one; v4 entry/exit), `docs/AUTONOMY.md` (TUNABLE bounds), `docs/PROFILES.md`, and the `.claude`/`.codex` `memory.md` files (retired copy-strategy content replaced with the v4 grinder summary). Stale 0.97 winner-exit / 0.85–0.97 band / Kelly-sizing references removed.
-
-- **Winners sell at 0.99** (user 2026-06-21, "sell at 0.99 as well"). `resolved_exit_threshold` 0.97 → **0.99** in both grinder profiles, the `WINNER_FLOOR` in `trading.execute_live_sell` 0.97 → **0.99**, and the self-tuner bound pinned (0.97,0.97) → **(0.99,0.99)**. The fast-lane 0.98 downgrade for esports/stocks is removed — one flat 0.99 winner exit across every lane: a winner sells only at a real 0.99 bid, else rides to on-chain settlement at 1.00. Tests updated (`test_live_sell_winner_floor_refuses_sub_099_resolved_exit`, `test_auto_improve_tuner_pins_resolved_exit_threshold_at_099`, `test_v4_winner_exit_requires_099_even_for_low_entry`, `test_v4_no_fast_lane_098_exit_holds_until_099`).
-
-### Added
-
-- **v4 production config — Phase 2 (part 2): forecasting model + EV/quality gates + dashboard analytics** (user 2026-06-21, "build a real forecasting model too"; "no pause halts though"). New `polymarket_bot/forecast.py`:
-  - **Forecasting model** — a deterministic empirical-calibration forecaster. `predicted_probability(category, ask, table)` calibrates a favorite's win probability per (category, price-bucket) from the realized ledger, shrunk toward the prior (overall realized win rate, default 0.95) by a pseudo-count. **Edge = predicted_probability − ask** (the ask is the market's implied probability). A cell that historically underperforms its price yields predicted < ask → negative edge. No LLM — pure arithmetic over the ledger; degrades to the prior with no history.
-  - **EV + quality gates (OPT-IN, default OFF)** — `race_min_edge` filters sub-edge outcomes; `race_min_quality_score` filters low `quality_score` (0–100 blend of edge / volume-vs-`preferred_volume` / resolution clarity / historical category & price-bucket ROI). Both **default 0 (off)** and are 0 in the profiles — they need realized history to calibrate, so enabling them on a fresh bot would starve it (the spec's own "no decisions before data" rule). `_run_race_tick` builds the calibration context per tick (fail-open) and `_build_eligible_candidates` applies the gates when enabled.
-  - **Dashboard analytics** — `pmbot journal-stats` gains `by_v4_price_bucket` (0.80-0.85 … 0.94-0.96), and `v4_performance` with Sharpe ratio, profit factor, max drawdown, ROI, and the **promotion gate** (`promotion_status`: scale only after ≥ 500 trades AND ROI ≥ 5%).
-  - New knobs `race_min_edge` / `race_min_quality_score` / `race_forecast_prior` / `race_forecast_pseudo_count` / `race_preferred_volume_usd` / `race_promotion_min_trades` / `race_promotion_min_roi`. `tests/test_forecast.py` (14 tests). **Per user 2026-06-21 the daily/weekly drawdown halts + large-loss pause were intentionally NOT built.**
-
-- **v4 production config — Phase 2 (part 1): data-driven category auto-disable** (user 2026-06-21, "go phase 2"). New `polymarket_bot/categories.py` — the governance that makes `unban_all_markets` safe by replacing manual bans with data:
-  - `classify_category(question, slug)` buckets every market into one of the v4 categories (politics, economics, crypto, ufc, golf, soccer, sports, entertainment, other) via ordered, collision-safe regexes.
-  - `category_stats(records)` computes per-category trades / wins / losses / win-rate / total_pnl / total_cost / **ROI** (= pnl / cost) / avg_pnl from the realized ledger.
-  - `disabled_categories(records, min_samples, roi_threshold)` returns the categories to drop: ≥ `min_samples` (100) realized trades **and** ROI < `roi_threshold` (−5%). Forward-looking — a fresh bot disables nothing; `other` is never auto-disabled.
-  - `_run_race_tick` computes the disabled set from the realized ledger each tick (fail-open) and `_build_eligible_candidates` drops auto-disabled categories at entry selection. New knobs `race_category_min_samples` (100) / `race_category_disable_roi` (−0.05) in both profiles.
-  - `pmbot journal-stats` gains a `by_v4_category` breakdown (the same ROI signal the auto-disable acts on). New `tests/test_categories.py` (classification, ROI, sample-floor, the gate). **Still pending in Phase 2: price-bucket analytics, daily/weekly drawdown + large-loss pause, dashboard, and the forecasting model behind the EV / quality-score / Sharpe / promotion gates.**
-
-- **v4 production config — Phase 1: fixed-dollar sizing, tighter band, unban flag** (user 2026-06-21, "Polymarket Bot v4"). The first slice of the v4 rewrite, optimizing for capital preservation / low drawdown over win-rate or volume:
-  - **Fixed $5 position sizing** (`race_fixed_stake_usd`): when > 0 every entry stakes EXACTLY that many USD — no Kelly, no % of equity, no martingale, no averaging/double-down, no confidence scaling, no dynamic spread. `_position_cap_usd`, `_entry_cap_usd`, and `_dynamic_stake_target` all short-circuit to the flat amount (capped only by available cash), so the bankroll fully deploys across `bankroll / 5` positions and worst single-trade loss is $5. Double-down disabled in both profiles.
-  - **Entry band 0.80–0.94 with a 0.96 hard cap** (`race_max_price_hard_cap`): the absolute ceiling clamps the entry ask regardless of `max_price`, so 0.97/0.98/0.99 are never tradeable.
-  - **Liquidity floors**: min liquidity $250, min 24 h volume $1000.
-  - **`unban_all_markets` flag**: when on, `is_excluded_market` is bypassed at entry selection — every category is allowed, governed instead by the (Phase 2) data-driven category auto-disable; per-trade risk is bounded by the $5 stake. Set true in both grinder profiles.
-  - Both `grinder.toml` and `grinder_b.toml` updated; new `V4ConfigTests` pin fixed sizing, the hard cap, the band, the unban bypass, and the liquidity floors. **Phase 2 (next): category tracking + auto-disable, price-bucket analytics, daily/weekly drawdown + large-loss pause, rich trade logging + dashboard, and the forecasting model driving the EV / minimum-edge / quality-score / Sharpe / promotion gates.**
-
-- **Esports banned outright on all bots** (user 2026-06-19: "remove completely esports bets from bot 1 2 3 — no counter strike no league of legends LoL etc"). `is_excluded_market` now rejects every esports market via `is_esports_text` regardless of title, live status, or ask — the LoL-only-while-live carve-out (2026-06-12) is removed. Dropped the now-dead `_ESPORTS_ALLOWED_*` lists, `_esports_game_is_live`/`_parse_market_dt`, `_ESPORTS_LIVE_MAX_HOURS`, and the `ESPORTS_MIN_ASK` per-lane entry floor in `race_strategies._build_eligible_candidates` (esports markets never reach candidate selection now). Tests updated: `test_esports_banned_outright_even_lol_live`, `test_every_esports_title_banned_outright`, `test_esports_never_produces_a_candidate` (replacing the live-only/LoL-qualifies/fast-lane-floor tests).
-
-- **Kelly position sizing — near-full-Kelly, aggressive** (user 2026-06-18: "10% isn't enough to make significant money"). Derived the growth-optimal bet fraction from the realized distribution: for win rate p≈0.97, gain b≈8.4%, worst-case total loss a≈1.0, two-point Kelly `f* = (p·b − q·a)/(a·b) ≈ 0.35` (the empirical 304%/98% figures are artifacts of the mean-loss approximation and an undersampled −100% tail — survival, not the empirical peak, is the constraint). Key structural insight: the binding lever is the ENTRY size, not the cap — at a 97% win rate most winners never dip, so they ride at `initial_stake_pct`; the cap is only reached via the dip double-down. So `initial_stake_pct` 0.05 → **0.20** (entries open at 20% of equity, ~4× the prior compounding) and `stake_pct` 0.15 → **0.35** (hard cap / double-down ceiling). Worst single total loss −20% (entry) / −35% (doubled). The self-tuner's `race.stake_pct` clamp was widened (0.05, 0.15) → (0.05, 0.35) so the daily loop can't drag it back down; `initial_stake_pct` stays frozen (outside `TUNABLE`). Both profiles updated; full Kelly derivation added to `docs/STRATEGIES.md`.
-
-- **Daily end-of-day self-learning sidecar** (`scripts/daily_self_improve.sh`, user 2026-06-17: "auto analyse at the end of the day … make adjustment … as part of the main script I run every day … use claude code cli … as a try catch"). The launchers (`run_live_70.sh`, `run_live_b.sh`) now spawn it as a process-group sidecar. Once per day after `DAILY_SELF_IMPROVE_HOUR` (default 23:00 local) it (1) writes a deterministic **end-of-day analysis** — `auto_improve.py --analyze-only` now emits all-time/today/7-day P&L, the win/loss asymmetry, a per-category breakdown, and the 5 worst trades — then (2) runs the existing **fenced Claude self-tuner**. Hard safety: the whole sidecar is wrapped (`set +e` + try/catch) so it can **never crash or stall the live trade loop**; it runs at most once/day (`data/.last_self_improve`); it **always restores the git branch** so the live repo is never left on an auto/ branch (the running bot keeps its loaded code — a tuned config only applies on the next manual restart); all the tuner's fences stay intact (EXIT/SIZING only, entry FROZEN, no stop-loss ever, tests + CI gated, only `grinder.toml` writable). Toggle `DAILY_SELF_IMPROVE=0`.
-
-- **Soccer-moneyline gap fix: 0.92 entry floor + SL anti-gap guard** (user 2026-06-17, after Difaâ El Jadida). We held **"No"** on "Will Difaâ Hassani El Jadida win on 2026-06-17?" at entry 0.8949. Difaâ scored early → our "No" crashed → the confirmed −30% SL fired and **sold the bottom at 0.02 (−97.8%)** — then Maghreb AS de Fès won, so "No" **resolved to 1.0**. Gamma confirms it: Yes=0, No=1. A +$2.55 winner was booked as a −$21.25 loss. Two fixes: (1) **entry floor `SOCCER_MONEYLINE_MIN_ASK = 0.92`** on soccer/sport "Will <X> win on <date>?" moneylines (both Yes and No sides, `_is_soccer_moneyline_text`) — EVERY moneyline loss in the realized history entered at ≤ 0.90; the 0.90+ band is 29 trades with zero losses. (2) **`race_sl_min_exit_price = 0.50` anti-gap guard** — the confirmed SL only executes while the live bid is still ≥ 0.50 (orderly decline); a bid that has gapped below it is a goal-crash that mean-reverts → HOLD to on-chain resolution instead of dumping. New `SoccerMoneylineEntryFloorTests` and `SoccerMoneylineAntiGapSLTests`; the esports-floor test's "non-lane" example switched from a "Will France win" moneyline (now floored) to a first-to-score market.
-
-- **Stop-loss raised to −30% and the gate broadened to all sport moneylines** (user 2026-06-16: "I thought we agreed we would use stop losses for games like this at −30%?"). América FC ("Will América FC win on 2026-06-16?", No) rode **0.88 → 0.30 (~−66%) with no SL** and was sold manually for a ~$22 loss. Root cause: `_is_soccer_moneyline_position` required the slug to contain one of ~20 hardcoded league keywords — América's slug had none, so the gate returned `False` and dropped SL protection. Fixed two ways: (1) `sl_pct` **0.25 → 0.30** in both `grinder.toml` and `grinder_b.toml`; (2) the gate is now an **exclusion model** — it trusts the "Will <X> win on YYYY-MM-DD?" Yes/No regex and returns `True` *unless* the question/slug carries a politics/election keyword (election, primary, governor, senate, president, mayor, nominee, congress, parliament, referendum, ballot, caucus, approval) or an award keyword. So any soccer club / national team is covered regardless of league, while date-phrased elections still ride to resolution and never stop out. New `SoccerMoneylineSLGateTests` pin the América case (covered), elections/awards (excluded), and non-moneyline/non-Yes-No (excluded).
-
-- **"What will be said" markets banned outright** (user 2026-06-18: a bot bought 'Will the announcers say "Golden Boot" during the Canada vs Qatar FIFA World Cup Match?' — "never bet about what something will say"). New `_SPEECH_MARKET_RE` in `models.is_excluded_market` rejects any market whose question/slug contains word-bounded `say/says/said/saying/mention(s/ed)/utter(s/ed)` across every lane. Bets on whether a commentator/announcer/person will utter a given word or phrase are pure linguistic coin-flips with no convergence edge. Word-bounded so it can't collide with "essay"/"naysayer". Tests: `test_speech_markets_banned`, `test_speech_market_regex_no_false_positives`.
-
-- **Macro / central-bank interest-rate markets banned outright** (user 2026-06-16: "why do we have a bet on the Fed rate by September? too far away — we only want stuff expiring in 4-6h max"). New `_MACRO_RATE_RE` in `models.is_excluded_market` rejects Fed/FOMC, ECB, BoE/BoJ, Bank of Brazil Selic, and any "rate cut/hike/decision · interest rate · (raise|cut|hold|lower|hike) rates · basis points · rate by|after|before" market across every lane. These resolve weeks-to-months out and can never satisfy the ≤4h grinder window; one ("Fed rate cut by September 2026 meeting?") had slipped into the wallet via live-position sync and was sold manually. Word-bounded so it can't collide with "win rates"/"accurate". Tests: `test_macro_central_bank_rate_markets_excluded`, `test_macro_rate_regex_no_false_positives`.
-
-- **Bot 2 — copy-trading lane (`smart_b.toml`) with TWO triggers, grinder frozen on bots 1 & 3** (user 2026-06-15): bot 2 now runs a *different* strategy from the grinder, with **both** copy triggers active at once:
-  1. **Cohort consensus** — mirror PUBLIC order-flow when ≥2 persistently-profitable leaderboard wallets buy the same token in a short window (cohort sells → sell). Reuses the existing `smart_money_once` engine (`mode = "smart_money"`).
-  2. **Whale single-bet** — copy ANY single wallet's buy on a token once its flow in the lookback window reaches `smart_whale_min_usdc` (**$50k**), leaderboard membership NOT required. New `fetch_whale_signals` watches the GLOBAL `/trades` feed (no user filter) via a new `DataApiClient.recent_trades`, aggregates per (wallet, token), and emits consensus-1 `source="whale"` signals — intersected with the already-vetted eligible universe so exclusions/crypto-ban/spread/liquidity still apply. Whales are prioritised within the per-tick budget. New `whale_copy` profile section + `smart_whale_*` knobs (OFF by default; only `smart_b.toml` enables it). `test_whale_copy.py` covers threshold/aggregation/eligible-intersection/largest-wallet.
-
-  Follow-up fixes (2026-06-15, after first live run): (a) **`book_too_thin` no longer aborts the tick** — a thin/empty book on one copied signal now skips that opportunity (added to `_is_unfilled_market_order_error`) instead of erroring the whole tick; (b) **whale fetch no longer 408s** — probing the live data-api showed the `start` param on a global (no-user) query forces an expensive scan and times out, and the global feed has no `usdcSize` field, so `recent_trades` now applies the time cutoff + ≥`min_usdc` (computed as `size*price`) **client-side** and sends neither `start` nor the non-functional `filterAmount`. Verified live: 0.4s, caught a real $108k buy.
-
-  Per-BUY Telegram alert with the **reason** (user 2026-06-15): `run_live_copy_b.sh` turns on `TELEGRAM_ALERT_TRADES_BUY`, and `notify_trade_buy` now renders a `💡 _why_` line carrying the strategy's `selection_reason` (the copy-consensus / whale text), threaded through from `execute_live_trade`. Truncated to 280 chars. So every copy/whale buy posts what triggered it.
-
-  Ships as bot 2's **own profile file** + launcher (`scripts/run_live_copy_b.sh`) so it can never affect the grinder bots — `grinder_b.toml` (bot 3) is untouched. Tuned for high capital utilisation **without force-trading** ("no idle cash" the safe way): broad cohort (top 100 across DAY/WEEK/MONTH), 72 h discovery horizon, small per-position caps (6%, ceiling 8%), 4 orders/tick — but `min_open_positions = 0` and the relaxed/deep/noise fallbacks are OFF, because forcing deployment by loosening consensus is the documented crypto-coinflip money-loser. Cohort-exit mirroring on. New `CopyLaneProfileTests` pin the never-force-trade, whale-trigger, and bot-3-isolation invariants.
-- **Dynamic take-profit floored above entry** (user 2026-06-15): the resolved-exit threshold is now per-position — `min(0.99, max(resolved_exit_threshold, entry + race_min_profit_margin))` (margin 0.02). A high-entry favorite (e.g. Cabo Verde at 0.97) must clear **0.99** to sell, never exiting at break-even; a normal 0.87 entry still exits at the global 0.97. Above 0.99 it rides to on-chain settlement at 1.00. Applied in both `_execute_race_exits` and the winners-only sweep (`_force_close_resolved_positions`), so neither can close a position for ~zero profit. New `race_min_profit_margin` knob; regression tests for high-entry (0.97→0.99) and low-entry (0.87→0.97).
-- **Initial-entry size below the hard cap, so the double-down has room** (user 2026-06-14): new `race_initial_stake_pct` (5% in both profiles) sizes a FRESH entry — and any passive top-up — to 5% of equity, reserving the headroom up to the 10% hard cap (`race_stake_pct`) for the dip double-down to fill. Without this, opportunity-spread sizing put every bet straight at the 10% cap on a small bankroll, leaving the double-down $0 of room (it could never fire). `_entry_cap_usd` (entries/passive top-ups) vs `_position_cap_usd` (hard cap / double-down ceiling); `initial_stake_pct = 0` or ≥ cap restores the old single-cap behavior.
-- **Redemption watchdog in the RAPPORT LIVE** (user 2026-06-12): resolved positions with real money still awaiting payout (`redeemable: true`, value ≥ $1, losing-side dust ignored) get their own `💰 GAINS RÉSOLUS EN ATTENTE DE PAIEMENT` section. Polymarket auto-redeems winners, so the section is empty in normal operation — when something does linger (the event page is already delisted, so the report is the only place it stays visible), the operator sees it every cycle with a pointer to polymarket.com/portfolio. On-chain self-redemption was deliberately NOT wired into the loop: the SDK has no redeem support and signature-type-3 proxy wallets would need raw transactions through the undocumented relayer.
-- **Esports + stocks conditionally re-allowed — "ongoing only"** (user rule 2026-06-12, replacing the blanket bans): **esports** markets are tradeable ONLY while the game is in progress (`gameStartTime` in the past, within 8 h; pre-game or unknown start stays excluded) and **stock/index markets** ONLY during the ongoing regular NYSE session (Mon–Fri 09:30–16:00 ET) for that day's close (`endDate` within 12 h; overnight, weekends, and multi-day stock bets stay excluded). `is_excluded_market` gains a `now` parameter; all detection patterns unchanged. Test-pinned: live LoL game allowed, pre-game/stale/unknown banned; in-session same-day AAPL allowed, after-hours/pre-open/weekend/multi-day/no-endDate banned.
-- **Entry-window ladder extended — 24 h rung + daily-expiry fallback** (user rule 2026-06-12): after 4 → 6 → 8 → 10 → 12 the ladder now jumps to **24 h** (`max_hours_cap` 12 → 24), and when even 24 h has nothing actionable a final rung reaches the **end of tomorrow (UTC)** so daily markets ("Will X be Y on <date>?", stamped midnight UTC like the Trump-approval one) stay reachable (new `race_daily_expiry_fallback`, profile key `daily_expiry_fallback`, frozen against the self-tuner). Narrowest-window preference unchanged.
-- **RAPPORT LIVE — open positions sorted by expiry + real end info** (user request 2026-06-11, fixed same day): `POSITIONS OUVERTES` lists positions soonest-to-resolve first and each line shows when it ends. First version rendered Gamma's midnight-UTC date-only stamps as a fabricated clock time ("10/06 20:00 ET" for a game kicking off the next afternoon). Now: **sports show the kickoff** from `gameStartTime` (`🏟 Coup d'envoi : 14:00 ET (dans 2h)` / `Match en cours` / `Match terminé — résolution en cours`), timed end dates show the exact ET time + countdown, and **date-only stamps show the date alone** (`📅 Expire le 12/06 (heure exacte non publiée)`). Metadata comes from one batched Gamma reverse-lookup per report (fail-open). Sports sort by kickoff; date-only by end of that day; unknown last.
-- **Stock market / equities banned** (user rule 2026-06-11): `is_excluded_market` now blocks indices & ETFs (S&P 500/SPY, Nasdaq/QQQ, Dow/DJIA, Russell, Nikkei, FTSE, DAX), big-cap tickers and company names (GOOGL/Google, AAPL/Apple, TSLA/Tesla, NVDA/Nvidia, MSFT/Microsoft, AMZN/Amazon, META, NFLX/Netflix, AMD, INTC), generic equity terms ("stock market/price", "share price", "market cap", "wall street"), and the `closes above/below $X` price-threshold pattern. Short tickers are matched with a word-bounded regex (`_STOCK_MARKET_RE`) so "spy" never bans a spying scandal and "meta" never bans a metal band — both pinned by tests. The grinder had bought "S&P 500 (SPY) closes above $725" on 2026-06-10.
-- **Dynamic entry window — 4 h preferred, 12 h max**: the entry scan prefers markets closing within **4 h**; when that window has no actionable candidate it widens in 2 h steps (4 → 6 → 8 → 10) and stops at the **12 h cap** (`race_max_hours = 4.0`, new `race_max_hours_cap = 12.0`, ladder in `_entry_window_ladder`; cap ≤ base or 0 disables the ladder). The Gamma load always covers the cap so held positions beyond the base window keep being marked, exited, and swept. `max_hours_cap` is registered in the profile loader and added to the self-tuner's frozen-entry audit.
-- **One bet per game + soccer under-4.5 priority**: same-event candidates collapse to a single pick before selection (`_dedup_same_event`): for soccer the **under-4.5-goals** market wins over everything else in the event (moneyline, specials — pattern `O/U 4.5` + `Under`, the only O/U line the exclusions allow); otherwise the highest-bid candidate is kept. The in-loop `EVENT_EXPOSURE_CAP` drops 2 → **1**, closing the path where two same-tick picks from one event could both execute. Regression tests for the ladder, the dedup priority (both orderings), and the cap.
-
-- **Dynamic opportunity-spread sizing — 20% hard cap per bet**: `stake_pct` 0.30 → **0.20** in both profiles, and the per-bet target now spreads the available cash across the actionable opportunities (`cash/N`): a busy window funds every qualifying market instead of the first picks taking the full cap, while a slow market gives each bet the full 20%. The near-resolution boost (1.5× <30 min, 1.25× <1 h) scales the spread share but can never pierce the cap. The top-up cap follows `stake_pct`, so it tightens to 20% automatically (`_dynamic_stake_target` in `race_strategies.py`).
-- **`oneHourPriceChange` logged, NOT gated**: a 1h flux entry gate was added and removed the same day (2026-06-10) — user decision: recently-moving markets are often exactly the ones converging toward resolution and must stay tradeable. No 1h knob exists; the `one_hour_change` value is logged in the forward-observation net so its edge contribution can be measured, and a test pins that no `oneHourPriceChange` value can exclude a market.
-- **Top-up lane — depth-capped entries can be completed**: when a buy fills below its sizing target because the book was thin (e.g. $229 of a $379 PPI target), the market stays actionable and later ticks may buy more of the *same token*, averaging stake/shares/entry into the existing position. Hard bound: the position's total cost basis never exceeds the per-position cap (`equity × race_stake_pct`, ~30%, min'd with the ceilings when set) — the cap is what bounds the old "$45 → $4 in 22 ticks" averaging spiral that the blanket token-dedup used to prevent; with `race_stake_pct ≤ 0` top-ups stay disabled. Each top-up must re-pass all entry filters and the book-depth cap; it is exempt from the one-position-per-event guard (it grows that very position) and does not inflate the per-event exposure count.
-
-### Fixed
-
-- **CRITICAL: runaway duplicate orders on "delayed" in-play fills** (2026-06-15): an in-play BUY can return `status: "delayed"` (matching deferred) — success=true with an orderID but empty making/taking. The bot treated it as *not filled* (so no position recorded) but the order *did* settle on-chain, so `has_pending_token()` saw nothing and the bot **re-bought the same market every tick**, stacking duplicate orders until the wallet drained (live: ~$48 of duplicate "submission No" FOKs, $89 → $40, while the ledger showed one $4.30 position). Fix: an accepted-but-unfilled order in a *working* status (`delayed`/`live`/`pending`/`open`) is now recorded as a **pending order** so the dedup blocks the re-buy; `_sync_live_positions` promotes it to a real position once it settles and `_cancel_stale_pending_orders` (now run in the race tick) frees the token after the TTL if it never does. A killed FOK (`unmatched`) is still left unrecorded (safe to retry). Regression tests for delayed/live/killed.
-
-- **Entertainment / "Divertissement" markets banned** (user 2026-06-14): awards (academy award, best picture, grammy, emmy, golden globe, palme d'or, tony award), box office / rotten tomatoes, music charts (billboard, spotify, album, streams), streaming (netflix, tiktok), social metrics (subscribers, followers), and movie/film/celebrity — no convergence edge, they jump on hype. Name-collision-safe terms only (e.g. "academy award"/"best picture" not bare "oscar"). The audit confirmed only one entertainment market ever traded (the MrBeast view bet, already banned), so zero winners are lost; the strategy's actual winning lanes (moneylines, geopolitics, AI-model markets, golf, WNBA) are pinned tradeable.
-
-- **O/U 4.5 goal-total markets banned (data-driven)** (user 2026-06-14): a loss audit of the realized trades showed **O/U 4.5 Unders were 80% of all losses ($765 of $960)** and the three worst trades ever (Derry −$277, US-Paraguay −$266, FC Lahti −$194 — each bigger than total profit) — textbook gap risk (an Under at 0.94 craters to $0 on the goal that crosses the line). 4.5 was the only O/U line still allowed; now every O/U goal total (0.5–7.5) is banned. The dip double-down also skips excluded markets, so existing O/U 4.5 holds are never topped up.
-
-- **YouTube view/subscriber-count markets banned** (user 2026-06-14, after losing a MrBeast view-count bet): `is_excluded_market` now blocks `youtube`/`mrbeast`/`mr beast` titles and a word-bounded `\bviews\b` view-count rule — "reviews" and "interviews" stay tradeable (no word boundary before the 'v'), pinned by tests. View totals have no convergence signal and jump unpredictably.
-
-- **League of Ireland soccer banned** (user 2026-06-12): every Premier Division (Ireland) market carries the `irl1-` slug prefix — the whole championship is excluded (the question text has no league marker, so the slug is the identifier). Both live markets from tonight pinned as regression tests; other leagues' O/U 4.5 markets pinned as still tradeable.
-
-- **Stock market re-banned outright** (user 2026-06-12, ending the same-day in-session experiment): all equities/indices/ETFs/price-threshold markets are excluded again, always — the session gate, the same-day window, and the 0.90 stock entry floor are removed; every detection pattern (tickers, companies, generic `(TICKER) … $`, weekly/touch) stays and now feeds the unconditional ban. Esports (LoL-only, live, ≥0.92) unchanged.
-
-- **Esports narrowed to League of Legends ONLY + fast-lane entry floors** (user 2026-06-12, twice the same day): only LoL (`LoL:`) qualifies for the live-game lane — **Mobile Legends, Counter-Strike, Valorant, Dota, and every other title (incl. generic BO1/BO3/BO5 markers) are banned outright**, live or not (MLBB added to the recognition patterns; it previously matched nothing). **`Game Handicap:` / `Map Handicap:` markets banned outright** (the esports spread variant — "Game Handicap: HLE (-2.5) vs T1 (+2.5)" slipped past the `Spread:` pattern and was bought pre-game at 0.889). New per-lane entry floors: **esports ask ≥ 0.92, stocks ask ≥ 0.90** (`ESPORTS_MIN_ASK`/`STOCK_MIN_ASK` applied in `_build_eligible_candidates` on top of the global band). Test-pinned: live CS/Valorant/MLBB/unknown-BO3 banned, live LoL allowed, LoL at ask 0.90 rejected / 0.93 accepted, non-fast-lane keeps the 0.85 floor.
-
-- **Fast-lane winner exit at 0.98 — esports + stocks** (user 2026-06-12): in-play esports and in-session stock books rarely print a 0.99 bid before the market closes, so winners there sat unsold until settlement risk crept back in. Esports and stock positions (`is_fast_lane_text` on question/slug) now trigger the resolved exit at a live-book bid ≥ **0.98** and the winner floor accepts 0.98 for them; every other lane keeps the strict 0.99 rule (test-pinned both ways).
-
-- **Entry cap tightened to 12 h — nothing beyond, ever** (user 2026-06-12: "i need bets for today and max 4 6 8 12h"): `max_hours_cap` 24 → **12** in both profiles after the 24 h rung bought an overnight "Israel closes airspace by June 13" ~26 h before its end. Ladder: 4 → 6 → 8 → 10 → 12 and stops. A by-tomorrow market becomes tradeable only once it is within 12 h of its end (e.g. a June-13 daily from Saturday ~noon).
-
-- **Daily-expiry fallback OFF — nothing beyond 24 h, ever** (user 2026-06-12, same-day revert of the end-of-tomorrow rung): the fallback bought ~36 h holds (Trump approval Jun 12, Israel airspace Jun 12) that sat overnight against the "resolve fast" thesis. `daily_expiry_fallback = false` in both profiles; the ladder is 4 → 6 → 8 → 10 → 12 → 24 h and stops. The knob and code stay for explicit re-enabling.
-
-- **Tweet-count markets banned + stock-detection gaps closed** (2026-06-12): the bot bought "Will Elon Musk post 240-259 tweets from June 5 to June 12?" and "Will Airbnb, Inc. (ABNB) hit (LOW) $124 Week of June 8 2026?" on 2026-06-11 — tweet counts were never a banned category, and ABNB matched no stock pattern. Now: (1) any `tweet` market is banned outright; (2) `_STOCK_MARKET_RE` gains ABNB/Airbnb, UBER, Coinbase, PLTR, Robinhood/HOOD, plus a generic rule classifying any "(TICKER) … $" title as stock (the `$` requirement keeps "(GOP)" politics out); (3) **weekly "Week of" ranges and "hit (LOW)/(HIGH)" touch markets are banned outright**, session or not — a touch market can flip on any intraday print, there is no end-of-session convergence to ride. Both real markets pinned as regression tests.
-
-- **One game = one bet, across event slugs** (2026-06-11): the PR #48 dedup keyed on `event_slug`, but Polymarket files one game under several events — the Mexico–South Africa moneyline (`fifwc-mex-rsa-2026-06-11`), the O/U 4.5 (`…-more-markets`), and the first-to-score special (`…-first-to-score`) — so the bot stacked **$958 across three positions on one game** in a single tick. Games are now identified by the date-truncated event slug AND the team names parsed from the question (`_game_keys`): same-game candidates collapse to one pick (under 4.5 preferred for soccer), an open position on any market of a game blocks every other market of that game across ticks (`_open_game_keys`), and the execution loop rejects same-tick repeats (`same_game_already_bet`). Mexico-trio regression tests included.
-- **Auto-improve daily schedule disabled** (user request 2026-06-11): the 06:17 UTC cron is commented out in `.github/workflows/auto-improve.yml`; `workflow_dispatch` remains for manual runs.
-- **Winner floor — resolved winners sell at 0.99, period**: after the universal sweep printed 0.97/0.98 exits (Spurs/Knicks, Iran-airspace — both from a pre-restart process running code older than the sweep `max()` fix), the 0.99 rule is now structural instead of configuration-deep: (1) `execute_live_sell` refuses any `race_big_win_resolved` / `resolved_market_sweep_win` order priced below 0.99 (`winner_floor`), and the race exit holds the position instead of writing it off; (2) `_sweep_sell_live` clamps its order to exactly 0.99; (3) the offline self-tuner's bounds for `race.resolved_exit_threshold` are pinned to (0.99, 0.99) so an auto-merged tuning PR can never lower the winner exit again. Regression tests for all three.
-- **Trade journal now records `exit_price`**: `_append_trade_journal` never wrote the exit price, so every race exit landed as `exit: None` and the Telegram TRADES DU JOUR had to reconstruct the exit from the PnL. The realized price (stored in `current_price` by `record_live_exit`) is now journaled explicitly.
-- **Resolved-exit now reads the LIVE order book — stale quotes held winners past 0.99**: the exit decision used Gamma's flipped market-level quote and the data-API `curPrice`, both of which lag the CLOB near resolution. Seen live 2026-06-10 on all three bots: Israel-airspace No had a real 0.99 book bid while the exit loop saw 0.95 and the winner was never sold. `_execute_race_exits` now probes the live CLOB best bid per open position (`live_best_bid` in `trading.py`, fail-open to the cached price when the book is unavailable) and decides + prices the sell off it. `resolved_exit_threshold` was dropped to 0.98 in the same change, then **reverted to 0.99 hours later** (user decision): live inspection of the Iran-airspace book showed the displayed "98¢" is the midpoint — the executable bid was 0.966 — and a near-settled bet pays 1.00 on-chain, so selling at 0.98 gives up real cents for no benefit. Regression tests in `tests/test_strategy.py` (live-bid override fires at a real 0.99 bid, a 0.98 bid holds, fail-open probe holds).
-- **Winners-only sweep front-ran the 0.99 resolved-exit**: PR #29 raised `race_resolved_exit_threshold` to 0.99 but `_force_close_resolved_positions` kept its own `smart_resolved_exit_threshold` default of 0.97, so the sweep sold winners at 0.97 before the race exit could ride them to 0.99 (Spurs/Knicks O/U 196.5 on 2026-06-10, ~2¢/share left on the table). The sweep now uses the strictest configured threshold (`max` of both). Regression tests in `tests/test_resolved_sweep.py`.
-- **Ledger books the true fill, not the price guard**: a filled BUY is now recorded with the actual USDC spent (`makingAmount`) and the real average fill price (`making/taking`) instead of the requested stake and the ask+tick price guard. Booking the guard overstated the entry (PPI 2026-06-10: 0.954/$229.04 booked vs 0.9496/$228.51 real), skewing the −25% SL trigger, the never-sell-below-entry floor, and the share count. Falls back to the request values when the response lacks fill fields.
-- **FOK buys no longer bounce on thin books — stake capped to executable depth**: an all-in stake larger than the ask-side liquidity within the price guard made the exchange kill the entire FOK order (`FOK orders are fully filled or killed`), so the bot bought *nothing* — seen live 2026-06-10 when a $380.89 PPI buy bounced while the smaller bots filled instantly. `execute_live_trade` now reads the CLOB book and caps the stake at 90% of the executable ask depth (≤ max price guard) before sending; if even the minimum order can't be covered it rejects with `book_too_thin` and no order is sent. Fail-open when the book is unavailable. The remainder of the cash stays free for other markets (token-level dedup intentionally blocks averaging in later).
-- **Already-held markets no longer burn pick slots**: the grinder selector returned only the top `race_max_orders_per_tick` candidates by score, *then* the execution loop skipped duplicates — so when the soonest-closing markets were lines on an event already held, every pick slot was wasted on guaranteed skips and the next-ranked actionable market was never attempted. Seen live 2026-06-10: four Spurs/Knicks O/U lines filled all 4 slots tick after tick while the 5th-ranked PPI market (taken immediately by the other bots) was never tried. Candidates whose token is open, whose order is pending, or whose event is already held are now filtered out *before* selection (`_actionable_candidates` in `race_strategies.py`); the in-loop guards remain as a safety net. Regression test in `tests/test_strategy.py`.
-- **Gamma scans now paginate past the API's silent 100-row cap** (#30): the Gamma `/markets` endpoint truncates every response to 100 rows regardless of the requested `limit`, so every `scan_limit` above 100 was an illusion — the grinder scan saw ≤200 unique markets of the ~1,900 closing within its window (the 100 soonest-closing + the 100 highest-volume). `GammaClient.get_markets` now walks pages of 100 with `offset`, deduplicates by market id across pages, stops on a short page, and treats `limit` as a client-side ceiling. A page failure after the first returns the partial result instead of discarding it. All scan lanes benefit; exclusions (crypto, esports, …) are unchanged and still applied downstream.
-
-## [2.2.0] - 2026-06-10
-
-Winners ride to 0.99, the live report shows every full-size trade again, and the esports ban is airtight.
-
-### Fixed
-
-- **Esports ban gap — `LoL:` titles slipped through**: Polymarket titles League of Legends markets `LoL: <team> vs <team> - Game N Winner`, which matched neither `league of legends` nor any other esports pattern; the bot bought $351 of `LoL: FENNEL vs KT Rolster` on 2026-06-10. Added `lol:` (question) and `lol-` (slug) to `is_excluded_market`, with unit tests for the esports ban.
-- **LIVE REPORT — big wins missing from `TRADES DU JOUR`**: `load_todays_trades` dropped every closed trade with `cost_basis > $100` (a 2026-06-01 guard against swept wallet-level positions, added when the bankroll was ~$50). With percentage sizing the normal stake is now ~$350, so all full-size wins (Nigeria, Málaga–Las Palmas, Orebro on 2026-06-10) silently vanished from the report and from `Gains du jour`. The dollar cap is removed; dedup + tracking-start filtering already cover the original problem. Regression test in `tests/test_live_analyst.py`.
-
-### Changed
-
-- **Bot 2 reverted to the grinder strategy — copy lane removed** (user 2026-06-16): bot 2 no longer runs the whale copy-trading lane; it runs the same grinder strategy/controls as bot 1 (`grinder_b.toml`, identical to `grinder.toml` apart from the per-machine bankroll baseline, via `run_live_b.sh`). Removed the copy-only artifacts: `scripts/run_live_copy_b.sh`, `configs/profiles/smart_b.toml`, and the `CopyLaneProfileTests`. The dormant `smart_whale_*` config keys remain (default-off, used by no profile).
-
-- **Per-bet cap 10% → 15%** (user 2026-06-14): `stake_pct` 0.10 → **0.15** in both profiles to size up at the 89% live win rate; fresh entries still open at the 5% `initial_stake_pct`, so the dip double-down now has headroom to fill toward 15%. Self-tuner `race.stake_pct` upper bound raised (0.05, 0.10) → (0.05, 0.15).
-
-- **Dip double-down now gated by a 0.60 "alive" floor, not an 8¢ max-dip** (user 2026-06-14, Sweden-Tunisia Under): the double-down fires whenever a held position's ask has dipped below entry AND is still ≥ `race_double_down_min_price` (0.60) — the deterministic proxy for "the bet is still going well / few goals" (the bot has no live-score feed). The old `max_dip` (8¢) cap and the 0.85 band floor are replaced by the single 0.60 alive-floor; below it the bet has turned and is never topped up. Still once per position, never past the 10% cap.
-
-- **Entry window = game starts OR market closes within 4h** (user 2026-06-14): `_build_eligible_candidates` now keeps a market only when its `gameStartTime` is within the next `max_hours` OR its `endDate` is — a game already in progress that doesn't close inside the window is dropped. The dynamic widening ladder stays disabled (`max_hours_cap=0`).
-
-- **Resolved-exit / winner floor reverted to 0.97** (user 2026-06-14, "sell at 0.97 as we had before"): `resolved_exit_threshold` 0.99 → **0.97** in both profiles; the `execute_live_sell` winner floor, the `_sweep_sell_live` clamp, and the self-tuner pin all move to 0.97 (one flat floor — the 0.99 + 0.98-fast-lane scheme is gone). The live-book bid probe is unchanged.
-
-- **Soccer under-4.5 priority dropped** (user 2026-06-14): the one-bet-per-game dedup (`_dedup_same_game`) no longer prefers the under-4.5-goals market — it simply keeps the single highest-bid (most-resolved) candidate per game, like every other sport. One bet per game is unchanged. Dead `_is_under_45_candidate`/`_UNDER_45_RE` removed.
-
-- **Per-bet cap 20% → 10% + entry window hard-capped at 4h** (user 2026-06-14): `stake_pct` 0.20 → **0.10** in both profiles (the self-tuner's `race.stake_pct` upper bound is pinned to 0.10 so an auto-PR can never raise it back); and `max_hours_cap` → **0**, which makes `_entry_window_ladder` return a single `[4h]` rung — the 6/8/10/12h widening is OFF and nothing beyond 4h is ever scanned or entered.
-
-- **Resolved-exit raised 0.97 → 0.99** (`resolved_exit_threshold` in both `grinder.toml` and `grinder_b.toml`) — winners ride closer to settlement before the bot realizes them; the winners-only sweep follows the same threshold. Fallback to 0.98 if 0.99 rarely fills before resolution.
-- **LIVE REPORT — `POSITIONS OUVERTES`**: each open position now shows a 🟢/🔴 light (winning vs. losing on unrealized P&L) and a **`▶️ Voir le match`** link to the Polymarket event page (`eventSlug` from the Data API). The section header carries the **overall unrealized P&L** (`🟢/🔴 ±$X`) next to the count.
-
-## [2.1.0] - 2026-06-09
-
-Grinder hardening: real risk controls + safer exits, crypto/esports banned, per-bot resets, and a documentation pass.
-
-### Added
-
-- **Controlled stop-loss** (`race_stop_loss_confirmed`): sells at **−25%** only after the loss persists for **3 consecutive ticks** (`sl_pct`, `sl_confirm_ticks`), so a one-tick thin-book phantom bid can never dump a winner. It is the only path exempt from the never-sell-below-entry floor.
-- **Never-sell-below-entry floor** in `execute_live_sell` — every exit except the confirmed SL holds a losing position to natural on-chain resolution.
-- **Per-machine baseline** (`data/starting_cash.txt`, gitignored) so each of the 3 bots keeps its own report baseline without touching the shared profile; read by `live_analyst` and the Telegram all-time line.
-- **`scripts/fresh_start.py`** — reset that wipes closed-trade history but **keeps open trades** (re-synced on start) and sets the per-machine baseline.
-
-### Changed
-
-- **All crypto banned** (bitcoin/btc/ethereum/solana/dogecoin/xrp/… + Up/Down) and **esports banned** (CS/valorant/LoL/dota/… + BO1/BO3/BO5) in `is_excluded_market`. `btc_edge` lane disabled.
-- **Daily drawdown halt disabled** across all launchers (`POLYMARKET_RACE_DAILY_DRAWDOWN_PCT=0`) — the per-trade confirmed SL is the risk control.
-- **LIVE REPORT trimmed**: equity, P&L since start, **total trades + win rate**, open positions — no per-trade lists, no `💓 Bilan` heartbeat, no BUY/SELL alerts. All-time P&L is now **equity − baseline** (not realized-from-entry), so a re-based account never shows phantom losses. Cadence configurable via `LIVE_ANALYST_CYCLE_SECONDS` (startup + interval + daily 10:00 ET).
-- Documentation rewritten to match the live strategy (`README.md`, `CLAUDE.md`, `.claude/skills/polymarket-bot/SKILL.md`).
-
-### Fixed
-
-- **Expiry no longer force-closes a still-open market** — confirms via a live lookup and uses `gameStartTime` (Gamma `endDate` is often set before kickoff), so winning favorites are no longer dumped pre-game. Genuinely-resolved losers are written off locally ~8 h after expiry, no order.
-- Removed the **EOD flatten** and the **loss-sweep** that dumped winning Unders at $0.01–$0.46 on thin live-game books; the universal sweep now realizes **winners only** (≥ 0.97).
-
-## [2.0.0] - 2026-06-05
-
-Official "Grinder V1" release. Heavy-favorite, ride-to-resolution strategy with a deterministic live trade path.
-
-### Added
-
-- **Autonomous self-improvement engine** (`scripts/auto_improve.py` + `.github/workflows/auto-improve.yml`): opt-in loop that uses the Claude Code CLI to tune the live strategy's **exit/sizing** knobs and ship the change as an auto-merged PR. Entry/bet-selection is frozen and a stop-loss can never be introduced; gated by the unit-test suite and green CI. Off by default. See `docs/AUTONOMY.md`.
-- **Hourly LIVE REPORT** (`scripts/live_analyst.py`): per-bot Telegram report on startup, every 1 h, and a daily 10:00 ET fire. Shows equity since start, every closed trade with **entry → sell prices**, and open positions. French localisation with UTF-8-safe translation.
-- Three-bot live deployment (Grinder Bot 1/2/3), each with its own wallet, ledger, and scoped analyst.
-
-### Changed
-
-- Entry band widened to **0.85–0.97**; `resolved_exit_threshold` held at **0.97**.
-- Per-bot all-time baselines re-based after manual deposits; "depuis le début" % now reflects deposited capital.
-- Documentation refreshed (`README.md`, `CHANGELOG.md`) to match the live config.
-
-### Fixed
-
-- French accents no longer mojibake on Telegram (force UTF-8 decode of the translation CLI output — fixes Windows cp1252 hosts).
-
-## [1.5.0] - 2026-05-28
-
-Grinder strategy tuning: faster exits, bigger wins per trade, more opportunities per tick.
-
-### Changed
-
-- `resolved_exit_threshold` 0.99 → **0.97** — exits positions as the market trends toward resolution, eliminating `race_expired_close` outcomes on markets that close without ever printing 0.99.
-- `tp_pct` 0.06 → **0.07** — larger take-profit for entries in the lower band (≤ 0.906) where the TP fires before the resolved exit.
-- `max_orders_per_tick` 1 → **2** — deploys both 50%-stake slots in a single tick when two eligible markets exist simultaneously.
-- `max_hours` 3.0 → **4.0** — pushes the time-to-close window to the 4h-only rule limit for more eligible markets per tick.
-- `max_hold_hours` 3.5 → **4.5** — backstop aligned with the widened entry window.
-- Docs overhaul: README, STRATEGIES.md, AGENTS.md, SECURITY.md, CONTRIBUTING.md, and both SKILL files updated to reflect the grinder-only live stack and current config values.
-
-## [1.4.0] - 2026-05-24
-
-Fresh leaderboard restart: restored all archived profiles, auto-discover launcher, bash 3.2 compat fix, lenient kill thresholds.
-
-### Added
-
-- Restored 88 previously-archived profiles from `configs/profiles/_archived/` back to active — 95 total profiles in the dry race.
-- `scripts/run_all.sh` and `scripts/run_both_dry.sh` now auto-discover all `configs/profiles/*.toml` instead of a hardcoded list of ~9–50. Skips special profiles (`copy-wallet`, `live-90`).
-- Bash 3.2 (macOS default) compatibility: replaced `mapfile` with POSIX `for` loop in both launcher scripts.
-
-### Changed
-
-- Analyst kill thresholds (`scripts/dry_analyst.py`) relaxed to let strategies build longer track records before being culled:
-  - `KILL_AUTO_MIN_TRADES`: 8 → 25, `KILL_HUMAN_MIN_TRADES`: 20 → 50
-  - `KILL_ROI_THRESHOLD`: -10% → -25%, `KILL_WR_THRESHOLD`: 40% → 30%
-  - `KILL_EQUITY_FLOOR_PCT`: 50% → 30%
-
-### Fixed
-
-- `scripts/run_all.sh` silently launched 0 dry bots on macOS because `mapfile` is a bash 4+ feature and macOS ships bash 3.2. Replaced with a POSIX-compatible array append loop.
-
-## [1.3.0] - 2026-05-16
-
-Operational release: shared HTTP cache, unified live+dry launcher, live profile switched to `whale_entry_detection` on a $45 bankroll. No public-API breakage.
-
-### Added
-
-- `scripts/run_all.sh` — single launcher that pre-warms the HTTP cache, boots the live bot (`whale_entry_detection`), launches auto-discovered dry profiles (now 95 via glob, was ~50 curated) at a 10min tick, spawns the dry-analyst + live-analyst + leaderboard sidecars, and runs a background cache re-warmer every 8 min so live + dry never hit a cold cache.
-- `scripts/cache_warmer.py` — pre-fetches leaderboards (3 windows × 8 categories × 4 limits) and the top wallets' recent trade histories into `data/cache/http/`. Used both at startup and periodically by the re-warm loop.
-- Shared HTTP cache in `polymarket_bot/smart_money.py:_get_json` — sha1-keyed disk cache at `data/cache/http/` with a 600s TTL (override via `POLYMARKET_HTTP_CACHE_TTL_SECONDS`). Drops the API load of a 50-bot swarm from ~2,500 calls/min to ~33.
-- `scripts/winner_consistency.py` — sliding-window analyzer (30min windows over 8h lookback) for ranking strategies window-by-window.
-- `scripts/live_analyst.py` — executive-summary live report sidecar (30 min interval): open positions w/ entry→current→PnL, top closed trades, dry-twin comparison, dry top 5 with a star marker on the live profile.
-
-### Changed
-
-- Live profile switched to `whale_entry_detection` (race mode, no leaderboard fetch — immune to data-api 429s).
-- Live bankroll = $45 USDC. Sizing: 10% per trade (~$4.50 base), max position $9, 3 min open positions, 5% cash floor, 4h hard cap. Exits: TP +25% / SL -25% / resolved at bid ≥0.97 / near-expiry flush at 5min.
-- Dry race trimmed from "all 195 profiles" to ~50 curated representatives covering every thesis family. (Replaced in 1.4.0 by auto-discover of all 95 restored profiles.)
-- Dry bots are silent on Telegram BUY/SELL alerts via per-subshell env vars in `run_dry_bot()` — only the live bot speaks.
-- Live analyst now exports `POLYMARKET_PROFILE_LABEL` BEFORE the sidecar spawns (it previously logged `(unknown)` in reports).
-- Dry-analyst `_pick_favorite` says "Top of N profitable strategies" when N > 1 (was always "Only profitable", which lied when several were positive).
-
-### Fixed
-
-- `live_available_balance` fallback was returning a stale `$29.90` from `assume` when the pUSD RPC failed, even after real cash had been spent on live BUYs. Now reads ledger cash and caps by `assume - sum(open_positions_cost)`. RPC-failure log throttled to once per 5 min.
-- Per-position sizing: `ceiling = max(ceiling_usd, total_equity * pct)` was unconditionally `max(...)` — allowed a $25 BUY on a $29.90 bankroll. Now defended in the profile via `max_position_ceiling_usd` + `max_trade_usd` absolute cap.
-- Telegram leaderboard rendering: removed all `_md_escape` calls and `\\!` MarkdownV2 literals; plain text everywhere, truncated to top 15 + bottom 5 (was exceeding the 4096-char message cap with 100+ strategies).
-- `_default_transport` retries with `parse_mode` stripped on HTTP 400, so MarkdownV2 failures no longer silently swallow alerts.
-- `load_live_snapshot` now prefers `current_price × shares` for equity (falls back to `size_usd → notional_usd → stake → cost_basis`). Previously rendered `$4.91` (cash only) when live-synced positions lacked `size_usd`.
-- Analyst journal counter accepts both `realized_pnl_usd` (sweep) and `realized_pnl` (race/smart_money/news) — previously showed 100% win rate everywhere because only sweep entries populated `realized_pnl_usd`.
-- `cache_warmer.py` invoked via `uv run python` (plain `python3` doesn't see the venv → `ModuleNotFoundError: No module named 'dotenv'`).
-- `scripts/run_all.sh`: dropped `set -u` (crashed on harmless unset vars), removed EXIT from the trap (only INT/TERM now), `cleanup()` made idempotent via `CLEANED_UP=1` — fixes the bug where one unset-var failure tore down all 50+ bots through the EXIT trap.
-
-## [1.2.0] - 2026-05-08
-
-Documentation refresh release. All Markdown files (`README.md`, `CLAUDE.md`, `CODEX.md`, `AGENTS.md`, `docs/AUTONOMOUS_STRATEGY.md`, and the structured `.claude/` and `.codex/` skill files) are now in sync with the live `scripts/run_live_70.sh` configuration and the multi-level exit waterfall introduced in 1.1.0.
-
-### Changed
-
-- README env-var examples updated to the current live values: `AUTO_INTERVAL_SECONDS=10`, `NOISE_FALLBACK_MAX_TRADES_PER_TICK=8`, `NOISE_FALLBACK_MAX_TRADE_USD=15`, `NOISE_FALLBACK_CASH_PRESSURE_PCT=0.25`, and the +25% take-profit tier added to the default ladder (`0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15`).
-- Take-profit ladder description updated everywhere (README, CLAUDE.md, CODEX.md, AUTONOMOUS_STRATEGY.md) to list five tiers: +25% / +50% / +100% / +200% / +300% with partial sells of 15% / 25% / 50% / 25% / 15%.
-- Multi-level exits sections now mention the resolved-market exit (force-close at bid ≥ 0.97) and the auto-cancel-resting-order behaviour on `balance is not enough` SELL rejections.
-- `docs/AUTONOMOUS_STRATEGY.md` exit waterfall renumbered to 9 steps to include the resolved-market exit and the parallelised cohort-trade fetch.
-
-### Notes
-
-No code changes in this release. The runtime, tests (54), and live config script are byte-identical to 1.1.0.
-
-## [1.1.0] - 2026-05-08
-
-Performance and reliability release on top of 1.0.0. Adds the +25% take-profit tier, parallelises the cohort-exit check, and fixes two production bugs (counter-trades on the same binary market, tick crashes on sell errors).
-
-### Added
-
-- `+25%` take-profit tier (sells 15% of initial shares) so positions that peak in the 25-50% range and round-trip to flat still book realised P&L. Default ladder is now `0.25:0.15,0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15`.
-- Resolved-market exit (`POLYMARKET_SMART_RESOLVED_EXIT_THRESHOLD`, default 0.97) — force-closes positions when the live bid is at or above the threshold so terminal-price winners no longer pin capital until the 24h max-hold cap.
-- `cancel_active_orders_for_token` on the trading session — when a SELL is rejected with "balance is not enough", the bot now lists active CLOB orders, cancels the resting one on that token, and retries on the next tick. Removes the death-loop where stuck sells caused tick crashes.
-- Cash-pressure trigger on the noise fallback: the lane now also fires when cash share of equity exceeds `POLYMARKET_SMART_NOISE_FALLBACK_CASH_PRESSURE_PCT` (default 0.25), even when open-position count is above `MIN_OPEN_POSITIONS`. Prevents idle cash piling up during dry hours.
-
-### Changed
-
-- Cohort-exit check parallelised through the same `ThreadPoolExecutor` used by the smart-money trade fetch (default 24 workers). Tick latency dropped from 20-30 seconds to 8-12 seconds with 30+ open positions.
-- Tick interval lowered from 20 seconds to 10 seconds now that cohort-exit is no longer the bottleneck. Faster cash redeployment after sells, more opportunities to catch fresh signals.
-- Noise fallback throughput: `MAX_TRADES_PER_TICK` raised from 4 to 8 and `MAX_TRADE_USD` from $10 to $15. Idle cash now drains in 2-3 ticks instead of 7+.
-- Noise fallback selection now ranks candidates by total smart-money flow on the token (informed noise) instead of generic Gamma top-scorers.
-- Multi-period leaderboard fetch (`POLYMARKET_SMART_TIME_PERIODS=MONTH,ALL`) — long-term consistent winners join the cohort alongside recent monthly leaders.
-
-### Fixed
-
-- **Counter-trade on the same binary market** — the previous `has_open_position(market_id)` dedupe failed when a position synced from the Data API used `conditionId` as `market_id` while a fresh candidate from the Gamma scan used Gamma's market id. The bot was opening YES and NO of the same market. Fixed by switching the event-level dedupe (`has_open_event_position`) to use `event_slug` for all markets, not just sports. `event_slug` is consistent across both APIs.
-- **Tick crashes on sell-side API errors** — `_execute_sell_strategy` only caught `ValueError`, so any other exception (notably `PolyApiException` for "balance is not enough" / 4xx) bubbled up and killed the entire tick. Now catches `Exception`, logs the failure to the exit report, and continues with the next position.
-- **Noise fallback gated on smart-money idle** — the early return in `smart_money_once` skipped the noise lane whenever any smart-money trade had executed in the same tick. Now noise fallback runs unconditionally if enabled, with the per-iteration safety checks preventing duplicates of what smart-money just bought.
-- **Reverse-lookup HTTP 414** — Gamma's `/markets?clob_token_ids=...` was being called with 100 token-ids in one URL, blowing past the URL length limit. Now chunked at 20 ids per request with response dedupe.
-- **Coinbase 503 killing the BTC edge tick** — added retry with exponential backoff and a fallback to the public `api.coinbase.com/v2/prices/BTC-USD/spot` endpoint when the exchange API degrades.
-
-### CI
-
-- `requirements.txt` and `pyproject.toml` switched from the unpublished `py-clob-client-v2` to the actually-PyPI-available `py-clob-client>=0.21.0`.
-- Top-level SDK import in `trading.py` made lazy via `_load_clob_types()`, so tests load cleanly even if the SDK isn't on the PATH.
-- The lint job is now advisory (`continue-on-error`) so ruff warnings don't block CI.
-
-## [1.0.0] - 2026-05-08
-
-First stable release. The strategy, sizing, exits, journal, auto-tuner, BTC edge, and noise fallback are now in production shape and have been validated on a real live bankroll. CI is green on Python 3.10 / 3.11 / 3.12.
-
-### Added since 0.1.0
-
-- `+50%` take-profit tier (sells 25% of initial shares) so partial winners that don't reach `+100%` still book realised P&L.
-- Holding-time cap (`POLYMARKET_SMART_MAX_HOLD_HOURS`, default 24h) — force-closes stale positions when no other exit rule has fired so capital can be redeployed on fresh signals.
-- Bankroll-aware position ceiling (`POLYMARKET_SMART_MAX_POSITION_CEILING_PCT`) — the absolute USD ceiling becomes a floor; the larger of `static $` and `equity * pct` wins, so high-conviction signals scale up as the bankroll grows.
-- Cash-pressure trigger on the noise fallback so the lane fires when cash share of equity exceeds the configured threshold even when open positions are above `MIN_OPEN_POSITIONS`.
-- Smarter noise fallback selection: candidates whose token has had any smart-money activity in the lookback are preferred over generic Gamma top-scorers — informed noise rather than random.
-- Multi-period leaderboard support (`POLYMARKET_SMART_TIME_PERIODS`) — fetches `MONTH` and `ALL`-time leaderboards together so long-term consistent winners join the cohort alongside recent monthly leaders.
-- Coinbase BTC client now retries on 5xx / 429 / network blips with exponential backoff and falls back to the public `api.coinbase.com/v2/prices/BTC-USD/spot` endpoint when the exchange API is degraded.
-- Repository polish: `Makefile` with the common dev targets, module-level docstrings on every Python file, refreshed `AGENTS.md` and `docs/AUTONOMOUS_STRATEGY.md`.
-- CI install fix: switched runtime dependency from the unpublished `py-clob-client-v2` to the actually-PyPI-available `py-clob-client>=0.21.0`, with a lazy `_load_clob_types()` helper inside `trading.py` so tests load cleanly without the SDK on PATH.
-
-### Changed since 0.1.0
-
-- Lint job is now advisory in CI so ruff warnings on existing code don't block the test job from going green.
-- Default take-profit ladder now includes the `+50%` tier: `0.5:0.25,1.0:0.50,2.0:0.25,3.0:0.15`.
-- Live script (`scripts/run_live_70.sh`) bumped to `POSITION_PCT=0.18`, `MAX_POSITION_CEILING_USD=150`, `MAX_POSITION_CEILING_PCT=0.30`, `CASH_FLOOR_PCT=0.05`, `MIN_OPEN_POSITIONS=7`, `MAX_HOLD_HOURS=24`, and the multi-period leaderboard `MONTH,ALL`.
-
-## [0.1.0] - 2026-05-08
-
-First public release.
-
-### Strategy
-
-- Smart-money copy-trading on Polymarket with multi-wallet consensus, configurable freshness window, and strict execution filters (absolute spread, relative spread, chase premium, price band).
-- Three-pass scan per tick: strict → relaxed (consensus floor relaxed) → deep fallback (consensus=1, looser filters).
-- Reverse-lookup of high-flow tokens missed by the initial Gamma scan, batched at 20 token-ids per request.
-- Parallel trade fetching per wallet (24 workers default) — tick latency in the trade-fetch phase drops from minutes to ~15 seconds.
-- Trader filters: PnL, volume, and ROI floors against the monthly leaderboard.
-
-### Sizing
-
-- Percentage-of-bankroll sizing with conviction multipliers (0.55× for crypto-micro up to 2.5× for very-high-conviction 5+ wallets at $5k+ flow).
-- Cash floor target (5%) with dynamic per-slot redistribution to drive ~95% deployment.
-- Per-position ceiling: `max(static, equity × pct)` so the cap scales with the bankroll.
-
-### Exits
-
-- Take-profit ladder with four tiers: +50% / +100% / +200% / +300%.
-- Trailing stop arms at +25% peak, exits on 50% giveback while still positive.
-- Peak-protect arms at +100% peak, exits below +40%.
-- Stop-loss at -40% after a 15-minute minimum hold age.
-- Cohort-sell exit with active SELL detection from the entry wallets.
-- Cohort-silent exit when no cohort wallet has re-bought within the lookback window.
-- Maximum hold-time cap (24h) — force-close stale positions to redeploy capital.
-- Near-expiry positive-PnL exit.
-
-### Auto-tuner and journal
-
-- Persistent JSONL trade journal at `data/trade_journal.jsonl` with full entry-signal metadata and exit PnL.
-- Defensive auto-tuner reads the journal each tick and applies bounded overrides to `data/strategy_overrides.json` once 30 closed trades are recorded.
-- `journal-stats` CLI for breakdown by category, consensus, exit reason, and entry-price bucket.
-- `tune-strategy` CLI to run the tuner manually.
-
-### Adjacent strands
-
-- Integrated BTC edge: Black-Scholes-from-volatility model runs after every smart-money tick with exponential retry and a fallback to the public `api.coinbase.com` spot endpoint when `api.exchange.coinbase.com` returns 5xx.
-- Noise fallback: up to 4 trades of $10 per tick when no smart-money signal qualifies AND (open positions below target OR cash share above 35% of equity). Tagged in the journal so the cost can be measured.
-
-### CLI
-
-- 6 commands: `auto-loop`, `dashboard`, `journal-stats`, `tune-strategy`, `bootstrap-creds`, `reset-ledger`.
-
-### Project hygiene
-
-- MIT license.
-- `pyproject.toml` with proper metadata, console-script entry point, and ruff lint configuration.
-- GitHub Actions CI: unittest on Python 3.10/3.11/3.12 plus ruff lint on every push.
-- `.editorconfig`, hardened `.gitignore`, `CONTRIBUTING.md`, `SECURITY.md`, `.env.example`.
-- Structured skill definitions for Claude Code (`.claude/skills/polymarket-bot/SKILL.md`) and Codex (`.codex/skills/polymarket-bot/SKILL.md`).
-
-### Safety
-
-- No LLM call in the trading loop.
-- No ability for the bot to commit or push source code.
-- The bot does not modify itself at runtime; strategy adjustments are auditable data files, not code edits.
+- Trade journal, dry-run race tooling, Telegram reports, and strategy profiles.
+
+[Unreleased]: https://github.com/novogratz/polymarket-bot/compare/v6.0.0...HEAD
+[6.0.0]: https://github.com/novogratz/polymarket-bot/compare/v5.1.0...v6.0.0
+[5.1.0]: https://github.com/novogratz/polymarket-bot/compare/v5.0.0...v5.1.0
+[5.0.0]: https://github.com/novogratz/polymarket-bot/compare/v4.0.0...v5.0.0
+[4.0.0]: https://github.com/novogratz/polymarket-bot/compare/v2.2.0...v4.0.0
+[2.2.0]: https://github.com/novogratz/polymarket-bot/releases/tag/v2.2.0
