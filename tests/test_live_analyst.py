@@ -101,8 +101,9 @@ class LiveAnalystStatsTests(unittest.TestCase):
         # Regression: a fixed cost_basis > $100 filter silently dropped every
         # full-size win once percentage sizing pushed stakes past $100
         # (Nigeria / Las Palmas / Orebro on 2026-06-10).
-        import time
-        today = time.strftime("%Y-%m-%d", time.gmtime())
+        # The report groups trades by US/Eastern. Using the UTC calendar date
+        # makes this regression test fail for four or five hours each evening.
+        today = live_analyst._today_et()
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "data"
             data_dir.mkdir()

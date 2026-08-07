@@ -4,17 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "polymarket-bot"
-version = "2.2.0"
-description = "Polymarket smart-money copy-trading bot with auto-tuner, trade journal, and BTC edge model"
+version = "6.0.0"
+description = "Deterministic, forecast-gated Polymarket weather trading engine"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
 authors = [{ name = "Benoit Floc'h" }]
 requires-python = ">=3.11"
-keywords = ["polymarket", "trading", "smart-money", "copy-trading", "prediction-markets"]
+keywords = ["polymarket", "weather", "forecasting", "trading", "prediction-markets"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
