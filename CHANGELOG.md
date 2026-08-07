@@ -4,6 +4,10 @@ All notable changes are documented here. This project follows [Keep a Changelog]
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [6.0.1] - 2026-08-06
+
 ### Changed
 
 - Removed the production scanner's 1,500-market client-side ceiling. A zero scan limit now paginates each matching Gamma query until its inventory is exhausted, with stalled-pagination protection.
@@ -68,7 +72,8 @@ All notable changes are documented here. This project follows [Keep a Changelog]
 
 - Trade journal, dry-run race tooling, Telegram reports, and strategy profiles.
 
-[Unreleased]: https://github.com/novogratz/polymarket-bot/compare/v6.0.0...HEAD
+[Unreleased]: https://github.com/novogratz/polymarket-bot/compare/v6.0.1...HEAD
+[6.0.1]: https://github.com/novogratz/polymarket-bot/compare/v6.0.0...v6.0.1
 [6.0.0]: https://github.com/novogratz/polymarket-bot/compare/v5.1.0...v6.0.0
 [5.1.0]: https://github.com/novogratz/polymarket-bot/compare/v5.0.0...v5.1.0
 [5.0.0]: https://github.com/novogratz/polymarket-bot/compare/v4.0.0...v5.0.0
