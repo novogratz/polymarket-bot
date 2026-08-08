@@ -6,6 +6,25 @@ All notable changes are documented here. This project follows [Keep a Changelog]
 
 No unreleased changes.
 
+## [6.1.0] - 2026-08-07
+
+### Added
+
+- Required package-build validation in CI with downloadable wheel and source-distribution artifacts.
+- Automated weekly dependency and monthly GitHub Actions update checks.
+- Customer-facing project badges, explicit product boundaries, and package metadata links.
+
+### Changed
+
+- Made repository-wide Ruff validation a required CI check and resolved the existing lint backlog across application code, scripts, and tests.
+- Aligned Ruff's target with the package's supported Python 3.11 baseline.
+- Updated runtime package metadata and `__version__` for the maintained weather engine.
+- Corrected stale profile, launcher, sizing, reporting-cadence, and dependency documentation without changing live strategy values.
+
+### Removed
+
+- Removed an obsolete timestamped strategy snapshot from the tracked production profile tree.
+
 ## [6.0.2] - 2026-08-07
 
 ### Changed
@@ -78,7 +97,8 @@ No unreleased changes.
 
 - Trade journal, dry-run race tooling, Telegram reports, and strategy profiles.
 
-[Unreleased]: https://github.com/novogratz/polymarket-bot/compare/v6.0.2...HEAD
+[Unreleased]: https://github.com/novogratz/polymarket-bot/compare/v6.1.0...HEAD
+[6.1.0]: https://github.com/novogratz/polymarket-bot/compare/v6.0.2...v6.1.0
 [6.0.2]: https://github.com/novogratz/polymarket-bot/compare/v6.0.1...v6.0.2
 [6.0.1]: https://github.com/novogratz/polymarket-bot/compare/v6.0.0...v6.0.1
 [6.0.0]: https://github.com/novogratz/polymarket-bot/compare/v5.1.0...v6.0.0

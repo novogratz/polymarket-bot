@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-
 
 _RUN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
@@ -37,7 +37,7 @@ class DryRunPaths:
     decisions: Path
 
     @classmethod
-    def for_run(cls, base_dir: Path, run_name: str) -> "DryRunPaths":
+    def for_run(cls, base_dir: Path, run_name: str) -> DryRunPaths:
         root = base_dir / "dry_runs" / run_name
         return cls(
             root=root,
@@ -93,7 +93,7 @@ def _git_sha() -> str | None:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def ensure_run_directory(
@@ -145,9 +145,6 @@ def update_tick_metadata(paths: DryRunPaths) -> None:
     metadata.total_ticks += 1
     metadata.last_tick_at = _now_iso()
     save_metadata(paths, metadata)
-
-
-import shutil
 
 
 def list_runs(base_dir: Path) -> list[RunMetadata]:

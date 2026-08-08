@@ -1,10 +1,17 @@
 import json
 import tempfile
+import unittest
 from datetime import timedelta
 from pathlib import Path
-import unittest
 
-from polymarket_bot.leaderboard import PositionSummary, RunStats, format_leaderboard, format_leaderboard_telegram, gather_live_stats, gather_run_stats
+from polymarket_bot.leaderboard import (
+    PositionSummary,
+    RunStats,
+    format_leaderboard,
+    format_leaderboard_telegram,
+    gather_live_stats,
+    gather_run_stats,
+)
 from polymarket_bot.models import Candidate, utc_now
 
 

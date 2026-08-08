@@ -2,6 +2,7 @@
 in dry-run mode (runs for any strategy: smart-money, mirror, …)."""
 
 import os
+
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 for _k in [k for k in os.environ if k.startswith("POLYMARKET_") and k != "POLYMARKET_SKIP_DOTENV"]:
     del os.environ[_k]
@@ -13,7 +14,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from polymarket_bot.dry_run_runs import (
-    DryRunPaths,
     ensure_run_directory,
     load_metadata,
 )

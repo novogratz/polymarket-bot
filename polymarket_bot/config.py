@@ -21,7 +21,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-
 if not os.getenv("POLYMARKET_SKIP_DOTENV"):
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 

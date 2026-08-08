@@ -17,10 +17,9 @@ import argparse
 import json
 import os
 import sys
-import time
 import urllib.request
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -95,7 +94,7 @@ def slice_into_windows(
     Returns (windows, pnl_by_strategy) where pnl_by_strategy[s][i] is
     the realized PnL of strategy s in window i.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     start = now - timedelta(hours=lookback_hours)
     windows: list[tuple[datetime, datetime]] = []
     cursor = start

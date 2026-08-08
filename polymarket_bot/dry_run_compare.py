@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from polymarket_bot.dry_run_runs import DryRunPaths, load_metadata
@@ -41,7 +41,11 @@ class RunStats:
 def _read_journal_stats(journal_path: Path) -> dict:
     if not journal_path.is_file():
         return {"realized_pnl": 0.0, "trades_closed": 0, "win_rate": 0.0, "max_drawdown": 0.0, "avg_pnl": 0.0}
-    trades = [json.loads(l) for l in journal_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    trades = [
+        json.loads(line)
+        for line in journal_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     if not trades:
         return {"realized_pnl": 0.0, "trades_closed": 0, "win_rate": 0.0, "max_drawdown": 0.0, "avg_pnl": 0.0}
     pnls = [float(t.get("realized_pnl", 0.0)) for t in trades]
@@ -124,7 +128,7 @@ def compute_live_stats(base_dir: Path) -> RunStats | None:
     # proxy for "last tick" since it's rewritten at the end of every tick.
     try:
         last_tick_at: str | None = datetime.fromtimestamp(
-            state_path.stat().st_mtime, tz=timezone.utc
+            state_path.stat().st_mtime, tz=UTC
         ).isoformat(timespec="seconds")
     except OSError:
         last_tick_at = None
@@ -144,7 +148,10 @@ def compute_live_stats(base_dir: Path) -> RunStats | None:
     j = _read_journal_stats(journal_path)
     started_at = "-"
     if journal_path.is_file():
-        first_line = next((l for l in journal_path.read_text(encoding="utf-8").splitlines() if l.strip()), None)
+        first_line = next(
+            (line for line in journal_path.read_text(encoding="utf-8").splitlines() if line.strip()),
+            None,
+        )
         if first_line:
             try:
                 started_at = str(json.loads(first_line).get("opened_at") or "-")

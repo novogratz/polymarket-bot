@@ -5,10 +5,9 @@ import os
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
-
-import tomllib
 
 from polymarket_bot.profiles import (
     ProfileConfig,

@@ -5,7 +5,6 @@ from datetime import timedelta
 
 from polymarket_bot.config import Settings
 from polymarket_bot.forecast import (
-    DEFAULT_PRIOR_WIN_RATE,
     build_context,
     calibration_table,
     edge,
@@ -108,6 +107,7 @@ class ResolutionSafetyTests(unittest.TestCase):
 
     def test_filter_skips_ambiguous_market(self):
         from datetime import timedelta
+
         from polymarket_bot.race_strategies import _build_eligible_candidates
         end = (utc_now() + timedelta(hours=2)).isoformat()
 

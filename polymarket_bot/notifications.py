@@ -13,9 +13,10 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from ._atomic_io import atomic_write_text
 
@@ -485,7 +486,7 @@ def _fmt_all_time_line(
     # Win-rate color
     decided = wins + losses
     if decided == 0:
-        wr_part = f"⚪ W/L \\-\\-"
+        wr_part = "⚪ W/L \\-\\-"
     else:
         wr = wins / decided * 100.0
         if wr >= 60:

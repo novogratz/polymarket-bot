@@ -15,7 +15,6 @@ Run once at startup. Re-run if cache TTL expires (default 600s).
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 import time
@@ -46,9 +45,9 @@ def main() -> int:
     # Lazy import after env loaded
     from polymarket_bot.config import Settings  # noqa: E402
     from polymarket_bot.smart_money import (  # noqa: E402
-        DataApiClient,
         _CACHE_DIR,
         _CACHE_TTL,
+        DataApiClient,
     )
 
     settings = Settings()

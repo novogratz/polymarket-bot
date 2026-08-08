@@ -8,7 +8,7 @@ help:
 	@echo "  dev       Sync runtime + dev dependencies into .venv via uv"
 	@echo "  test      Run the unit-test suite"
 	@echo "  lint      Run ruff over the codebase"
-	@echo "  run       Run the live smart-money loop (foreground)"
+	@echo "  run       Run the maintained weather bot (foreground, live)"
 	@echo "  dashboard Start the local read-only dashboard"
 	@echo "  doctor    Read-only health check (.env, auth, endpoints, local state)"
 	@echo "  journal   Print aggregated trade-journal stats"

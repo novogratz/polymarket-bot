@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "polymarket-bot"
-version = "6.0.2"
+version = "6.1.0"
 description = "Deterministic, forecast-gated Polymarket weather trading engine"
 readme = "README.md"
 license = "MIT"
@@ -40,6 +40,8 @@ pmbot = "polymarket_bot.main:app"
 [project.urls]
 Repository = "https://github.com/novogratz/polymarket-bot"
 Issues = "https://github.com/novogratz/polymarket-bot/issues"
+Documentation = "https://github.com/novogratz/polymarket-bot#readme"
+Changelog = "https://github.com/novogratz/polymarket-bot/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -48,7 +50,7 @@ exclude = ["tests*", "data*", "docs*", "scripts*"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
@@ -58,4 +60,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["E501"]
+# Tests intentionally sanitize POLYMARKET_* variables before importing the
+# package; executable scripts resolve the repository root before local imports.
+"tests/*" = ["E402", "E501"]
+"scripts/*" = ["E402"]

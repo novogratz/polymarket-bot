@@ -13,7 +13,6 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-
 _SUPPORTED_VERSION = 1
 
 

@@ -15,6 +15,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from datetime import UTC
+
 from scripts.news_reaction import (  # noqa: E402
     MOVE_THRESHOLD,
     latency_to_first_move,
@@ -89,8 +91,8 @@ class NewsTsTests(unittest.TestCase):
     def test_parse_zulu(self):
         ts = parse_news_ts("2026-04-10T12:30:00Z")
         # 2026-04-10 12:30 UTC : compare via datetime aller-retour.
-        from datetime import datetime, timezone
-        expected = int(datetime(2026, 4, 10, 12, 30, tzinfo=timezone.utc).timestamp())
+        from datetime import datetime
+        expected = int(datetime(2026, 4, 10, 12, 30, tzinfo=UTC).timestamp())
         self.assertEqual(ts, expected)
 
     def test_parse_with_offset(self):

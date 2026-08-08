@@ -1,21 +1,19 @@
 """Tests for polymarket_bot.dry_run_runs."""
 
 import os
+
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 for _k in [k for k in os.environ if k.startswith("POLYMARKET_") and k != "POLYMARKET_SKIP_DOTENV"]:
     del os.environ[_k]
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from polymarket_bot.dry_run_runs import (
     DryRunPaths,
-    RunMetadata,
     ensure_run_directory,
     load_metadata,
-    save_metadata,
     update_tick_metadata,
 )
 
@@ -98,7 +96,7 @@ class UpdateTickMetadataTests(unittest.TestCase):
             self.assertEqual(after.started_at, initial.started_at)
 
 
-from polymarket_bot.dry_run_runs import list_runs, reset_run, remove_run
+from polymarket_bot.dry_run_runs import list_runs, remove_run, reset_run
 
 
 class ListRunsTests(unittest.TestCase):

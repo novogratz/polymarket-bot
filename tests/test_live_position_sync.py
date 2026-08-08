@@ -1,8 +1,8 @@
 """Tests for the live-position sync helpers in polymarket_bot.main."""
 
+import unittest
 from pathlib import Path
 from unittest import mock
-import unittest
 
 from polymarket_bot.config import Settings
 from polymarket_bot.main import (
@@ -237,6 +237,7 @@ class ResolvedReconcileTests(unittest.TestCase):
         # near-zero but endDate in the FUTURE → mid-game gap, NOT resolved.
         # Must not be booked as a resolved loss (it's a held favorite).
         from datetime import timedelta
+
         from polymarket_bot.models import utc_now
         item = {"asset": "tok-1", "size": 6.0, "currentValue": 0.30,
                 "redeemable": False,

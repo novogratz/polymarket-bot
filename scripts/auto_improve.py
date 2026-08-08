@@ -211,8 +211,8 @@ def _recent_performance() -> dict:
             "avg_loss": round(sum(_pnl(r) for r in losses) / len(losses), 2) if losses else 0.0,
         }
 
-    today = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
-    wk_cut = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=7)).isoformat()
+    today = _dt.datetime.now(_dt.UTC).date().isoformat()
+    wk_cut = (_dt.datetime.now(_dt.UTC) - _dt.timedelta(days=7)).isoformat()
     today_rows = [r for r in rows if str(r.get("closed_at", ""))[:10] == today]
     week_rows = [r for r in rows if str(r.get("closed_at", "")) >= wk_cut]
     worst = sorted(rows, key=_pnl)[:5]

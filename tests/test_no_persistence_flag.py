@@ -10,7 +10,6 @@ from typer.testing import CliRunner
 
 from polymarket_bot.main import app
 
-
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 

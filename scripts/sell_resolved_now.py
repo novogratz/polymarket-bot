@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from dataclasses import replace
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -30,7 +29,7 @@ def _load_settings(dry_run: bool = False):
     if dry_run:
         os.environ["POLYMARKET_DRY_RUN"] = "1"
 
-    from polymarket_bot.profiles import load_profile, apply_profile_to_env
+    from polymarket_bot.profiles import apply_profile_to_env, load_profile
     profile_path = REPO_ROOT / "configs" / "profiles" / "grinder.toml"
     if profile_path.exists():
         apply_profile_to_env(load_profile(profile_path), override=True)

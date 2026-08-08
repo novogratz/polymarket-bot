@@ -17,13 +17,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from statistics import stdev
 from typing import Any
 
 from .config import Settings
 from .models import Candidate, utc_now
-
 
 COINBASE_EXCHANGE_URL = "https://api.exchange.coinbase.com"
 COINBASE_FALLBACK_SPOT_URL = "https://api.coinbase.com"

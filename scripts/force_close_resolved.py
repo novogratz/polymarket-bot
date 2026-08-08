@@ -14,8 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -29,7 +28,7 @@ WIN_THRESHOLD = 0.97
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def run(dry_run: bool = False) -> None:

@@ -17,9 +17,8 @@ import argparse
 import json
 import os
 import sys
-import time
 import urllib.request
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -54,7 +53,7 @@ def _record_pnl(r: dict) -> float:
 
 
 def _read_trades(lookback_days: int) -> list[dict]:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+    cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
     seen: dict[str, dict] = {}
 
     def _key(r: dict) -> str:
@@ -209,7 +208,7 @@ def build_report(lookback_days: int = 7) -> str:
     worst = min(trades, key=_record_pnl) if trades else None
 
     # Week label
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     week_start = now - timedelta(days=lookback_days - 1)
     date_range = f"{week_start.strftime('%b %-d')}–{now.strftime('%b %-d, %Y')}"
     stamp = now.strftime("%H:%M UTC")
@@ -276,7 +275,7 @@ def build_report(lookback_days: int = 7) -> str:
     lines += [
         "",
         divider,
-        f"🔵 *Polymarket Bot* `kzer_ai` · Grinder",
+        "🔵 *Polymarket Bot* `kzer_ai` · Grinder",
     ]
 
     return "\n".join(lines)

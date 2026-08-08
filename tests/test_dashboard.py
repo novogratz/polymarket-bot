@@ -10,9 +10,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from polymarket_bot import dashboard, tick_state
 from polymarket_bot.config import Settings
-from polymarket_bot import dashboard
-from polymarket_bot import tick_state
 
 
 def _settings_in(tmp: Path, **extra) -> Settings:

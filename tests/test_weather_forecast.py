@@ -1,15 +1,11 @@
 """Tests for polymarket_bot.weather_forecast — parser + probability model."""
-import math
 import unittest
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from unittest.mock import patch
 
 from polymarket_bot.weather_forecast import (
-    MAX_SPREAD_C,
     _bracket_yes_prob,
-    _fetch_consensus,
     _normal_cdf,
-    _solar_hour,
     forecast_outcome_probability,
     late_entry_ready,
     parse_weather_question,
@@ -31,14 +27,14 @@ class TestLateEntryReady(unittest.TestCase):
     def test_requires_target_city_date_and_afternoon(self):
         parsed = {"lon": 30.0, "target_date": date(2026, 8, 4)}
         self.assertFalse(late_entry_ready(
-            parsed, 15.0, datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)
+            parsed, 15.0, datetime(2026, 8, 4, 12, 0, tzinfo=UTC)
         ))  # solar 14:00
         self.assertTrue(late_entry_ready(
-            parsed, 15.0, datetime(2026, 8, 4, 13, 0, tzinfo=timezone.utc)
+            parsed, 15.0, datetime(2026, 8, 4, 13, 0, tzinfo=UTC)
         ))  # solar 15:00
         parsed["target_date"] = date(2026, 8, 5)
         self.assertFalse(late_entry_ready(
-            parsed, 15.0, datetime(2026, 8, 4, 13, 0, tzinfo=timezone.utc)
+            parsed, 15.0, datetime(2026, 8, 4, 13, 0, tzinfo=UTC)
         ))
 
     def test_zero_disables_gate(self):
@@ -304,7 +300,7 @@ class TestIntradayKillSwitch(unittest.TestCase):
             "temp_low_c": 35.0, "temp_high_c": 36.0,
             "is_upper_tail": False, "is_lower_tail": False,
             "is_max": True,
-            "target_date": datetime.now(timezone.utc).date(),  # today
+            "target_date": datetime.now(UTC).date(),  # today
             "unit": "C",
         }
         base.update(kw)

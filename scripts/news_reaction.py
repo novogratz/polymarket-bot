@@ -39,15 +39,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import statistics
 import sys
-import urllib.parse
-import urllib.request
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -56,9 +53,7 @@ sys.path.insert(0, str(ROOT))
 from scripts.market_reaction_time import (  # noqa: E402
     fetch_price_history,
     resample_to_minute_grid,
-    _http_get_json,  # type: ignore[attr-defined]
 )
-
 
 DEFAULT_EVENTS = "data/news_events.json"
 DEFAULT_OUTPUT = "data/news_reaction_events.csv"
@@ -130,8 +125,8 @@ def parse_news_ts(value: str) -> int:
     """Convertit 'YYYY-MM-DDTHH:MM:SSZ' (UTC) en unix seconds."""
     dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return int(dt.astimezone(timezone.utc).timestamp())
+        dt = dt.replace(tzinfo=UTC)
+    return int(dt.astimezone(UTC).timestamp())
 
 
 def latency_to_first_move(
@@ -304,7 +299,7 @@ def write_report(
     path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     lines.append(
-        f"# Latence Polymarket news-ancree -- {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
+        f"# Latence Polymarket news-ancree -- {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}\n"
     )
     lines.append("## Methodologie\n")
     lines.append(

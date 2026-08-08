@@ -8,26 +8,15 @@ os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 for _k in [k for k in os.environ if k.startswith("POLYMARKET_") and k != "POLYMARKET_SKIP_DOTENV"]:
     del os.environ[_k]
 
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 import json
 import tempfile
 import unittest
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from polymarket_bot.auto_tuner import compute_overrides
 from polymarket_bot.bitcoin import BtcModel, btc_signal, btc_terminal_probability, parse_btc_threshold
 from polymarket_bot.config import Settings
-from polymarket_bot.models import Candidate, is_excluded_market, utc_now
-from polymarket_bot.polymarket import ApiCreds, PolymarketClient
-from polymarket_bot.portfolio import Portfolio
-from polymarket_bot.smart_money import SmartTrade, market_category, smart_money_signals
-from polymarket_bot.strategy import rank_markets, stake_for_candidate
-from polymarket_bot.trading import (
-    _is_filled_buy_response,
-    build_client,
-    execute_live_sell,
-    execute_live_trade,
-)
 from polymarket_bot.main import (
     _is_unfilled_market_order_error,
     _max_trade_for_signal,
@@ -36,7 +25,17 @@ from polymarket_bot.main import (
     _token_in_loss_cooldown,
     load_btc_candidates,
 )
+from polymarket_bot.models import Candidate, is_excluded_market, utc_now
+from polymarket_bot.polymarket import ApiCreds, PolymarketClient
+from polymarket_bot.portfolio import Portfolio
 from polymarket_bot.profiles import load_profile
+from polymarket_bot.smart_money import SmartTrade, market_category, smart_money_signals
+from polymarket_bot.strategy import rank_markets, stake_for_candidate
+from polymarket_bot.trading import (
+    build_client,
+    execute_live_sell,
+    execute_live_trade,
+)
 
 
 class StrategyTests(unittest.TestCase):
@@ -491,7 +490,7 @@ class StrategyTests(unittest.TestCase):
             accepts_orders=True,
         )
         portfolio = __import__("polymarket_bot.portfolio", fromlist=["Portfolio"]).Portfolio(cash=20.0, positions=[])
-        result = execute_live_trade(
+        execute_live_trade(
             FakeClient(),
             Settings(trade_fraction=0.10, min_order_shares=5.0),
             candidate,
@@ -1922,7 +1921,7 @@ class StrategyTests(unittest.TestCase):
             tick_size=0.01,
             accepts_orders=True,
         )
-        now_ts = int(datetime.now(timezone.utc).timestamp())
+        now_ts = int(datetime.now(UTC).timestamp())
         trades = [
             SmartTrade("0x1", "fresh-token", "BUY", 0.50, 200, 100, now_ts - 120, "Fresh", "Yes", "fresh"),
             SmartTrade("0x2", "fresh-token", "BUY", 0.50, 200, 100, now_ts - 7200, "Fresh", "Yes", "fresh"),
@@ -2537,6 +2536,7 @@ class StrategyTests(unittest.TestCase):
 
     def _race_exit_live_harness(self, client, stale_bid=0.95, threshold=0.99):
         import tempfile
+
         from polymarket_bot.race_strategies import _execute_race_exits
 
         candidate = Candidate(
@@ -2610,6 +2610,7 @@ class StrategyTests(unittest.TestCase):
         # flat 0.99 winner exit across EVERY lane. A position with only a 0.98
         # bid is HELD (no sell); a real 0.99 bid sells.
         import tempfile
+
         from polymarket_bot.race_strategies import _execute_race_exits
 
         def run(book_bid):
@@ -3013,7 +3014,7 @@ class SettingsDryRunTests(unittest.TestCase):
 
 class LossCooldownTests(unittest.TestCase):
     def test_token_in_loss_cooldown_reads_latest_exit_record(self):
-        now = datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 5, 23, 12, 0, tzinfo=UTC)
         portfolio = Portfolio(
             cash=10.0,
             positions=[
@@ -3034,7 +3035,7 @@ class LossCooldownTests(unittest.TestCase):
         self.assertTrue(_token_in_loss_cooldown(portfolio, "tok-loss", settings, now=now))
 
     def test_token_loss_cooldown_expires_and_ignores_winners(self):
-        now = datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 5, 23, 12, 0, tzinfo=UTC)
         settings = Settings(smart_entry_cooldown_after_loss_minutes=60)
         old_loss = Portfolio(
             cash=10.0,
@@ -3076,6 +3077,7 @@ class TickStateLoopTests(unittest.TestCase):
     def test_strategy_loop_writes_tick_state_on_each_tick(self):
         import tempfile
         from pathlib import Path
+
         from polymarket_bot import tick_state
         from polymarket_bot.main import strategy_loop
 
@@ -3127,6 +3129,7 @@ class TickStateLoopTests(unittest.TestCase):
     def test_strategy_loop_records_dry_run_mode(self):
         import tempfile
         from pathlib import Path
+
         from polymarket_bot import tick_state
         from polymarket_bot.main import strategy_loop
 
@@ -3151,6 +3154,7 @@ class TickStateLoopTests(unittest.TestCase):
     def test_strategy_loop_records_error_ticks(self):
         import tempfile
         from pathlib import Path
+
         from polymarket_bot import tick_state
         from polymarket_bot.main import strategy_loop
 
@@ -3230,9 +3234,10 @@ class TickStateLoopTests(unittest.TestCase):
 
 class JournalStatsDrawdownTests(unittest.TestCase):
     def test_max_drawdown_zero_when_only_wins(self):
-        import tempfile
         import json
+        import tempfile
         from pathlib import Path
+
         from polymarket_bot.main import journal_stats
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -3247,9 +3252,10 @@ class JournalStatsDrawdownTests(unittest.TestCase):
             self.assertEqual(stats["max_drawdown"], 0.0)
 
     def test_max_drawdown_captures_worst_peak_to_trough(self):
-        import tempfile
         import json
+        import tempfile
         from pathlib import Path
+
         from polymarket_bot.main import journal_stats
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -3271,9 +3277,10 @@ class JournalStatsDrawdownTests(unittest.TestCase):
             self.assertEqual(stats["max_drawdown"], -8.0)
 
     def test_max_drawdown_handles_unsorted_records(self):
-        import tempfile
         import json
+        import tempfile
         from pathlib import Path
+
         from polymarket_bot.main import journal_stats
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -3288,9 +3295,10 @@ class JournalStatsDrawdownTests(unittest.TestCase):
             self.assertEqual(stats["max_drawdown"], -5.0)
 
     def test_journal_stats_reads_realized_cache_and_dedupes_journal(self):
-        import tempfile
         import json
+        import tempfile
         from pathlib import Path
+
         from polymarket_bot.main import journal_stats
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -3321,6 +3329,7 @@ class JournalStatsDrawdownTests(unittest.TestCase):
     def test_starting_equity_prefers_live_profile_snapshot(self):
         import tempfile
         from pathlib import Path
+
         from polymarket_bot.main import _starting_equity_for_stats
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -3380,8 +3389,10 @@ class JournalSuggestionsTests(unittest.TestCase):
         self.assertIn("0.80", lines[1])
 
     def test_journal_stats_suggestions_field_is_structured(self):
-        import tempfile, json
+        import json
+        import tempfile
         from pathlib import Path
+
         from polymarket_bot.main import journal_stats
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -3647,10 +3658,12 @@ class WeatherOnlyLaneTests(unittest.TestCase):
         # are in." A market resolving TODAY (US/Eastern) is kept; tomorrow's is
         # dropped when weather_same_day_only is on.
         from zoneinfo import ZoneInfo
-        from polymarket_bot.race_strategies import (
-            _build_eligible_candidates, _weather_market_md,
-        )
+
         from polymarket_bot.models import utc_now
+        from polymarket_bot.race_strategies import (
+            _build_eligible_candidates,
+            _weather_market_md,
+        )
         MONTHS = ["January", "February", "March", "April", "May", "June",
                   "July", "August", "September", "October", "November", "December"]
         et = utc_now().astimezone(ZoneInfo("America/New_York"))
@@ -3676,6 +3689,7 @@ class WeatherOnlyLaneTests(unittest.TestCase):
     def test_same_day_weather_stays_eligible_after_gamma_end_date(self):
         """Gamma noon deadlines must not hide still-tradable weather lines."""
         from zoneinfo import ZoneInfo
+
         from polymarket_bot.race_strategies import _build_eligible_candidates
 
         et = utc_now().astimezone(ZoneInfo("America/New_York"))
@@ -3722,6 +3736,7 @@ class WeatherOnlyLaneTests(unittest.TestCase):
 
     def test_non_same_day_market_must_be_at_least_12_hours_away(self):
         from zoneinfo import ZoneInfo
+
         from polymarket_bot.race_strategies import _build_eligible_candidates
 
         et = utc_now().astimezone(ZoneInfo("America/New_York"))
@@ -3741,6 +3756,7 @@ class WeatherOnlyLaneTests(unittest.TestCase):
 
     def test_configured_forecast_gate_is_fail_closed_on_parse_failure(self):
         from unittest.mock import patch
+
         from polymarket_bot.race_strategies import _build_eligible_candidates
 
         market = self._market("w", "Highest temperature in NYC on July 31?", "nyc-high-temp")
@@ -3792,6 +3808,7 @@ class WeatherOnlyLaneTests(unittest.TestCase):
     def test_one_point_forecast_edge_admits_a_supported_097_favorite(self):
         """Bot 3's wider band must not be made inert by an impossible edge."""
         from unittest.mock import patch
+
         from polymarket_bot.race_strategies import _build_eligible_candidates
 
         market = self._market(
@@ -3819,7 +3836,8 @@ class WeatherOnlyLaneTests(unittest.TestCase):
         # weather market is dropped at entry selection even though it IS a
         # valid weather market; every other city still passes.
         from polymarket_bot.race_strategies import (
-            _build_eligible_candidates, _is_banned_weather_city,
+            _build_eligible_candidates,
+            _is_banned_weather_city,
         )
 
         settings = Settings(race_min_price=0.85, race_max_price=0.97,
@@ -3867,10 +3885,11 @@ class DynamicEntryWindowTests(unittest.TestCase):
         # User rule 2026-06-12: 4 → 6 → 8 → 10 → 12 → 24, and when even 24h
         # is empty, one last rung to the end of TOMORROW (UTC) so daily
         # markets like the Trump-approval one stay reachable.
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from polymarket_bot.race_strategies import _entry_window_ladder
 
-        now = datetime(2026, 6, 12, 10, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 6, 12, 10, 0, tzinfo=UTC)
         ladder = _entry_window_ladder(
             Settings(race_max_hours=4.0, race_max_hours_cap=24.0,
                      race_daily_expiry_fallback=True),
@@ -3880,7 +3899,7 @@ class DynamicEntryWindowTests(unittest.TestCase):
         self.assertEqual(ladder, [4.0, 6.0, 8.0, 10.0, 12.0, 24.0, 38.0])
 
         # Late in the day the daily rung still clears the 24h cap (25h).
-        late = datetime(2026, 6, 12, 23, 0, tzinfo=timezone.utc)
+        late = datetime(2026, 6, 12, 23, 0, tzinfo=UTC)
         ladder = _entry_window_ladder(
             Settings(race_max_hours=4.0, race_max_hours_cap=24.0,
                      race_daily_expiry_fallback=True),
@@ -4219,6 +4238,7 @@ class DoubleDownTests(unittest.TestCase):
     def test_double_down_max_dip_cap_when_set(self):
         # The secondary max_dip cap skips a dip larger than the cap.
         from dataclasses import replace
+
         from polymarket_bot.race_strategies import _execute_double_downs
 
         entry_cand = self._under45(0.90)
@@ -4304,7 +4324,9 @@ class DynamicStakeTargetTests(unittest.TestCase):
         # User 2026-06-14: fresh entries target initial_stake_pct (5%) so the
         # dip double-down has headroom up to the hard race_stake_pct cap (10%).
         from polymarket_bot.race_strategies import (
-            _dynamic_stake_target, _entry_cap_usd, _position_cap_usd,
+            _dynamic_stake_target,
+            _entry_cap_usd,
+            _position_cap_usd,
         )
         s = Settings(race_stake_pct=0.10, race_initial_stake_pct=0.05,
                      smart_max_position_ceiling_usd=0.0)
@@ -4367,7 +4389,8 @@ class WeatherFlipExitTests(unittest.TestCase):
     def test_no_exit_and_streak_reset_when_model_still_supports_us(self):
         R = self._patch(lambda q: {"target_date": "x"}, lambda p, o, **k: 0.90)
         s = Settings(race_weather_flip_exit_prob=0.45, race_weather_flip_confirm_ticks=2)
-        pos = self._pos(); pos["flip_confirm_count"] = 1
+        pos = self._pos()
+        pos["flip_confirm_count"] = 1
         self.assertIsNone(R._weather_flip_exit_plan(pos, s))
         self.assertEqual(pos["flip_confirm_count"], 0)
 
@@ -4509,7 +4532,9 @@ class FullDeploySizingTests(unittest.TestCase):
         # 5% as default" (soft default back to 5%; 10% is the redistribution-
         # only hard cap, tested separately).
         from polymarket_bot.race_strategies import (
-            _dynamic_stake_target, _entry_cap_usd, _position_cap_usd,
+            _dynamic_stake_target,
+            _entry_cap_usd,
+            _position_cap_usd,
         )
         s = self._settings()  # default soft pct = 0.05 (2026-07-23)
         self.assertAlmostEqual(s.race_full_deploy_max_position_pct, 0.05)
@@ -4537,7 +4562,9 @@ class FullDeploySizingTests(unittest.TestCase):
 
     def test_overrides_fixed_stake(self):
         from polymarket_bot.race_strategies import (
-            _dynamic_stake_target, _entry_cap_usd, _position_cap_usd,
+            _dynamic_stake_target,
+            _entry_cap_usd,
+            _position_cap_usd,
         )
         s = self._settings(race_fixed_stake_usd=5.0,
                            race_full_deploy_max_position_pct=0.0)
@@ -4558,7 +4585,8 @@ class FullDeploySizingTests(unittest.TestCase):
         # line stays actionable while below the equal-weight cap (top-ups
         # toward the shared target), and is dropped once at/near the cap.
         from polymarket_bot.race_strategies import (
-            _actionable_candidates, _build_eligible_candidates,
+            _actionable_candidates,
+            _build_eligible_candidates,
         )
         s = Settings(race_min_price=0.85, race_max_price=0.97,
                      race_max_spread=0.04, race_max_hours=4.0,
@@ -4788,7 +4816,8 @@ class LeftoverRedistributionTests(unittest.TestCase):
         # HARD cap (not the 5% soft entry cap), and never past it — at-cap
         # lines get nothing and excess cash waits.
         from polymarket_bot.race_strategies import (
-            _full_deploy_hard_cap_usd, _redistribute_leftover_cash,
+            _full_deploy_hard_cap_usd,
+            _redistribute_leftover_cash,
         )
         s, portfolio, eligible = self._setup(12, cash=500.0)
         equity = float(portfolio.summary().get("equity", portfolio.cash))
@@ -4829,7 +4858,8 @@ class LeftoverRedistributionTests(unittest.TestCase):
         # reach it via the relaxed pool (max_price lifted to the 0.96 hard
         # cap, forecast gates off), up to the 10% cap.
         from polymarket_bot.race_strategies import (
-            _build_eligible_candidates, _redistribute_leftover_cash,
+            _build_eligible_candidates,
+            _redistribute_leftover_cash,
         )
         s, portfolio, eligible = self._setup(12, cash=95.0)
         s = Settings(race_min_price=0.85, race_max_price=0.94,
@@ -5088,9 +5118,9 @@ class ExcludedMarketTests(unittest.TestCase):
         # counter strike no league of legends LoL etc." Every esports title is
         # banned regardless of live status — the prior LoL-only-while-live
         # carve-out (2026-06-12) is removed.
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        now = datetime(2026, 6, 12, 18, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 6, 12, 18, 0, tzinfo=UTC)
         base = {"question": "LoL: Solary vs Eintracht Spandau - Game 1 Winner",
                 "slug": "lol-solary-vs-eintracht-spandau-game-1-winner"}
         live = dict(base, gameStartTime="2026-06-12T17:00:00+00:00")     # 1h in
@@ -5105,9 +5135,9 @@ class ExcludedMarketTests(unittest.TestCase):
     def test_every_esports_title_banned_outright(self):
         # User 2026-06-19: LoL, Counter-Strike, Valorant, Mobile Legends, and
         # every other title are banned outright, live or not.
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        now = datetime(2026, 6, 12, 18, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 6, 12, 18, 0, tzinfo=UTC)
         live_start = "2026-06-12T17:00:00+00:00"
         for market in (
             {"question": "Counter-Strike: Marsborne vs F5 Esports (BO3) - Playoffs",
@@ -5161,9 +5191,9 @@ class ExcludedMarketTests(unittest.TestCase):
         # "Game Handicap: HLE (-2.5) vs T1 (+2.5)" slipped past the "Spread:"
         # pattern and was bought pre-game at 0.889 (2026-06-12). Handicaps
         # are spread markets — banned outright, even for a live LoL game.
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        now = datetime(2026, 6, 12, 18, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 6, 12, 18, 0, tzinfo=UTC)
         market = {"question": "Game Handicap: HLE (-2.5) vs T1 (+2.5)",
                   "slug": "lol-game-handicap-hle-t1",
                   "gameStartTime": "2026-06-12T17:00:00+00:00"}
@@ -5223,13 +5253,13 @@ class ExcludedMarketTests(unittest.TestCase):
     def test_stocks_banned_outright_even_in_session(self):
         # Re-banned 2026-06-12 (user) after a one-day in-session experiment:
         # no session window, ever — even mid-session for a same-day close.
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         market = {"question": "Apple (AAPL) closes above $290 on June 10?",
                   "slug": "apple-aapl-closes-above-290-june-10",
                   "endDate": "2026-06-11T00:00:00+00:00"}
-        in_session = datetime(2026, 6, 10, 18, 0, tzinfo=timezone.utc)
-        after_hours = datetime(2026, 6, 10, 21, 0, tzinfo=timezone.utc)
+        in_session = datetime(2026, 6, 10, 18, 0, tzinfo=UTC)
+        after_hours = datetime(2026, 6, 10, 21, 0, tzinfo=UTC)
         self.assertTrue(is_excluded_market(market, now=in_session))
         self.assertTrue(is_excluded_market(market, now=after_hours))
 
@@ -5299,9 +5329,9 @@ class ExcludedMarketTests(unittest.TestCase):
         # June 8 2026?" on 2026-06-11 — ABNB wasn't in the ticker list and
         # weekly/touch markets have no end-of-session convergence. Banned
         # outright, session or not.
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        in_session = datetime(2026, 6, 10, 18, 0, tzinfo=timezone.utc)  # Wed 14:00 ET
+        in_session = datetime(2026, 6, 10, 18, 0, tzinfo=UTC)  # Wed 14:00 ET
         abnb = {"question": "Will Airbnb, Inc. (ABNB) hit (LOW) $124 Week of June 8 2026?",
                 "slug": "will-abnb-hit-week-of-june-8-2026",
                 "endDate": "2026-06-10T23:00:00+00:00"}
@@ -5310,12 +5340,12 @@ class ExcludedMarketTests(unittest.TestCase):
     def test_generic_paren_ticker_with_dollar_is_classified_stock(self):
         # Tickers not in the enumerated list are caught by "(TICKER) … $"
         # — and stocks are banned outright.
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         market = {"question": "Will Snowflake (SNOW) close above $310 on June 10?",
                   "slug": "snowflake-close-above-310-june-10",
                   "endDate": "2026-06-11T00:00:00+00:00"}
-        in_session = datetime(2026, 6, 10, 18, 0, tzinfo=timezone.utc)
+        in_session = datetime(2026, 6, 10, 18, 0, tzinfo=UTC)
         self.assertTrue(is_excluded_market(market, now=in_session))
         # No dollar sign → parenthesized acronyms alone don't classify:
         politics = {"question": "Will the (GOP) keep the House majority?",
@@ -5455,7 +5485,7 @@ class V4ConfigTests(unittest.TestCase):
         return Settings(**base)
 
     def test_fixed_stake_is_flat_five_regardless_of_equity(self):
-        from polymarket_bot.race_strategies import _position_cap_usd, _entry_cap_usd
+        from polymarket_bot.race_strategies import _entry_cap_usd, _position_cap_usd
         s = self._settings()
         for equity in (50, 100, 500, 100_000):
             self.assertEqual(_position_cap_usd(s, equity), 5.0)

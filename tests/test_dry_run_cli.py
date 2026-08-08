@@ -1,17 +1,18 @@
 """Tests for the pmbot dry-run sub-commands."""
 
 import os
+
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 for _k in [k for k in os.environ if k.startswith("POLYMARKET_") and k != "POLYMARKET_SKIP_DOTENV"]:
     del os.environ[_k]
 
 import json
-import shutil
 import tempfile
 import unittest
 from pathlib import Path
-from typer.testing import CliRunner
 from unittest.mock import patch
+
+from typer.testing import CliRunner
 
 
 class DryRunCliTests(unittest.TestCase):
@@ -82,7 +83,7 @@ class DryRunCliTests(unittest.TestCase):
     def test_list_empty_after_reset_hides_run(self):
         # A reset run keeps metadata but has total_ticks=0 + last_tick_at=None.
         # It must be hidden by default with an informative footer.
-        from polymarket_bot.dry_run_runs import DryRunPaths, reset_run
+        from polymarket_bot.dry_run_runs import reset_run
         paths = self._seed_run("alpha", ticks=10)
         # Mark as having ticked.
         from polymarket_bot.dry_run_runs import load_metadata, save_metadata

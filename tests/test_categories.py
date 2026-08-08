@@ -4,8 +4,8 @@ import unittest
 from datetime import timedelta
 
 from polymarket_bot.categories import (
-    classify_category,
     category_stats,
+    classify_category,
     disabled_categories,
 )
 from polymarket_bot.config import Settings

@@ -26,7 +26,6 @@ from .strategy import build_pricing_candidates
 from .trading import build_client, execute_live_sell, execute_live_trade
 from .wallet_resolver import resolve_all
 
-
 _MAX_SEEN = 2000
 
 

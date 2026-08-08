@@ -24,7 +24,7 @@ import time
 import traceback
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -167,8 +167,8 @@ def _get_settings_and_client():
     """Shared helper: load settings + Data API client. Raises on failure."""
     import sys
     sys.path.insert(0, str(REPO_ROOT))
-    from polymarket_bot.profiles import load_profile, apply_profile_to_env
     from polymarket_bot.config import Settings
+    from polymarket_bot.profiles import apply_profile_to_env, load_profile
     # Use POLYMARKET_PROFILE_LABEL so bot B loads grinder_b.toml, not grinder.toml
     label = os.environ.get("POLYMARKET_PROFILE_LABEL", "grinder")
     profile_path = REPO_ROOT / "configs" / "profiles" / f"{label}.toml"
@@ -327,10 +327,10 @@ def _fetch_live_equity() -> tuple[float, float] | None:
     try:
         import sys
         sys.path.insert(0, str(REPO_ROOT))
-        from polymarket_bot.profiles import load_profile, apply_profile_to_env
         from polymarket_bot.config import Settings
-        from polymarket_bot.trading import build_client
+        from polymarket_bot.profiles import apply_profile_to_env, load_profile
         from polymarket_bot.smart_money import DataApiClient
+        from polymarket_bot.trading import build_client
         # Use the active bot's profile (POLYMARKET_PROFILE_LABEL), not grinder.toml.
         # Hardcoding grinder.toml here caused bot 2 to load bot 1's
         # assumed_live_balance_usd, triggering a bogus floor that returned the
@@ -543,7 +543,7 @@ def telegram_post(text: str, *, live: bool = True) -> bool:
     return ok
 
 
-def _parse_end_date(end_iso: str) -> "datetime | None":
+def _parse_end_date(end_iso: str) -> datetime | None:
     """ISO/Gamma date → aware datetime (UTC assumed when no tz). None on junk."""
     raw = str(end_iso or "").strip()
     if not raw:
@@ -554,7 +554,7 @@ def _parse_end_date(end_iso: str) -> "datetime | None":
     try:
         d = datetime.fromisoformat(raw)
         if d.tzinfo is None:
-            d = d.replace(tzinfo=timezone.utc)
+            d = d.replace(tzinfo=UTC)
         return d
     except ValueError:
         return None
@@ -565,10 +565,10 @@ def _parse_end_date(end_iso: str) -> "datetime | None":
 _GAME_LENGTH = timedelta(hours=2, minutes=45)
 
 
-def _is_date_only(d: "datetime") -> bool:
+def _is_date_only(d: datetime) -> bool:
     """Gamma stamps date-level markets at exactly midnight UTC — the real
     cutoff time of day (e.g. a PPI print at 08:30 ET) is not in the API."""
-    u = d.astimezone(timezone.utc)
+    u = d.astimezone(UTC)
     return u.hour == 0 and u.minute == 0 and u.second == 0
 
 
@@ -586,7 +586,7 @@ def _position_end_sort_key(p: dict) -> float:
     return end.timestamp()
 
 
-def _et_clock(d: "datetime", now: "datetime") -> str:
+def _et_clock(d: datetime, now: datetime) -> str:
     try:
         from zoneinfo import ZoneInfo
         local = d.astimezone(ZoneInfo("America/New_York"))
@@ -597,7 +597,7 @@ def _et_clock(d: "datetime", now: "datetime") -> str:
         return d.strftime("%d/%m %H:%M UTC")
 
 
-def _rel_fr(target: "datetime", now: "datetime") -> str:
+def _rel_fr(target: datetime, now: datetime) -> str:
     minutes = int(max((target - now).total_seconds(), 0) // 60)
     if minutes < 60:
         return f"dans {minutes}min"
@@ -606,7 +606,7 @@ def _rel_fr(target: "datetime", now: "datetime") -> str:
     return f"dans {minutes // (24 * 60)}j"
 
 
-def _fmt_expiry_fr(end_iso: str, game_start_iso: str = "", now: "datetime | None" = None,
+def _fmt_expiry_fr(end_iso: str, game_start_iso: str = "", now: datetime | None = None,
                    question: str = "") -> str:
     """French end-of-market line for an open position.
 
@@ -625,7 +625,7 @@ def _fmt_expiry_fr(end_iso: str, game_start_iso: str = "", now: "datetime | None
     use endDate wording ("se résout en fin de journée").
     """
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
     is_weather = False
     if question:
         try:
@@ -638,7 +638,7 @@ def _fmt_expiry_fr(end_iso: str, game_start_iso: str = "", now: "datetime | None
         if end is None:
             return "🌡 Se résout en fin de journée"
         if _is_date_only(end):
-            day = end.astimezone(timezone.utc).strftime("%d/%m")
+            day = end.astimezone(UTC).strftime("%d/%m")
             if now > end + timedelta(hours=24):
                 return f"⌛ Échéance passée (le {day}) — résolution en cours"
             return f"🌡 Se résout en fin de journée (le {day})"
@@ -657,7 +657,7 @@ def _fmt_expiry_fr(end_iso: str, game_start_iso: str = "", now: "datetime | None
     if end is None:
         return ""
     if _is_date_only(end):
-        day = end.astimezone(timezone.utc).strftime("%d/%m")
+        day = end.astimezone(UTC).strftime("%d/%m")
         if now > end + timedelta(hours=24):
             return f"⌛ Échéance passée (le {day}) — résolution en cours"
         return f"📅 Expire le {day} (heure exacte non publiée)"
@@ -865,7 +865,7 @@ def _closed_on_et_date(closed_at: str, day: str) -> bool:
         from zoneinfo import ZoneInfo
         dt = datetime.fromisoformat(closed_at.replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d") == day
     except Exception:
         return closed_at.startswith(day)
@@ -1083,7 +1083,7 @@ def daily_report_once() -> None:
 
     today_trades = load_todays_trades()
     open_pos = load_open_positions()
-    top_closed = load_top_closed_trades(5)
+    load_top_closed_trades(5)
 
     starting = _starting_cash()
     net = snap.equity - starting
@@ -1109,9 +1109,9 @@ def daily_report_once() -> None:
     divider2 = "─────────────────────────────────"
 
     parts = [
-        f"📊 *DAILY QUANT SUMMARY*",
+        "📊 *DAILY QUANT SUMMARY*",
         f"_{date_str} · {stamp}_",
-        f"_Polymarket Bot_ `kzer_ai` _· Grinder Strategy_",
+        "_Polymarket Bot_ `kzer_ai` _· Grinder Strategy_",
         divider,
         "",
         f"*💰 PORTFOLIO — {status}*",
@@ -1122,7 +1122,7 @@ def daily_report_once() -> None:
         "",
         divider2,
         "",
-        f"*📈 TRADING STATISTICS*",
+        "*📈 TRADING STATISTICS*",
         f"  Closed trades: *{snap.closed}*  ({snap.wins}W / {snap.losses}L" + (f" / {snap.flats} flat" if snap.flats else "") + ")",
         f"  Win rate:      *{snap.win_rate:.0f}%*",
         f"  Avg win:       {f'+${snap.avg_win:.2f}' if snap.avg_win else 'n/a'}  |  Avg loss: {f'-${abs(snap.avg_loss):.2f}' if snap.avg_loss else 'n/a'}",
@@ -1152,8 +1152,8 @@ def daily_report_once() -> None:
     parts += [
         "",
         divider,
-        f"_Reports at 9:00 AM & 4:00 PM ET_",
-        f"_Polymarket Bot_ `kzer_ai`",
+        "_Reports at 9:00 AM & 4:00 PM ET_",
+        "_Polymarket Bot_ `kzer_ai`",
     ]
 
     msg = "\n".join(parts)
@@ -1471,7 +1471,8 @@ def cycle_once() -> None:
             f"/ {_sign(day_pct_vs_yest)}{abs(day_pct_vs_yest):.1f}% {base_lbl})"
         )
         for r in shown_trades:
-            pnl = float(r["pnl"]); pct = float(r.get("pct", 0.0) or 0.0)
+            pnl = float(r["pnl"])
+            pct = float(r.get("pct", 0.0) or 0.0)
             mood = "🟢" if pnl > 0 else "🔴" if pnl < 0 else "⚪"
             s = "+" if pnl >= 0 else "-"
             entry = float(r.get("entry") or 0.0)
@@ -1583,7 +1584,6 @@ def _cycle_once_old() -> None:
     r_sign = "+" if realized >= 0 else ""
     r_mood = "🟢" if realized >= 0 else "🔴"
     unr_sign = "+" if unrealized >= 0 else ""
-    unr_mood = "🟢" if unrealized >= 0 else "🔴"
     status_word = "IN PROFIT 🤑" if net_vs_start > 0 else "DOWN 📉" if net_vs_start < 0 else "FLAT"
 
     # Daily P&L (trades closed today)

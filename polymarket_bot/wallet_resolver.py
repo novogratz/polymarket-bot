@@ -21,7 +21,6 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
 
 from ._atomic_io import atomic_write_text
 from .smart_money import DataApiClient

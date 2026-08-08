@@ -1,6 +1,7 @@
 """Tests for polymarket_bot.decisions_log."""
 
 import os
+
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 
 import json

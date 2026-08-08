@@ -17,7 +17,6 @@ sys.path.insert(0, str(ROOT))
 
 from polymarket_bot.smart_money import SmartTrade  # noqa: E402
 from scripts.wallet_edge_directional import (  # noqa: E402
-    JUMP_FLOOR,
     TRADE_CSV_COLUMNS,
     WALLET_CSV_COLUMNS,
     TradeRow,

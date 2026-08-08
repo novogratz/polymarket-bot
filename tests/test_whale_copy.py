@@ -5,6 +5,7 @@ but only on tokens in the already-vetted eligible universe.
 """
 
 import os
+
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 
 import unittest

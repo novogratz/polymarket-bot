@@ -64,7 +64,7 @@ export LIVE_ANALYST_WEATHER_ONLY=0
 export POLYMARKET_BOT_NAME="Grinder Bot 1"
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
-# Every 8 hours: reads paper_state + realized_trade_cache and posts the
+# Every 30 minutes: reads paper_state + realized_trade_cache and posts the
 # LIVE REPORT — the ONLY Telegram message this stack sends (equity since
 # start, top trades today, all open positions). No AI, no dry-race compare.
 # NEVER touches the live bot. Ctrl+C kills the whole process group.
@@ -88,7 +88,7 @@ uv run python scripts/live_analyst.py "${POLYMARKET_PROFILE_LABEL}" 2>&1 | sed -
 # `pmbot leaderboard --live-only --interval 5 --telegram` line to restore.
 
 # ─── Dry grinder twin (paper, mirrors the live config for safe compare) ─
-# Same grinder.toml ($43, all-in) but simulated — never spends real money,
+# Same production profile but simulated — never spends real money,
 # writes to data/dry_runs/grinder/. Telegram BUY/SELL silenced so only the
 # live bot speaks. Ticks slower (10min) to keep API load down.
 POLYMARKET_QUIET=1 \

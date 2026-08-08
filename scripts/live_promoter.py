@@ -36,7 +36,6 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from polymarket_bot.leaderboard import gather_run_stats  # noqa: E402
 
-
 DATA_DIR = REPO_ROOT / "data"
 ACTIVE_PATH = DATA_DIR / "live_active_profile.json"
 HISTORY_PATH = DATA_DIR / "live_active_profile_history.jsonl"
