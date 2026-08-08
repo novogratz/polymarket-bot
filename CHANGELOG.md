@@ -6,6 +6,12 @@ All notable changes are documented here. This project follows [Keep a Changelog]
 
 No unreleased changes.
 
+## [6.0.2] - 2026-08-07
+
+### Changed
+
+- Locked all three production bot profiles to the same complete weather strategy configuration, with a regression test that permits only per-wallet fallback balance differences.
+
 ## [6.0.1] - 2026-08-06
 
 ### Changed
@@ -72,7 +78,8 @@ No unreleased changes.
 
 - Trade journal, dry-run race tooling, Telegram reports, and strategy profiles.
 
-[Unreleased]: https://github.com/novogratz/polymarket-bot/compare/v6.0.1...HEAD
+[Unreleased]: https://github.com/novogratz/polymarket-bot/compare/v6.0.2...HEAD
+[6.0.2]: https://github.com/novogratz/polymarket-bot/compare/v6.0.1...v6.0.2
 [6.0.1]: https://github.com/novogratz/polymarket-bot/compare/v6.0.0...v6.0.1
 [6.0.0]: https://github.com/novogratz/polymarket-bot/compare/v5.1.0...v6.0.0
 [5.1.0]: https://github.com/novogratz/polymarket-bot/compare/v5.0.0...v5.1.0

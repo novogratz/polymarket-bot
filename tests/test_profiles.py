@@ -1,11 +1,14 @@
 """Tests for polymarket_bot.profiles : TOML parsing, validation, env mapping."""
 
 import os
+
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 
 import tempfile
 import unittest
 from pathlib import Path
+
+import tomllib
 
 from polymarket_bot.profiles import (
     ProfileConfig,
@@ -97,6 +100,19 @@ class LoadProfileTests(unittest.TestCase):
                 self.assertEqual(profile.values["POLYMARKET_RACE_MIN_PRICE"], "0.9")
                 self.assertEqual(profile.values["POLYMARKET_RACE_LATE_MULTI_CATEGORY"], "1")
                 self.assertEqual(profile.values["POLYMARKET_RACE_MIN_VOLUME_24H_USD"], "50.0")
+
+    def test_all_live_grinders_share_the_exact_strategy_profile(self):
+        """Only the per-wallet fallback balance may differ between live bots."""
+        profiles_dir = Path(__file__).resolve().parent.parent / "configs" / "profiles"
+        documents = []
+        for name in ("grinder.toml", "grinder_b.toml", "grinder_c.toml"):
+            with (profiles_dir / name).open("rb") as handle:
+                document = tomllib.load(handle)
+            document["sizing"].pop("assumed_live_balance_usd", None)
+            documents.append(document)
+
+        self.assertEqual(documents[0], documents[1])
+        self.assertEqual(documents[0], documents[2])
 
     def test_rejects_unknown_section(self):
         path = self._write_profile(
@@ -354,7 +370,8 @@ cache_threshold = 0.65
 intersect_periods = "MONTH,ALL"
 intersect_min = 1
 """
-        import os, tempfile
+        import os
+        import tempfile
 
         with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as fh:
             fh.write(toml_content)
@@ -374,7 +391,8 @@ intersect_min = 1
 [persistence]
 enabled = false
 """
-        import os, tempfile
+        import os
+        import tempfile
 
         with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as fh:
             fh.write(toml_content)
