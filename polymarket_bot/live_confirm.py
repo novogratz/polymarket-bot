@@ -11,12 +11,12 @@ the prompt (no network, no SDK).
 
 from __future__ import annotations
 
-import os
 import json
+import os
 import sys
-from typing import TextIO
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import TextIO
 
 from polymarket_bot.config import Settings
 
@@ -117,8 +117,8 @@ def _parse_dt(raw) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _live_risk_lines(settings: Settings, profile_label: str) -> list[str]:
@@ -146,7 +146,7 @@ def _live_risk_lines(settings: Settings, profile_label: str) -> list[str]:
     exposure = 0.0
     by_category: dict[str, float] = {}
     near_expiry_losers = 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for position in open_positions:
         try:
             stake = float(position.get("stake") or position.get("cost_basis") or 0.0)

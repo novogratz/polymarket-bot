@@ -21,7 +21,7 @@ echo "[run_live] logging to $RUN_LOG (live also -> $LIVE_LOG)"
 # Sync live positions (toggle hors schéma).
 export POLYMARKET_SYNC_LIVE_POSITIONS=1
 
-# Bot B bankroll fallback = $27 (re-baselined 2026-06-27 after weather losses).
+# Bot 2 bankroll fallback for temporary venue-balance read failures.
 # The bot reads the real USDC balance from CLOB each tick; these only kick in
 # if that read fails. MUST match grinder_b.toml starting_cash and
 # data/starting_cash.txt — a mismatched fallback skews "depuis le début" %.
@@ -64,7 +64,7 @@ export LIVE_ANALYST_WEATHER_ONLY=0
 export POLYMARKET_BOT_NAME="Grinder Bot 2"
 
 # ─── Live analyst sidecar (read-only, posts to TELEGRAM_CHAT_ID_LIVE) ──
-# Every 8 hours: reads paper_state + realized_trade_cache and posts the
+# Every 30 minutes: reads paper_state + realized_trade_cache and posts the
 # LIVE REPORT — the ONLY Telegram message this stack sends (equity since
 # start, top trades today, all open positions). No AI, no dry-race compare.
 # NEVER touches the live bot. Ctrl+C kills the whole process group.
@@ -81,7 +81,7 @@ pkill -f "live_analyst.py ${POLYMARKET_PROFILE_LABEL}\$" 2>/dev/null || true
 sleep 1
 
 # Bot B posts its OWN live report to its TELEGRAM_CHAT_ID_LIVE (.env).
-# live_analyst fires cycle_once() immediately on startup, then every 8 hours —
+# live_analyst fires cycle_once() immediately on startup, then every 30 minutes —
 # so you always get a report at launch, not after an 8-hour wait.
 uv run python scripts/live_analyst.py "${POLYMARKET_PROFILE_LABEL}" 2>&1 | sed -u 's/^/[live-analyst] /' | tee -a "$RUN_LOG" &
 
@@ -91,7 +91,7 @@ uv run python scripts/live_analyst.py "${POLYMARKET_PROFILE_LABEL}" 2>&1 | sed -
 # `pmbot leaderboard --live-only --interval 5 --telegram` line to restore.
 
 # ─── Dry grinder twin (paper, mirrors the live config for safe compare) ─
-# Same grinder.toml ($43, all-in) but simulated — never spends real money,
+# Same production profile but simulated — never spends real money,
 # writes to data/dry_runs/grinder/. Telegram BUY/SELL silenced so only the
 # live bot speaks. Ticks slower (10min) to keep API load down.
 POLYMARKET_QUIET=1 \

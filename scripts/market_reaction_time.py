@@ -51,18 +51,18 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from polymarket_bot.gamma import GammaClient  # noqa: E402
 from polymarket_bot.smart_money import market_category  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -362,7 +362,7 @@ def fetch_market_pool(
     timeout: int = 20,
 ) -> list[dict[str, Any]]:
     """Renvoie les marchés actifs les plus liquides au-dessus du seuil."""
-    client = GammaClient(timeout=timeout)
+    GammaClient(timeout=timeout)
     # On utilise directement l'API Gamma avec order=volume24hr (pas exposé dans
     # GammaClient.get_markets, donc requête manuelle).
     params = urllib.parse.urlencode(
@@ -400,7 +400,7 @@ def fetch_market_pool(
         if end_date:
             try:
                 end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-                hours_to_close = (end_dt - datetime.now(timezone.utc)).total_seconds() / 3600
+                hours_to_close = (end_dt - datetime.now(UTC)).total_seconds() / 3600
                 if hours_to_close < 1:
                     continue
             except Exception:
@@ -587,7 +587,7 @@ def write_report(
     }
 
     lines: list[str] = []
-    lines.append(f"# Temps de réaction Polymarket — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n")
+    lines.append(f"# Temps de réaction Polymarket — {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}\n")
     lines.append("## Paramètres\n")
     lines.append(f"- Marchés scannés : **{markets_scanned}**")
     lines.append(f"- Lookback : **{args.lookback_hours} h**")

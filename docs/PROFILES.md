@@ -10,7 +10,7 @@ Strategy profiles are TOML files in `configs/profiles/`. They provide reproducib
 | `grinder_b.toml` | `scripts/run_live_b.sh` | Bot 2 weather-only production lane |
 | `grinder_c.toml` | `scripts/run_live_c.sh` | Bot 3 weather-only production lane |
 
-All maintained live profiles use the core policy in [STRATEGIES.md](STRATEGIES.md): weather-only fresh entries, a 0.02 forecast-edge gate, short-dated selection, percentage sizing, and disabled weather loss exits. They intentionally differ in legacy `stake_pct`, category sample thresholds, and profile-level assumed balances; those fields do not change full-deployment fresh sizing, and the launchers override the assumed live balance to 85 unless the environment already supplies a value.
+All maintained live profiles use the exact core policy in [STRATEGIES.md](STRATEGIES.md): weather-only fresh entries, a 0.02 forecast-edge gate, short-dated selection, percentage sizing, and disabled weather loss exits. A regression test prevents strategy drift. Only the profile-level assumed balance may differ because it is a deployment fallback; maintained launchers override it to 85 unless the environment already supplies a value.
 
 All three production profiles set `race.scan_limit = 0`. In `GammaClient`, zero means paginate the complete matching inventory rather than stop after a fixed number of markets.
 

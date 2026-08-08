@@ -18,10 +18,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import fields
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from . import tick_state
 from .config import Settings
 from .dashboard_html import HTML
 from .gamma import GammaClient
@@ -29,9 +30,7 @@ from .models import utc_now
 from .portfolio import Portfolio
 from .pricing import ensure_open_positions_in_pool
 from .strategy import rank_markets
-from . import tick_state
 from .trading import build_client
-
 
 # Set of Settings fields that the auto-tuner can override. Used by build_tune
 # to compute the "default vs override" pairs the dashboard renders.
@@ -104,7 +103,7 @@ def build_state(settings: Settings) -> dict[str, Any]:
     closed_trades = closed_trades[:30]
 
     return {
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
         "live_trading_enabled": settings.live_trading_enabled,
         "dry_run": settings.dry_run,
         "state_path": str(settings.state_path),
@@ -121,7 +120,7 @@ def build_state(settings: Settings) -> dict[str, Any]:
 
 def build_live(settings: Settings) -> dict[str, Any]:
     return {
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
         "mode": "dry_run" if settings.dry_run else "live",
         "auto_interval_seconds": settings.auto_interval_seconds,
         "last_tick": tick_state.read_last_tick(settings),
@@ -132,7 +131,7 @@ def build_live(settings: Settings) -> dict[str, Any]:
 def build_stats(settings: Settings) -> dict[str, Any]:
     from .main import journal_stats  # local import to avoid circular dependency
     payload = journal_stats(settings)
-    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    payload["updated_at"] = datetime.now(UTC).isoformat()
     return payload
 
 
@@ -152,7 +151,7 @@ def build_tune(settings: Settings) -> dict[str, Any]:
     overrides_active = dict(overrides_payload.get("overrides") or {})
     stats_payload = journal_stats(settings)
     return {
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
         "enabled": settings.smart_auto_tune_enabled,
         "min_trades_required": settings.smart_auto_tune_min_trades,
         "records_observed": int(overrides_payload.get("records_observed") or 0),

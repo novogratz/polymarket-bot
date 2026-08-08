@@ -37,7 +37,7 @@ def _load_settings(dry_run: bool):
     # Deliberate user-ordered exit — allow selling below entry.
     os.environ["POLYMARKET_ALLOW_LOSS_SELL"] = "1"
 
-    from polymarket_bot.profiles import load_profile, apply_profile_to_env
+    from polymarket_bot.profiles import apply_profile_to_env, load_profile
     profile_path = REPO_ROOT / "configs" / "profiles" / "grinder_b.toml"
     if profile_path.exists():
         apply_profile_to_env(load_profile(profile_path), override=True)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -31,7 +31,6 @@ from polymarket_bot.dry_run_runs import (
     save_metadata,
 )
 
-
 app = typer.Typer(help="Manage named dry-run simulations.")
 
 
@@ -48,8 +47,8 @@ def _humanize_age(iso_ts: str | None) -> str:
     except ValueError:
         return "-"
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
-    delta = datetime.now(timezone.utc) - ts
+        ts = ts.replace(tzinfo=UTC)
+    delta = datetime.now(UTC) - ts
     seconds = max(0.0, delta.total_seconds())
     if seconds < 60:
         return f"{int(seconds)}s"
@@ -249,9 +248,9 @@ def cmd_import_legacy(
     trades = []
     if legacy_journal.is_file():
         trades = [
-            json.loads(l)
-            for l in legacy_journal.read_text(encoding="utf-8").splitlines()
-            if l.strip()
+            json.loads(line)
+            for line in legacy_journal.read_text(encoding="utf-8").splitlines()
+            if line.strip()
         ]
         for t in trades:
             cost = float(t.get("cost_basis", 0.0))
@@ -291,7 +290,9 @@ def cmd_import_legacy(
     metadata = load_metadata(target_paths)
     if target_paths.tick_history.is_file():
         metadata.total_ticks = sum(
-            1 for l in target_paths.tick_history.read_text(encoding="utf-8").splitlines() if l.strip()
+            1
+            for line in target_paths.tick_history.read_text(encoding="utf-8").splitlines()
+            if line.strip()
         )
         save_metadata(target_paths, metadata)
 

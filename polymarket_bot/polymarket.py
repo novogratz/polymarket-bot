@@ -14,9 +14,9 @@ import hmac
 import json
 import secrets
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
-import urllib.error
 from dataclasses import dataclass
 from typing import Any
 

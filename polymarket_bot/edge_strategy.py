@@ -39,7 +39,6 @@ from __future__ import annotations
 import datetime as dt
 import math
 import re
-import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -48,7 +47,6 @@ from typing import Any
 from . import notifications
 from .config import Settings
 from .external_prices import (
-    ASSET_TO_SYMBOL,
     SpotQuote,
     fetch_spot_quotes_for_assets,
 )
@@ -58,7 +56,6 @@ from .news_strategy import _asset_key, _event_slug, _quote_for_outcome
 from .portfolio import Portfolio
 from .pricing import ensure_open_positions_in_pool
 from .trading import build_client, execute_live_sell, execute_live_trade
-
 
 # Lane identifiers (used as journal tags and in the rationale string).
 LANE_ARB = "arb"

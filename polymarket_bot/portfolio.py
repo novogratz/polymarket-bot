@@ -29,7 +29,7 @@ class Portfolio:
     pending_orders: list[dict[str, Any]] | None = None
 
     @classmethod
-    def load(cls, path: Path, starting_cash: float) -> "Portfolio":
+    def load(cls, path: Path, starting_cash: float) -> Portfolio:
         if not path.exists():
             return cls(cash=starting_cash, positions=[], pending_orders=[])
         data = json.loads(path.read_text())

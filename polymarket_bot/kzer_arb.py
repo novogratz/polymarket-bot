@@ -24,7 +24,6 @@ from .config import Settings
 from .models import Candidate, as_float, parse_dt, parse_json_list, utc_now
 from .portfolio import Portfolio
 
-
 KZER_PAIR_ARB_CEILING = 1.00          # Lane A: true arb requires sum < this.
 KZER_MIN_ARB_EDGE = 0.005             # 0.5% minimum edge after rounding.
 KZER_NEAR_ARB_CEILING = 1.03          # Lane B: pair_ask must be ≤ this.

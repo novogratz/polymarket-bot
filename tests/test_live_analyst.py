@@ -4,9 +4,9 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import UTC
 from pathlib import Path
 from unittest import mock
-
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 MODULE_PATH = SCRIPTS_DIR / "live_analyst.py"
@@ -261,8 +261,8 @@ class OpenPositionExpiryTests(unittest.TestCase):
         # the measurement day), so the kickoff+2h45 sports heuristic labelled
         # them "Match terminé" all afternoon while still live. Weather
         # questions must use end-of-day wording instead.
-        from datetime import datetime, timezone
-        now = datetime(2026, 7, 19, 16, 0, tzinfo=timezone.utc)
+        from datetime import datetime
+        now = datetime(2026, 7, 19, 16, 0, tzinfo=UTC)
         line = live_analyst._fmt_expiry_fr(
             "2026-07-19T00:00:00+00:00",           # date-only Gamma endDate
             "2026-07-19T04:00:00+00:00",           # "kickoff" 12h ago
@@ -273,8 +273,8 @@ class OpenPositionExpiryTests(unittest.TestCase):
         self.assertIn("fin de journée", line)
 
     def test_weather_with_timed_end_shows_countdown_not_match_termine(self):
-        from datetime import datetime, timezone
-        now = datetime(2026, 7, 19, 16, 0, tzinfo=timezone.utc)
+        from datetime import datetime
+        now = datetime(2026, 7, 19, 16, 0, tzinfo=UTC)
         line = live_analyst._fmt_expiry_fr(
             "2026-07-19T23:59:00+00:00",
             "2026-07-19T04:00:00+00:00",
@@ -285,8 +285,8 @@ class OpenPositionExpiryTests(unittest.TestCase):
         self.assertIn("fin de journée", line)
 
     def test_sports_positions_keep_the_match_termine_label(self):
-        from datetime import datetime, timezone
-        now = datetime(2026, 7, 19, 16, 0, tzinfo=timezone.utc)
+        from datetime import datetime
+        now = datetime(2026, 7, 19, 16, 0, tzinfo=UTC)
         line = live_analyst._fmt_expiry_fr(
             "2026-07-19T00:00:00+00:00",
             "2026-07-19T04:00:00+00:00",
@@ -296,8 +296,8 @@ class OpenPositionExpiryTests(unittest.TestCase):
         self.assertIn("Match terminé", line)
 
     def test_fmt_expiry_fr_future_past_and_missing(self):
-        from datetime import datetime, timezone
-        now = datetime(2026, 6, 11, 16, 0, tzinfo=timezone.utc)  # 12:00 ET
+        from datetime import datetime
+        now = datetime(2026, 6, 11, 16, 0, tzinfo=UTC)  # 12:00 ET
         line = live_analyst._fmt_expiry_fr("2026-06-11T18:05:00+00:00", now=now)
         self.assertIn("Fin prévue", line)
         self.assertIn("14:05 ET", line)
@@ -313,8 +313,8 @@ class OpenPositionExpiryTests(unittest.TestCase):
         # Gamma stamps date-level markets at midnight UTC; June 12 00:00 UTC
         # used to render as "11/06 20:00 ET" — a fabricated time. Show the
         # date alone.
-        from datetime import datetime, timezone
-        now = datetime(2026, 6, 11, 16, 0, tzinfo=timezone.utc)
+        from datetime import datetime
+        now = datetime(2026, 6, 11, 16, 0, tzinfo=UTC)
         line = live_analyst._fmt_expiry_fr("2026-06-12T00:00:00+00:00", now=now)
         self.assertIn("Expire le 12/06", line)
         self.assertNotIn("ET", line)
@@ -326,18 +326,18 @@ class OpenPositionExpiryTests(unittest.TestCase):
         self.assertIn("Échéance passée", old)
 
     def test_sports_show_kickoff_not_end_date(self):
-        from datetime import datetime, timezone
+        from datetime import datetime
         kickoff = "2026-06-11T18:00:00+00:00"   # 14:00 ET
         end_date = "2026-06-11T00:00:00+00:00"  # useless midnight stamp
         before = live_analyst._fmt_expiry_fr(
-            end_date, kickoff, now=datetime(2026, 6, 11, 16, 0, tzinfo=timezone.utc))
+            end_date, kickoff, now=datetime(2026, 6, 11, 16, 0, tzinfo=UTC))
         self.assertIn("Coup d'envoi : 14:00 ET", before)
         self.assertIn("dans 2h00", before)
         during = live_analyst._fmt_expiry_fr(
-            end_date, kickoff, now=datetime(2026, 6, 11, 19, 0, tzinfo=timezone.utc))
+            end_date, kickoff, now=datetime(2026, 6, 11, 19, 0, tzinfo=UTC))
         self.assertIn("Match en cours", during)
         after = live_analyst._fmt_expiry_fr(
-            end_date, kickoff, now=datetime(2026, 6, 11, 22, 0, tzinfo=timezone.utc))
+            end_date, kickoff, now=datetime(2026, 6, 11, 22, 0, tzinfo=UTC))
         self.assertIn("Match terminé", after)
 
     def test_sort_kickoff_before_dateonly_next_day(self):

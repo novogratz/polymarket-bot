@@ -31,9 +31,8 @@ import json
 import math
 import re
 import urllib.request
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # City → (lat, lon) lookup
@@ -192,7 +191,7 @@ _TEMP_RE = re.compile(
 _TAIL_RE = re.compile(r"\bor\s+(higher|lower)\b", re.IGNORECASE)
 
 
-def _parse_date(question: str) -> Optional[date]:
+def _parse_date(question: str) -> date | None:
     m = _DATE_RE.search(question)
     if not m:
         return None
@@ -200,19 +199,19 @@ def _parse_date(question: str) -> Optional[date]:
     if not month:
         return None
     day = int(m.group(2))
-    year = int(m.group(3)) if m.group(3) else datetime.now(timezone.utc).year
+    year = int(m.group(3)) if m.group(3) else datetime.now(UTC).year
     try:
         return date(year, month, day)
     except ValueError:
         return None
 
 
-def parse_weather_question(question: str) -> Optional[dict]:
+def parse_weather_question(question: str) -> dict | None:
     """Parse a Polymarket temperature question into structured data, or None."""
     ql = question.lower()
     is_max = "highest" in ql or "high temperature" in ql or "maximum" in ql
 
-    city_match: Optional[tuple[str, float, float]] = None
+    city_match: tuple[str, float, float] | None = None
     for city, lat, lon in _CITY_LIST:
         if city in ql:
             city_match = (city, lat, lon)
@@ -265,7 +264,7 @@ def _fetch_model_cached(
     utc_hour: int,
     model: str,
     with_current: bool,
-) -> Optional[tuple[float, float, Optional[float]]]:
+) -> tuple[float, float, float | None] | None:
     """Fetch (max_c, min_c, current_c_or_None) for one NWP model. Cached per hour."""
     current_param = "&current=temperature_2m" if with_current else ""
     url = (
@@ -292,7 +291,7 @@ def _fetch_model_cached(
     except (ValueError, IndexError, KeyError, TypeError):
         return None
 
-    current_c: Optional[float] = None
+    current_c: float | None = None
     if with_current:
         try:
             current_c = float(data["current"]["temperature_2m"])
@@ -304,7 +303,7 @@ def _fetch_model_cached(
 
 def _fetch_consensus(
     lat: float, lon: float, target_date: date
-) -> Optional[tuple[float, float, float, Optional[float]]]:
+) -> tuple[float, float, float, float | None] | None:
     """
     Fetch GFS + ECMWF + best-match in parallel.
 
@@ -320,7 +319,7 @@ def _fetch_consensus(
     lat_r = round(lat, 4)
     lon_r = round(lon, 4)
     date_iso = target_date.isoformat()
-    utc_hour = datetime.now(timezone.utc).hour
+    utc_hour = datetime.now(UTC).hour
 
     model_args = [
         (lat_r, lon_r, date_iso, utc_hour, _MODELS[0], True),   # best_match + current
@@ -329,7 +328,7 @@ def _fetch_consensus(
     ]
 
     # Check cache first — avoids spawning threads on warm ticks
-    results: list[tuple[float, float, Optional[float]]] = []
+    results: list[tuple[float, float, float | None]] = []
     to_fetch: list[tuple] = []
     for args in model_args:
         cached = _fetch_model_cached(*args)
@@ -340,7 +339,7 @@ def _fetch_consensus(
 
     # Fetch uncached models in parallel
     if to_fetch:
-        def _call(args: tuple) -> Optional[tuple]:
+        def _call(args: tuple) -> tuple | None:
             return _fetch_model_cached(*args)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(to_fetch)) as pool:
@@ -367,7 +366,7 @@ def _fetch_consensus(
     n = len(maxes)
     model_std = math.sqrt(sum((x - mean_max) ** 2 for x in maxes) / n)
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     days_out = max(0, (target_date - today).days)
     horizon_floor = 0.8 + 0.25 * days_out  # minimum grows with forecast horizon
 
@@ -378,7 +377,7 @@ def _fetch_consensus(
 
 def fetch_forecast_temp(
     lat: float, lon: float, target_date: date
-) -> Optional[tuple[float, float]]:
+) -> tuple[float, float] | None:
     """
     Public compat shim — returns (forecast_max_c, forecast_min_c) using the
     multi-model consensus mean, or None.  Tests that mock this function still work.
@@ -407,7 +406,7 @@ def _bracket_yes_prob(forecast_c: float, sigma_c: float, low_c: float, high_c: f
 
 def _solar_hour(lon: float) -> float:
     """Approximate local solar hour from UTC time + longitude (±15 min accuracy)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return (now.hour + now.minute / 60.0 + lon / 15.0) % 24.0
 
 
@@ -415,11 +414,11 @@ def late_entry_ready(parsed: dict, min_solar_hour: float, now: datetime | None =
     """Require the target city's own date and a late local solar hour."""
     if min_solar_hour <= 0:
         return True
-    current = now or datetime.now(timezone.utc)
+    current = now or datetime.now(UTC)
     if current.tzinfo is None:
-        current = current.replace(tzinfo=timezone.utc)
+        current = current.replace(tzinfo=UTC)
     lon = float(parsed.get("lon") or 0.0)
-    local = current.astimezone(timezone.utc) + timedelta(hours=lon / 15.0)
+    local = current.astimezone(UTC) + timedelta(hours=lon / 15.0)
     if parsed.get("target_date") != local.date():
         return False
     return local.hour + local.minute / 60.0 >= min_solar_hour
@@ -427,7 +426,7 @@ def late_entry_ready(parsed: dict, min_solar_hour: float, now: datetime | None =
 
 def forecast_outcome_probability(
     parsed: dict, outcome: str, min_bracket_margin_c: float = 0.0
-) -> Optional[float]:
+) -> float | None:
     """
     Return model P(outcome correct) for the temperature market in `parsed`.
 
@@ -485,7 +484,7 @@ def forecast_outcome_probability(
     is_max = parsed.get("is_max", True)
 
     # ── Intraday kill-switch ─────────────────────────────────────────────────
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     if target_date == today and current_c is not None and is_max:
         solar_hr = _solar_hour(parsed["lon"])
 

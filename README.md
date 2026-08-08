@@ -1,5 +1,10 @@
 # Polymarket Weather Bot
 
+[![Tests](https://github.com/novogratz/polymarket-bot/actions/workflows/test.yml/badge.svg)](https://github.com/novogratz/polymarket-bot/actions/workflows/test.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/novogratz/polymarket-bot)](https://github.com/novogratz/polymarket-bot/releases/latest)
+
 A deterministic Python trading engine for short-dated Polymarket temperature markets. It combines market data, multi-model Open-Meteo forecasts, portfolio controls, live order execution, persistent decision records, and read-only operational reporting.
 
 > [!WARNING]
@@ -146,6 +151,10 @@ See [Operations](docs/OPERATIONS.md) for launch, monitoring, incident, and recov
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 - [Changelog](CHANGELOG.md)
+
+## Product boundaries
+
+This repository provides execution software, not financial advice or a profitability guarantee. Operators remain responsible for credentials, wallet funding, jurisdictional compliance, market-resolution review, deployment isolation, and loss limits. Experimental profiles and research utilities are retained for dry-run analysis but are not part of the maintained live strategy.
 
 ## License
 

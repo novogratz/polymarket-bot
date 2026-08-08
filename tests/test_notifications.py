@@ -2,11 +2,10 @@ import io
 import json
 import os
 import tempfile
-import time
 import unittest
+from collections.abc import Callable
 from contextlib import redirect_stderr
 from pathlib import Path
-from typing import Callable
 from unittest import mock
 from unittest.mock import patch
 

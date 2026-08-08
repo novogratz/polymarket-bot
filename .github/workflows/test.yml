@@ -5,9 +5,17 @@ on:
     branches: [ main ]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unittest:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]
@@ -23,14 +31,14 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --python ${{ matrix.python-version }}
+        run: uv sync --extra dev --python ${{ matrix.python-version }} --locked
 
       - name: Run unit tests
         run: uv run --python ${{ matrix.python-version }} python -B -m unittest discover -s tests -v
 
   lint:
     runs-on: ubuntu-latest
-    continue-on-error: true
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -39,5 +47,29 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Run ruff (advisory)
-        run: uvx ruff check polymarket_bot tests || true
+      - name: Install dependencies
+        run: uv sync --extra dev --locked
+
+      - name: Run Ruff
+        run: uv run ruff check .
+
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/*
+          if-no-files-found: error

@@ -14,7 +14,6 @@ import urllib.request
 from datetime import datetime
 from typing import Any
 
-
 # The Gamma API silently truncates every /markets response to 100 rows no
 # matter what limit is requested, returning a bare array with no total count
 # or pagination headers (#30). Pages must be walked with offset.

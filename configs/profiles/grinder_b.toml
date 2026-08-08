@@ -1,29 +1,16 @@
-# Profile "grinder_b" — SECOND bot (run_live_b.sh). Independent of the shared
-# grinder.toml: editing this never affects the primary bot and vice versa, so
-# both bots can push/pull main freely (they own different files).
-# Same strategy as grinder.toml; only the bankroll baseline differs.
-#
-# Profile "grinder" — heavy-favorite, ride-to-resolution.
-#
-# Thesis: buy near-certainty binary outcomes at 0.87–0.95 within 4h of close,
-# hold until bid ≥ 0.99. No stop-loss. 50% stake, 2 concurrent positions.
-#
-# Target: 2 wins/day → ~9%, 3 wins → ~13%. Each win = ~8.8% on stake = 4.4%
-# on account. Wider band + faster tick = more eligible markets per day.
-# Exclusion filters block all known gap-risk categories (exact scores, weather,
-# O/U 0.5/5.5+). No price-movement gates (removed 2026-06-10): fast movers
-# are often converging toward resolution and stay tradeable.
+# Production profile for Bot 2 (scripts/run_live_b.sh).
+# Deterministic, forecast-gated, weather-only strategy. Strategy values are
+# regression-tested across all production profiles; only the deployment-specific
+# assumed balance may differ.
 
 [run]
-# Baseline reset 2026-06-27: re-based to current live equity after weather-mode
-# pivot losses. Total P&L tracks from here.
+# Reporting baseline; the launcher reads the venue balance each tick.
 starting_cash = 85.0
 mode = "grinder"
 
 [sizing]
-# 50% per trade — 2 wins/day hits ~9%, 3 wins hits ~13%.
-# One loss = -50% on stake, painful but recoverable with one follow-up win.
-# ceiling disabled (0) so stake scales with bankroll automatically.
+# Legacy generic sizing keys retained for compatibility. The maintained live
+# strategy uses the percentage-based full-deployment controls in [race].
 max_position_ceiling_usd = 0.0
 max_position_ceiling_pct = 0.54
 cash_floor_pct = 0.05

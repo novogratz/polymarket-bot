@@ -1,14 +1,16 @@
 """Tests for the --dry-run / --live / --profile / --yes CLI flags on auto-loop."""
 
 import os
+
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 for _k in [k for k in os.environ if k.startswith("POLYMARKET_") and k != "POLYMARKET_SKIP_DOTENV"]:
     del os.environ[_k]
 
 import unittest
 from pathlib import Path
-from typer.testing import CliRunner
 from unittest.mock import patch
+
+from typer.testing import CliRunner
 
 
 def _clean_env():
@@ -111,7 +113,6 @@ class CliAutoLoopFlagsTests(unittest.TestCase):
         self.assertTrue(str(settings.state_path).endswith("data/dry_runs/default/state.json"))
 
 
-import tempfile
 
 
 class CliAutoLoopIntegrationTests(unittest.TestCase):

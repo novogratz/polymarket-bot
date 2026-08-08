@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 from polymarket_bot.config import Settings
 
-
 PERSISTENCE_ENV_KEYS = (
     "POLYMARKET_PERSISTENCE_ENABLED",
     "POLYMARKET_PERSISTENCE_CACHE_PATH",

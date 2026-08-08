@@ -15,15 +15,15 @@ import json
 import os
 import sys
 import time
-from importlib import import_module
 from dataclasses import dataclass
+from importlib import import_module
 from typing import Any
 
 from . import notifications
 from .config import Settings
 from .models import Candidate
-from .portfolio import Portfolio
 from .polymarket import ApiCreds, PolymarketClient
+from .portfolio import Portfolio
 
 
 def _load_clob_types():
@@ -556,7 +556,7 @@ class _DryRunClient:
         )
 
 
-def build_client(settings: Settings) -> "TradingSession | _DryRunClient":
+def build_client(settings: Settings) -> TradingSession | _DryRunClient:
     if settings.dry_run:
         return _DryRunClient(settings)
     if not settings.private_key:
@@ -760,7 +760,7 @@ def execute_live_trade(
     total_equity = live_balance + current_exposure
     target_total_exposure = total_equity * settings.trade_fraction
     needed_usd = max(0.0, target_total_exposure - current_exposure)
-    
+
     # Sizing logic
     minimum = min_trade_usd if min_trade_usd is not None else settings.btc_min_trade_usd
     maximum = max_trade_usd if max_trade_usd is not None else settings.btc_max_trade_usd
@@ -780,10 +780,10 @@ def execute_live_trade(
         if _is_high_conviction_signal(signal) and settings.smart_high_conviction_balance_fraction > 0:
             maximum = max(maximum, live_balance * settings.smart_high_conviction_balance_fraction)
             maximum = min(maximum, live_balance)
-    
+
     # Use the needed amount, but capped by available balance and max per trade
     stake = min(needed_usd, live_balance, maximum)
-    
+
     # If we are below minimum but have room to grow to target, take minimum
     if stake < minimum and needed_usd >= minimum and live_balance >= minimum:
         stake = minimum
@@ -791,7 +791,7 @@ def execute_live_trade(
     min_share_stake = settings.min_order_shares * entry_price
     if stake > 0 and live_balance >= min_share_stake:
         stake = max(stake, min_share_stake)
-    
+
     stake = round(min(stake, live_balance), 2)
     if stake <= 0:
         raise ValueError("target exposure already reached or no cash available")

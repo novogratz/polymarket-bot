@@ -20,7 +20,7 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import notifications
@@ -175,7 +175,7 @@ def _humanize_close_eta(end_date: str | None) -> str:
         parsed = datetime.fromisoformat(str(end_date).replace("Z", "+00:00"))
     except Exception:
         return ""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     delta = (parsed - now).total_seconds()
     if delta <= 0:
         return "ongoing"
@@ -333,7 +333,7 @@ def gather_run_stats(base_dir: Path, run_name: str) -> RunStats | None:
     realized_pnl = 0.0
     biggest_win_today = 0.0
     biggest_loss_today = 0.0
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     journal_path = root / "journal.jsonl"
     if journal_path.is_file():
         try:
@@ -489,7 +489,7 @@ def _load_or_init_live_baseline(base_dir: Path, current_equity: float) -> float:
             json.dumps(
                 {
                     "starting_cash": float(current_equity),
-                    "started_at": datetime.now(timezone.utc).isoformat(),
+                    "started_at": datetime.now(UTC).isoformat(),
                 },
                 indent=2,
             ),
@@ -552,7 +552,7 @@ def gather_live_stats(base_dir: Path) -> RunStats | None:
     realized_pnl = 0.0
     biggest_win_today = 0.0
     biggest_loss_today = 0.0
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     journal_path = base_dir / "trade_journal.jsonl"
     for rec in _read_realized_records(journal_path):
         pnl = _record_pnl(rec)
@@ -690,7 +690,7 @@ def format_leaderboard(
         key=lambda s: s.roi_pct,
         reverse=True,
     )
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     stamp = now.strftime("%H:%M:%S")
     profitable = sum(1 for s in ranked if s.wins > s.losses or s.roi_pct > 0)
     positioned = sum(1 for s in ranked if s.open_positions > 0)
@@ -771,7 +771,7 @@ def format_leaderboard_telegram(
     """
     if not stats and live is None:
         return "🏁 *Leaderboard*: no runs found"
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     if not stats and live is not None:
         # Live-only mode: the live bot IS the board. Render it as the sole
         # entry with full winner detail (open / best / worst closed).
@@ -798,7 +798,7 @@ def format_leaderboard_telegram(
         key=lambda s: s.roi_pct,
         reverse=True,
     )
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     stamp = now.strftime("%H:%M")
 
     profitable = sum(1 for s in ranked if s.wins > s.losses or s.roi_pct > 0)
@@ -808,7 +808,7 @@ def format_leaderboard_telegram(
         "",
     ]
 
-    def _fmt_row(i: int, s: "RunStats") -> str:
+    def _fmt_row(i: int, s: RunStats) -> str:
         # Plain text rows — _post() retries with parse_mode stripped on
         # HTTP 400, so we keep formatting minimal to avoid MarkdownV2
         # escape headaches with strategy names full of underscores.

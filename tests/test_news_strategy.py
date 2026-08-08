@@ -8,8 +8,7 @@ import unittest
 from datetime import timedelta
 
 from polymarket_bot.config import Settings
-from polymarket_bot.models import utc_now
-from polymarket_bot.models import Candidate
+from polymarket_bot.models import Candidate, utc_now
 from polymarket_bot.news_strategy import (
     _adaptive_stop_pct,
     _asset_key,

@@ -1,6 +1,7 @@
 """Tests for polymarket_bot.live_confirm : interactive yes/no prompt + recap."""
 
 import os
+
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 for _k in [k for k in os.environ if k.startswith("POLYMARKET_") and k != "POLYMARKET_SKIP_DOTENV"]:
     del os.environ[_k]

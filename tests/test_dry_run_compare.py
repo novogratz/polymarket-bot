@@ -1,6 +1,7 @@
 """Tests for polymarket_bot.dry_run_compare."""
 
 import os
+
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 
 import json
@@ -8,13 +9,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from polymarket_bot.dry_run_runs import ensure_run_directory, save_metadata, load_metadata
-from polymarket_bot.equity_tracker import append_equity_point
 from polymarket_bot.dry_run_compare import (
     RunStats,
     compute_run_stats,
     format_comparison_table,
 )
+from polymarket_bot.dry_run_runs import ensure_run_directory, load_metadata, save_metadata
+from polymarket_bot.equity_tracker import append_equity_point
 
 
 class ComputeRunStatsTests(unittest.TestCase):

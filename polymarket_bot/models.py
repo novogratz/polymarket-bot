@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -24,12 +24,12 @@ def parse_dt(value: str | None) -> datetime | None:
     # against utc_now() throws "can't subtract offset-naive and
     # offset-aware datetimes" when the source string has no timezone.
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def as_float(value: Any, default: float = 0.0) -> float:

@@ -26,11 +26,12 @@ import time
 import urllib.parse
 import urllib.request
 from collections import Counter, deque
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -41,7 +42,6 @@ from polymarket_bot.smart_money import (  # noqa: E402
     _float,
     market_category,
 )
-
 
 DEFAULT_SINCE = "2026-01-01T00:00:00Z"
 DEFAULT_PERIODS = "WEEK,MONTH,ALL"
@@ -88,7 +88,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def iso_to_unix(iso: str) -> int:
     dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return int(dt.timestamp())
 
 

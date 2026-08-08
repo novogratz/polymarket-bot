@@ -8,9 +8,11 @@ import unittest
 from datetime import timedelta
 
 from polymarket_bot.config import Settings
-from polymarket_bot.external_prices import SpotQuote
-from polymarket_bot.models import Candidate, utc_now
 from polymarket_bot.edge_strategy import (
+    LANE_CRYPTO,
+    LANE_NEAR_CERT,
+    LANE_SCALP,
+    EdgeSignal,
     _crypto_fair_probability,
     _edge_sell_plan,
     _parse_price_levels,
@@ -19,11 +21,9 @@ from polymarket_bot.edge_strategy import (
     find_near_certainty_opportunities,
     kelly_fraction,
     size_signal,
-    EdgeSignal,
-    LANE_CRYPTO,
-    LANE_NEAR_CERT,
-    LANE_SCALP,
 )
+from polymarket_bot.external_prices import SpotQuote
+from polymarket_bot.models import Candidate, utc_now
 
 
 def _market(

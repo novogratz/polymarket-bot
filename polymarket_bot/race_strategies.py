@@ -27,7 +27,6 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
-from . import notifications
 from .categories import classify_market, disabled_categories
 from .config import Settings
 from .forecast import build_context, evaluate_market, resolution_clarity
@@ -337,7 +336,7 @@ def _weather_target_is_local_today(market: dict[str, Any], now: dt.datetime) -> 
     if not parsed or not parsed.get("target_date"):
         return False
     lon = float(parsed.get("lon") or 0.0)
-    local_now = now.astimezone(dt.timezone.utc) + timedelta(hours=lon / 15.0)
+    local_now = now.astimezone(dt.UTC) + timedelta(hours=lon / 15.0)
     return parsed["target_date"] == local_now.date()
 
 
@@ -1059,14 +1058,14 @@ def select_elite_momentum_consensus(
     eligible: list[tuple[Candidate, float]], n: int
 ) -> list[Candidate]:
     """Smart high-frequency strategy: momentum + volume + tight spreads in liquid markets.
-    
+
     Thesis: Best edge is continuation in markets that are:
     - Moving with purpose (momentum >= 2%)
     - Backed by real volume (>= $1000)
     - Not at extremes (price 0.15-0.85)
     - Cheap to trade (spread <= 0.06)
     - Near-term but not expiring (2-48h to close)
-    
+
     Scores by momentum * volume * spread_efficiency to rank conviction.
     Designed to fire regularly while maintaining quality filters.
     """
@@ -1075,7 +1074,7 @@ def select_elite_momentum_consensus(
         bid, ask = c.best_bid or 0.0, c.best_ask or 1.0
         spread = ask - bid
         hours = c.hours_to_close or 99.0
-        
+
         if mom < 0.02:
             continue
         if (c.volume or 0) < 1000.0:
@@ -1086,10 +1085,10 @@ def select_elite_momentum_consensus(
             continue
         if not (2.0 <= hours <= 48.0):
             continue
-        
+
         score = mom * (c.volume or 1.0) * max(1.0 - spread, 0.5)
         qualified.append((c, score))
-    
+
     return _dedupe_top_n(qualified, n)
 
 
@@ -2529,7 +2528,7 @@ def _load_mirror_candidates(
     cutoff = now - timedelta(seconds=MIRROR_STALENESS_SEC)
     wanted: dict[str, dict[str, Any]] = {}
     try:
-        with open(MIRROR_SIGNAL_PATH, "r", encoding="utf-8") as fh:
+        with open(MIRROR_SIGNAL_PATH, encoding="utf-8") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
@@ -3203,7 +3202,7 @@ def _redistribute_leftover_cash(
         return []
     share = cash_above_floor / len(targets)
     executed: list[dict[str, Any]] = []
-    for position, candidate, room in targets:
+    for _position, candidate, room in targets:
         ask = float(candidate.best_ask or 0.0)
         # Respect Polymarket's 5-share minimum; a too-small share is skipped
         # (never bumped — bumping would break equality).
@@ -3915,6 +3914,8 @@ def _execute_arb_entries(
         yes_outcome = outcomes[0] if outcomes else "Yes"
         no_outcome = outcomes[1] if len(outcomes) > 1 else "No"
         neg_risk = bool(market.get("negRisk"))
+        liquidity = as_float(market.get("liquidity") or market.get("liquidityNum"))
+        volume = as_float(market.get("volume") or market.get("volumeNum"))
 
         # Proportional sizing for true arb: face value P is the guaranteed
         # payout whichever leg wins. YES stake = P * yes_ask, NO stake =
@@ -3939,15 +3940,31 @@ def _execute_arb_entries(
             flush=True,
         )
 
-        def _make_candidate(token_id: str, outcome: str, ask: float) -> Candidate:
+        def _make_candidate(
+            token_id: str,
+            outcome: str,
+            ask: float,
+            *,
+            market_id: str = market_id,
+            question: str = question,
+            slug: str = slug,
+            end_date: dt.datetime | None = end_date,
+            hours_to_close: float = hours_to_close,
+            liquidity: float = liquidity,
+            volume: float = volume,
+            url: str = url,
+            tick_size: float = tick_size,
+            neg_risk: bool = neg_risk,
+            event_slug: str = event_slug,
+        ) -> Candidate:
             return Candidate(
                 market_id=market_id,
                 question=question,
                 slug=slug,
                 end_date=end_date,
                 hours_to_close=hours_to_close,
-                liquidity=as_float(market.get("liquidity") or market.get("liquidityNum")),
-                volume=as_float(market.get("volume") or market.get("volumeNum")),
+                liquidity=liquidity,
+                volume=volume,
                 outcome=outcome,
                 price=ask,
                 token_id=token_id,
@@ -3999,7 +4016,6 @@ def _execute_arb_entries(
             no_response = {"success": True, "orderID": f"arb-no-{int(utc_now().timestamp()*1000)}"}
         else:
             try:
-                from .trading import _build_direct_buy_order
                 no_order, no_response = client.place_market_order(
                     candidate=no_cand, amount=no_stake, price=no_ask, side="BUY"
                 )

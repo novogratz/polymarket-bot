@@ -34,19 +34,19 @@ import sys
 import time
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from polymarket_bot.gamma import GammaClient  # noqa: E402
-from polymarket_bot.models import is_excluded_market, parse_json_list, parse_dt  # noqa: E402
+from polymarket_bot.models import is_excluded_market, parse_dt, parse_json_list  # noqa: E402
 
 CLOB_BASE = "https://clob.polymarket.com"
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def fetch_price_history(token_id: str, fidelity: int = 60) -> list[tuple[int, float]]:

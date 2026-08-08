@@ -8,14 +8,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from polymarket_bot.smart_money import SmartTrade  # noqa: E402
-
 from wallet_history_ytd import (  # noqa: E402
     aggregate_wallet_stats,
     compute_realized_pnl_fifo,
     compute_unrealized_pnl,
     top_category_for,
 )
+
+from polymarket_bot.smart_money import SmartTrade  # noqa: E402
 
 
 def _trade(

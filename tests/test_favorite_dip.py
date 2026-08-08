@@ -6,6 +6,7 @@ politics market like 0.85 -> 0.70).
 """
 
 import os
+
 os.environ["POLYMARKET_SKIP_DOTENV"] = "1"
 
 import unittest

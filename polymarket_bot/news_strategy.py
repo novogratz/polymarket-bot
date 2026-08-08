@@ -39,7 +39,6 @@ from .pricing import ensure_open_positions_in_pool
 from .smart_money import SmartMoneyData, fetch_smart_money_data
 from .trading import build_client, execute_live_sell, execute_live_trade
 
-
 # Asset detection: maps regex on question text to a stable asset key.
 # Order matters — longer / more specific patterns first.
 _ASSET_PATTERNS: list[tuple[re.Pattern[str], str]] = [

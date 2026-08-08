@@ -1,30 +1,16 @@
-# Profile "grinder" — heavy-favorite, ride-to-resolution.
-#
-# Thesis: buy near-certainty binary outcomes at 0.87–0.95 within 4h of close,
-# hold until bid ≥ 0.99. No stop-loss. 50% stake, 2 concurrent positions.
-#
-# Target: 2 wins/day → ~9%, 3 wins → ~13%. Each win = ~8.8% on stake = 4.4%
-# on account. Wider band + faster tick = more eligible markets per day.
-# Exclusion filters block all known gap-risk categories (exact scores, weather,
-# O/U 0.5/5.5+). No price-movement gates (removed 2026-06-10): fast movers
-# are often converging toward resolution and stay tradeable.
+# Production profile for Bot 1 (scripts/run_live_70.sh).
+# Deterministic, forecast-gated, weather-only strategy. Strategy values are
+# regression-tested across all production profiles; only the deployment-specific
+# assumed balance may differ.
 
 [run]
-# Shared profile for the PRIMARY bot (run_live_70.sh). The second bot uses
-# its own grinder_b.toml — edit that one for that machine, never this.
-# 2026-07-15 (user: "bot 2 doing better than bot 1 - make bot 1 the same
-# strategy as bot 2"): [race] strategy keys are now BYTE-SYNCED to
-# grinder_b.toml — Open-Meteo forecast gate (min_edge 0.10 + 2.0°C bracket
-# margin), weather-grade liquidity floors (50/200), 0.85 entry floor,
-# category_min_samples 20, 30s tick. Only the bankroll baseline below is
-# bot 1's own.
+# Reporting baseline; the launcher reads the venue balance each tick.
 starting_cash = 85.0
 mode = "grinder"
 
 [sizing]
-# 50% per trade — 2 wins/day hits ~9%, 3 wins hits ~13%.
-# One loss = -50% on stake, painful but recoverable with one follow-up win.
-# ceiling disabled (0) so stake scales with bankroll automatically.
+# Legacy generic sizing keys retained for compatibility. The maintained live
+# strategy uses the percentage-based full-deployment controls in [race].
 max_position_ceiling_usd = 0.0
 max_position_ceiling_pct = 0.54
 cash_floor_pct = 0.05

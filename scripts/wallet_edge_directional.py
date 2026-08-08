@@ -30,11 +30,12 @@ import statistics
 import sys
 import time
 import urllib.error
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -146,8 +147,8 @@ def load_ranking(path: Path, top_n: int) -> list[dict[str, Any]]:
 
 def ytd_since_ts() -> int:
     """1er janvier de l'année courante UTC, en secondes Unix."""
-    now = datetime.now(timezone.utc)
-    start = datetime(now.year, 1, 1, tzinfo=timezone.utc)
+    now = datetime.now(UTC)
+    start = datetime(now.year, 1, 1, tzinfo=UTC)
     return int(start.timestamp())
 
 
@@ -461,7 +462,7 @@ def write_trade_csv(rows: list[TradeRow], path: Path) -> None:
         writer = csv.writer(fh)
         writer.writerow(TRADE_CSV_COLUMNS)
         for r in rows:
-            iso = datetime.fromtimestamp(r.ts_trade, tz=timezone.utc).isoformat()
+            iso = datetime.fromtimestamp(r.ts_trade, tz=UTC).isoformat()
             writer.writerow(
                 [
                     r.wallet,
@@ -714,7 +715,7 @@ def main(argv: list[str] | None = None) -> int:
         f"== wallet_edge_directional ==\n"
         f"  ranking         : {ranking_path}\n"
         f"  top_n           : {args.top}\n"
-        f"  since (YTD)     : {datetime.fromtimestamp(since_ts, tz=timezone.utc).isoformat()}\n"
+        f"  since (YTD)     : {datetime.fromtimestamp(since_ts, tz=UTC).isoformat()}\n"
         f"  cache_dir       : {cache_dir or '(disabled)'}\n"
         f"  concurrency     : {args.concurrency}\n"
         f"  output trades   : {output_trades}\n"

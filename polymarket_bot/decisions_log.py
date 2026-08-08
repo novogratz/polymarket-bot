@@ -14,10 +14,10 @@ not written (no empty entries).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from collections.abc import Iterator
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterator
 
 
 @dataclass
@@ -34,7 +34,7 @@ class Decision:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _serialize_decision(decision: Decision) -> dict:

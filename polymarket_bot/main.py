@@ -18,12 +18,11 @@ import json
 import os
 import sys
 import time
+from dataclasses import replace
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import typer
-
-from dataclasses import replace
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from . import notifications, tick_state
 from .auto_tuner import apply_overrides, maybe_tune
@@ -33,29 +32,27 @@ from .dashboard import serve
 from .dry_run_cli import app as dry_run_app
 from .dry_run_runs import DryRunPaths, ensure_run_directory, update_tick_metadata
 from .equity_tracker import append_equity_point
+from .gamma import GammaClient
+from .live_confirm import build_live_recap, prompt_live_confirmation
+from .models import parse_dt, utc_now
+from .portfolio import Portfolio
+from .pricing import ensure_open_positions_in_pool
 from .profiles import (
     ProfileValidationError,
     apply_profile_to_env,
     load_profile,
     write_snapshot_toml,
 )
-from .live_confirm import build_live_recap, prompt_live_confirmation
-from .gamma import GammaClient
-from .portfolio import Portfolio
-from .models import parse_dt, utc_now
 from .smart_money import (
     DataApiClient,
-    analyze_smart_money,
     analyze_smart_money_with_data,
     fetch_dip_signals,
     fetch_smart_money_data,
     fetch_whale_signals,
     market_category,
-    _top_traders,
 )
-from .trading import build_client, execute_live_sell, execute_live_trade
-from .pricing import ensure_open_positions_in_pool
 from .strategy import rank_markets
+from .trading import build_client, execute_live_sell, execute_live_trade
 
 
 def _step(settings: Settings, msg: str = "") -> None:
@@ -641,7 +638,6 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
     # PnL is ≤ -X% of starting equity. Exits above still run. Smart-money mode
     # had no such guard (only race mode did); a live lane needs one. Reuses the
     # RACE_DAILY_DRAWDOWN_PCT knob as the shared daily-loss limit.
-    daily_dd_halted = False
     if settings.race_daily_drawdown_pct > 0 and opportunities:
         from .edge_strategy import _daily_realized_pnl
 
@@ -655,7 +651,6 @@ def smart_money_once(settings: Settings) -> dict[str, object]:
                 flush=True,
             )
             opportunities = []
-            daily_dd_halted = True
 
     if opportunities:
         # Gracefully wait if out of funds.
@@ -2085,7 +2080,7 @@ def _journal_stats_last_24h(
 
     ``realized_pnl`` est la somme des PnL réalisés sur les 24 dernières heures.
     """
-    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=24)
+    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(hours=24)
     trades: list[dict] = []
     for rec in _read_realized_records(path):
         ts_raw = rec.get("closed_at") or rec.get("ts")
@@ -2096,7 +2091,7 @@ def _journal_stats_last_24h(
         except ValueError:
             continue
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=dt.timezone.utc)
+            ts = ts.replace(tzinfo=dt.UTC)
         if ts >= cutoff:
             trades.append(rec)
 
@@ -2393,7 +2388,7 @@ def _sync_live_positions(settings: Settings, portfolio: Portfolio) -> list[dict[
         except ValueError:
             return False
         if d.tzinfo is None:
-            d = d.replace(tzinfo=timezone.utc)
+            d = d.replace(tzinfo=dt.UTC)
         return d < utc_now()
 
     active_by_token: dict[str, dict[str, object]] = {}
@@ -2860,8 +2855,8 @@ def _close_confirmed_resolved_losses(settings: Settings, strategy_name: str) -> 
     (e.g. Under 4.5 briefly showing 0.01 at 2-0). A confirmed resolved loss
     requires Polymarket itself to have marked the market closed.
     """
-    from .portfolio import Portfolio
     from .gamma import GammaClient
+    from .portfolio import Portfolio
     LOSS_PRICE_THRESHOLD = 0.08
 
     try:
@@ -2992,7 +2987,6 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
         float(getattr(settings, "smart_resolved_exit_threshold", 0.97) or 0.97),
         float(getattr(settings, "race_resolved_exit_threshold", 0.0) or 0.0),
     )
-    loss_threshold = 0.0  # unused — loss sweep disabled
     try:
         from .portfolio import Portfolio
     except Exception:
@@ -3103,7 +3097,7 @@ def _force_close_resolved_positions(settings: Settings, strategy_name: str) -> l
                 opened_iso = rec.get("opened_at") or ""
                 held_secs: int | None = None
                 if opened_iso:
-                    from datetime import datetime, timezone as _tz
+                    from datetime import datetime
                     try:
                         opened_dt = datetime.fromisoformat(opened_iso.replace("Z", "+00:00"))
                         held_secs = int((utc_now() - opened_dt).total_seconds())
@@ -3464,7 +3458,7 @@ def _build_tick_record(
         "actions": _extract_tick_actions(tick_result),
         "tuner_changes": dict(tick_result.get("auto_tune_info") or {}),
         "next_tick_at": datetime.fromtimestamp(
-            next_tick_at, tz=timezone.utc
+            next_tick_at, tz=dt.UTC
         ).isoformat(),
     }
     if error is not None:
@@ -3777,7 +3771,7 @@ def cli_auto_loop(
         loaded = load_profile(profile_path)
     except ProfileValidationError as exc:
         typer.echo(f"profile error: {exc}", err=True)
-        raise typer.Exit(code=2)
+        raise typer.Exit(code=2) from exc
     apply_profile_to_env(loaded)
 
     # 4) Dry-run: provision the named run directory and inject paths into env
@@ -3793,7 +3787,7 @@ def cli_auto_loop(
             )
         except ValueError as exc:
             typer.echo(f"invalid --run name: {exc}", err=True)
-            raise typer.Exit(code=2)
+            raise typer.Exit(code=2) from exc
         os.environ["POLYMARKET_STATE_PATH"] = str(paths.state)
         os.environ["POLYMARKET_TRADE_JOURNAL_PATH"] = str(paths.journal)
         os.environ["POLYMARKET_STRATEGY_OVERRIDES_PATH"] = str(paths.overrides)

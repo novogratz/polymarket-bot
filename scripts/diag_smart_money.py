@@ -22,14 +22,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from polymarket_bot.config import Settings  # noqa: E402
-from polymarket_bot.gamma import GammaClient  # noqa: E402
+from polymarket_bot.main import load_smart_candidates  # noqa: E402
 from polymarket_bot.smart_money import (  # noqa: E402
     DataApiClient,
     _top_traders,
     fetch_smart_money_data,
     smart_money_signals,
 )
-from polymarket_bot.main import load_smart_candidates  # noqa: E402
 
 
 def _qualifies(t, s):
@@ -57,7 +56,7 @@ def run(persistence_enabled: bool) -> None:
     client = DataApiClient(settings.data_api_base_url)
     by_period = _top_traders(client, settings)
     sets = {p: {t.wallet.lower() for t in lst} for p, lst in by_period.items()}
-    print(f"\nLeaderboards bruts :")
+    print("\nLeaderboards bruts :")
     for p, s in sets.items():
         print(f"  {p}: {len(s)} wallets")
 
@@ -68,7 +67,7 @@ def run(persistence_enabled: bool) -> None:
     inter_ma = month & all_
     inter_wma = week & month & all_
     inter_2plus = (inter_wm | inter_wa | inter_ma)
-    print(f"\nIntersections :")
+    print("\nIntersections :")
     print(f"  WEEK∩MONTH      = {len(inter_wm)}")
     print(f"  WEEK∩ALL        = {len(inter_wa)}")
     print(f"  MONTH∩ALL       = {len(inter_ma)}")
@@ -76,7 +75,7 @@ def run(persistence_enabled: bool) -> None:
     print(f"  ≥2 listes (union des paires) = {len(inter_2plus)}")
 
     # PnL / Vol / ROI pré-filtre par période
-    print(f"\nPré-filtre PnL/Vol/ROI par période :")
+    print("\nPré-filtre PnL/Vol/ROI par période :")
     for p, lst in by_period.items():
         q = [t for t in lst if _qualifies(t, settings)]
         print(f"  {p}: {len(lst)} → {len(q)} après PnL/Vol/ROI")
@@ -112,7 +111,7 @@ def run(persistence_enabled: bool) -> None:
     print(f"\nsmart_money_signals → {len(signals)} signaux")
     print(f"  eligible_trade_count : {details.get('eligible_trade_count')}")
     print(f"  matched_tokens (BUY token in candidate set) : {details.get('matched_tokens')}")
-    print(f"  rejected breakdown :")
+    print("  rejected breakdown :")
     for k, v in sorted(details.get("rejected", {}).items(), key=lambda x: -x[1]):
         print(f"    {k:35s} {v}")
 

@@ -10,7 +10,6 @@ from __future__ import annotations
 import csv
 import json
 import statistics as stats
-import time
 import urllib.request
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
@@ -87,7 +86,7 @@ def main() -> None:
     cats = Counter(r["category"] or "unknown" for r in rows)
     prices = [r["price"] for r in rows]
     moves15 = [r["move15"] for r in rows]
-    edges = [r["edge_jump"] for r in rows if r["edge_jump"] is not None]
+    [r["edge_jump"] for r in rows if r["edge_jump"] is not None]
 
     # Buckets prix d'entrée
     price_buckets = {
@@ -179,7 +178,7 @@ def main() -> None:
             pass
 
     # Activité hebdomadaire
-    by_week = Counter(r["dt"].strftime("%Y-W%U") for r in rows)
+    Counter(r["dt"].strftime("%Y-W%U") for r in rows)
 
     # Ratio BUY/SELL approximatif par recent_trades
     side_counter = Counter(t.get("side") for t in recent_trades if t.get("side"))
@@ -223,7 +222,7 @@ def main() -> None:
     lines.append("")
     if rank_meta:
         lines.append(f"- Username affiché : `{rank_meta['username']}`")
-        lines.append(f"  (= adresse + suffixe timestamp → **pas d'alias choisi**)")
+        lines.append("  (= adresse + suffixe timestamp → **pas d'alias choisi**)")
         lines.append(f"- Rang YTD (par PnL net) : **#{rank_meta['rank']}** sur 658 wallets")
         lines.append(f"- PnL net YTD : **{fmt_money(float(rank_meta['pnl_net_ytd']))}**")
         lines.append(f"  - Réalisé : {fmt_money(float(rank_meta['pnl_realized']))}")

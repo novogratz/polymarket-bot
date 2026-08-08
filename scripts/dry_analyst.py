@@ -475,9 +475,7 @@ def fmt_leaderboard(metrics: list[StratMetrics]) -> str:
     )]
     lines.append("-" * 70)
     for m in metrics:
-        lines.append("{:<32} {:>+8.2f} {:>+6.1f}% {:>5.0f}% {:>5} {:>5}".format(
-            m.name[:32], m.pnl, m.roi_pct, m.win_rate, m.closed, m.open_positions,
-        ))
+        lines.append(f"{m.name[:32]:<32} {m.pnl:>+8.2f} {m.roi_pct:>+6.1f}% {m.win_rate:>5.0f}% {m.closed:>5} {m.open_positions:>5}")
     return "\n".join(lines)
 
 
@@ -502,7 +500,7 @@ def build_main_message(narrative: str, top: list[StratMetrics],
         for m in live_close[:5]:
             parts.append(f"  • `{m.name}` ROI={m.roi_pct:+.1f}% ({m.win_rate:.0f}% wr, {m.closed} closed)")
         parts.append("")
-    def _fmt_row(idx: int, m: "StratMetrics", *, bullet: str = "") -> list[str]:
+    def _fmt_row(idx: int, m: StratMetrics, *, bullet: str = "") -> list[str]:
         sign = "+" if m.pnl >= 0 else ""
         marker = bullet if bullet else f"{idx}."
         # Recover starting from equity - pnl (cheaper than re-reading TOML).
@@ -693,7 +691,7 @@ def _favorite_detail(name: str) -> tuple[list[dict], list[dict]]:
     return top_trades, open_pos
 
 
-def _pick_favorite(metrics: list[StratMetrics]) -> tuple["StratMetrics | None", str]:
+def _pick_favorite(metrics: list[StratMetrics]) -> tuple[StratMetrics | None, str]:
     """Pick the best live candidate + the human-readable reason.
 
     Always returns a candidate when metrics exist — only "None" when
@@ -731,7 +729,7 @@ def _pick_favorite(metrics: list[StratMetrics]) -> tuple["StratMetrics | None", 
         m = profitable[0]
         n = len(profitable)
         prefix = (
-            f"Only profitable strategy on the board"
+            "Only profitable strategy on the board"
             if n == 1
             else f"Top of {n} profitable strategies"
         )

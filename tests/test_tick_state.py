@@ -9,8 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from polymarket_bot.config import Settings
 from polymarket_bot import tick_state
+from polymarket_bot.config import Settings
 
 
 def _settings_in(tmp: Path, dry_run: bool = False) -> Settings:
